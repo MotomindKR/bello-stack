@@ -1,0 +1,60 @@
+runtime:
+  telemetry_capacity: 4096
+
+grpc:
+  listen: 127.0.0.1:50052
+  default_lease_ms: 1000
+  maximum_lease_ms: 10000
+
+rerun:
+  mode: off
+
+buses:
+  - name: e2e_can
+    interface: vcan0
+    host_id: 253
+    bitrate: 1000000
+    maximum_utilization: 0.75
+    reconnect: { initial_delay_ms: 50, maximum_delay_ms: 500 }
+
+motors:
+  - name: e2e_motor_1
+    joint: e2e_joint_1
+    bus: e2e_can
+    id: 1
+    model: ROBSTRIDE_03
+    direction: 1
+  - name: e2e_motor_2
+    joint: e2e_joint_2
+    bus: e2e_can
+    id: 2
+    model: ROBSTRIDE_03
+    direction: -1
+
+motor_groups:
+  - name: e2e_group
+    motors: [e2e_motor_1, e2e_motor_2]
+    control_rate_hz: 250.0
+    command_timeout_ms: 200
+    feedback_timeout_ms: 100
+    enable_timeout_ms: 500
+    enable_retries: 2
+    damping_response: { send_count: 3, send_rate_hz: 100.0 }
+    fault_responses:
+      command_limit: damping
+      command_position_step: damping
+      command_timeout: damping
+      safe_position: damping
+      stale_feedback: damping
+      temperature: disable
+      reported_motor_fault: disable
+      mode_status: damping
+      communication: damping
+      enable: disable
+      start: damping
+      stop: damping
+      transmission: damping
+      lease_loss: damping
+      manual: damping
+      disable: disable
+      exit: disable

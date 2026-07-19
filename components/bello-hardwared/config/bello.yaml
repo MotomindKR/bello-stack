@@ -1,0 +1,188 @@
+runtime:
+  telemetry_capacity: 4096
+
+grpc:
+  listen: 0.0.0.0:50051
+  default_lease_ms: 1000
+  maximum_lease_ms: 5000
+
+rerun:
+  mode: off       # off | save | connect (non-off requires --features rerun)
+  path: bello_hardware.rrd
+  address: 127.0.0.1:9876
+
+serial_devices:
+  - name: imu_serial
+    port: /dev/ttyUSB0
+    baud_rate: 921600
+    timeout_ms: 100
+    reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
+
+imus:
+  - name: imu
+    enabled: true
+    serial_device: imu_serial
+    model: EBIMU
+    stale_timeout_ms: 500
+    output_rate_hz: 500
+    quaternion: true
+    gyro: true
+    acceleration: true
+    device_timestamp: true
+    configure_on_start: true
+
+buses:
+  - name: can_a
+    interface: can0
+    host_id: 253
+    bitrate: 1000000
+    maximum_utilization: 0.75
+    reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
+  - name: can_b
+    interface: can1
+    host_id: 253
+    bitrate: 1000000
+    maximum_utilization: 0.75
+    reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
+
+motors:
+  - name: motor_a
+    joint: joint_a
+    bus: can_a
+    id: 1
+    model: ROBSTRIDE_03
+    direction: 1
+    health:
+      safe_position_min: -12.57
+      safe_position_max: 12.57
+      temperature_warning_c: 60.0
+      maximum_temperature_c: 80.0
+      temperature_recovery_c: 75.0
+      temperature_recovery_duration_ms: 2000
+    command_policy:
+      maximum_position_step: 0.5
+      limit_action: clamp
+      limit_severity: warning
+      position_step_action: reject
+      position_step_severity: fault
+    fault_damping:
+      kd: 2.0
+  - name: motor_b
+    joint: joint_b
+    bus: can_b
+    id: 1
+    model: ROBSTRIDE_03
+    direction: -1
+    health:
+      safe_position_min: -12.57
+      safe_position_max: 12.57
+      temperature_warning_c: 60.0
+      maximum_temperature_c: 80.0
+      temperature_recovery_c: 75.0
+      temperature_recovery_duration_ms: 2000
+    command_policy:
+      maximum_position_step: 0.5
+      limit_action: clamp
+      limit_severity: warning
+      position_step_action: reject
+      position_step_severity: fault
+    fault_damping:
+      kd: 2.0
+  - name: motor_c
+    joint: joint_c
+    bus: can_a
+    id: 2
+    model: ROBSTRIDE_03
+    direction: 1
+    health:
+      safe_position_min: -12.57
+      safe_position_max: 12.57
+      temperature_warning_c: 60.0
+      maximum_temperature_c: 80.0
+      temperature_recovery_c: 75.0
+      temperature_recovery_duration_ms: 2000
+    command_policy:
+      maximum_position_step: 0.5
+      limit_action: clamp
+      limit_severity: warning
+      position_step_action: reject
+      position_step_severity: fault
+    fault_damping:
+      kd: 2.0
+  - name: motor_d
+    joint: joint_d
+    bus: can_b
+    id: 2
+    model: ROBSTRIDE_03
+    direction: -1
+    health:
+      safe_position_min: -12.57
+      safe_position_max: 12.57
+      temperature_warning_c: 60.0
+      maximum_temperature_c: 80.0
+      temperature_recovery_c: 75.0
+      temperature_recovery_duration_ms: 2000
+    command_policy:
+      maximum_position_step: 0.5
+      limit_action: clamp
+      limit_severity: warning
+      position_step_action: reject
+      position_step_severity: fault
+    fault_damping:
+      kd: 2.0
+
+# Groups are arbitrary logical ownership units. Both groups below span two buses,
+# and both physical buses are shared between groups. A motor may appear once only.
+motor_groups:
+  - name: group_alpha
+    motors: [motor_a, motor_b]
+    control_rate_hz: 250.0
+    command_timeout_ms: 100
+    feedback_timeout_ms: 100
+    enable_timeout_ms: 500
+    enable_retries: 3
+    damping_response: { send_count: 5, send_rate_hz: 100.0 }
+    fault_responses:
+      command_limit: damping
+      command_position_step: damping
+      command_timeout: damping
+      safe_position: damping
+      stale_feedback: damping
+      temperature: damping
+      reported_motor_fault: damping
+      mode_status: damping
+      communication: damping
+      enable: damping
+      start: damping
+      stop: damping
+      transmission: damping
+      lease_loss: damping
+      manual: damping
+      disable: damping
+      exit: damping
+  - name: group_beta
+    motors: [motor_c, motor_d]
+    control_rate_hz: 250.0
+    command_timeout_ms: 100
+    feedback_timeout_ms: 100
+    enable_timeout_ms: 500
+    enable_retries: 3
+    damping_response: { send_count: 5, send_rate_hz: 100.0 }
+    fault_responses:
+      command_limit: damping
+      command_position_step: damping
+      command_timeout: damping
+      safe_position: damping
+      stale_feedback: damping
+      temperature: damping
+      reported_motor_fault: damping
+      mode_status: damping
+      communication: damping
+      enable: damping
+      start: damping
+      stop: damping
+      transmission: damping
+      lease_loss: damping
+      manual: damping
+      disable: damping
+      exit: damping

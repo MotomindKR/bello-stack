@@ -1,0 +1,8 @@
+[package]
+name = "robstride-protocol"
+version = "0.1.0"
+edition = "2024"
+license = "Proprietary"
+description = "Robstride CAN wire types and codec shared by Bello components"
+
+[dependencies]

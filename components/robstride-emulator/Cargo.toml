@@ -1,0 +1,17 @@
+[package]
+name = "robstride-emulator"
+version = "0.1.0"
+edition = "2024"
+license = "Proprietary"
+description = "Thin SocketCAN Robstride actuator emulator for Bello integration testing"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+robstride-protocol = { path = "../robstride-protocol" }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+socketcan = { version = "3.6", default-features = false }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+

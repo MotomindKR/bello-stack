@@ -1,0 +1,16 @@
+[package]
+name = "bello-hardware-e2e"
+version = "0.1.0"
+edition = "2024"
+license = "Proprietary"
+description = "Process-level vcan and gRPC integration scenarios for Bello hardware"
+
+[dependencies]
+anyhow = "1"
+bello-hardwared = { path = "../bello-hardwared" }
+clap = { version = "4", features = ["derive"] }
+nix = { version = "0.29", features = ["signal"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tonic = { version = "0.14", features = ["transport"] }
+

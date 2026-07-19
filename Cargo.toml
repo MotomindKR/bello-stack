@@ -1,0 +1,8 @@
+[workspace]
+resolver = "3"
+members = [
+  "components/bello-hardware-e2e",
+  "components/bello-hardwared",
+  "components/robstride-emulator",
+  "components/robstride-protocol",
+]

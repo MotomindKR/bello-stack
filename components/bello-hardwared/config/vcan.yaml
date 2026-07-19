@@ -1,0 +1,60 @@
+runtime:
+  telemetry_capacity: 4096
+
+grpc:
+  listen: 127.0.0.1:50051
+  default_lease_ms: 1000
+  maximum_lease_ms: 5000
+
+rerun:
+  mode: off
+
+buses:
+  - name: emulated_can
+    interface: vcan0
+    host_id: 253
+    bitrate: 1000000
+    maximum_utilization: 0.75
+    reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
+
+motors:
+  - name: emulated_motor_1
+    joint: emulated_joint_1
+    bus: emulated_can
+    id: 1
+    model: ROBSTRIDE_03
+    direction: 1
+  - name: emulated_motor_2
+    joint: emulated_joint_2
+    bus: emulated_can
+    id: 2
+    model: ROBSTRIDE_03
+    direction: -1
+
+motor_groups:
+  - name: emulated_group
+    motors: [emulated_motor_1, emulated_motor_2]
+    control_rate_hz: 250.0
+    command_timeout_ms: 100
+    feedback_timeout_ms: 100
+    enable_timeout_ms: 500
+    enable_retries: 3
+    damping_response: { send_count: 5, send_rate_hz: 100.0 }
+    fault_responses:
+      command_limit: damping
+      command_position_step: damping
+      command_timeout: damping
+      safe_position: damping
+      stale_feedback: damping
+      temperature: disable
+      reported_motor_fault: disable
+      mode_status: damping
+      communication: damping
+      enable: disable
+      start: damping
+      stop: damping
+      transmission: damping
+      lease_loss: damping
+      manual: damping
+      disable: disable
+      exit: disable
