@@ -1,0 +1,55 @@
+//! Robot-oriented access to `bello-hardwared`.
+//!
+//! Start with [`Robot`], [`MotorGroup`], and [`ControlSession`]. Generated
+//! protobuf messages and the lease-oriented transport layer are intentionally
+//! isolated under [`raw`] for diagnostics and specialized tooling.
+
+mod client;
+mod command;
+mod control;
+mod duration;
+mod endpoint;
+mod enum_value;
+mod error;
+mod frame;
+mod inventory;
+mod lease;
+mod robot;
+mod state;
+mod telemetry;
+mod types;
+
+pub(crate) use client::HardwareClient;
+pub(crate) use command::{CommandStream, CommandStreamOptions, CommandValidity};
+pub use control::{ControlOptions, ControlSession, ControlState};
+pub use endpoint::ConnectOptions;
+pub(crate) use enum_value::EnumValue;
+pub use error::Error;
+pub use frame::{CommandFrame, CommandFrameBuilder, JointTarget};
+pub use inventory::{DeviceStatus, Motor};
+pub(crate) use lease::{GroupLease, LeaseDuration};
+pub use robot::{MotorGroup, Robot};
+pub use state::{
+    GroupSnapshot, HealthSnapshot, ImuSnapshot, MotorSnapshot, Quaternion, RobotState, RobotStates,
+    StateStreamOptions, Vector3,
+};
+pub(crate) use telemetry::{TelemetryEvent, TelemetryFilter, TelemetryStream};
+pub use types::{CommandResult, DeviceState, FaultCause, GroupState};
+
+/// Low-level protobuf, lease, command-stream, and telemetry primitives.
+///
+/// Normal robot applications should use the crate-root API. This module exists
+/// for diagnostics, performance probes, and integrations that need the exact
+/// wire contract.
+pub mod raw {
+    pub use bello_hardware_api as proto;
+
+    pub use crate::client::HardwareClient;
+    pub use crate::command::{
+        CommandAcknowledgement, CommandRejected, CommandResponses, CommandSender, CommandStream,
+        CommandStreamOptions, CommandValidity,
+    };
+    pub use crate::enum_value::EnumValue;
+    pub use crate::lease::{GroupLease, LeaseDeadline, LeaseDuration, LeaseRenewer, LeaseStatus};
+    pub use crate::telemetry::{TelemetryEvent, TelemetryFilter, TelemetryStream};
+}

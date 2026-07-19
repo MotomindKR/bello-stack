@@ -1,0 +1,20 @@
+[package]
+name = "bello-hardware-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Robot-oriented Rust client for Bello hardware control and state"
+
+[dependencies]
+bello-hardware-api.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
+tokio-stream.workspace = true
+tonic = { workspace = true, features = ["tls-native-roots", "tls-ring", "transport"] }
+
+[dev-dependencies]
+async-stream.workspace = true
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread"] }
+tokio-stream = { workspace = true, features = ["net"] }

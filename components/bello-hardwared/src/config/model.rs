@@ -12,8 +12,6 @@ pub struct Config {
     #[serde(default)]
     pub grpc: GrpcConfig,
     #[serde(default)]
-    pub rerun: RerunConfig,
-    #[serde(default)]
     pub serial_devices: Vec<SerialDeviceConfig>,
     #[serde(default)]
     pub imus: Vec<ImuConfig>,
@@ -52,18 +50,6 @@ impl Default for GrpcConfig {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
-pub enum RerunConfig {
-    #[default]
-    Off,
-    Save {
-        path: String,
-    },
-    Connect {
-        address: String,
-    },
-}
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BusConfig {

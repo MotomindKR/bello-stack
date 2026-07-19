@@ -7,9 +7,6 @@ grpc:
   default_lease_ms: 1000
   maximum_lease_ms: 5000
 
-rerun:
-  mode: off # save requires path; connect requires address
-
 serial_devices:
   - name: imu_serial
     port: /dev/ttyUSB0

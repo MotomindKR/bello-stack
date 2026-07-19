@@ -6,9 +6,6 @@ grpc:
   default_lease_ms: 1000
   maximum_lease_ms: 5000
 
-rerun:
-  mode: off
-
 buses:
   - name: emulated_can
     interface: vcan0

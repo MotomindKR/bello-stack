@@ -1,5 +1,5 @@
 {
-  description = "Development environment for the Bello monolithic hardware daemon";
+  description = "Development environment for the Bello hardware stack";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 

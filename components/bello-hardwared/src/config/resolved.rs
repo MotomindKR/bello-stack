@@ -11,7 +11,6 @@ use crate::hardware::can::BusSpec;
 use crate::hardware::imu::ImuSpec;
 use crate::hardware::robstride::MotorSpec;
 use crate::hardware::serial::SerialSpec;
-use crate::rerun_sink::RerunSpec;
 
 #[derive(Clone, Debug)]
 pub(crate) struct ResolvedMotor {
@@ -23,7 +22,6 @@ pub(crate) struct ResolvedMotor {
 pub struct ResolvedTopology {
     telemetry_capacity: usize,
     grpc: GrpcSpec,
-    rerun: RerunSpec,
     serial_devices: HashMap<SerialDeviceName, SerialSpec>,
     imus: HashMap<ImuName, ImuSpec>,
     buses: HashMap<BusName, BusSpec>,
@@ -42,7 +40,6 @@ impl ResolvedTopology {
             bail!("runtime.telemetry_capacity must be in 64..=1000000");
         }
         let grpc = GrpcSpec::try_from(&config.grpc)?;
-        let rerun = RerunSpec::try_from(&config.rerun)?;
 
         let mut serial_devices = HashMap::new();
         let mut serial_ports = HashSet::new();
@@ -164,7 +161,6 @@ impl ResolvedTopology {
         Ok(Self {
             telemetry_capacity: config.runtime.telemetry_capacity,
             grpc,
-            rerun,
             serial_devices,
             imus,
             buses,
@@ -179,10 +175,6 @@ impl ResolvedTopology {
 
     pub fn grpc(&self) -> &GrpcSpec {
         &self.grpc
-    }
-
-    pub fn rerun(&self) -> &RerunSpec {
-        &self.rerun
     }
 
     pub(crate) fn serial_devices(&self) -> impl Iterator<Item = (&SerialDeviceName, &SerialSpec)> {

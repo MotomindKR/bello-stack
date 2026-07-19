@@ -1,2 +1,2 @@
 [alias]
-e2e = "test -p bello-hardware-e2e --test vcan -- --ignored --nocapture"
+e2e = "test -p bello-hardware-e2e --test vcan -- --ignored --nocapture --test-threads=1"

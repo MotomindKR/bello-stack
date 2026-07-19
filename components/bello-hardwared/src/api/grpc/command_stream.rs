@@ -5,7 +5,7 @@ use tokio_stream::StreamExt;
 
 use super::{ResponseStream, conversion};
 use crate::app::HardwareDaemon;
-use crate::proto::{StreamCommandsRequest, StreamCommandsResponse};
+use bello_hardware_api::{CommandResult, StreamCommandsRequest, StreamCommandsResponse};
 
 pub fn open(
     daemon: Arc<HardwareDaemon>,
@@ -43,7 +43,7 @@ pub fn open(
             let sequence = batch.sequence;
             let (result, detail) = match daemon.submit_command(batch).await {
                 Ok(()) => (
-                    crate::proto::CommandResult::Accepted as i32,
+                    CommandResult::Accepted as i32,
                     "accepted".to_owned(),
                 ),
                 Err(error) => (conversion::command_result(&error), error.to_string()),

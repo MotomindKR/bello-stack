@@ -1,20 +1,15 @@
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
-use bello_hardwared::proto::hardware_service_client::HardwareServiceClient;
-use bello_hardwared::proto::watch_telemetry_response::Payload;
-use bello_hardwared::proto::{
-    AcquireLeaseRequest, CommandResult, DeviceState, DisableGroupRequest, EnableGroupRequest,
-    FaultCause, GroupState, ListHardwareRequest, MotorCommand, RecoverGroupRequest,
-    ReleaseLeaseRequest, RenewLeaseRequest, StartControlRequest, StreamCommandsRequest,
-    WatchTelemetryRequest,
+use bello_hardware_client::raw::proto::watch_telemetry_response::Payload;
+use bello_hardware_client::raw::proto::{DeviceState, FaultCause, GroupState, MotorCommand};
+use bello_hardware_client::raw::{
+    CommandStreamOptions, CommandValidity, EnumValue, GroupLease, HardwareClient, LeaseDuration,
+    TelemetryFilter, TelemetryStream,
 };
-use tokio::sync::mpsc;
+use bello_hardware_client::{CommandFrame, ControlOptions, JointTarget, Robot};
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, sleep, timeout};
-use tokio_stream::wrappers::ReceiverStream;
-use tonic::Streaming;
-use tonic::transport::Channel;
 
 use super::process::ManagedProcess;
 
@@ -22,19 +17,17 @@ const GROUP: &str = "e2e_group";
 const MOTORS: [&str; 2] = ["e2e_motor_1", "e2e_motor_2"];
 const PROCESS_POLL: Duration = Duration::from_millis(50);
 
-type Client = HardwareServiceClient<Channel>;
-
 pub async fn connect(
     endpoint: &str,
     deadline: Duration,
     hardwared: &mut ManagedProcess,
     emulator: &mut ManagedProcess,
-) -> Result<Client> {
+) -> Result<HardwareClient> {
     let deadline = Instant::now() + deadline;
     loop {
         hardwared.ensure_running()?;
         emulator.ensure_running()?;
-        match HardwareServiceClient::connect(endpoint.to_owned()).await {
+        match HardwareClient::connect(endpoint.to_owned()).await {
             Ok(client) => return Ok(client),
             Err(error) if Instant::now() < deadline => {
                 let _ = error;
@@ -46,55 +39,36 @@ pub async fn connect(
 }
 
 pub async fn run(
-    mut client: Client,
+    client: HardwareClient,
     timeout_duration: Duration,
     hardwared: &mut ManagedProcess,
     emulator: &mut ManagedProcess,
 ) -> Result<()> {
     let mut telemetry = client
-        .watch_telemetry(WatchTelemetryRequest {
-            groups: vec![GROUP.into()],
-            include_motors: true,
-            include_imu: false,
-            include_health: true,
-            imus: Vec::new(),
-            include_command_policy_events: true,
-        })
-        .await?
-        .into_inner();
+        .watch(
+            TelemetryFilter::default()
+                .selected_groups([GROUP])
+                .include_motors(true)
+                .include_health(true)
+                .include_command_policy_events(true),
+        )
+        .await?;
 
-    let lease = client
-        .acquire_lease(AcquireLeaseRequest {
-            group: GROUP.into(),
-            client_name: "bello-hardware-e2e".into(),
-            requested_duration_ms: 10_000,
-        })
-        .await?
-        .into_inner();
-    if lease.token.is_empty() {
-        bail!("lease acquisition returned an empty token");
-    }
-    let token = lease.token;
+    run_ergonomic_smoke(&client).await?;
 
-    let enabled = client
-        .enable_group(EnableGroupRequest {
-            group: GROUP.into(),
-            lease_token: token.clone(),
-        })
-        .await?
-        .into_inner();
-    require_state(enabled.state, GroupState::Enabled)?;
-    wait_for_motors_online(&mut client, timeout_duration, hardwared, emulator).await?;
+    let mut lease = client
+        .acquire_lease(
+            GROUP,
+            "bello-hardware-e2e",
+            LeaseDuration::For(Duration::from_secs(10)),
+        )
+        .await?;
 
-    let commands = CommandStream::start(client.clone(), token.clone()).await?;
-    let started = client
-        .start_control(StartControlRequest {
-            group: GROUP.into(),
-            lease_token: token.clone(),
-        })
-        .await?
-        .into_inner();
-    require_state(started.state, GroupState::Running)?;
+    require_state(lease.enable().await?, GroupState::Enabled)?;
+    wait_for_motors_online(&client, timeout_duration, hardwared, emulator).await?;
+
+    let commands = CommandStream::start(&lease).await?;
+    require_state(lease.start().await?, GroupState::Running)?;
 
     // Suspending the process preserves actuator state while making the test,
     // rather than emulator startup timing, own the feedback-loss phase.
@@ -110,43 +84,18 @@ pub async fn run(
     drop(commands);
 
     emulator.resume()?;
-    wait_for_motors_online(&mut client, timeout_duration, hardwared, emulator).await?;
-    require_group_state(&mut client, GroupState::Fault).await?;
+    wait_for_motors_online(&client, timeout_duration, hardwared, emulator).await?;
+    require_group_state(&client, GroupState::Fault).await?;
 
-    client
-        .renew_lease(RenewLeaseRequest {
-            token: token.clone(),
-            requested_duration_ms: 10_000,
-        })
+    lease
+        .renew(LeaseDuration::For(Duration::from_secs(10)))
         .await?;
 
-    let recovered = client
-        .recover_group(RecoverGroupRequest {
-            group: GROUP.into(),
-            lease_token: token.clone(),
-        })
-        .await?
-        .into_inner();
-    require_state(recovered.state, GroupState::Idle)?;
+    require_state(lease.recover().await?, GroupState::Idle)?;
+    require_state(lease.enable().await?, GroupState::Enabled)?;
 
-    let reenabled = client
-        .enable_group(EnableGroupRequest {
-            group: GROUP.into(),
-            lease_token: token.clone(),
-        })
-        .await?
-        .into_inner();
-    require_state(reenabled.state, GroupState::Enabled)?;
-
-    let timeout_commands = CommandStream::start(client.clone(), token.clone()).await?;
-    let restarted = client
-        .start_control(StartControlRequest {
-            group: GROUP.into(),
-            lease_token: token.clone(),
-        })
-        .await?
-        .into_inner();
-    require_state(restarted.state, GroupState::Running)?;
+    let timeout_commands = CommandStream::start(&lease).await?;
+    require_state(lease.start().await?, GroupState::Running)?;
     drop(timeout_commands);
     let timeout_fault = wait_for_fault(
         &mut telemetry,
@@ -157,63 +106,21 @@ pub async fn run(
     )
     .await?;
 
-    let recovered = client
-        .recover_group(RecoverGroupRequest {
-            group: GROUP.into(),
-            lease_token: token.clone(),
-        })
-        .await?
-        .into_inner();
-    require_state(recovered.state, GroupState::Idle)?;
-    let enabled = client
-        .enable_group(EnableGroupRequest {
-            group: GROUP.into(),
-            lease_token: token.clone(),
-        })
-        .await?
-        .into_inner();
-    require_state(enabled.state, GroupState::Enabled)?;
-
-    let disabled = client
-        .disable_group(DisableGroupRequest {
-            group: GROUP.into(),
-            lease_token: token.clone(),
-        })
-        .await?
-        .into_inner();
-    require_state(disabled.state, GroupState::Idle)?;
-
-    let released = client
-        .release_lease(ReleaseLeaseRequest { token })
-        .await?
-        .into_inner();
-    require_state(released.state, GroupState::Idle)?;
+    require_state(lease.recover().await?, GroupState::Idle)?;
+    require_state(lease.enable().await?, GroupState::Enabled)?;
+    require_state(lease.disable().await?, GroupState::Idle)?;
+    require_state(lease.release().await?, GroupState::Idle)?;
 
     let expiring = client
-        .acquire_lease(AcquireLeaseRequest {
-            group: GROUP.into(),
-            client_name: "bello-hardware-e2e-expiry".into(),
-            requested_duration_ms: 300,
-        })
-        .await?
-        .into_inner();
-    let enabled = client
-        .enable_group(EnableGroupRequest {
-            group: GROUP.into(),
-            lease_token: expiring.token.clone(),
-        })
-        .await?
-        .into_inner();
-    require_state(enabled.state, GroupState::Enabled)?;
-    let _lease_commands = CommandStream::start(client.clone(), expiring.token.clone()).await?;
-    let started = client
-        .start_control(StartControlRequest {
-            group: GROUP.into(),
-            lease_token: expiring.token,
-        })
-        .await?
-        .into_inner();
-    require_state(started.state, GroupState::Running)?;
+        .acquire_lease(
+            GROUP,
+            "bello-hardware-e2e-expiry",
+            LeaseDuration::For(Duration::from_millis(300)),
+        )
+        .await?;
+    require_state(expiring.enable().await?, GroupState::Enabled)?;
+    let lease_commands = CommandStream::start(&expiring).await?;
+    require_state(expiring.start().await?, GroupState::Running)?;
     let lease_fault = wait_for_fault(
         &mut telemetry,
         timeout_duration,
@@ -225,8 +132,45 @@ pub async fn run(
 
     hardwared.ensure_running()?;
     emulator.ensure_running()?;
+    drop(lease_commands);
+    hardwared.interrupt()?;
+    wait_for_graceful_shutdown(&mut telemetry, timeout_duration).await?;
+    hardwared.stop();
     println!("vcan integration passed: {feedback_fault}; {timeout_fault}; {lease_fault}");
     Ok(())
+}
+
+async fn run_ergonomic_smoke(client: &HardwareClient) -> Result<()> {
+    let robot = Robot::from_hardware_client(client.clone()).await?;
+    let group = robot.group(GROUP)?;
+    let mut control = group
+        .control_with(
+            ControlOptions::new("bello-hardware-e2e-ergonomic")
+                .lease_duration(Duration::from_secs(10))
+                .command_validity(Duration::from_millis(200)),
+        )
+        .await?;
+    control.start(ergonomic_frame(&group, 0.0)?).await?;
+    control.send(ergonomic_frame(&group, 0.01)?).await?;
+    control.shutdown().await?;
+    Ok(())
+}
+
+fn ergonomic_frame(
+    group: &bello_hardware_client::MotorGroup,
+    position: f64,
+) -> Result<CommandFrame> {
+    Ok(group
+        .frame()
+        .joint(
+            "e2e_joint_1",
+            JointTarget::position(position).gains(20.0, 1.0),
+        )?
+        .joint(
+            "e2e_joint_2",
+            JointTarget::position(position).gains(20.0, 1.0),
+        )?
+        .build()?)
 }
 
 struct CommandStream {
@@ -235,30 +179,31 @@ struct CommandStream {
 }
 
 impl CommandStream {
-    async fn start(mut client: Client, token: String) -> Result<Self> {
-        let (tx, rx) = mpsc::channel(8);
-        let mut responses = client
-            .stream_commands(ReceiverStream::new(rx))
+    async fn start(lease: &GroupLease) -> Result<Self> {
+        let (mut commands, mut responses) = lease
+            .open_command_stream(CommandStreamOptions::default())
             .await?
-            .into_inner();
-        tx.send(command(&token, 1)).await?;
+            .split();
+        commands
+            .send(CommandValidity::For(Duration::from_millis(200)), command())
+            .await?;
         let acknowledgement = timeout(Duration::from_secs(1), responses.message())
             .await
             .context("waiting for initial command acknowledgement")??
             .ok_or_else(|| anyhow!("command response stream closed"))?;
-        if acknowledgement.result != CommandResult::Accepted as i32 {
-            bail!("initial command rejected: {}", acknowledgement.detail);
-        }
+        acknowledgement.require_accepted()?;
 
         let sender = tokio::spawn(async move {
-            let mut sequence = 2;
             let mut timer = tokio::time::interval(Duration::from_millis(20));
             loop {
                 timer.tick().await;
-                if tx.send(command(&token, sequence)).await.is_err() {
+                if commands
+                    .send(CommandValidity::For(Duration::from_millis(200)), command())
+                    .await
+                    .is_err()
+                {
                     break;
                 }
-                sequence += 1;
             }
         });
         let receiver =
@@ -274,28 +219,22 @@ impl Drop for CommandStream {
     }
 }
 
-fn command(token: &str, sequence: u64) -> StreamCommandsRequest {
-    StreamCommandsRequest {
-        group: GROUP.into(),
-        lease_token: token.into(),
-        sequence,
-        valid_for_ms: 200,
-        commands: MOTORS
-            .into_iter()
-            .map(|motor_name| MotorCommand {
-                motor_name: motor_name.into(),
-                position: 0.0,
-                velocity: 0.0,
-                torque_feedforward: 0.0,
-                kp: 20.0,
-                kd: 1.0,
-            })
-            .collect(),
-    }
+fn command() -> Vec<MotorCommand> {
+    MOTORS
+        .into_iter()
+        .map(|motor_name| MotorCommand {
+            motor_name: motor_name.into(),
+            position: 0.0,
+            velocity: 0.0,
+            torque_feedforward: 0.0,
+            kp: 20.0,
+            kd: 1.0,
+        })
+        .collect()
 }
 
 async fn wait_for_fault(
-    telemetry: &mut Streaming<bello_hardwared::proto::WatchTelemetryResponse>,
+    telemetry: &mut TelemetryStream,
     duration: Duration,
     expected: FaultCause,
     hardwared: &mut ManagedProcess,
@@ -311,7 +250,7 @@ async fn wait_for_fault(
             Ok(result) => {
                 let event =
                     result?.ok_or_else(|| anyhow!("telemetry stream closed before group fault"))?;
-                if let Some(Payload::Group(group)) = event.payload
+                if let Payload::Group(group) = event.payload
                     && group.group == GROUP
                     && group.state == GroupState::Fault as i32
                     && group.fault_cause == expected as i32
@@ -329,8 +268,34 @@ async fn wait_for_fault(
     }
 }
 
+async fn wait_for_graceful_shutdown(
+    telemetry: &mut TelemetryStream,
+    duration: Duration,
+) -> Result<()> {
+    let deadline = Instant::now() + duration;
+    let mut saw_group_shutdown = false;
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            bail!("timed out waiting for final group telemetry and stream closure");
+        }
+        match timeout(remaining, telemetry.message()).await?? {
+            Some(event) => {
+                if let Payload::Group(group) = event.payload
+                    && group.group == GROUP
+                    && group.state == GroupState::Shutdown as i32
+                {
+                    saw_group_shutdown = true;
+                }
+            }
+            None if saw_group_shutdown => return Ok(()),
+            None => bail!("telemetry closed before the final group shutdown event"),
+        }
+    }
+}
+
 async fn wait_for_motors_online(
-    client: &mut Client,
+    client: &HardwareClient,
     duration: Duration,
     hardwared: &mut ManagedProcess,
     emulator: &mut ManagedProcess,
@@ -349,11 +314,8 @@ async fn wait_for_motors_online(
     }
 }
 
-async fn motors_online(client: &mut Client) -> Result<bool> {
-    let inventory = client
-        .list_hardware(ListHardwareRequest {})
-        .await?
-        .into_inner();
+async fn motors_online(client: &HardwareClient) -> Result<bool> {
+    let inventory = client.inventory().await?;
     Ok(MOTORS.iter().all(|expected| {
         inventory.motors.iter().any(|motor| {
             motor.name == *expected
@@ -365,22 +327,22 @@ async fn motors_online(client: &mut Client) -> Result<bool> {
     }))
 }
 
-async fn require_group_state(client: &mut Client, expected: GroupState) -> Result<()> {
-    let inventory = client
-        .list_hardware(ListHardwareRequest {})
-        .await?
-        .into_inner();
+async fn require_group_state(client: &HardwareClient, expected: GroupState) -> Result<()> {
+    let inventory = client.inventory().await?;
     let group = inventory
         .groups
         .iter()
         .find(|group| group.name == GROUP)
         .ok_or_else(|| anyhow!("e2e group is missing from inventory"))?;
-    require_state(group.state, expected)
+    if group.state != expected as i32 {
+        bail!("expected state {expected:?}, got {}", group.state);
+    }
+    Ok(())
 }
 
-fn require_state(actual: i32, expected: GroupState) -> Result<()> {
-    if actual != expected as i32 {
-        bail!("expected state {expected:?}, got {actual}");
+fn require_state(actual: EnumValue<GroupState>, expected: GroupState) -> Result<()> {
+    if actual != EnumValue::Known(expected) {
+        bail!("expected state {expected:?}, got {actual:?}");
     }
     Ok(())
 }

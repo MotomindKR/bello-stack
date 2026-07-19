@@ -1,5 +1,5 @@
 use crate::app::HardwareDaemon;
-use crate::proto::{
+use bello_hardware_api::{
     BusInfo, GroupInfo, ImuInfo, ListHardwareResponse, MotorAddress, MotorInfo, SerialDeviceInfo,
 };
 

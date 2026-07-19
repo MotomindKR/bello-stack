@@ -1,8 +1,6 @@
 mod api;
 mod app;
 mod config;
-pub mod proto;
-mod rerun_sink;
 
 mod control;
 mod domain;

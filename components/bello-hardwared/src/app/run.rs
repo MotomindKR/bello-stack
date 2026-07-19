@@ -9,8 +9,8 @@ use tonic::transport::{Server, server::TcpIncoming};
 use super::HardwareDaemon;
 use crate::api::grpc::HardwareGrpc;
 use crate::config::ResolvedTopology;
-use crate::proto::hardware_service_server::HardwareServiceServer;
 use crate::telemetry::Telemetry;
+use bello_hardware_api::hardware_service_server::HardwareServiceServer;
 
 pub fn check(config_path: impl AsRef<Path>) -> Result<()> {
     let config_path = config_path.as_ref();
@@ -29,21 +29,12 @@ pub async fn run(config_path: impl AsRef<Path>) -> Result<()> {
         .map_err(|error| anyhow!("binding gRPC listener {listen}: {error}"))?;
     let mut signals = ShutdownSignals::install()?;
     let telemetry = Telemetry::new(topology.telemetry_capacity());
-    let (shutdown_tx, shutdown_rx) = watch::channel(false);
-    let (observer_shutdown_tx, observer_shutdown_rx) = watch::channel(false);
-    let rerun =
-        crate::rerun_sink::start(topology.rerun(), telemetry.clone(), observer_shutdown_rx)?;
-    let daemon = match HardwareDaemon::start(topology, telemetry) {
-        Ok(daemon) => daemon,
-        Err(error) => {
-            let _ = observer_shutdown_tx.send(true);
-            stop_rerun(rerun).await;
-            return Err(error);
-        }
-    };
+    let (server_shutdown_tx, server_shutdown_rx) = watch::channel(false);
+    let (watchdog_shutdown_tx, watchdog_shutdown_rx) = watch::channel(false);
+    let daemon = HardwareDaemon::start(topology, telemetry)?;
     let watchdog = tokio::spawn(HardwareDaemon::lease_watchdog(
         Arc::downgrade(&daemon),
-        shutdown_rx.clone(),
+        watchdog_shutdown_rx,
     ));
 
     tracing::info!(%listen, "Bello hardware daemon ready");
@@ -51,19 +42,17 @@ pub async fn run(config_path: impl AsRef<Path>) -> Result<()> {
         let server = Server::builder()
             .add_service(HardwareServiceServer::new(HardwareGrpc::new(
                 daemon.clone(),
-                shutdown_rx.clone(),
+                server_shutdown_rx.clone(),
             )))
-            .serve_with_incoming_shutdown(incoming, wait_for_shutdown(shutdown_rx));
+            .serve_with_incoming_shutdown(incoming, wait_for_shutdown(server_shutdown_rx));
         tokio::pin!(server);
         tokio::select! {
             result = server.as_mut() => {
-                let _ = shutdown_tx.send(true);
-                daemon.shutdown();
+                begin_shutdown(&daemon, &watchdog_shutdown_tx, &server_shutdown_tx);
                 result.map_err(anyhow::Error::from)
             },
             signal = signals.wait() => {
-                let _ = shutdown_tx.send(true);
-                daemon.shutdown();
+                begin_shutdown(&daemon, &watchdog_shutdown_tx, &server_shutdown_tx);
                 let drain_result = match tokio::time::timeout(Duration::from_secs(2), server.as_mut()).await {
                     Ok(result) => result.map_err(anyhow::Error::from),
                     Err(_) => {
@@ -76,17 +65,22 @@ pub async fn run(config_path: impl AsRef<Path>) -> Result<()> {
         }
     };
 
-    let _ = shutdown_tx.send(true);
-    daemon.shutdown();
+    begin_shutdown(&daemon, &watchdog_shutdown_tx, &server_shutdown_tx);
     let _ = watchdog.await;
     drop(daemon);
-    let _ = observer_shutdown_tx.send(true);
-    stop_rerun(rerun).await;
     server_result
 }
 
-async fn stop_rerun(rerun: crate::rerun_sink::RerunWorker) {
-    rerun.join().await;
+/// Stops lease expiry, publishes and joins final group state, then lets gRPC
+/// streams drain that queued telemetry. Each operation is idempotent.
+fn begin_shutdown(
+    daemon: &HardwareDaemon,
+    watchdog_shutdown: &watch::Sender<bool>,
+    server_shutdown: &watch::Sender<bool>,
+) {
+    let _ = watchdog_shutdown.send(true);
+    daemon.shutdown();
+    let _ = server_shutdown.send(true);
 }
 
 #[cfg(unix)]

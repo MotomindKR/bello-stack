@@ -51,6 +51,13 @@ impl ManagedProcess {
         Ok(())
     }
 
+    pub fn pid(&self) -> Result<u32> {
+        self.child
+            .as_ref()
+            .map(std::process::Child::id)
+            .with_context(|| format!("{} is not running", self.name))
+    }
+
     pub fn restart(&mut self) -> Result<()> {
         self.stop();
         let child = Command::new(&self.executable)
@@ -83,6 +90,19 @@ impl ManagedProcess {
             .with_context(|| format!("resuming {} process", self.name))?;
         self.suspended = false;
         Ok(())
+    }
+
+    pub fn interrupt(&mut self) -> Result<()> {
+        self.ensure_running()?;
+        if self.suspended {
+            let child = self.child.as_ref().expect("checked running child");
+            kill(Pid::from_raw(child.id() as i32), Signal::SIGCONT)
+                .with_context(|| format!("resuming {} process for shutdown", self.name))?;
+            self.suspended = false;
+        }
+        let child = self.child.as_ref().expect("checked running child");
+        kill(Pid::from_raw(child.id() as i32), Signal::SIGINT)
+            .with_context(|| format!("interrupting {} process", self.name))
     }
 
     pub fn stop(&mut self) {

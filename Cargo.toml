@@ -1,8 +1,11 @@
 [workspace]
 resolver = "3"
 members = [
+  "components/bello-hardware-api",
+  "components/bello-hardware-client",
   "components/bello-hardware-e2e",
   "components/bello-hardwared",
+  "components/bello-rerun",
   "components/robstride-emulator",
   "components/robstride-protocol",
 ]
@@ -17,6 +20,8 @@ publish = false
 [workspace.dependencies]
 anyhow = "1"
 async-stream = "0.3"
+bello-hardware-api = { path = "components/bello-hardware-api" }
+bello-hardware-client = { path = "components/bello-hardware-client" }
 bello-hardwared = { path = "components/bello-hardwared" }
 clap = "4"
 crossbeam-channel = "0.5"

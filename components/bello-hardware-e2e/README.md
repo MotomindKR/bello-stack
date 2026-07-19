@@ -1,41 +1,68 @@
 # Bello hardware end-to-end tests
 
-This component contains an ignored Cargo integration test that runs the real
-`bello-hardwared` and `robstride-emulator` implementations in child processes.
-It communicates only through the public gRPC API and a host SocketCAN `vcan`
-interface.
+`bello-hardware-e2e` contains Cargo-native process integration tests for the
+actual `bello-hardwared` and `robstride-emulator` implementations. The scenario
+uses only their public gRPC and SocketCAN interfaces. Its canonical control
+workflow uses `bello-hardware-client`; the latency probe intentionally keeps
+the generated tonic client so the measurement path stays minimal.
 
-The default scenario:
+## Tests
 
-1. generates matching runtime configurations and starts both processes;
-2. acquires a group lease through gRPC;
-3. enables two emulated Robstride actuators;
-4. streams complete impedance-command snapshots and starts control;
-5. suspends the emulator to begin a deterministic feedback-loss phase;
-6. resumes it, verifies process liveness, and confirms the group remains fault-latched;
-7. explicitly recovers and re-enables the group;
-8. stops command delivery and observes the command watchdog fault;
-9. recovers, disables the group, and synchronously releases its lease;
-10. starts under a short second lease and observes lease-expiry fault handling.
+An ordinary workspace test validates generated matching daemon and emulator
+configurations without requiring host hardware.
 
-Create `vcan0` once per boot if needed:
+The ignored host-vCAN scenario exercises:
+
+- the ergonomic `Robot`/`ControlSession` path, including automatic renewal and
+  confirmed command frames;
+- lease acquisition, release, and expiry;
+- motor enable and fixed-rate control;
+- complete command streaming;
+- feedback-loss and command-watchdog faults;
+- fault latching, explicit recovery, and re-enable;
+- child-process liveness during fault injection.
+
+The same test target also contains a release-mode latency probe. It correlates
+unique command and feedback payloads to measure `gRPC command -> vCAN frame`
+and `vCAN feedback -> gRPC telemetry` distributions without adding timestamps
+to the production path.
+
+## Run the vCAN scenario
+
+Create and enable a CAN interface once per boot:
 
 ```sh
 sudo ip link add dev vcan0 type vcan
-sudo ip link set up vcan0
+sudo ip link set dev vcan0 up
 ```
 
-Run from the Nix/direnv development environment:
+Then run:
 
 ```sh
-cargo test -p bello-hardware-e2e --test vcan -- --ignored --nocapture
+cargo e2e
 ```
 
-`cargo e2e` is an alias for the same command. The ignored test is compiled but
-not executed by ordinary `cargo test`. When explicitly run, it fails rather than
-silently skipping if its host prerequisite is absent. It selects an unused
-loopback gRPC port for each run.
+This expands to:
 
-Set `BELLO_E2E_CAN_INTERFACE` to use an interface other than `vcan0`. The
-selected name is validated and written into both generated runtime
-configurations.
+```sh
+cargo test -p bello-hardware-e2e --test vcan -- \
+  --ignored --nocapture --test-threads=1
+```
+
+Run only the latency probe with:
+
+```sh
+cargo test --release -p bello-hardware-e2e --test vcan \
+  grpc_can_latency_distribution -- --ignored --nocapture
+```
+
+It collects 500 samples per direction by default. Override this with
+`BELLO_LATENCY_SAMPLES`; use `BELLO_LATENCY_CONTROL_RATE_HZ` to measure another
+motor-group frequency.
+
+Set `BELLO_E2E_CAN_INTERFACE` to select another Linux CAN interface. The test
+fails explicitly when its host prerequisite is absent; ordinary `cargo test`
+does not execute the ignored scenario.
+
+See [development and testing](../../docs/development.md) for the full check
+matrix and [operations](../../docs/operations.md) for manual emulator use.

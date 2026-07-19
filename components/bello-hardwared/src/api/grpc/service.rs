@@ -9,8 +9,8 @@ use crate::app::HardwareDaemon;
 use crate::control::{GroupQueueError, LifecycleAction, Transition};
 use crate::domain::{GroupName, ImuName};
 use crate::lease::LeaseError;
-use crate::proto::hardware_service_server::HardwareService;
-use crate::proto::*;
+use bello_hardware_api::hardware_service_server::HardwareService;
+use bello_hardware_api::*;
 
 #[derive(Clone)]
 pub struct HardwareGrpc {

@@ -1,0 +1,281 @@
+# Operations guide
+
+[Documentation index](README.md)
+
+This guide covers deployment and diagnostics. The complete configuration and
+safety behavior are described in [`configuration.md`](configuration.md) and
+[`control-and-safety.md`](control-and-safety.md); the checked examples are
+[`bello.yaml`](../components/bello-hardwared/config/bello.yaml) and
+[`vcan.yaml`](../components/bello-hardwared/config/vcan.yaml).
+
+> **Warning:** enabling or starting a physical group can move hardware. Verify
+> the emergency stop, mechanical clearance, actuator IDs/directions, limits,
+> fault responses, and command source before granting motion authority.
+
+## Prerequisites and configuration check
+
+The runtime is Linux-oriented and expects existing SocketCAN interfaces and,
+when configured, accessible serial device paths. The daemon does not create CAN
+links or set their bitrate. For physical hardware, ensure the service account
+has CAN access and read/write permission for the serial device (prefer stable
+`/dev/serial/by-id/...` names).
+
+Enter the repository environment and validate YAML without opening hardware:
+
+```sh
+direnv allow
+cargo run -p bello-hardwared -- \
+  --check --config components/bello-hardwared/config/bello.yaml
+```
+
+Validation is strict: unknown YAML fields, duplicate physical interfaces/ports,
+invalid references, unsupported actuator limits, unsafe timing, and excessive
+CAN utilization are rejected. The configured CAN `bitrate` is used for timing
+and utilization calculations and must match the externally configured physical
+link.
+
+## Physical startup
+
+Configure the CAN link before starting hardwared. Adjust interface, bitrate,
+and restart policy for the actual adapter and network:
+
+```sh
+sudo ip link set can0 down
+sudo ip link set can0 type can bitrate 1000000 restart-ms 100
+sudo ip link set can0 up
+ip -details -statistics link show can0
+```
+
+Confirm serial identity and permissions when using EBIMU:
+
+```sh
+ls -l /dev/serial/by-id/
+test -r /dev/serial/by-id/YOUR_IMU && test -w /dev/serial/by-id/YOUR_IMU
+```
+
+Then run the checked configuration:
+
+```sh
+RUST_LOG=info cargo run -p bello-hardwared -- \
+  --config components/bello-hardwared/config/bello.yaml
+```
+
+The process binds gRPC before opening hardware, so address conflicts fail
+without partially starting devices. Wait for the `Bello hardware daemon ready`
+log, then use `ListHardware` and health telemetry to inspect the buses, serial
+devices, and IMUs. A Robstride motor may remain `CONNECTING` until `EnableGroup`
+turns on active feedback, so motor readiness is established by the enable
+operation rather than being a prerequisite for acquiring a lease. The API
+workflow is in [`api.md`](api.md#normal-control-workflow).
+
+## Virtual CAN and emulator
+
+Create `vcan0` once per boot:
+
+```sh
+sudo modprobe vcan
+sudo ip link add dev vcan0 type vcan
+sudo ip link set dev vcan0 up
+```
+
+In separate shells, start the emulator and daemon with matching host IDs,
+actuator IDs, directions, and interface names:
+
+```sh
+cargo run -p robstride-emulator -- \
+  --check --config components/robstride-emulator/config/vcan.yaml
+cargo run -p robstride-emulator -- \
+  --config components/robstride-emulator/config/vcan.yaml
+```
+
+```sh
+cargo run -p bello-hardwared -- \
+  --config components/bello-hardwared/config/vcan.yaml
+```
+
+The emulator is intentionally a thin protocol/integration model, not a robot
+dynamics simulator. Its strict `events` list can inject feedback drop/delay/
+jitter, temperature, fault bits, and mode-status changes. Use the ready-made
+[`faults.yaml`](../components/robstride-emulator/config/faults.yaml), or follow
+the action syntax in the
+[emulator README](../components/robstride-emulator/README.md#fault-scenarios).
+Events are relative to emulator startup. Group faults remain latched after the
+injected condition clears and require `RecoverGroup`.
+
+To exercise transport reconnect rather than actuator faults:
+
+```sh
+sudo ip link set vcan0 down
+sudo ip link set vcan0 up
+```
+
+Hardwared supervises and reopens its CAN sockets. The emulator does not have a
+SocketCAN reconnect loop and may exit when the interface goes down, so check its
+process after restoring the link and restart it when necessary. Hardwared can
+restore the bus while its group remains fault-latched; feedback and explicit
+group recovery are still required.
+
+The Cargo-native end-to-end test owns its phases deterministically and is the
+preferred regression check; see
+[`development.md`](development.md#host-vcan-integration-test).
+
+## Rerun observation
+
+Rerun is an optional standalone, read-only gRPC client. `bello-hardwared` has no
+Rerun feature or YAML section, so visualization dependencies and failures stay
+outside the process that owns hardware.
+
+The maintained observer configuration records to an `.rrd` file:
+
+```yaml
+hardware_endpoint: http://127.0.0.1:50051
+
+reconnect:
+  initial_delay_ms: 100
+  maximum_delay_ms: 5000
+
+output:
+  mode: save
+  path: bello_hardware.rrd
+```
+
+Validate and run it independently:
+
+```sh
+cargo run -p bello-rerun -- \
+  --check --config components/bello-rerun/config/bello.yaml
+cargo run -p bello-rerun -- \
+  --config components/bello-rerun/config/bello.yaml
+```
+
+For a live external viewer, provide a Rerun listener separately and configure
+its already-listening endpoint. The repository's Nix shell does not install or
+start a viewer:
+
+```yaml
+output:
+  mode: connect
+  address: 127.0.0.1:9876
+```
+
+The observer calls only `WatchTelemetry`; it never acquires a lease or sends a
+command. It may start before hardwared, run remotely, and restart without
+changing control state. Connection failures use bounded exponential backoff
+indefinitely. A disconnect/restoration marker is recorded, and subscriber-drop
+health events remain visible rather than being hidden. HTTPS hardware endpoints
+use native certificate roots. HTTP/2 keepalive runs every 10 seconds with a
+three-second timeout, including while the connection is otherwise idle.
+
+Incoming events enter a fixed, nonblocking 4096-event queue for a dedicated
+Rerun writer thread. Rerun SDK calls and output backpressure therefore do not
+delay gRPC reception or signal polling. A full queue drops observer events,
+warns once for that burst, and adds a health marker after the writer resumes.
+
+Source `monotonic_ns` timestamps form the Rerun time axis. If a daemon restart
+resets that clock, the observer marks the restart and offsets the new segment so
+the recording remains monotonic. Malformed optional fields are warned about and
+skipped. Failure to initialize the configured Rerun output is fatal. SIGINT and
+SIGTERM are handled independently of hardwared. Either signal closes the writer
+queue and attempts to drain queued work and flush output. The main task waits at
+most two seconds, then detaches an unfinished writer so shutdown stays bounded.
+See the [`bello-rerun` README](../components/bello-rerun/README.md) and
+[configuration reference](configuration.md#rerun-observer-configuration).
+
+## Shutdown behavior
+
+Send `SIGINT` (Ctrl-C) or `SIGTERM`; do not use `SIGKILL` during routine
+operation. The daemon then:
+
+1. requests the lease watchdog to stop;
+2. closes admission, asks every group to apply its configured `exit` response
+   while CAN and motor workers remain alive, publishes final group `Shutdown`
+   events, and joins the group workers;
+3. closes the server/telemetry watch and gives selected queued telemetry up to
+   two seconds to drain through gRPC;
+4. joins the watchdog, then stops device and transport ownership.
+
+The two-second deadline applies only to gRPC draining after group shutdown has
+completed. It does not abort the configured hardware exit reaction or a group
+worker join.
+
+The shutdown path is idempotent. A forced kill, kernel failure, or power loss
+cannot perform the configured exit reaction, so system-level power removal and
+emergency-stop design remain necessary. See
+[`run.rs`](../components/bello-hardwared/src/app/run.rs) and
+[`daemon.rs`](../components/bello-hardwared/src/app/daemon.rs).
+
+Stop a separately running `bello-rerun` with SIGINT or SIGTERM after hardwared
+when recording the final motor-group shutdown transition. Transport teardown
+statuses occur after gRPC closes and are not guaranteed to reach remote
+observers. The observer's shutdown is independent and does not participate in
+the hardware safety sequence.
+
+## Diagnostics and troubleshooting
+
+Use the protobuf file explicitly because the server does not enable gRPC
+reflection:
+
+```sh
+PROTO_ROOT=components/bello-hardware-api/proto
+PROTO=bello/hardware/v1/hardware.proto
+
+grpcurl -plaintext -import-path "$PROTO_ROOT" -proto "$PROTO" \
+  -d '{}' 127.0.0.1:50051 \
+  bello.hardware.v1.HardwareService/ListHardware
+
+grpcurl -plaintext -import-path "$PROTO_ROOT" -proto "$PROTO" \
+  -d '{"groups":["emulated_group"],"includeMotors":true,"includeHealth":true}' \
+  127.0.0.1:50051 bello.hardware.v1.HardwareService/WatchTelemetry
+```
+
+Useful CAN observations:
+
+```sh
+# Absolute timestamps and a replayable log format.
+candump -ta -L can0
+
+# Per-frame delta timestamps: inspect observed inter-frame spacing.
+candump -td can0
+
+# Link state, error counters, drops, and CAN controller state.
+ip -details -statistics link show can0
+
+# Approximate bus load; use the real nominal bitrate.
+canbusload can0@1000000
+```
+
+Group control-loop timing is exposed as `GroupTelemetry.control_tick` and
+`jitter_us`; despite its signed protobuf type, the current value is nonnegative
+deadline lateness. `MotorTelemetry` and `ImuTelemetry` expose `feedback_age_ms`
+and `sample_age_ms`, including time spent waiting in the subscriber path.
+
+`candump -td` reports deltas between observed frames. It is useful for
+inter-arrival jitter but does not measure end-to-end command latency by itself.
+For command-to-feedback latency, capture both directions and correlate a
+command with the corresponding motor feedback by CAN identifier and timestamp;
+then compare that result with group deadline lateness and telemetry age.
+
+Common failure checks:
+
+- **Process exits before becoming ready:** run `--check`, verify the gRPC address
+  is available, and inspect worker-creation errors. Missing hardware normally
+  leaves a transport reconnecting rather than failing configuration resolution.
+- **Bus reconnecting/faulted:** inspect CAN error counters and physical wiring,
+  termination, power, bitrate, and duplicate IDs. Reconnect uses bounded
+  exponential backoff; stale queued controls are discarded.
+- **Motor enable fails:** confirm emulator/actuator host ID, motor ID, model,
+  direction, operating mode support, and fresh feedback. Inspect motor health
+  plus `fault_bits`, `mode_status`, temperature, and age telemetry.
+- **IMU degraded/reconnecting:** verify the stable serial path, baud rate,
+  exclusive ownership, permissions, expected EBIMU schema/rate, and malformed
+  or stale-sample health detail.
+- **Commands rejected:** inspect the typed `CommandResult` and `detail`, group
+  state, lease expiry, batch completeness, sequence, validity window, and
+  command-policy telemetry.
+- **Telemetry drops:** increase `runtime.telemetry_capacity` only after checking
+  subscriber throughput. A lag event reports the exact dropped count; control
+  continues independently.
+
+Set `RUST_LOG` for more detail, for example
+`RUST_LOG=bello_hardwared=debug,robstride_emulator=debug`. Avoid debug logging on
+a production control path until its timing impact has been evaluated.

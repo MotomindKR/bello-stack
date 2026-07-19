@@ -8,7 +8,7 @@ use crate::domain::{
     CommandBatch, CommandError, DeviceState, DeviceStatus, ImpedanceCommand, LeaseToken,
     MotorCommand, MotorName, TelemetryEvent, TelemetryPayload,
 };
-use crate::proto;
+use bello_hardware_api as proto;
 
 pub fn lease_token(value: &str) -> Result<LeaseToken, Status> {
     value

@@ -1,6 +1,14 @@
 use std::net::SocketAddr;
 
 pub fn hardwared(interface: &str, listen: SocketAddr) -> String {
+    hardwared_with_control_rate(interface, listen, 250.0)
+}
+
+pub fn hardwared_with_control_rate(
+    interface: &str,
+    listen: SocketAddr,
+    control_rate_hz: f64,
+) -> String {
     format!(
         r#"runtime:
   telemetry_capacity: 4096
@@ -9,9 +17,6 @@ grpc:
   listen: {listen}
   default_lease_ms: 1000
   maximum_lease_ms: 10000
-
-rerun:
-  mode: off
 
 buses:
   - name: e2e_can
@@ -38,7 +43,7 @@ motors:
 motor_groups:
   - name: e2e_group
     motors: [e2e_motor_1, e2e_motor_2]
-    control_rate_hz: 250.0
+    control_rate_hz: {control_rate_hz}
     command_timeout_ms: 200
     feedback_timeout_ms: 100
     enable_timeout_ms: 500

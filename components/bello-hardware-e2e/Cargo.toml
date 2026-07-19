@@ -15,7 +15,11 @@ robstride-emulator.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "sync"] }
 
 [dev-dependencies]
-nix = { workspace = true, features = ["signal"] }
+bello-hardware-api.workspace = true
+bello-hardware-client.workspace = true
+nix = { workspace = true, features = ["feature", "signal"] }
+robstride-protocol.workspace = true
+socketcan.workspace = true
 tokio-stream.workspace = true
 tonic = { workspace = true, features = ["transport"] }
 tempfile.workspace = true

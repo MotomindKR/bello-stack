@@ -1,7 +1,7 @@
 version: v2
 
 modules:
-  - path: components/bello-hardwared/proto
+  - path: components/bello-hardware-api/proto
 
 lint:
   use:
