@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -8,74 +9,88 @@ use robstride_protocol::{
     stop_frame,
 };
 
+use super::health::{MotorFaultCause, ThermalHealth, classify_feedback};
 use super::{Feedback, MotorSpec};
 use crate::domain::{
-    DeviceState, DeviceStatus, GroupName, ImpedanceCommand, MotorTelemetry, TelemetryEvent,
-    TelemetryPayload,
+    BusName, DeviceStatus, GroupName, ImpedanceCommand, MotorName, MotorTelemetry, TelemetryPayload,
 };
-use crate::hardware::can::{BusError, BusHandle};
+use crate::hardware::can::{BusError, BusHandle, CanFrame, PendingBatch};
 use crate::hardware::lifecycle::DeviceLifecycle;
 use crate::telemetry::Telemetry;
 
 const RUN_MODE_INDEX: u16 = 0x7005;
 const IMPEDANCE_RUN_MODE: u8 = 0;
-const RUNNING_MODE_STATUS: u8 = 2;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum MotorFaultCause {
-    Communication,
-    StaleFeedback,
-    SafePosition,
-    Temperature,
-    ReportedFault,
-    ModeStatus,
+#[derive(Default)]
+struct PendingControlBatch {
+    started: Option<Instant>,
+    motors: HashSet<MotorName>,
+    buses: BTreeMap<BusName, (BusHandle, Vec<CanFrame>)>,
+}
+
+pub(super) struct ControlBatcher {
+    group: GroupName,
+    expected_motors: usize,
+    fresh_for: Duration,
+    pending: Mutex<PendingControlBatch>,
+}
+
+impl ControlBatcher {
+    pub(super) fn new(group: GroupName, expected_motors: usize, fresh_for: Duration) -> Self {
+        Self {
+            group,
+            expected_motors,
+            fresh_for,
+            pending: Mutex::new(PendingControlBatch::default()),
+        }
+    }
+
+    fn submit(&self, motor: &MotorName, bus: &BusHandle, frame: CanFrame) -> Result<(), BusError> {
+        // Group control invokes each motor handle once per tick. Hold those frames
+        // until the tick is complete, then enqueue one atomic queue item per bus.
+        let mut pending = self.pending.lock();
+        if !pending.motors.insert(motor.clone()) {
+            *pending = PendingControlBatch::default();
+            return Err(BusError::ControlBatchInterrupted {
+                group: self.group.clone(),
+            });
+        }
+        let started = *pending.started.get_or_insert_with(Instant::now);
+        pending
+            .buses
+            .entry(bus.spec.name.clone())
+            .or_insert_with(|| (bus.clone(), Vec::new()))
+            .1
+            .push(frame);
+        if pending.motors.len() != self.expected_motors {
+            return Ok(());
+        }
+
+        let batches = std::mem::take(&mut pending.buses);
+        *pending = PendingControlBatch::default();
+        drop(pending);
+        let expires_at = started + self.fresh_for;
+        // Attempt every bus before reporting failure. This cannot make separate
+        // CAN interfaces physically atomic, but it keeps a failed interface
+        // from suppressing the same logical tick on every later interface.
+        let mut first_error = None;
+        for (bus, frames) in batches.into_values() {
+            if let Err(error) = bus.try_enqueue_control_batch(frames, expires_at) {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                } else {
+                    tracing::error!(group=%self.group, %error, "additional CAN bus rejected control batch");
+                }
+            }
+        }
+        first_error.map_or(Ok(()), Err)
+    }
 }
 
 #[derive(Clone, Debug)]
 pub(crate) struct MotorFault {
     pub(crate) cause: MotorFaultCause,
     pub(crate) detail: String,
-}
-
-#[derive(Default)]
-struct ThermalHealth {
-    over_temperature: bool,
-    recovery_started: Option<Instant>,
-}
-
-impl ThermalHealth {
-    fn fault_detail(
-        &mut self,
-        temperature: f64,
-        maximum: f64,
-        recovery: f64,
-        recovery_duration: Duration,
-        received: Instant,
-    ) -> Option<String> {
-        if !self.over_temperature && temperature >= maximum {
-            self.over_temperature = true;
-            self.recovery_started = None;
-        }
-        if !self.over_temperature {
-            return None;
-        }
-
-        if temperature <= recovery {
-            let recovery_started = *self.recovery_started.get_or_insert(received);
-            if received.saturating_duration_since(recovery_started) >= recovery_duration {
-                self.over_temperature = false;
-                self.recovery_started = None;
-                return None;
-            }
-        } else {
-            self.recovery_started = None;
-        }
-
-        Some(format!(
-            "motor over-temperature latched; cool to <= {recovery:.1} C for {} ms",
-            recovery_duration.as_millis()
-        ))
-    }
 }
 
 /// Timestamped protocol feedback owned by the motor device layer.
@@ -94,6 +109,7 @@ pub(crate) struct MotorController {
     pub(crate) spec: MotorSpec,
     pub(crate) group: GroupName,
     bus: BusHandle,
+    control_batcher: Arc<ControlBatcher>,
     feedback: Arc<RwLock<Option<TimedFeedback>>>,
     feedback_expected_since: Arc<RwLock<Option<Instant>>>,
     thermal_health: Arc<Mutex<ThermalHealth>>,
@@ -108,6 +124,7 @@ impl MotorController {
         spec: MotorSpec,
         group: GroupName,
         bus: BusHandle,
+        control_batcher: Arc<ControlBatcher>,
         feedback_timeout: Duration,
         lifecycle: DeviceLifecycle,
         telemetry: Telemetry,
@@ -116,6 +133,7 @@ impl MotorController {
             spec,
             group,
             bus,
+            control_batcher,
             feedback: Arc::new(RwLock::new(None)),
             feedback_expected_since: Arc::new(RwLock::new(None)),
             thermal_health: Arc::new(Mutex::new(ThermalHealth::default())),
@@ -165,7 +183,7 @@ impl MotorController {
     pub(crate) fn configure_enable(&self) -> Result<(), BusError> {
         *self.feedback.write() = None;
         *self.feedback_expected_since.write() = None;
-        self.bus.enqueue_safety(
+        self.bus.enqueue_configuration_batch(vec![
             param_write_u8_frame(
                 self.bus.spec.host_id,
                 self.spec.address.id,
@@ -173,19 +191,18 @@ impl MotorController {
                 IMPEDANCE_RUN_MODE,
             )
             .into(),
-        )?;
-        self.bus.enqueue_safety(
             active_report_frame(self.bus.spec.host_id, self.spec.address.id, true).into(),
-        )?;
-        self.bus
-            .enqueue_safety(enable_frame(self.bus.spec.host_id, self.spec.address.id).into())?;
+            enable_frame(self.bus.spec.host_id, self.spec.address.id).into(),
+        ])?;
         self.prepare_feedback_wait();
         *self.feedback_expected_since.write() = Some(Instant::now());
         Ok(())
     }
 
     pub(crate) fn send_control(&self, command: ImpedanceCommand) -> Result<(), BusError> {
-        self.bus.try_enqueue(
+        self.control_batcher.submit(
+            &self.spec.name,
+            &self.bus,
             control_frame(
                 self.spec.params,
                 protocol_command(self.spec.address.id, command),
@@ -194,22 +211,31 @@ impl MotorController {
         )
     }
 
-    pub(crate) fn send_safety_command(&self, command: ImpedanceCommand) -> Result<(), BusError> {
-        self.bus.enqueue_safety(
-            control_frame(
-                self.spec.params,
-                protocol_command(self.spec.address.id, command),
-            )
-            .into(),
+    pub(crate) fn safety_control_frame(&self, command: ImpedanceCommand) -> CanFrame {
+        control_frame(
+            self.spec.params,
+            protocol_command(self.spec.address.id, command),
         )
+        .into()
     }
 
-    pub(crate) fn stop(&self, clear_fault: bool) -> Result<(), BusError> {
-        self.bus.enqueue_safety(
-            stop_frame(self.bus.spec.host_id, self.spec.address.id, clear_fault).into(),
-        )?;
+    pub(crate) fn safety_stop_frame(&self, clear_fault: bool) -> CanFrame {
+        stop_frame(self.bus.spec.host_id, self.spec.address.id, clear_fault).into()
+    }
+
+    pub(crate) fn submit_safety_batch(
+        &self,
+        frames: Vec<CanFrame>,
+    ) -> Result<PendingBatch, BusError> {
+        self.bus.submit_safety_batch(frames)
+    }
+
+    pub(crate) fn mark_stopped(&self) {
         *self.feedback_expected_since.write() = None;
-        Ok(())
+    }
+
+    pub(super) fn accepts_feedback_target(&self, target: u8) -> bool {
+        target == self.bus.spec.host_id
     }
 
     fn mark_fault(&self, cause: MotorFaultCause, detail: impl Into<String>) {
@@ -218,53 +244,21 @@ impl MotorController {
             cause,
             detail: detail.clone(),
         });
-        match self.lifecycle.state() {
-            DeviceState::Online => {
-                let _ = self
-                    .lifecycle
-                    .transition(DeviceState::Degraded, detail.clone());
-                let _ = self.lifecycle.transition(DeviceState::Fault, detail);
-            }
-            DeviceState::Connecting | DeviceState::Degraded | DeviceState::Reconnecting => {
-                let _ = self.lifecycle.transition(DeviceState::Fault, detail);
-            }
-            DeviceState::Fault if self.lifecycle.status().detail != detail => {
-                let _ = self.lifecycle.transition(DeviceState::Fault, detail);
-            }
-            _ => {}
-        }
+        self.lifecycle.enter_fault(detail);
     }
 
     fn prepare_feedback_wait(&self) {
-        match self.lifecycle.state() {
-            DeviceState::Online => {
-                let _ = self.lifecycle.transition(
-                    DeviceState::Degraded,
-                    "motor enabled; waiting for fresh operating feedback",
-                );
-            }
-            DeviceState::Reconnecting => {
-                let _ = self.lifecycle.transition(
-                    DeviceState::Connecting,
-                    "motor enabled; waiting for fresh operating feedback",
-                );
-            }
-            _ => {}
-        }
+        self.lifecycle
+            .await_feedback("motor enabled; waiting for fresh operating feedback");
     }
 
     pub(super) fn sync_bus(&self) {
         let bus = self.bus.status();
         if bus.state.is_online() {
-            if self.lifecycle.state() == DeviceState::Reconnecting {
-                let _ = self.lifecycle.transition(
-                    DeviceState::Connecting,
-                    format!(
-                        "CAN bus {} restored; waiting for feedback",
-                        self.bus.spec.name
-                    ),
-                );
-            }
+            self.lifecycle.mark_connecting(format!(
+                "CAN bus {} restored; waiting for feedback",
+                self.bus.spec.name
+            ));
             return;
         }
         let detail = format!(
@@ -275,30 +269,7 @@ impl MotorController {
             cause: MotorFaultCause::Communication,
             detail: detail.clone(),
         });
-        match self.lifecycle.state() {
-            DeviceState::Starting => {
-                let _ = self.lifecycle.transition(DeviceState::Connecting, detail);
-            }
-            DeviceState::Online => {
-                let _ = self
-                    .lifecycle
-                    .transition(DeviceState::Degraded, detail.clone());
-                let _ = self
-                    .lifecycle
-                    .transition(DeviceState::Fault, detail.clone());
-                let _ = self.lifecycle.transition(DeviceState::Reconnecting, detail);
-            }
-            DeviceState::Degraded | DeviceState::Fault => {
-                if self.lifecycle.state() == DeviceState::Degraded {
-                    let _ = self
-                        .lifecycle
-                        .transition(DeviceState::Fault, detail.clone());
-                }
-                let _ = self.lifecycle.transition(DeviceState::Reconnecting, detail);
-            }
-            DeviceState::Connecting | DeviceState::Reconnecting => {}
-            _ => {}
-        }
+        self.lifecycle.begin_reconnect(detail);
     }
 
     pub(super) fn check_feedback_watchdog(&self) {
@@ -327,22 +298,17 @@ impl MotorController {
     pub(super) fn record_received_feedback(&self, value: Feedback, received: Instant) {
         *self.feedback.write() = Some(TimedFeedback { value, received });
         self.update_health(value, received);
-        self.telemetry.send(TelemetryEvent {
-            monotonic_ns: 0,
-            payload: TelemetryPayload::Motor(MotorTelemetry {
-                group: self.group.clone(),
-                motor: self.spec.name.clone(),
-                address: self.spec.address.clone(),
-                status: self.lifecycle.status(),
-                position: value.position,
-                velocity: value.velocity,
-                torque: value.torque,
-                temperature: value.temperature,
-                fault_bits: value.fault_bits,
-                mode_status: value.mode_status,
-                feedback_age_ms: received.elapsed().as_millis().min(u64::MAX as u128) as u64,
-            }),
-        });
+        self.telemetry.send(TelemetryPayload::Motor(MotorTelemetry {
+            group: self.group.clone(),
+            motor: self.spec.name.clone(),
+            position: value.position,
+            velocity: value.velocity,
+            torque: value.torque,
+            temperature: value.temperature,
+            fault_bits: value.fault_bits,
+            mode_status: value.mode_status,
+            feedback_age_ms: received.elapsed().as_millis().min(u64::MAX as u128) as u64,
+        }));
     }
 
     fn update_health(&self, value: Feedback, received: Instant) {
@@ -353,41 +319,16 @@ impl MotorController {
             Duration::from_millis(self.spec.health.temperature_recovery_duration_ms),
             received,
         );
-        let fault = if value.fault_bits != 0 {
-            Some((
-                MotorFaultCause::ReportedFault,
-                format!("motor reported fault bits 0x{:04x}", value.fault_bits),
-            ))
-        } else if let Some(detail) = thermal_fault {
-            Some((MotorFaultCause::Temperature, detail))
-        } else if !(self.spec.health.safe_position_min..=self.spec.health.safe_position_max)
-            .contains(&value.position)
-        {
-            Some((
-                MotorFaultCause::SafePosition,
-                format!(
-                    "feedback position {:.4} outside configured safe range [{:.4}, {:.4}]",
-                    value.position,
-                    self.spec.health.safe_position_min,
-                    self.spec.health.safe_position_max
-                ),
-            ))
-        } else if self
+        let expecting_operating_feedback = self
             .feedback_expected_since
             .read()
-            .is_some_and(|expected| received >= expected)
-            && value.mode_status != RUNNING_MODE_STATUS
-        {
-            Some((
-                MotorFaultCause::ModeStatus,
-                format!(
-                    "motor reported mode status {} while operating status {} was expected",
-                    value.mode_status, RUNNING_MODE_STATUS
-                ),
-            ))
-        } else {
-            None
-        };
+            .is_some_and(|expected| received >= expected);
+        let fault = classify_feedback(
+            value,
+            &self.spec,
+            expecting_operating_feedback,
+            thermal_fault,
+        );
 
         if let Some((cause, detail)) = fault {
             self.mark_fault(cause, detail);
@@ -406,36 +347,7 @@ impl MotorController {
     fn mark_online(&self, warning: Option<&str>) {
         *self.fault.write() = None;
         let detail = warning.unwrap_or("healthy motor feedback");
-        match self.lifecycle.state() {
-            DeviceState::Starting => {
-                let _ = self
-                    .lifecycle
-                    .transition(DeviceState::Connecting, "motor feedback detected");
-                let _ = self.lifecycle.transition(DeviceState::Online, detail);
-            }
-            DeviceState::Connecting | DeviceState::Degraded => {
-                let _ = self.lifecycle.transition(DeviceState::Online, detail);
-            }
-            DeviceState::Fault => {
-                let _ = self
-                    .lifecycle
-                    .transition(DeviceState::Reconnecting, "motor feedback resumed");
-                let _ = self
-                    .lifecycle
-                    .transition(DeviceState::Connecting, "validating motor feedback");
-                let _ = self.lifecycle.transition(DeviceState::Online, detail);
-            }
-            DeviceState::Reconnecting => {
-                let _ = self
-                    .lifecycle
-                    .transition(DeviceState::Connecting, "motor feedback resumed");
-                let _ = self.lifecycle.transition(DeviceState::Online, detail);
-            }
-            DeviceState::Online if self.lifecycle.status().detail != detail => {
-                let _ = self.lifecycle.transition(DeviceState::Online, detail);
-            }
-            _ => {}
-        }
+        self.lifecycle.mark_online(detail);
     }
 }
 
@@ -447,67 +359,5 @@ fn protocol_command(motor_id: u8, command: ImpedanceCommand) -> ControlCommand {
         torque: command.torque,
         kp: command.kp,
         kd: command.kd,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn thermal_fault_requires_hysteresis_and_continuous_cooldown() {
-        let mut health = ThermalHealth::default();
-        let started = Instant::now();
-        let cooldown = Duration::from_secs(2);
-
-        assert!(
-            health
-                .fault_detail(80.0, 80.0, 75.0, cooldown, started)
-                .is_some()
-        );
-        assert!(
-            health
-                .fault_detail(
-                    74.0,
-                    80.0,
-                    75.0,
-                    cooldown,
-                    started + Duration::from_millis(100),
-                )
-                .is_some()
-        );
-        assert!(
-            health
-                .fault_detail(
-                    76.0,
-                    80.0,
-                    75.0,
-                    cooldown,
-                    started + Duration::from_millis(1_500),
-                )
-                .is_some()
-        );
-        assert!(
-            health
-                .fault_detail(
-                    74.0,
-                    80.0,
-                    75.0,
-                    cooldown,
-                    started + Duration::from_millis(1_600),
-                )
-                .is_some()
-        );
-        assert!(
-            health
-                .fault_detail(
-                    74.0,
-                    80.0,
-                    75.0,
-                    cooldown,
-                    started + Duration::from_millis(3_600),
-                )
-                .is_none()
-        );
     }
 }

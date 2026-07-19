@@ -4,11 +4,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
-use parking_lot::RwLock;
 use tracing::{info, warn};
 
-use crate::domain::{ImuName, ImuTelemetry, SerialDeviceName, TelemetryEvent, TelemetryPayload};
-use crate::hardware::lifecycle::{DeviceLifecycle, DeviceState};
+use crate::domain::{ImuName, ImuTelemetry, TelemetryPayload};
+use crate::hardware::lifecycle::{DeviceLifecycle, DeviceState, wait_for_stop};
 use crate::hardware::serial::{SerialChunk, SerialHandle};
 use crate::telemetry::Telemetry;
 
@@ -17,6 +16,7 @@ mod spec;
 
 use ebimu::{output_commands, parse_ascii_line};
 pub(crate) use spec::ImuSpec;
+use spec::POLL_PERIOD;
 
 #[derive(Clone, Debug)]
 pub struct ImuSample {
@@ -28,15 +28,13 @@ pub struct ImuSample {
 }
 
 #[derive(Clone)]
-pub struct ImuState {
+pub struct ImuHandle {
     pub name: ImuName,
-    pub serial_device: SerialDeviceName,
     pub lifecycle: DeviceLifecycle,
-    pub latest: Arc<RwLock<Option<ImuSample>>>,
 }
 
 pub(crate) struct ImuWorker {
-    pub(crate) state: ImuState,
+    pub(crate) handle: ImuHandle,
     stop: Arc<AtomicBool>,
     thread: Option<thread::JoinHandle<()>>,
 }
@@ -48,141 +46,128 @@ impl ImuWorker {
         telemetry: Telemetry,
     ) -> Result<Self> {
         let stop = Arc::new(AtomicBool::new(false));
-        let initial = if config.enabled {
-            DeviceState::Starting
-        } else {
-            DeviceState::Disabled
-        };
         let lifecycle = DeviceLifecycle::new(
             format!("imu/{}", config.name),
-            initial,
-            if config.enabled {
-                "starting IMU sensor"
-            } else {
-                "IMU disabled by configuration"
-            },
+            DeviceState::Starting,
+            "starting IMU sensor",
             telemetry.clone(),
         );
-        let state = ImuState {
+        let handle = ImuHandle {
             name: config.name.clone(),
-            serial_device: config.serial_device.clone(),
             lifecycle,
-            latest: Arc::new(RwLock::new(None)),
         };
-        if !config.enabled {
-            return Ok(Self {
-                state,
-                stop,
-                thread: None,
-            });
-        }
-        let worker_state = state.clone();
+        let worker_handle = handle.clone();
         let worker_stop = stop.clone();
-        let worker_lifecycle = state.lifecycle.clone();
+        let worker_lifecycle = handle.lifecycle.clone();
         let thread_name = format!("{}-imu", config.name);
         let thread = thread::Builder::new().name(thread_name).spawn(move || {
             let run_stop = worker_stop.clone();
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_sensor(config, serial, worker_state, run_stop, telemetry);
+                run_sensor(config, serial, worker_handle, run_stop, telemetry);
             }));
             if result.is_err() {
-                worker_lifecycle.fail("IMU worker panicked");
+                worker_lifecycle.enter_fault("IMU worker panicked");
             } else if worker_stop.load(Ordering::Acquire) {
-                let _ = worker_lifecycle.transition(DeviceState::Shutdown, "IMU sensor stopped");
+                worker_lifecycle.shutdown("IMU sensor stopped");
             } else {
-                worker_lifecycle.fail("IMU worker stopped unexpectedly");
+                worker_lifecycle.enter_fault("IMU worker stopped unexpectedly");
             }
         })?;
         Ok(Self {
-            state,
+            handle,
             stop,
             thread: Some(thread),
         })
+    }
+
+    pub(crate) fn request_stop(&self) {
+        self.stop.store(true, Ordering::Release);
     }
 }
 
 impl Drop for ImuWorker {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Release);
+        self.request_stop();
         if let Some(thread) = self.thread.take()
             && thread.join().is_err()
         {
-            warn!(imu=%self.state.name, "IMU worker panicked during shutdown");
+            warn!(imu=%self.handle.name, "IMU worker panicked during shutdown");
         }
-        if self.state.lifecycle.state() != DeviceState::Shutdown {
-            let _ = self
-                .state
-                .lifecycle
-                .transition(DeviceState::Shutdown, "IMU worker stopped");
-        }
+        self.handle.lifecycle.shutdown("IMU worker stopped");
     }
 }
 
 fn run_sensor(
     config: ImuSpec,
     serial: SerialHandle,
-    state: ImuState,
+    state: ImuHandle,
     stop: Arc<AtomicBool>,
     telemetry: Telemetry,
 ) {
     let mut configured_generation = None;
+    let mut reconnect_requested_at = None;
     let mut last_valid = None;
     let mut frame_buffer = Vec::with_capacity(1024);
-    let poll_period = Duration::from_millis(20);
-    let _ = state.lifecycle.transition(
-        DeviceState::Connecting,
-        format!("waiting for serial device {}", serial.spec.name),
-    );
+    state
+        .lifecycle
+        .mark_connecting(format!("waiting for serial device {}", serial.spec.name));
 
     while !stop.load(Ordering::Acquire) {
         let transport = serial.status();
+        if let Some(generation) = reconnect_requested_at {
+            if !transport.state.is_online() || transport.transition_count == generation {
+                if configured_generation.is_some() {
+                    configured_generation = None;
+                    last_valid = None;
+                    frame_buffer.clear();
+                }
+                thread::sleep(POLL_PERIOD);
+                continue;
+            }
+            reconnect_requested_at = None;
+        }
         if !transport.state.is_online() {
             if configured_generation.is_some() {
-                enter_reconnecting(
-                    &state.lifecycle,
-                    format!(
-                        "serial device {} unavailable: {} ({})",
-                        serial.spec.name, transport.state, transport.detail
-                    ),
-                );
+                state.lifecycle.begin_reconnect(format!(
+                    "serial device {} unavailable: {} ({})",
+                    serial.spec.name, transport.state, transport.detail
+                ));
                 configured_generation = None;
                 last_valid = None;
                 frame_buffer.clear();
             }
-            thread::sleep(poll_period);
+            thread::sleep(POLL_PERIOD);
             continue;
         }
 
         if configured_generation != Some(transport.transition_count) {
-            prepare_connecting(&state.lifecycle, &serial.spec.name);
-            if let Err(error) = configure_device(&config, &serial) {
+            state
+                .lifecycle
+                .mark_connecting(format!("configuring sensor on {}", serial.spec.name));
+            if let Err(error) = configure_device(&config, &serial, &stop) {
+                if stop.load(Ordering::Acquire) {
+                    break;
+                }
                 let detail = format!("failed to configure {}: {error}", config.name);
-                enter_reconnecting(&state.lifecycle, detail.clone());
+                state.lifecycle.begin_reconnect(detail.clone());
                 serial.request_reconnect(detail);
+                reconnect_requested_at = Some(transport.transition_count);
                 configured_generation = None;
-                thread::sleep(poll_period);
+                thread::sleep(POLL_PERIOD);
                 continue;
             }
             configured_generation = Some(transport.transition_count);
             last_valid = Some(Instant::now());
         }
 
-        match serial.recv_timeout(poll_period) {
+        match serial.recv_timeout(POLL_PERIOD) {
             Ok(chunk) => match frame_ascii_lines(&mut frame_buffer, chunk) {
                 Ok(lines) => {
                     for (line, received) in lines {
-                        match parse_serial_line(&line, received, &config) {
+                        match parse_serial_line(&line, received) {
                             Ok(sample) => {
                                 last_valid = Some(sample.received);
-                                if matches!(
-                                    state.lifecycle.state(),
-                                    DeviceState::Connecting | DeviceState::Degraded
-                                ) {
-                                    let _ = state.lifecycle.transition(
-                                        DeviceState::Online,
-                                        "valid IMU samples streaming",
-                                    );
-                                }
+                                state.lifecycle.mark_online("valid IMU samples streaming");
                                 publish(&state, &telemetry, sample);
                             }
                             Err(error) => report_parse_error(&state, &config, &error),
@@ -193,10 +178,9 @@ fn run_sensor(
             },
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
             Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                enter_reconnecting(
-                    &state.lifecycle,
-                    "serial receive channel disconnected".into(),
-                );
+                state
+                    .lifecycle
+                    .begin_reconnect("serial receive channel disconnected");
                 break;
             }
         }
@@ -206,8 +190,9 @@ fn run_sensor(
                 "no valid IMU sample for {} ms",
                 last_valid.expect("checked above").elapsed().as_millis()
             );
-            enter_reconnecting(&state.lifecycle, detail.clone());
+            state.lifecycle.begin_reconnect(detail.clone());
             serial.request_reconnect(detail);
+            reconnect_requested_at = Some(transport.transition_count);
             configured_generation = None;
             last_valid = None;
             frame_buffer.clear();
@@ -215,56 +200,14 @@ fn run_sensor(
     }
 }
 
-fn prepare_connecting(lifecycle: &DeviceLifecycle, serial: &SerialDeviceName) {
-    match lifecycle.state() {
-        DeviceState::Starting => {
-            let _ = lifecycle.transition(
-                DeviceState::Connecting,
-                format!("configuring sensor on {serial}"),
-            );
+fn configure_device(config: &ImuSpec, serial: &SerialHandle, stop: &AtomicBool) -> Result<()> {
+    for command in output_commands(config) {
+        if stop.load(Ordering::Acquire) {
+            bail!("IMU configuration cancelled by shutdown");
         }
-        DeviceState::Reconnecting => {
-            let _ = lifecycle.transition(
-                DeviceState::Connecting,
-                format!("reconfiguring sensor on {serial}"),
-            );
-        }
-        DeviceState::Connecting => {
-            let _ = lifecycle.transition(
-                DeviceState::Connecting,
-                format!("configuring sensor on {serial}"),
-            );
-        }
-        _ => {}
-    }
-}
-
-fn enter_reconnecting(lifecycle: &DeviceLifecycle, detail: String) {
-    match lifecycle.state() {
-        DeviceState::Online => {
-            let _ = lifecycle.transition(DeviceState::Degraded, detail.clone());
-            let _ = lifecycle.transition(DeviceState::Fault, detail.clone());
-            let _ = lifecycle.transition(DeviceState::Reconnecting, detail);
-        }
-        DeviceState::Degraded | DeviceState::Connecting => {
-            let _ = lifecycle.transition(DeviceState::Fault, detail.clone());
-            let _ = lifecycle.transition(DeviceState::Reconnecting, detail);
-        }
-        DeviceState::Fault => {
-            let _ = lifecycle.transition(DeviceState::Reconnecting, detail);
-        }
-        DeviceState::Reconnecting => {
-            let _ = lifecycle.transition(DeviceState::Reconnecting, detail);
-        }
-        _ => {}
-    }
-}
-
-fn configure_device(config: &ImuSpec, serial: &SerialHandle) -> Result<()> {
-    if config.configure_on_start {
-        for command in output_commands(config) {
-            serial.send(command.into_bytes())?;
-            thread::sleep(Duration::from_millis(20));
+        serial.send(command.into_bytes(), stop)?;
+        if wait_for_stop(stop, Duration::from_millis(20)) {
+            bail!("IMU configuration cancelled by shutdown");
         }
     }
     info!(imu=%config.name, serial=%serial.spec.name, "EBIMU configured");
@@ -288,40 +231,26 @@ fn frame_ascii_lines(buffer: &mut Vec<u8>, chunk: SerialChunk) -> Result<Vec<(St
     Ok(lines)
 }
 
-fn parse_serial_line(line: &str, received: Instant, config: &ImuSpec) -> Result<ImuSample> {
-    let mut sample = parse_ascii_line(line, config)?;
+fn parse_serial_line(line: &str, received: Instant) -> Result<ImuSample> {
+    let mut sample = parse_ascii_line(line)?;
     sample.received = received;
     Ok(sample)
 }
 
-fn report_parse_error(state: &ImuState, config: &ImuSpec, error: &anyhow::Error) {
-    if state.lifecycle.state() == DeviceState::Online {
-        let _ = state
-            .lifecycle
-            .transition(DeviceState::Degraded, error.to_string());
-    } else {
-        let _ = state
-            .lifecycle
-            .transition(state.lifecycle.state(), error.to_string());
-    }
+fn report_parse_error(state: &ImuHandle, config: &ImuSpec, error: &anyhow::Error) {
+    state.lifecycle.degrade_or_update(error.to_string());
     warn!(imu=%config.name, %error, "discarding malformed IMU sample");
 }
 
-fn publish(state: &ImuState, telemetry: &Telemetry, sample: ImuSample) {
-    *state.latest.write() = Some(sample.clone());
-    telemetry.send(TelemetryEvent {
-        monotonic_ns: 0,
-        payload: TelemetryPayload::Imu(ImuTelemetry {
-            imu: state.name.clone(),
-            serial_device: state.serial_device.clone(),
-            status: state.lifecycle.status(),
-            orientation_xyzw: sample.orientation_xyzw,
-            angular_velocity_xyz: sample.angular_velocity_xyz,
-            linear_acceleration_xyz: sample.linear_acceleration_xyz,
-            device_timestamp_ms: sample.device_timestamp_ms,
-            sample_age_ms: sample.received.elapsed().as_millis().min(u64::MAX as u128) as u64,
-        }),
-    });
+fn publish(state: &ImuHandle, telemetry: &Telemetry, sample: ImuSample) {
+    telemetry.send(TelemetryPayload::Imu(ImuTelemetry {
+        imu: state.name.clone(),
+        orientation_xyzw: sample.orientation_xyzw,
+        angular_velocity_xyz: sample.angular_velocity_xyz,
+        linear_acceleration_xyz: sample.linear_acceleration_xyz,
+        device_timestamp_ms: sample.device_timestamp_ms,
+        sample_age_ms: sample.received.elapsed().as_millis().min(u64::MAX as u128) as u64,
+    }));
 }
 
 #[cfg(test)]

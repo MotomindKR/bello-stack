@@ -1,11 +1,13 @@
-pub mod api;
-pub mod app;
-pub mod config;
+mod api;
+mod app;
+mod config;
 pub mod proto;
-pub mod rerun_sink;
+mod rerun_sink;
 
 mod control;
 mod domain;
 mod hardware;
 mod lease;
 mod telemetry;
+
+pub use app::{check, run};

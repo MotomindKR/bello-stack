@@ -3,9 +3,11 @@ mod fsm;
 mod group;
 mod group_handle;
 mod group_worker;
+mod safety;
 mod spec;
 
+pub(crate) use command_policy::CommandPolicyCheck;
 pub use fsm::{GroupState, Transition};
-pub(crate) use group_handle::GroupHandle;
+pub(crate) use group_handle::{GroupHandle, GroupQueueError, LifecycleAction};
 pub(crate) use group_worker::GroupWorker;
 pub(crate) use spec::GroupSpec;

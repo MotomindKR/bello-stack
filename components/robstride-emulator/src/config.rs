@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
-use robstride_protocol::MotorParams;
+use robstride_protocol::{MAX_MOTOR_ID, MotorParams};
 use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -67,15 +67,15 @@ fn default_temperature() -> f64 {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ScheduledEvent {
     pub at_ms: u64,
     pub actuator_id: u8,
-    #[serde(flatten)]
     pub action: FaultAction,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-#[serde(tag = "action", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum FaultAction {
     DropFeedback { enabled: bool },
     SetFeedbackDelay { delay_ms: u64 },
@@ -117,6 +117,12 @@ impl Config {
         }
         let mut ids = HashSet::new();
         for actuator in &self.actuators {
+            if actuator.id > MAX_MOTOR_ID {
+                bail!(
+                    "actuator id {} must be in the Robstride range 0..={MAX_MOTOR_ID}",
+                    actuator.id
+                );
+            }
             if !ids.insert(actuator.id) {
                 bail!("duplicate actuator id {}", actuator.id);
             }
@@ -172,5 +178,36 @@ impl Config {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bundled_configs_follow_the_strict_event_schema() {
+        for yaml in [
+            include_str!("../config/vcan.yaml"),
+            include_str!("../config/faults.yaml"),
+        ] {
+            let config: Config = serde_yaml::from_str(yaml).unwrap();
+            config.validate().unwrap();
+        }
+    }
+
+    #[test]
+    fn event_action_rejects_unknown_fields() {
+        let yaml = r#"
+interface: vcan0
+actuators:
+  - { id: 1, model: ROBSTRIDE_03 }
+events:
+  - at_ms: 10
+    actuator_id: 1
+    action: { type: drop_feedback, enabled: true, typo: true }
+"#;
+        let error = serde_yaml::from_str::<Config>(yaml).unwrap_err();
+        assert!(error.to_string().contains("unknown field `typo`"));
     }
 }

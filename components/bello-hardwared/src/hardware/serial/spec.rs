@@ -28,8 +28,11 @@ impl TryFrom<&SerialDeviceConfig> for SerialSpec {
         if config.baud_rate == 0 {
             bail!("serial_devices.{}.baud_rate must be positive", config.name);
         }
-        if config.timeout_ms == 0 {
-            bail!("serial_devices.{}.timeout_ms must be positive", config.name);
+        if !(1..=500).contains(&config.timeout_ms) {
+            bail!(
+                "serial_devices.{}.timeout_ms must be in 1..=500",
+                config.name
+            );
         }
         Ok(Self {
             name: SerialDeviceName::from(config.name.as_str()),

@@ -13,7 +13,7 @@ buses:
   - name: emulated_can
     interface: vcan0
     host_id: 253
-    bitrate: 1000000
+    bitrate: 1000000 # Nominal timing budget; vcan itself has no configured bitrate.
     maximum_utilization: 0.75
     reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
 
@@ -39,22 +39,11 @@ motor_groups:
     feedback_timeout_ms: 100
     enable_timeout_ms: 500
     enable_retries: 3
-    damping_response: { send_count: 5, send_rate_hz: 100.0 }
-    fault_responses:
-      command_limit: damping
-      command_position_step: damping
-      command_timeout: damping
-      safe_position: damping
-      stale_feedback: damping
-      temperature: disable
-      reported_motor_fault: disable
-      mode_status: damping
-      communication: damping
-      enable: disable
-      start: damping
-      stop: damping
-      transmission: damping
-      lease_loss: damping
-      manual: damping
-      disable: disable
-      exit: disable
+    fault_policy:
+      default: damping
+      overrides:
+        temperature: disable
+        reported_motor_fault: disable
+        enable: disable
+        disable: disable
+        exit: disable

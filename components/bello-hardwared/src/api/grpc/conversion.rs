@@ -2,9 +2,11 @@ use std::time::Duration;
 
 use tonic::Status;
 
+use crate::config::{CommandBehavior, FaultCause, FaultResponse};
+use crate::control::{CommandPolicyCheck, GroupState};
 use crate::domain::{
-    CommandBatch, DeviceState, DeviceStatus, ImpedanceCommand, LeaseToken, MotorCommand, MotorName,
-    TelemetryEvent, TelemetryPayload,
+    CommandBatch, CommandError, DeviceState, DeviceStatus, ImpedanceCommand, LeaseToken,
+    MotorCommand, MotorName, TelemetryEvent, TelemetryPayload,
 };
 use crate::proto;
 
@@ -40,7 +42,6 @@ pub fn command_batch(value: proto::StreamCommandsRequest) -> Result<CommandBatch
 pub fn device_status(value: &DeviceStatus) -> proto::DeviceStatus {
     proto::DeviceStatus {
         state: match value.state {
-            DeviceState::Disabled => proto::DeviceState::Disabled,
             DeviceState::Starting => proto::DeviceState::Starting,
             DeviceState::Connecting => proto::DeviceState::Connecting,
             DeviceState::Online => proto::DeviceState::Online,
@@ -54,6 +55,77 @@ pub fn device_status(value: &DeviceStatus) -> proto::DeviceStatus {
     }
 }
 
+pub fn group_state(value: GroupState) -> i32 {
+    (match value {
+        GroupState::Idle => proto::GroupState::Idle,
+        GroupState::Enabled => proto::GroupState::Enabled,
+        GroupState::Running => proto::GroupState::Running,
+        GroupState::Fault => proto::GroupState::Fault,
+        GroupState::Shutdown => proto::GroupState::Shutdown,
+    }) as i32
+}
+
+pub fn command_result(value: &CommandError) -> i32 {
+    (match value {
+        CommandError::UnknownGroup => proto::CommandResult::UnknownGroup,
+        CommandError::LeaseLost => proto::CommandResult::LeaseLost,
+        CommandError::InvalidState => proto::CommandResult::InvalidState,
+        CommandError::IncompleteGroup => proto::CommandResult::IncompleteGroup,
+        CommandError::StaleSequence { .. } => proto::CommandResult::StaleSequence,
+        CommandError::Unsafe { .. } => proto::CommandResult::Unsafe,
+        CommandError::Superseded => proto::CommandResult::Superseded,
+        CommandError::Expired => proto::CommandResult::Expired,
+        CommandError::ControllerStopped => proto::CommandResult::ControllerStopped,
+    }) as i32
+}
+
+fn command_check(value: CommandPolicyCheck) -> i32 {
+    (match value {
+        CommandPolicyCheck::CommandLimit => proto::CommandPolicyCheck::Limit,
+        CommandPolicyCheck::PositionStep => proto::CommandPolicyCheck::PositionStep,
+    }) as i32
+}
+
+fn command_behavior(value: CommandBehavior) -> i32 {
+    (match value {
+        CommandBehavior::Clamp => proto::CommandBehavior::Clamp,
+        CommandBehavior::Reject => proto::CommandBehavior::Reject,
+        CommandBehavior::Fault => proto::CommandBehavior::Fault,
+    }) as i32
+}
+
+fn fault_response(value: Option<FaultResponse>) -> i32 {
+    (match value {
+        None => proto::FaultResponse::Unspecified,
+        Some(FaultResponse::Damping) => proto::FaultResponse::Damping,
+        Some(FaultResponse::Disable) => proto::FaultResponse::Disable,
+    }) as i32
+}
+
+fn fault_cause(value: Option<FaultCause>) -> i32 {
+    (match value {
+        None => proto::FaultCause::Unspecified,
+        Some(FaultCause::CommandLimit) => proto::FaultCause::CommandLimit,
+        Some(FaultCause::CommandPositionStep) => proto::FaultCause::CommandPositionStep,
+        Some(FaultCause::CommandTimeout) => proto::FaultCause::CommandTimeout,
+        Some(FaultCause::SafePosition) => proto::FaultCause::SafePosition,
+        Some(FaultCause::StaleFeedback) => proto::FaultCause::StaleFeedback,
+        Some(FaultCause::Temperature) => proto::FaultCause::Temperature,
+        Some(FaultCause::ReportedMotorFault) => proto::FaultCause::ReportedMotorFault,
+        Some(FaultCause::ModeStatus) => proto::FaultCause::ModeStatus,
+        Some(FaultCause::Communication) => proto::FaultCause::Communication,
+        Some(FaultCause::Enable) => proto::FaultCause::Enable,
+        Some(FaultCause::Start) => proto::FaultCause::Start,
+        Some(FaultCause::Stop) => proto::FaultCause::Stop,
+        Some(FaultCause::Transmission) => proto::FaultCause::Transmission,
+        Some(FaultCause::LeaseLoss) => proto::FaultCause::LeaseLoss,
+        Some(FaultCause::Disable) => proto::FaultCause::Disable,
+        Some(FaultCause::Recover) => proto::FaultCause::Recover,
+        Some(FaultCause::Exit) => proto::FaultCause::Exit,
+        Some(FaultCause::Internal) => proto::FaultCause::Internal,
+    }) as i32
+}
+
 pub fn telemetry_event(
     value: TelemetryEvent,
     observed_monotonic_ns: u64,
@@ -64,10 +136,6 @@ pub fn telemetry_event(
             proto::watch_telemetry_response::Payload::Motor(proto::MotorTelemetry {
                 group: value.group.to_string(),
                 motor_name: value.motor.to_string(),
-                address: Some(proto::MotorAddress {
-                    bus: value.address.bus.to_string(),
-                    id: value.address.id as u32,
-                }),
                 position: value.position,
                 velocity: value.velocity,
                 torque: value.torque,
@@ -75,54 +143,59 @@ pub fn telemetry_event(
                 fault_bits: value.fault_bits as u32,
                 mode_status: value.mode_status as u32,
                 feedback_age_ms: value.feedback_age_ms.saturating_add(transport_age_ms),
-                status: Some(device_status(&value.status)),
             })
         }
         TelemetryPayload::Imu(value) => {
             proto::watch_telemetry_response::Payload::Imu(proto::ImuTelemetry {
-                orientation_xyzw: value.orientation_xyzw.to_vec(),
-                angular_velocity_xyz: value.angular_velocity_xyz.to_vec(),
-                linear_acceleration_xyz: value.linear_acceleration_xyz.to_vec(),
+                imu_name: value.imu.to_string(),
+                orientation: Some(proto::Quaternion {
+                    x: value.orientation_xyzw[0],
+                    y: value.orientation_xyzw[1],
+                    z: value.orientation_xyzw[2],
+                    w: value.orientation_xyzw[3],
+                }),
+                angular_velocity: Some(proto::Vector3 {
+                    x: value.angular_velocity_xyz[0],
+                    y: value.angular_velocity_xyz[1],
+                    z: value.angular_velocity_xyz[2],
+                }),
+                linear_acceleration: Some(proto::Vector3 {
+                    x: value.linear_acceleration_xyz[0],
+                    y: value.linear_acceleration_xyz[1],
+                    z: value.linear_acceleration_xyz[2],
+                }),
                 device_timestamp_ms: value.device_timestamp_ms,
                 sample_age_ms: value.sample_age_ms.saturating_add(transport_age_ms),
-                imu_name: value.imu.to_string(),
-                serial_device: value.serial_device.to_string(),
-                status: Some(device_status(&value.status)),
             })
         }
         TelemetryPayload::Group(value) => {
             proto::watch_telemetry_response::Payload::Group(proto::GroupTelemetry {
                 group: value.group.to_string(),
-                state: value.state.as_str().into(),
-                fault_reason: value.fault_reason,
-                lease_owner: value.lease_owner.unwrap_or_default(),
+                state: group_state(value.state),
+                fault_detail: value.fault_detail,
                 command_count: value.command_count,
                 control_tick: value.control_tick,
                 jitter_us: value.jitter_us,
+                fault_cause: fault_cause(value.fault_cause),
             })
         }
         TelemetryPayload::CommandPolicy(value) => {
             proto::watch_telemetry_response::Payload::CommandPolicy(proto::CommandPolicyTelemetry {
                 group: value.group.to_string(),
                 motor_name: value.motor.to_string(),
-                check: value.check,
-                severity: value.severity,
+                check: command_check(value.check),
+                behavior: command_behavior(value.behavior),
                 detail: value.detail,
                 command_modified: value.command_modified,
                 command_rejected: value.command_rejected,
-                response: value.response,
+                fault_response: fault_response(value.response),
             })
         }
         TelemetryPayload::Health(value) => {
-            let status = DeviceStatus {
-                state: value.status,
-                detail: value.detail.clone(),
-                transition_count: value.transition_count,
-            };
             proto::watch_telemetry_response::Payload::Health(proto::HealthTelemetry {
                 component: value.component,
+                device_status: Some(device_status(&value.status)),
                 dropped_events: value.dropped_events,
-                device_status: Some(device_status(&status)),
             })
         }
     };
@@ -135,7 +208,7 @@ pub fn telemetry_event(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{BusName, CommandPolicyTelemetry, GroupName, MotorAddress, MotorTelemetry};
+    use crate::domain::{GroupName, ImuName, ImuTelemetry, MotorTelemetry};
 
     #[test]
     fn telemetry_age_includes_time_waiting_for_the_subscriber() {
@@ -145,15 +218,6 @@ mod tests {
                 payload: TelemetryPayload::Motor(MotorTelemetry {
                     group: GroupName::from("group"),
                     motor: MotorName::from("motor"),
-                    address: MotorAddress {
-                        bus: BusName::from("can"),
-                        id: 1,
-                    },
-                    status: DeviceStatus {
-                        state: DeviceState::Online,
-                        detail: "healthy motor feedback".into(),
-                        transition_count: 2,
-                    },
                     position: 0.0,
                     velocity: 0.0,
                     torque: 0.0,
@@ -172,42 +236,35 @@ mod tests {
     }
 
     #[test]
-    fn device_status_is_strongly_typed_at_the_proto_boundary() {
-        let status = device_status(&DeviceStatus {
-            state: DeviceState::Reconnecting,
-            detail: "retrying".into(),
-            transition_count: 7,
-        });
-        assert_eq!(status.state, proto::DeviceState::Reconnecting as i32);
-        assert_eq!(status.detail, "retrying");
-        assert_eq!(status.transition_count, 7);
-    }
-
-    #[test]
-    fn command_policy_event_preserves_action_and_response() {
+    fn imu_arrays_have_fixed_shape_on_the_wire() {
         let response = telemetry_event(
             TelemetryEvent {
                 monotonic_ns: 1,
-                payload: TelemetryPayload::CommandPolicy(CommandPolicyTelemetry {
-                    group: GroupName::from("group"),
-                    motor: MotorName::from("motor"),
-                    check: "command_limit".into(),
-                    severity: "warning".into(),
-                    detail: "clamped".into(),
-                    command_modified: true,
-                    command_rejected: false,
-                    response: "damping".into(),
+                payload: TelemetryPayload::Imu(ImuTelemetry {
+                    imu: ImuName::from("body"),
+                    orientation_xyzw: [1.0, 2.0, 3.0, 4.0],
+                    angular_velocity_xyz: [5.0, 6.0, 7.0],
+                    linear_acceleration_xyz: [8.0, 9.0, 10.0],
+                    device_timestamp_ms: 11,
+                    sample_age_ms: 12,
                 }),
             },
             1,
         );
-        let Some(proto::watch_telemetry_response::Payload::CommandPolicy(policy)) =
-            response.payload
-        else {
-            panic!("expected command policy telemetry");
+        let Some(proto::watch_telemetry_response::Payload::Imu(imu)) = response.payload else {
+            panic!("expected IMU telemetry");
         };
-        assert_eq!(policy.check, "command_limit");
-        assert!(policy.command_modified);
-        assert_eq!(policy.response, "damping");
+        assert_eq!(imu.orientation.unwrap().w, 4.0);
+        assert_eq!(imu.angular_velocity.unwrap().z, 7.0);
+        assert_eq!(imu.linear_acceleration.unwrap().x, 8.0);
+    }
+
+    #[test]
+    fn fault_causes_are_typed_on_the_wire() {
+        assert_eq!(
+            fault_cause(Some(FaultCause::Temperature)),
+            proto::FaultCause::Temperature as i32
+        );
+        assert_eq!(fault_cause(None), proto::FaultCause::Unspecified as i32);
     }
 }

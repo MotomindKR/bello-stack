@@ -1,14 +1,12 @@
-use super::{
-    DeviceState, DeviceStatus, GroupName, ImuName, MotorAddress, MotorName, SerialDeviceName,
-};
+use super::{DeviceStatus, GroupName, ImuName, MotorName};
+use crate::config::{CommandBehavior, FaultCause, FaultResponse};
+use crate::control::CommandPolicyCheck;
 use crate::control::GroupState;
 
 #[derive(Clone, Debug)]
 pub struct MotorTelemetry {
     pub group: GroupName,
     pub motor: MotorName,
-    pub address: MotorAddress,
-    pub status: DeviceStatus,
     pub position: f64,
     pub velocity: f64,
     pub torque: f64,
@@ -21,8 +19,6 @@ pub struct MotorTelemetry {
 #[derive(Clone, Debug)]
 pub struct ImuTelemetry {
     pub imu: ImuName,
-    pub serial_device: SerialDeviceName,
-    pub status: DeviceStatus,
     pub orientation_xyzw: [f64; 4],
     pub angular_velocity_xyz: [f64; 3],
     pub linear_acceleration_xyz: [f64; 3],
@@ -34,8 +30,8 @@ pub struct ImuTelemetry {
 pub struct GroupTelemetry {
     pub group: GroupName,
     pub state: GroupState,
-    pub fault_reason: String,
-    pub lease_owner: Option<String>,
+    pub fault_cause: Option<FaultCause>,
+    pub fault_detail: String,
     pub command_count: u64,
     pub control_tick: u64,
     pub jitter_us: i64,
@@ -45,20 +41,18 @@ pub struct GroupTelemetry {
 pub struct CommandPolicyTelemetry {
     pub group: GroupName,
     pub motor: MotorName,
-    pub check: String,
-    pub severity: String,
+    pub check: CommandPolicyCheck,
+    pub behavior: CommandBehavior,
     pub detail: String,
     pub command_modified: bool,
     pub command_rejected: bool,
-    pub response: String,
+    pub response: Option<FaultResponse>,
 }
 
 #[derive(Clone, Debug)]
 pub struct ComponentHealth {
     pub component: String,
-    pub status: DeviceState,
-    pub detail: String,
-    pub transition_count: u64,
+    pub status: DeviceStatus,
     pub dropped_events: u64,
 }
 

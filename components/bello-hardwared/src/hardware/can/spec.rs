@@ -1,8 +1,15 @@
+use std::time::Duration;
+
 use anyhow::{Result, bail};
 
 use crate::config::BusConfig;
 use crate::domain::BusName;
 use crate::hardware::lifecycle::ReconnectPolicy;
+
+const ESTIMATED_EXTENDED_FRAME_BITS: f64 = 150.0;
+const TRANSMISSION_MARGIN: u32 = 2;
+const TRANSPORT_SCHEDULING_MARGIN: Duration = Duration::from_millis(20);
+const PRIORITY_QUEUE_MARGIN: Duration = Duration::from_millis(50);
 
 /// Side-effect-free, validated definition of one CAN bus.
 #[derive(Clone, Debug)]
@@ -15,6 +22,27 @@ pub(crate) struct BusSpec {
     pub(crate) reconnect: ReconnectPolicy,
 }
 
+impl BusSpec {
+    pub(crate) fn estimated_utilization(&self, frames_per_second: f64) -> f64 {
+        frames_per_second * ESTIMATED_EXTENDED_FRAME_BITS / f64::from(self.bitrate)
+    }
+
+    pub(crate) fn control_batch_budget(&self, frame_count: usize) -> Duration {
+        let wire_time = Duration::from_secs_f64(
+            frame_count as f64 * ESTIMATED_EXTENDED_FRAME_BITS / f64::from(self.bitrate),
+        );
+        wire_time.saturating_mul(TRANSMISSION_MARGIN)
+    }
+
+    pub(crate) fn priority_batch_budget(&self, frame_count: usize) -> Duration {
+        self.control_batch_budget(frame_count) + TRANSPORT_SCHEDULING_MARGIN
+    }
+
+    pub(crate) fn priority_batch_lifetime(&self, frame_count: usize) -> Duration {
+        PRIORITY_QUEUE_MARGIN + self.priority_batch_budget(frame_count)
+    }
+}
+
 impl TryFrom<&BusConfig> for BusSpec {
     type Error = anyhow::Error;
 
@@ -25,8 +53,11 @@ impl TryFrom<&BusConfig> for BusSpec {
         if config.interface.is_empty() {
             bail!("buses.{}.interface must be non-empty", config.name);
         }
-        if config.bitrate == 0 {
-            bail!("buses.{}.bitrate must be positive", config.name);
+        if !(10_000..=1_000_000).contains(&config.bitrate) {
+            bail!(
+                "buses.{}.bitrate must be a classic CAN nominal bitrate in 10000..=1000000 and must match the externally configured interface",
+                config.name
+            );
         }
         if !config.maximum_utilization.is_finite()
             || !(0.0..=1.0).contains(&config.maximum_utilization)
@@ -59,5 +90,33 @@ mod tests {
         )
         .unwrap();
         assert!(BusSpec::try_from(&config).is_err());
+    }
+
+    #[test]
+    fn rejects_nominal_bitrate_above_classic_can_limit() {
+        let config: BusConfig = serde_yaml::from_str(
+            "name: can\ninterface: can0\nbitrate: 1000001\nmaximum_utilization: 0.5",
+        )
+        .unwrap();
+        let error = BusSpec::try_from(&config).unwrap_err().to_string();
+        assert!(error.contains("classic CAN nominal bitrate"), "{error}");
+    }
+
+    #[test]
+    fn batch_budget_uses_bitrate_and_full_frame_count() {
+        let slow: BusConfig = serde_yaml::from_str(
+            "name: can\ninterface: vcan0\nbitrate: 10000\nmaximum_utilization: 1.0",
+        )
+        .unwrap();
+        let fast: BusConfig = serde_yaml::from_str(
+            "name: can\ninterface: vcan0\nbitrate: 1000000\nmaximum_utilization: 1.0",
+        )
+        .unwrap();
+        let slow = BusSpec::try_from(&slow).unwrap();
+        let fast = BusSpec::try_from(&fast).unwrap();
+
+        assert_eq!(slow.control_batch_budget(25), Duration::from_millis(750));
+        assert!(slow.control_batch_budget(25) > fast.control_batch_budget(25));
+        assert!(slow.control_batch_budget(300) > slow.control_batch_budget(225));
     }
 }

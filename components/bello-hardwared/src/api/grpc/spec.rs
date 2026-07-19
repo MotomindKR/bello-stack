@@ -21,8 +21,11 @@ impl TryFrom<&GrpcConfig> for GrpcSpec {
     type Error = anyhow::Error;
 
     fn try_from(config: &GrpcConfig) -> Result<Self> {
-        if config.default_lease_ms == 0 || config.default_lease_ms > config.maximum_lease_ms {
-            bail!("grpc.default_lease_ms must be in 1..=maximum_lease_ms");
+        if !(20..=60_000).contains(&config.default_lease_ms)
+            || config.default_lease_ms > config.maximum_lease_ms
+            || config.maximum_lease_ms > 300_000
+        {
+            bail!("grpc lease durations must satisfy 20 <= default <= maximum <= 300000 ms");
         }
         Ok(Self {
             listen: config.listen,

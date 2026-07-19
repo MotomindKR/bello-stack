@@ -2,7 +2,6 @@ use std::fmt;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DeviceState {
-    Disabled,
     Starting,
     Connecting,
     Online,
@@ -15,7 +14,6 @@ pub enum DeviceState {
 impl DeviceState {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Disabled => "disabled",
             Self::Starting => "starting",
             Self::Connecting => "connecting",
             Self::Online => "online",

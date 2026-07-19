@@ -1,4 +1,4 @@
-use crate::config::{CommandLimitAction, CommandViolationSeverity};
+use crate::config::CommandBehavior;
 use crate::domain::{ImpedanceCommand, SafetyViolation};
 use crate::hardware::robstride::{Feedback, MotorSpec};
 
@@ -12,7 +12,7 @@ impl CommandPolicyCheck {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::CommandLimit => "command_limit",
-            Self::PositionStep => "command_position_step_limit",
+            Self::PositionStep => "command_position_step",
         }
     }
 }
@@ -20,7 +20,7 @@ impl CommandPolicyCheck {
 #[derive(Clone, Debug)]
 pub(crate) struct CommandPolicyIssue {
     pub(crate) check: CommandPolicyCheck,
-    pub(crate) severity: CommandViolationSeverity,
+    pub(crate) behavior: CommandBehavior,
     pub(crate) violation: SafetyViolation,
     pub(crate) detail: String,
     pub(crate) command_modified: bool,
@@ -49,7 +49,7 @@ pub(crate) fn check_command(
         if !value.is_finite() {
             issues.push(CommandPolicyIssue {
                 check: CommandPolicyCheck::CommandLimit,
-                severity: CommandViolationSeverity::Fault,
+                behavior: CommandBehavior::Fault,
                 violation: SafetyViolation::NonFinite { field: label },
                 detail: format!("{label} command is not finite"),
                 command_modified: false,
@@ -96,13 +96,14 @@ pub(crate) fn check_command(
     for (violation, value, minimum, maximum) in limits {
         if !(minimum..=maximum).contains(value) {
             let original = *value;
-            let modified = motor.command_policy.limit_action == CommandLimitAction::Clamp;
+            let behavior = motor.command_policy.limit;
+            let modified = behavior == CommandBehavior::Clamp;
             if modified {
                 *value = value.clamp(minimum, maximum);
             }
             issues.push(CommandPolicyIssue {
                 check: CommandPolicyCheck::CommandLimit,
-                severity: motor.command_policy.limit_severity,
+                behavior,
                 violation,
                 detail: format!("command value {original} outside [{minimum}, {maximum}]"),
                 command_modified: modified,
@@ -114,7 +115,8 @@ pub(crate) fn check_command(
     if let Some(measured_position) = measured_position {
         let delta = command.position - measured_position;
         if delta.abs() > motor.command_policy.maximum_position_step {
-            let modified = motor.command_policy.position_step_action == CommandLimitAction::Clamp;
+            let behavior = motor.command_policy.position_step;
+            let modified = behavior == CommandBehavior::Clamp;
             if modified {
                 command.position = measured_position
                     + delta.clamp(
@@ -123,16 +125,16 @@ pub(crate) fn check_command(
                     );
             }
             issues.push(CommandPolicyIssue {
-                    check: CommandPolicyCheck::PositionStep,
-                    severity: motor.command_policy.position_step_severity,
-                    violation: SafetyViolation::PositionStep,
-                    detail: format!(
-                        "position target step {delta} from measured position {measured_position} exceeds {}",
-                        motor.command_policy.maximum_position_step
-                    ),
-                    command_modified: modified,
-                    command_rejected: !modified,
-                });
+                check: CommandPolicyCheck::PositionStep,
+                behavior,
+                violation: SafetyViolation::PositionStep,
+                detail: format!(
+                    "position target step {delta} from measured position {measured_position} exceeds {}",
+                    motor.command_policy.maximum_position_step
+                ),
+                command_modified: modified,
+                command_rejected: !modified,
+            });
         }
     }
 
@@ -142,7 +144,7 @@ pub(crate) fn check_command(
 pub(crate) fn damping_command(feedback: Option<Feedback>, motor: &MotorSpec) -> ImpedanceCommand {
     ImpedanceCommand {
         position: feedback.map_or(0.0, |value| value.position),
-        kd: motor.fault_damping.kd,
+        kd: motor.fault_damping_kd,
         ..Default::default()
     }
 }
@@ -166,8 +168,7 @@ mod tests {
     #[test]
     fn warning_limit_can_clamp_and_continue() {
         let mut motor = motor();
-        motor.command_policy.limit_action = CommandLimitAction::Clamp;
-        motor.command_policy.limit_severity = CommandViolationSeverity::Warning;
+        motor.command_policy.limit = CommandBehavior::Clamp;
         let report = check_command(
             ImpedanceCommand {
                 position: motor.limits.position_max + 1.0,

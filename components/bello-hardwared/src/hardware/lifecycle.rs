@@ -1,11 +1,13 @@
 use std::sync::Arc;
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
 use parking_lot::RwLock;
 
 use crate::config::ReconnectConfig;
-use crate::domain::{ComponentHealth, TelemetryEvent, TelemetryPayload};
+use crate::domain::{ComponentHealth, TelemetryPayload};
 use crate::telemetry::Telemetry;
 
 pub use crate::domain::{DeviceState, DeviceStatus};
@@ -16,7 +18,6 @@ impl DeviceState {
             return true;
         }
         match self {
-            Self::Disabled => false,
             Self::Starting => matches!(next, Self::Connecting | Self::Online | Self::Fault),
             Self::Connecting => matches!(next, Self::Online | Self::Fault),
             Self::Online => matches!(next, Self::Degraded | Self::Fault),
@@ -94,44 +95,201 @@ impl DeviceLifecycle {
         self.fsm.read().status().state
     }
 
-    pub fn transition(&self, next: DeviceState, detail: impl Into<String>) -> Result<()> {
-        self.fsm.write().transition(next, detail)?;
-        self.publish();
-        Ok(())
+    pub(crate) fn mark_connecting(&self, detail: impl Into<String>) {
+        let detail = detail.into();
+        self.apply("mark connecting", move |fsm, updates| {
+            match fsm.status().state {
+                DeviceState::Starting | DeviceState::Reconnecting => {
+                    record(fsm, updates, DeviceState::Connecting, detail)
+                }
+                DeviceState::Connecting if fsm.status().detail != detail => {
+                    record(fsm, updates, DeviceState::Connecting, detail)
+                }
+                DeviceState::Connecting
+                | DeviceState::Online
+                | DeviceState::Degraded
+                | DeviceState::Fault
+                | DeviceState::Shutdown => Ok(()),
+            }
+        });
     }
 
-    /// Records an unexpected runtime failure without requiring each worker to
-    /// duplicate the legal transition path into `Fault`.
-    pub(crate) fn fail(&self, detail: impl Into<String>) {
+    pub(crate) fn mark_online(&self, detail: impl Into<String>) {
         let detail = detail.into();
-        match self.state() {
-            DeviceState::Starting | DeviceState::Connecting | DeviceState::Reconnecting => {
-                let _ = self.transition(DeviceState::Fault, detail);
+        self.apply("mark online", move |fsm, updates| {
+            match fsm.status().state {
+                DeviceState::Starting => {
+                    record(fsm, updates, DeviceState::Connecting, "device detected")?;
+                    record(fsm, updates, DeviceState::Online, detail)
+                }
+                DeviceState::Connecting | DeviceState::Degraded => {
+                    record(fsm, updates, DeviceState::Online, detail)
+                }
+                DeviceState::Fault => {
+                    record(fsm, updates, DeviceState::Reconnecting, "device recovered")?;
+                    record(
+                        fsm,
+                        updates,
+                        DeviceState::Connecting,
+                        "validating recovered device",
+                    )?;
+                    record(fsm, updates, DeviceState::Online, detail)
+                }
+                DeviceState::Reconnecting => {
+                    record(fsm, updates, DeviceState::Connecting, "device recovered")?;
+                    record(fsm, updates, DeviceState::Online, detail)
+                }
+                DeviceState::Online if fsm.status().detail != detail => {
+                    record(fsm, updates, DeviceState::Online, detail)
+                }
+                DeviceState::Online | DeviceState::Shutdown => Ok(()),
             }
-            DeviceState::Online => {
-                let _ = self.transition(DeviceState::Degraded, detail.clone());
-                let _ = self.transition(DeviceState::Fault, detail);
+        });
+    }
+
+    pub(crate) fn enter_fault(&self, detail: impl Into<String>) {
+        let detail = detail.into();
+        self.apply("enter fault", move |fsm, updates| {
+            match fsm.status().state {
+                DeviceState::Online => {
+                    record(fsm, updates, DeviceState::Degraded, detail.clone())?;
+                    record(fsm, updates, DeviceState::Fault, detail)
+                }
+                DeviceState::Starting
+                | DeviceState::Connecting
+                | DeviceState::Degraded
+                | DeviceState::Reconnecting => record(fsm, updates, DeviceState::Fault, detail),
+                DeviceState::Fault if fsm.status().detail != detail => {
+                    record(fsm, updates, DeviceState::Fault, detail)
+                }
+                DeviceState::Fault | DeviceState::Shutdown => Ok(()),
             }
-            DeviceState::Degraded | DeviceState::Fault => {
-                let _ = self.transition(DeviceState::Fault, detail);
+        });
+    }
+
+    pub(crate) fn begin_reconnect(&self, detail: impl Into<String>) {
+        let detail = detail.into();
+        self.apply("begin reconnect", move |fsm, updates| {
+            match fsm.status().state {
+                DeviceState::Online => {
+                    record(fsm, updates, DeviceState::Degraded, detail.clone())?;
+                    record(fsm, updates, DeviceState::Fault, detail.clone())?;
+                    record(fsm, updates, DeviceState::Reconnecting, detail)
+                }
+                DeviceState::Starting | DeviceState::Connecting | DeviceState::Degraded => {
+                    record(fsm, updates, DeviceState::Fault, detail.clone())?;
+                    record(fsm, updates, DeviceState::Reconnecting, detail)
+                }
+                DeviceState::Fault => record(fsm, updates, DeviceState::Reconnecting, detail),
+                DeviceState::Reconnecting if fsm.status().detail != detail => {
+                    record(fsm, updates, DeviceState::Reconnecting, detail)
+                }
+                DeviceState::Reconnecting | DeviceState::Shutdown => Ok(()),
             }
-            DeviceState::Disabled | DeviceState::Shutdown => {}
+        });
+    }
+
+    pub(crate) fn await_feedback(&self, detail: impl Into<String>) {
+        let detail = detail.into();
+        self.apply("await feedback", move |fsm, updates| {
+            match fsm.status().state {
+                DeviceState::Online => record(fsm, updates, DeviceState::Degraded, detail),
+                DeviceState::Reconnecting => record(fsm, updates, DeviceState::Connecting, detail),
+                DeviceState::Starting => record(fsm, updates, DeviceState::Connecting, detail),
+                DeviceState::Connecting | DeviceState::Degraded
+                    if fsm.status().detail != detail =>
+                {
+                    record(fsm, updates, fsm.status().state, detail)
+                }
+                DeviceState::Connecting
+                | DeviceState::Degraded
+                | DeviceState::Fault
+                | DeviceState::Shutdown => Ok(()),
+            }
+        });
+    }
+
+    pub(crate) fn degrade_or_update(&self, detail: impl Into<String>) {
+        let detail = detail.into();
+        self.apply("record degraded detail", move |fsm, updates| {
+            match fsm.status().state {
+                DeviceState::Online => record(fsm, updates, DeviceState::Degraded, detail),
+                DeviceState::Shutdown => Ok(()),
+                state if fsm.status().detail != detail => record(fsm, updates, state, detail),
+                _ => Ok(()),
+            }
+        });
+    }
+
+    pub(crate) fn shutdown(&self, detail: impl Into<String>) {
+        let detail = detail.into();
+        self.apply("shutdown", move |fsm, updates| {
+            if fsm.status().state == DeviceState::Shutdown {
+                Ok(())
+            } else {
+                record(fsm, updates, DeviceState::Shutdown, detail)
+            }
+        });
+    }
+
+    fn apply(
+        &self,
+        operation: &'static str,
+        update: impl FnOnce(&mut DeviceFsm, &mut Vec<DeviceStatus>) -> Result<()>,
+    ) {
+        let result = {
+            let mut current = self.fsm.write();
+            let mut candidate = current.clone();
+            let mut updates = Vec::new();
+            let result = update(&mut candidate, &mut updates);
+            if result.is_ok() {
+                *current = candidate;
+                // Publishing under the same lock preserves event ordering between
+                // concurrent semantic operations without exposing partial state.
+                for status in updates {
+                    self.publish_status(status);
+                }
+            }
+            result
+        };
+        if let Err(error) = result {
+            tracing::warn!(component=%self.component, %error, operation, "rejected device lifecycle operation");
         }
     }
 
-    fn publish(&self) {
-        let status = self.status();
-        self.telemetry.send(TelemetryEvent {
-            monotonic_ns: 0,
-            payload: TelemetryPayload::Health(ComponentHealth {
+    fn publish_status(&self, status: DeviceStatus) {
+        self.telemetry
+            .send(TelemetryPayload::Health(ComponentHealth {
                 component: self.component.to_string(),
-                status: status.state,
-                detail: status.detail,
-                transition_count: status.transition_count,
+                status,
                 dropped_events: 0,
-            }),
-        });
+            }));
     }
+
+    fn publish(&self) {
+        self.publish_status(self.status());
+    }
+}
+
+fn record(
+    fsm: &mut DeviceFsm,
+    updates: &mut Vec<DeviceStatus>,
+    next: DeviceState,
+    detail: impl Into<String>,
+) -> Result<()> {
+    fsm.transition(next, detail)?;
+    updates.push(fsm.status().clone());
+    Ok(())
+}
+
+pub(crate) fn wait_for_stop(stop: &AtomicBool, duration: Duration) -> bool {
+    let deadline = Instant::now() + duration;
+    while !stop.load(Ordering::Acquire) && Instant::now() < deadline {
+        thread::sleep(
+            Duration::from_millis(10).min(deadline.saturating_duration_since(Instant::now())),
+        );
+    }
+    stop.load(Ordering::Acquire)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -158,6 +316,9 @@ impl TryFrom<(&ReconnectConfig, &str)> for ReconnectPolicy {
         }
         if config.maximum_delay_ms < config.initial_delay_ms {
             bail!("{path}.maximum_delay_ms must be >= initial_delay_ms");
+        }
+        if config.maximum_delay_ms > 60_000 {
+            bail!("{path}.maximum_delay_ms must not exceed 60000");
         }
         Ok(Self {
             initial_delay: Duration::from_millis(config.initial_delay_ms),
@@ -200,9 +361,39 @@ mod tests {
             "starting",
             Telemetry::new(8),
         );
-        lifecycle.transition(DeviceState::Online, "online").unwrap();
-        lifecycle.fail("worker stopped");
+        lifecycle.mark_online("online");
+        lifecycle.enter_fault("worker stopped");
         assert_eq!(lifecycle.state(), DeviceState::Fault);
         assert_eq!(lifecycle.status().detail, "worker stopped");
+    }
+
+    #[test]
+    fn reconnect_operation_preserves_intermediate_health_events() {
+        let telemetry = Telemetry::new(8);
+        let lifecycle = DeviceLifecycle::new(
+            "test/device",
+            DeviceState::Online,
+            "online",
+            telemetry.clone(),
+        );
+        let mut events = telemetry.subscribe();
+
+        lifecycle.begin_reconnect("link lost");
+
+        let states: Vec<_> = (0..3)
+            .map(|_| match events.try_recv().unwrap().payload {
+                TelemetryPayload::Health(health) => health.status.state,
+                _ => unreachable!(),
+            })
+            .collect();
+        assert_eq!(
+            states,
+            [
+                DeviceState::Degraded,
+                DeviceState::Fault,
+                DeviceState::Reconnecting
+            ]
+        );
+        assert_eq!(lifecycle.status().transition_count, 3);
     }
 }

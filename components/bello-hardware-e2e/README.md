@@ -1,19 +1,22 @@
 # Bello hardware end-to-end tests
 
-This component runs behavioral integration scenarios against the actual
-`bello-hardwared` and `robstride-emulator` processes. It communicates only through
-the public gRPC API and a real SocketCAN `vcan` interface.
+This component contains an ignored Cargo integration test that runs the real
+`bello-hardwared` and `robstride-emulator` implementations in child processes.
+It communicates only through the public gRPC API and a host SocketCAN `vcan`
+interface.
 
 The default scenario:
 
-1. starts both binaries;
+1. generates matching runtime configurations and starts both processes;
 2. acquires a group lease through gRPC;
 3. enables two emulated Robstride actuators;
 4. streams complete impedance-command snapshots and starts control;
-5. drops one actuator's feedback and observes the group fault telemetry;
-6. resumes feedback and verifies the group remains fault-latched;
+5. suspends the emulator to begin a deterministic feedback-loss phase;
+6. resumes it, verifies process liveness, and confirms the group remains fault-latched;
 7. explicitly recovers and re-enables the group;
-8. disables the group and releases its lease.
+8. stops command delivery and observes the command watchdog fault;
+9. recovers, disables the group, and synchronously releases its lease;
+10. starts under a short second lease and observes lease-expiry fault handling.
 
 Create `vcan0` once per boot if needed:
 
@@ -25,10 +28,14 @@ sudo ip link set up vcan0
 Run from the Nix/direnv development environment:
 
 ```sh
-cargo e2e
+cargo test -p bello-hardware-e2e --test vcan -- --ignored --nocapture
 ```
 
-The Cargo alias builds the daemon and emulator binaries before starting the
-scenario. The runner fails rather than silently skipping when its vcan
-prerequisite is missing. It uses port `50052`, separately from the normal
-hardwared example.
+`cargo e2e` is an alias for the same command. The ignored test is compiled but
+not executed by ordinary `cargo test`. When explicitly run, it fails rather than
+silently skipping if its host prerequisite is absent. It selects an unused
+loopback gRPC port for each run.
+
+Set `BELLO_E2E_CAN_INTERFACE` to use an interface other than `vcan0`. The
+selected name is validated and written into both generated runtime
+configurations.

@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::thread;
 
@@ -11,8 +11,11 @@ use crate::hardware::robstride::MotorManager;
 use crate::telemetry::Telemetry;
 
 use super::group::{ControllerInputs, GroupController, GroupMotor};
-use super::group_handle::{GroupHandle, GroupSnapshot, LifecycleRequest};
+use super::group_handle::{GroupHandle, GroupSnapshot};
 use super::spec::GroupSpec;
+
+const LIFECYCLE_QUEUE_CAPACITY: usize = 16;
+const WAKE_QUEUE_CAPACITY: usize = 1;
 
 pub(crate) struct GroupWorker {
     handle: GroupHandle,
@@ -30,9 +33,12 @@ impl GroupWorker {
             .iter()
             .map(|name| motor_manager.controller(name).map(GroupMotor::new))
             .collect::<Result<Vec<_>>>()?;
-        let (lifecycle_tx, lifecycle_rx) = mpsc::sync_channel(128);
+        let (lifecycle_tx, lifecycle_rx) = mpsc::sync_channel(LIFECYCLE_QUEUE_CAPACITY);
+        let (wake_tx, wake_rx) = mpsc::sync_channel(WAKE_QUEUE_CAPACITY);
         let command_mailbox = Arc::new(Mutex::new(None));
         let lease_lost = Arc::new(AtomicBool::new(false));
+        let lease_generation = Arc::new(AtomicU64::new(0));
+        let lease_loss_waiters = Arc::new(Mutex::new(Vec::new()));
         let shutdown = Arc::new(AtomicBool::new(false));
         let snapshot = Arc::new(RwLock::new(GroupSnapshot::default()));
         let controller = GroupController::new(
@@ -40,30 +46,55 @@ impl GroupWorker {
             motors,
             ControllerInputs {
                 lifecycle_rx,
+                wake_rx,
                 command_mailbox: command_mailbox.clone(),
                 lease_lost: lease_lost.clone(),
+                lease_generation: lease_generation.clone(),
+                lease_loss_waiters: lease_loss_waiters.clone(),
                 shutdown: shutdown.clone(),
                 snapshot: snapshot.clone(),
             },
-            telemetry,
+            telemetry.clone(),
         );
         let panic_snapshot = snapshot.clone();
+        let exit_mailbox = command_mailbox.clone();
+        let exit_shutdown = shutdown.clone();
+        let exit_waiters = lease_loss_waiters.clone();
         let join = thread::Builder::new()
             .name(format!("group-{}", group.name))
             .spawn(move || {
-                if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| controller.run()))
-                    .is_err()
-                {
-                    let mut snapshot = panic_snapshot.write();
-                    snapshot.state = crate::control::GroupState::Fault;
-                    snapshot.fault_reason = "group controller panicked".into();
+                let mut controller = controller;
+                let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    controller.run();
+                }))
+                .is_err();
+                exit_shutdown.store(true, Ordering::Release);
+                if let Some(pending) = exit_mailbox.lock().take() {
+                    let _ = pending.reply.send(Err(CommandError::ControllerStopped));
                 }
+                if panicked {
+                    let safety_panicked =
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            controller.handle_worker_panic()
+                        }))
+                        .is_err();
+                    if safety_panicked {
+                        panic_snapshot.write().state = crate::control::GroupState::Fault;
+                        tracing::error!(
+                            "group panic handler also panicked; safety state is unknown"
+                        );
+                    }
+                }
+                exit_waiters.lock().clear();
             })?;
         Ok(Self {
             handle: GroupHandle {
                 lifecycle_tx,
+                wake_tx,
                 command_mailbox,
                 lease_lost,
+                lease_generation,
+                lease_loss_waiters,
                 shutdown,
                 snapshot,
             },
@@ -75,12 +106,15 @@ impl GroupWorker {
         self.handle.clone()
     }
 
-    fn shutdown_inner(&mut self) {
+    fn request_shutdown_inner(&self) {
         self.handle.shutdown.store(true, Ordering::Release);
         if let Some(pending) = self.handle.command_mailbox.lock().take() {
             let _ = pending.reply.send(Err(CommandError::ControllerStopped));
         }
-        let _ = self.handle.lifecycle_tx.try_send(LifecycleRequest::Wake);
+        let _ = self.handle.wake_tx.try_send(());
+    }
+
+    fn join_inner(&mut self) {
         if let Some(join) = self.join.take()
             && join.join().is_err()
         {
@@ -88,13 +122,19 @@ impl GroupWorker {
         }
     }
 
+    pub(crate) fn request_shutdown(&self) {
+        self.request_shutdown_inner();
+    }
+
     pub(crate) fn shutdown(mut self) {
-        self.shutdown_inner();
+        self.request_shutdown_inner();
+        self.join_inner();
     }
 }
 
 impl Drop for GroupWorker {
     fn drop(&mut self) {
-        self.shutdown_inner();
+        self.request_shutdown_inner();
+        self.join_inner();
     }
 }

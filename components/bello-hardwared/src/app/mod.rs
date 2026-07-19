@@ -1,5 +1,5 @@
 mod daemon;
-mod spec;
+mod run;
 
-pub use daemon::HardwareDaemon;
-pub use spec::RuntimeSpec;
+pub(crate) use daemon::HardwareDaemon;
+pub use run::{check, run};

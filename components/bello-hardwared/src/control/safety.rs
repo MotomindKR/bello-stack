@@ -1,0 +1,69 @@
+use std::collections::BTreeMap;
+
+use crate::domain::BusName;
+use crate::hardware::can::CanFrame;
+use crate::hardware::robstride::MotorController;
+
+use super::command_policy::damping_command;
+
+type BusBatch = (MotorController, Vec<CanFrame>);
+
+pub(super) fn send_damping<'a>(
+    motors: impl IntoIterator<Item = &'a MotorController>,
+) -> Result<(), String> {
+    let mut batches = BTreeMap::<BusName, BusBatch>::new();
+    for motor in motors {
+        let command = damping_command(motor.feedback().map(|feedback| feedback.value), &motor.spec);
+        batch_for(&mut batches, motor).push(motor.safety_control_frame(command));
+    }
+    deliver(batches)
+}
+
+pub(super) fn stop<'a>(
+    motors: impl IntoIterator<Item = &'a MotorController>,
+    clear_fault: bool,
+) -> Result<(), String> {
+    let motors = motors.into_iter().collect::<Vec<_>>();
+    let mut batches = BTreeMap::<BusName, BusBatch>::new();
+    for motor in &motors {
+        batch_for(&mut batches, motor).push(motor.safety_stop_frame(clear_fault));
+    }
+    let result = deliver(batches);
+    for motor in motors {
+        motor.mark_stopped();
+    }
+    result
+}
+
+fn batch_for<'a>(
+    batches: &'a mut BTreeMap<BusName, BusBatch>,
+    motor: &MotorController,
+) -> &'a mut Vec<CanFrame> {
+    &mut batches
+        .entry(motor.spec.address.bus.clone())
+        .or_insert_with(|| (motor.clone(), Vec::new()))
+        .1
+}
+
+fn deliver(batches: BTreeMap<BusName, BusBatch>) -> Result<(), String> {
+    // Submit every bus before waiting for any one of them. A failed bus must not
+    // prevent the remaining buses in a motor group from receiving the reaction.
+    let mut pending = Vec::with_capacity(batches.len());
+    let mut failures = Vec::new();
+    for (_, (controller, frames)) in batches {
+        match controller.submit_safety_batch(frames) {
+            Ok(batch) => pending.push(batch),
+            Err(error) => failures.push(error.to_string()),
+        }
+    }
+    for batch in pending {
+        if let Err(error) = batch.wait() {
+            failures.push(error.to_string());
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("; "))
+    }
+}

@@ -6,3 +6,38 @@ members = [
   "components/robstride-emulator",
   "components/robstride-protocol",
 ]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+license = "Proprietary"
+publish = false
+
+[workspace.dependencies]
+anyhow = "1"
+async-stream = "0.3"
+bello-hardwared = { path = "components/bello-hardwared" }
+clap = "4"
+crossbeam-channel = "0.5"
+futures-core = "0.3"
+nix = "0.29"
+parking_lot = "0.12"
+prost = "0.14"
+rerun = { version = "0.31.1", default-features = false, features = ["sdk"] }
+robstride-emulator = { path = "components/robstride-emulator" }
+robstride-protocol = { path = "components/robstride-protocol" }
+serde = "1"
+serde_yaml = { package = "serde_yaml_ng", version = "0.10" }
+serialport = { version = "4", default-features = false }
+socketcan = { version = "3.6", default-features = false }
+thiserror = "2"
+tempfile = "3"
+tokio = "1"
+tokio-stream = "0.1"
+tonic = "0.14"
+tonic-prost = "0.14"
+tonic-prost-build = "0.14"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+uuid = "1"

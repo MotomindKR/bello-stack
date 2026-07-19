@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use anyhow::{Result, bail};
 
-use crate::config::{GroupConfig, GroupFaultResponses};
+use crate::config::{FaultPolicyConfig, GroupConfig};
 use crate::domain::{GroupName, MotorName};
 
 /// Validated, side-effect-free definition of a synchronized motor group.
@@ -15,9 +15,7 @@ pub(crate) struct GroupSpec {
     pub(crate) feedback_timeout: Duration,
     pub(crate) enable_timeout: Duration,
     pub(crate) enable_retries: u32,
-    pub(crate) fault_responses: GroupFaultResponses,
-    pub(crate) damping_send_count: u32,
-    pub(crate) damping_send_period: Duration,
+    pub(crate) fault_policy: FaultPolicyConfig,
 }
 
 impl GroupSpec {
@@ -36,9 +34,10 @@ impl TryFrom<&GroupConfig> for GroupSpec {
         if config.motors.is_empty() {
             bail!("motor_groups.{}.motors must not be empty", config.name);
         }
-        if !config.control_rate_hz.is_finite() || config.control_rate_hz <= 0.0 {
+        if !config.control_rate_hz.is_finite() || !(1.0..=2_000.0).contains(&config.control_rate_hz)
+        {
             bail!(
-                "motor_groups.{}.control_rate_hz must be positive",
+                "motor_groups.{}.control_rate_hz must be in 1..=2000",
                 config.name
             );
         }
@@ -46,18 +45,13 @@ impl TryFrom<&GroupConfig> for GroupSpec {
             || config.feedback_timeout_ms == 0
             || config.enable_timeout_ms == 0
             || config.enable_retries == 0
+            || config.command_timeout_ms > 10_000
+            || config.feedback_timeout_ms > 10_000
+            || config.enable_timeout_ms > 30_000
+            || config.enable_retries > 100
         {
             bail!(
-                "motor_groups.{} timeouts and retries must be positive",
-                config.name
-            );
-        }
-        if config.damping_response.send_count == 0
-            || !config.damping_response.send_rate_hz.is_finite()
-            || config.damping_response.send_rate_hz <= 0.0
-        {
-            bail!(
-                "motor_groups.{}.damping_response must have a positive send_count and send_rate_hz",
+                "motor_groups.{} timeouts or retries are outside supported bounds",
                 config.name
             );
         }
@@ -73,11 +67,7 @@ impl TryFrom<&GroupConfig> for GroupSpec {
             feedback_timeout: Duration::from_millis(config.feedback_timeout_ms),
             enable_timeout: Duration::from_millis(config.enable_timeout_ms),
             enable_retries: config.enable_retries,
-            fault_responses: config.fault_responses.clone(),
-            damping_send_count: config.damping_response.send_count,
-            damping_send_period: Duration::from_secs_f64(
-                1.0 / config.damping_response.send_rate_hz,
-            ),
+            fault_policy: config.fault_policy.clone(),
         })
     }
 }
@@ -96,21 +86,19 @@ mod tests {
     #[test]
     fn resolves_cause_specific_responses() {
         let config: GroupConfig = serde_yaml::from_str(
-            "name: group_a\nmotors: [motor_a]\nfault_responses: { temperature: disable, stale_feedback: damping, command_timeout: none }",
+            "name: group_a\nmotors: [motor_a]\nfault_policy: { default: damping, overrides: { temperature: disable } }",
         )
         .unwrap();
         let spec = GroupSpec::try_from(&config).unwrap();
         assert_eq!(
-            spec.fault_responses.temperature,
+            spec.fault_policy
+                .response(crate::config::FaultCause::Temperature),
             crate::config::FaultResponse::Disable
         );
         assert_eq!(
-            spec.fault_responses.stale_feedback,
+            spec.fault_policy
+                .response(crate::config::FaultCause::StaleFeedback),
             crate::config::FaultResponse::Damping
-        );
-        assert_eq!(
-            spec.fault_responses.command_timeout,
-            crate::config::FaultResponse::None
         );
     }
 }

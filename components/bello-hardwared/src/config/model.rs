@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::net::SocketAddr;
 
+use robstride_protocol::{CONTROL_POSITION_MAX, CONTROL_POSITION_MIN};
 use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -43,39 +45,25 @@ pub struct GrpcConfig {
 impl Default for GrpcConfig {
     fn default() -> Self {
         Self {
-            listen: "0.0.0.0:50051".parse().expect("valid default address"),
+            listen: "127.0.0.1:50051".parse().expect("valid default address"),
             default_lease_ms: 1000,
             maximum_lease_ms: 5000,
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RerunMode {
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
+pub enum RerunConfig {
     #[default]
     Off,
-    Save,
-    Connect,
+    Save {
+        path: String,
+    },
+    Connect {
+        address: String,
+    },
 }
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct RerunConfig {
-    pub mode: RerunMode,
-    pub path: String,
-    pub address: String,
-}
-impl Default for RerunConfig {
-    fn default() -> Self {
-        Self {
-            mode: RerunMode::Off,
-            path: "bello_hardware.rrd".into(),
-            address: "127.0.0.1:9876".into(),
-        }
-    }
-}
-
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BusConfig {
@@ -146,8 +134,8 @@ pub struct MotorConfig {
     pub health: MotorHealth,
     #[serde(default)]
     pub command_policy: MotorCommandPolicy,
-    #[serde(default)]
-    pub fault_damping: MotorFaultDamping,
+    #[serde(default = "default_fault_damping_kd")]
+    pub fault_damping_kd: f64,
 }
 fn default_direction() -> i8 {
     1
@@ -166,8 +154,8 @@ pub struct MotorLimits {
 impl Default for MotorLimits {
     fn default() -> Self {
         Self {
-            position_min: -12.57,
-            position_max: 12.57,
+            position_min: CONTROL_POSITION_MIN,
+            position_max: CONTROL_POSITION_MAX,
             velocity_abs: None,
             torque_abs: None,
             kp_max: None,
@@ -189,8 +177,8 @@ pub struct MotorHealth {
 impl Default for MotorHealth {
     fn default() -> Self {
         Self {
-            safe_position_min: -12.57,
-            safe_position_max: 12.57,
+            safe_position_min: CONTROL_POSITION_MIN,
+            safe_position_max: CONTROL_POSITION_MAX,
             temperature_warning_c: 60.0,
             maximum_temperature_c: 80.0,
             temperature_recovery_c: 75.0,
@@ -203,59 +191,60 @@ impl Default for MotorHealth {
 #[serde(default, deny_unknown_fields)]
 pub struct MotorCommandPolicy {
     pub maximum_position_step: f64,
-    pub limit_action: CommandLimitAction,
-    pub limit_severity: CommandViolationSeverity,
-    pub position_step_action: CommandLimitAction,
-    pub position_step_severity: CommandViolationSeverity,
+    pub limit: CommandBehavior,
+    pub position_step: CommandBehavior,
 }
 
 impl Default for MotorCommandPolicy {
     fn default() -> Self {
         Self {
             maximum_position_step: 0.5,
-            limit_action: CommandLimitAction::Reject,
-            limit_severity: CommandViolationSeverity::Warning,
-            position_step_action: CommandLimitAction::Reject,
-            position_step_severity: CommandViolationSeverity::Fault,
+            limit: CommandBehavior::Reject,
+            position_step: CommandBehavior::Fault,
         }
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct MotorFaultDamping {
-    pub kd: f64,
-}
-
-impl Default for MotorFaultDamping {
-    fn default() -> Self {
-        Self { kd: 2.0 }
-    }
+fn default_fault_damping_kd() -> f64 {
+    2.0
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum CommandLimitAction {
+pub enum CommandBehavior {
     Clamp,
     Reject,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum CommandViolationSeverity {
-    Warning,
     Fault,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum FaultResponse {
-    None,
     Damping,
     Disable,
 }
-fn default_response() -> FaultResponse {
-    FaultResponse::Damping
+
+#[derive(Clone, Copy, Debug, Deserialize, Hash, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FaultCause {
+    CommandLimit,
+    CommandPositionStep,
+    CommandTimeout,
+    SafePosition,
+    StaleFeedback,
+    Temperature,
+    ReportedMotorFault,
+    ModeStatus,
+    Communication,
+    Enable,
+    Start,
+    Stop,
+    Transmission,
+    LeaseLoss,
+    Disable,
+    Recover,
+    Exit,
+    Internal,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -274,9 +263,7 @@ pub struct GroupConfig {
     #[serde(default = "default_retries")]
     pub enable_retries: u32,
     #[serde(default)]
-    pub fault_responses: GroupFaultResponses,
-    #[serde(default)]
-    pub damping_response: DampingResponseConfig,
+    pub fault_policy: FaultPolicyConfig,
 }
 fn default_control_rate() -> f64 {
     500.0
@@ -294,66 +281,25 @@ fn default_retries() -> u32 {
     3
 }
 
-/// Group-level policy selected from typed fault causes.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct GroupFaultResponses {
-    pub command_limit: FaultResponse,
-    pub command_position_step: FaultResponse,
-    pub command_timeout: FaultResponse,
-    pub safe_position: FaultResponse,
-    pub stale_feedback: FaultResponse,
-    pub temperature: FaultResponse,
-    pub reported_motor_fault: FaultResponse,
-    pub mode_status: FaultResponse,
-    pub communication: FaultResponse,
-    pub enable: FaultResponse,
-    pub start: FaultResponse,
-    pub stop: FaultResponse,
-    pub transmission: FaultResponse,
-    pub lease_loss: FaultResponse,
-    pub manual: FaultResponse,
-    pub disable: FaultResponse,
-    pub exit: FaultResponse,
+pub struct FaultPolicyConfig {
+    pub default: FaultResponse,
+    pub overrides: HashMap<FaultCause, FaultResponse>,
 }
 
-impl Default for GroupFaultResponses {
+impl Default for FaultPolicyConfig {
     fn default() -> Self {
         Self {
-            command_limit: default_response(),
-            command_position_step: default_response(),
-            command_timeout: default_response(),
-            safe_position: default_response(),
-            stale_feedback: default_response(),
-            temperature: default_response(),
-            reported_motor_fault: default_response(),
-            mode_status: default_response(),
-            communication: default_response(),
-            enable: default_response(),
-            start: default_response(),
-            stop: default_response(),
-            transmission: default_response(),
-            lease_loss: default_response(),
-            manual: default_response(),
-            disable: default_response(),
-            exit: default_response(),
+            default: FaultResponse::Damping,
+            overrides: HashMap::new(),
         }
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct DampingResponseConfig {
-    pub send_count: u32,
-    pub send_rate_hz: f64,
-}
-
-impl Default for DampingResponseConfig {
-    fn default() -> Self {
-        Self {
-            send_count: 5,
-            send_rate_hz: 100.0,
-        }
+impl FaultPolicyConfig {
+    pub fn response(&self, cause: FaultCause) -> FaultResponse {
+        self.overrides.get(&cause).copied().unwrap_or(self.default)
     }
 }
 
@@ -361,31 +307,17 @@ impl Default for DampingResponseConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct ImuConfig {
     pub name: String,
-    pub enabled: bool,
     pub serial_device: String,
-    pub model: String,
     pub stale_timeout_ms: u64,
     pub output_rate_hz: u32,
-    pub quaternion: bool,
-    pub gyro: bool,
-    pub acceleration: bool,
-    pub device_timestamp: bool,
-    pub configure_on_start: bool,
 }
 impl Default for ImuConfig {
     fn default() -> Self {
         Self {
             name: "imu".into(),
-            enabled: true,
             serial_device: "imu_serial".into(),
-            model: "EBIMU".into(),
             stale_timeout_ms: 500,
             output_rate_hz: 500,
-            quaternion: true,
-            gyro: true,
-            acceleration: true,
-            device_timestamp: true,
-            configure_on_start: true,
         }
     }
 }

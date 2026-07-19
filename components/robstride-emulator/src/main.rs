@@ -8,8 +8,9 @@ use tracing_subscriber::EnvFilter;
 #[derive(Debug, Parser)]
 #[command(name = "robstride-emulator")]
 struct Args {
-    #[arg(short, long, default_value = "config/vcan.yaml")]
-    config: PathBuf,
+    /// Emulator configuration. Defaults to this component's vcan example.
+    #[arg(short, long)]
+    config: Option<PathBuf>,
     #[arg(long)]
     check: bool,
 }
@@ -21,9 +22,12 @@ fn main() -> Result<()> {
         )
         .init();
     let args = Args::parse();
-    let config = Config::load(&args.config)?;
+    let config_path = args
+        .config
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config/vcan.yaml"));
+    let config = Config::load(&config_path)?;
     if args.check {
-        println!("{}: configuration is valid", args.config.display());
+        println!("{}: configuration is valid", config_path.display());
         return Ok(());
     }
     robstride_emulator::runtime::run(config)

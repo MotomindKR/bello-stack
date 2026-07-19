@@ -1,17 +1,18 @@
 [package]
 name = "robstride-emulator"
-version = "0.1.0"
-edition = "2024"
-license = "Proprietary"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
 description = "Thin SocketCAN Robstride actuator emulator for Bello integration testing"
 
 [dependencies]
-anyhow = "1"
-clap = { version = "4", features = ["derive"] }
-robstride-protocol = { path = "../robstride-protocol" }
-serde = { version = "1", features = ["derive"] }
-serde_yaml = "0.9"
-socketcan = { version = "3.6", default-features = false }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-
+anyhow.workspace = true
+clap = { workspace = true, features = ["derive"] }
+robstride-protocol.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_yaml.workspace = true
+socketcan.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }

@@ -1,13 +1,19 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use robstride_protocol::{
-    CommType, ControlCommand, Feedback, Frame, MotorParams, Request, feedback_frame, parse_control,
-    parse_request, target_id,
+    ControlCommand, Feedback, Frame, MotorParams, Request, feedback_frame, frame_target,
+    parse_control, parse_request,
 };
 
 use crate::config::{Config, DynamicsConfig, FaultAction, ScheduledEvent};
+
+const RUN_MODE_INDEX: u16 = 0x7005;
+const IMPEDANCE_RUN_MODE: u8 = 0;
+const RUNNING_MODE_STATUS: u8 = 2;
+const ENABLED_NOT_RUNNING_MODE_STATUS: u8 = 1;
+const MAX_FEEDBACK_FRAMES_PER_ADVANCE: usize = 8_192;
 
 #[derive(Clone, Copy, Debug)]
 pub struct ScheduledFrame {
@@ -43,6 +49,7 @@ struct Actuator {
     id: u8,
     params: MotorParams,
     enabled: bool,
+    impedance_mode: bool,
     active_reporting: bool,
     position: f64,
     velocity: f64,
@@ -78,10 +85,15 @@ impl Actuator {
     fn feedback(&self) -> Feedback {
         Feedback {
             motor_id: self.id,
-            mode_status: self
-                .overrides
-                .mode_status
-                .unwrap_or(if self.enabled { 2 } else { 0 }),
+            mode_status: self.overrides.mode_status.unwrap_or(
+                if self.enabled && self.impedance_mode {
+                    RUNNING_MODE_STATUS
+                } else if self.enabled {
+                    ENABLED_NOT_RUNNING_MODE_STATUS
+                } else {
+                    0
+                },
+            ),
             fault_bits: self.overrides.fault_bits,
             position: self.position,
             velocity: self.velocity,
@@ -115,7 +127,7 @@ pub struct Emulator {
     feedback_period: Duration,
     dynamics: DynamicsConfig,
     elapsed: Duration,
-    actuators: HashMap<u8, Actuator>,
+    actuators: BTreeMap<u8, Actuator>,
     events: VecDeque<ScheduledEvent>,
     random_state: u64,
 }
@@ -123,7 +135,7 @@ pub struct Emulator {
 impl Emulator {
     pub fn new(config: Config) -> Result<Self> {
         config.validate()?;
-        let mut actuators = HashMap::new();
+        let mut actuators = BTreeMap::new();
         for config in config.actuators {
             let params = MotorParams::for_model(&config.model, config.direction)
                 .ok_or_else(|| anyhow!("unsupported Robstride model {}", config.model))?;
@@ -133,6 +145,7 @@ impl Emulator {
                     id: config.id,
                     params,
                     enabled: false,
+                    impedance_mode: false,
                     active_reporting: false,
                     position: config.initial_position,
                     velocity: 0.0,
@@ -158,29 +171,25 @@ impl Emulator {
     }
 
     pub fn handle(&mut self, frame: Frame) {
-        let motor_id = target_id(frame.id);
+        let motor_id = frame_target(&frame);
         let Some(actuator) = self.actuators.get_mut(&motor_id) else {
             return;
         };
-        if CommType::from_id(frame.id) == Some(CommType::MotorControl) {
-            if actuator.enabled
-                && let Some(command) = parse_control(&frame, actuator.params)
-            {
+        if let Some(command) = parse_control(&frame, actuator.params) {
+            if actuator.enabled && actuator.impedance_mode {
                 actuator.command = Some(command);
             }
             return;
         }
         match parse_request(&frame) {
-            Some(Request::Enable { host_id, .. }) => {
-                self.host_id = host_id;
+            Some(Request::Enable { host_id, .. }) if host_id == self.host_id => {
                 actuator.enabled = true;
             }
             Some(Request::Stop {
                 host_id,
                 clear_fault,
                 ..
-            }) => {
-                self.host_id = host_id;
+            }) if host_id == self.host_id => {
                 actuator.enabled = false;
                 actuator.command = None;
                 if clear_fault {
@@ -189,15 +198,22 @@ impl Emulator {
             }
             Some(Request::ActiveReport {
                 host_id, enabled, ..
-            }) => {
-                self.host_id = host_id;
+            }) if host_id == self.host_id => {
                 actuator.active_reporting = enabled;
                 actuator.next_feedback = self.elapsed;
             }
-            Some(Request::ParamWriteU8 { host_id, .. }) => {
-                self.host_id = host_id;
+            Some(Request::ParamWriteU8 {
+                host_id,
+                index: RUN_MODE_INDEX,
+                value,
+                ..
+            }) if host_id == self.host_id => {
+                actuator.impedance_mode = value == IMPEDANCE_RUN_MODE;
+                if !actuator.impedance_mode {
+                    actuator.command = None;
+                }
             }
-            None => {}
+            _ => {}
         }
     }
 
@@ -225,11 +241,15 @@ impl Emulator {
 
         let mut due = Vec::new();
         let mut reports = Vec::new();
+        let mut feedback_steps = 0_usize;
         for actuator in self.actuators.values_mut() {
             if !actuator.active_reporting {
                 continue;
             }
-            while actuator.next_feedback <= self.elapsed {
+            while actuator.next_feedback <= self.elapsed
+                && feedback_steps < MAX_FEEDBACK_FRAMES_PER_ADVANCE
+            {
+                feedback_steps += 1;
                 if !actuator.overrides.drop_feedback {
                     reports.push((
                         actuator.feedback(),
@@ -239,6 +259,14 @@ impl Emulator {
                     ));
                 }
                 actuator.next_feedback += self.feedback_period;
+            }
+            if actuator.next_feedback <= self.elapsed {
+                tracing::warn!(
+                    actuator_id = actuator.id,
+                    limit = MAX_FEEDBACK_FRAMES_PER_ADVANCE,
+                    "feedback catch-up limit reached; skipping stale reports"
+                );
+                actuator.next_feedback = self.elapsed + self.feedback_period;
             }
         }
         for (feedback, params, delay, jitter) in reports {
@@ -266,7 +294,8 @@ impl Emulator {
 #[cfg(test)]
 mod tests {
     use robstride_protocol::{
-        ControlCommand, active_report_frame, control_frame, enable_frame, parse_feedback,
+        ControlCommand, active_report_frame, control_frame, enable_frame, param_write_u8_frame,
+        parse_feedback,
     };
 
     use super::*;
@@ -294,6 +323,12 @@ mod tests {
         let mut emulator = Emulator::new(config(Vec::new())).unwrap();
         let params = MotorParams::for_model("ROBSTRIDE_03", 1).unwrap();
         emulator.handle(active_report_frame(0xfd, 1, true));
+        emulator.handle(param_write_u8_frame(
+            0xfd,
+            1,
+            RUN_MODE_INDEX,
+            IMPEDANCE_RUN_MODE,
+        ));
         emulator.handle(enable_frame(0xfd, 1));
         emulator.handle(control_frame(
             params,
@@ -333,6 +368,12 @@ mod tests {
         let mut emulator = Emulator::new(config(events)).unwrap();
         let params = MotorParams::for_model("ROBSTRIDE_03", 1).unwrap();
         emulator.handle(active_report_frame(0xfd, 1, true));
+        emulator.handle(param_write_u8_frame(
+            0xfd,
+            1,
+            RUN_MODE_INDEX,
+            IMPEDANCE_RUN_MODE,
+        ));
         emulator.handle(enable_frame(0xfd, 1));
         assert!(emulator.advance(Duration::from_millis(10)).is_empty());
         let frames = emulator.advance(Duration::from_millis(10));
@@ -341,5 +382,59 @@ mod tests {
             parse_feedback(&frames[0].frame, params).unwrap().fault_bits,
             3
         );
+    }
+
+    #[test]
+    fn requests_for_another_host_are_ignored() {
+        let mut emulator = Emulator::new(config(Vec::new())).unwrap();
+        emulator.handle(enable_frame(0xfc, 1));
+        emulator.handle(active_report_frame(0xfc, 1, true));
+        assert!(emulator.advance(Duration::from_millis(20)).is_empty());
+
+        emulator.handle(active_report_frame(0xfd, 1, true));
+        emulator.handle(param_write_u8_frame(
+            0xfd,
+            1,
+            RUN_MODE_INDEX,
+            IMPEDANCE_RUN_MODE,
+        ));
+        emulator.handle(enable_frame(0xfd, 1));
+        assert!(!emulator.advance(Duration::from_millis(20)).is_empty());
+    }
+
+    #[test]
+    fn enabled_actuator_only_reports_running_after_impedance_mode_is_selected() {
+        let mut emulator = Emulator::new(config(Vec::new())).unwrap();
+        let params = MotorParams::for_model("ROBSTRIDE_03", 1).unwrap();
+        emulator.handle(active_report_frame(0xfd, 1, true));
+        emulator.handle(param_write_u8_frame(0xfd, 1, RUN_MODE_INDEX, 1));
+        emulator.handle(enable_frame(0xfd, 1));
+        let feedback = parse_feedback(
+            &emulator.advance(Duration::from_millis(10))[0].frame,
+            params,
+        )
+        .unwrap();
+        assert_eq!(feedback.mode_status, ENABLED_NOT_RUNNING_MODE_STATUS);
+
+        emulator.handle(param_write_u8_frame(
+            0xfd,
+            1,
+            RUN_MODE_INDEX,
+            IMPEDANCE_RUN_MODE,
+        ));
+        let feedback = parse_feedback(
+            &emulator.advance(Duration::from_millis(10))[0].frame,
+            params,
+        )
+        .unwrap();
+        assert_eq!(feedback.mode_status, RUNNING_MODE_STATUS);
+    }
+
+    #[test]
+    fn a_large_time_jump_has_bounded_feedback_work() {
+        let mut emulator = Emulator::new(config(Vec::new())).unwrap();
+        emulator.handle(active_report_frame(0xfd, 1, true));
+        let frames = emulator.advance(Duration::from_secs(1_000));
+        assert_eq!(frames.len(), MAX_FEEDBACK_FRAMES_PER_ADVANCE);
     }
 }

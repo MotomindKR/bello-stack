@@ -21,9 +21,14 @@ cargo run -p robstride-emulator -- --check --config components/robstride-emulato
 cargo run -p robstride-emulator -- --config components/robstride-emulator/config/vcan.yaml
 ```
 
+Omitting `--config` selects that component-local `vcan.yaml` regardless of the
+current working directory.
+
 Run `bello-hardwared` in another shell with a bus
 whose `interface` is `vcan0`. The emulator responds to run-mode writes, active
 report configuration, enable, stop/clear-fault, and impedance-control frames.
+Requests addressed to a host other than the configured `host_id` are ignored;
+incoming traffic never mutates the emulator's host identity.
 
 ## Fault scenarios
 

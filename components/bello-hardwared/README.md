@@ -1,86 +1,68 @@
 # Bello hardware daemon
 
-`bello-hardwared` is a single Rust process that owns Robstride CAN buses, EBIMU
-serial input, motor-group state machines, safety watchdogs, gRPC control leases,
-telemetry, and optional Rerun recording. It deliberately contains no robot policy,
-kinematics, or pose controller.
+`bello-hardwared` is one Rust process that owns Robstride CAN actuators, EBIMU
+serial sensors, motor-group control, safety policy, gRPC, telemetry, leases, and
+optional Rerun logging. Robot policy, kinematics, and pose control remain outside
+this component.
+
+The API and configuration are intentionally greenfield. Backward compatibility
+is not a design constraint; obsolete fields and aliases are removed instead of
+being carried as migration scaffolding.
 
 ## Build and run
 
-With direnv installed, approve the project once and the pinned Nix environment
-will load whenever you enter the directory:
+The repository's direnv configuration loads a pinned Nix shell containing Rust,
+`protoc`, and Buf:
 
 ```sh
 direnv allow
+cargo test --workspace
+cargo run -p bello-hardwared -- --check --config components/bello-hardwared/config/bello.yaml
+cargo run -p bello-hardwared -- --config components/bello-hardwared/config/bello.yaml
 ```
 
-Without direnv, enter it manually:
+Cargo uses `protoc` from `PATH`; `build.rs` does not download a compiler. The
+production daemon contains no simulated hardware path. Use
+`robstride-emulator` with `config/vcan.yaml` for virtual integration.
+
+Rerun is optional at compile time:
 
 ```sh
-cd components/bello-hardwared
-nix develop
-cargo test
-cargo run -- --check --config config/bello.yaml
-cargo run -- --config config/bello.yaml
+cargo run -p bello-hardwared --features rerun -- --config components/bello-hardwared/config/bello.yaml
 ```
 
-Protobuf generation uses the `protoc` executable on `PATH`; the pinned Nix
-development shell provides it. Cargo does not download a vendored `protoc`
-binary.
+Its YAML is mode-specific:
 
-The daemon always uses its configured transports. For development without
-physical actuators, use the external Robstride emulator on `vcan`; production
-code contains no simulated transport or device branches. Build Rerun support
-explicitly:
-
-```sh
-cargo run --features rerun -- --config config/bello.yaml
+```yaml
+rerun: { mode: off }
+# rerun: { mode: save, path: bello_hardware.rrd }
+# rerun: { mode: connect, address: 127.0.0.1:9876 }
 ```
 
-For transport-level integration without physical actuators, run the workspace's
-`robstride-emulator` on `vcan0` and use `config/vcan.yaml`. This exercises
-SocketCAN, Robstride frame encoding and decoding,
-feedback watchdogs, and transport/device fault propagation end to end.
+The Rerun task is owned and joined by the application so save recordings are
+closed during orderly shutdown.
 
-`rerun.mode` controls where hardware telemetry is sent:
-
-| Mode | Behavior | Setting used |
-| --- | --- | --- |
-| `off` | Disables Rerun telemetry. | None |
-| `save` | Writes telemetry to an `.rrd` file for later viewing. Relative paths are resolved from the daemon's working directory. | `rerun.path` |
-| `connect` | Streams telemetry to an existing Rerun gRPC server or viewer at `rerun+http://<address>/proxy`. | `rerun.address` |
-
-Every mode except `off` requires the binary to be built with `--features rerun`.
-The daemon never embeds a viewer: use an external Rerun viewer or open the
-`.rrd` file produced by `save` mode.
-
-## Ownership and control
-
-Motor groups are generic named sets. A group may span
-several buses, and several groups may share a bus. Configuration validation
-requires every motor to belong to exactly one group, so no actuator has two
-command owners.
-
-Each group has an independent FSM:
+## Layering
 
 ```text
-Idle --enable--> Enabled --start--> Running
-  ^                 ^                 |
-  |                 +------stop-------+
-  +----recover---- Fault <--- watchdog / lease loss / explicit fault
+SocketCAN transport --> Robstride motor device --> motor-group policy/FSM
+serial transport ----> EBIMU sensor device
+                                      |
+                                      +--> telemetry --> gRPC / optional Rerun
 ```
 
-Enable configures MIT/impedance mode, enables active feedback, enables motors,
-and waits for healthy feedback from every motor in the group.
-Starting requires a complete, fresh, safe command batch. While Running, every
-control tick retransmits the latest batch. A command timeout, stale feedback,
-motor fault, over-temperature condition, or lease loss applies the configured
-fault response and enters `Fault`. Recovery is explicit and returns to `Idle`.
-It succeeds only after clear-fault stop frames are delivered and every motor has
-an online CAN transport, fresh healthy feedback, and no latched motor fault. A
-rejected recovery leaves the group fault-latched.
+Transport supervisors own raw I/O, health, bounded queues, and reconnects.
+Device controllers own protocol parsing and device-specific health. A group
+controller owns synchronized commands and coordinated motion reactions. CAN and
+serial intentionally share lifecycle and reconnect primitives, but not a generic
+transport trait: their queues and session failure semantics differ.
 
-Physical transports and individual devices use the shared typed lifecycle FSM:
+The daemon opens existing SocketCAN interfaces; it does not configure link
+bitrate. Each bus `bitrate` is a classic CAN nominal bitrate in 10 kbit/s through
+1 Mbit/s used for timing and utilization validation, and must exactly match the
+interface configured externally with `ip link` or equivalent tooling.
+
+All transports and devices use this lifecycle:
 
 ```text
 Starting -> Connecting -> Online -> Degraded -> Fault -> Reconnecting
@@ -89,202 +71,154 @@ Starting -> Connecting -> Online -> Degraded -> Fault -> Reconnecting
 Any state -------------------------------------------------> Shutdown
 ```
 
-The SocketCAN layer owns only raw frame transport, priority queues, interface
-health, and reconnects. The Robstride layer owns protocol encoding/decoding,
-one `MotorController` per configured address, latest feedback, reported motor
-faults, intrinsic feedback health, and the per-motor feedback watchdog. Intrinsic
-health includes CAN availability, fault bits, temperature, feedback position,
-and the expected operating mode. A motor derives transport loss from the status
-of its referenced CAN bus. The group controller deals only in motor controllers
-and never constructs a CAN frame, parses Robstride feedback, or classifies device
-health. It retains synchronized command validation, leases, command freshness,
-group-wide fault responses, and the fault-latched motion FSM.
+Rejected lifecycle transitions are logged. Reconnect uses bounded exponential
+backoff. CAN write deadlines and serial read/write timeouts are bounded during
+configuration validation, giving shutdown a bounded transport-I/O wait.
 
-Group responses are selected independently in `motor_groups[].fault_responses`.
-The typed causes are command limit, command position step, command timeout, safe
-position, stale feedback, temperature fault, reported motor fault bits, mode
-status, communication, enable, start, stop, transmission, lease loss, manual
-fault, disable, and process exit. A fault is latched and published before its
-response is executed.
+## Motor groups and ownership
 
-Responses are `none`, `damping`, or `disable`. `none` sends no new hardware
-command and stops the faulted group's periodic command stream. `damping` sends a
-finite burst of position-hold damping commands using
-each motor's latest measured position and `motors[].fault_damping.kd`. The burst
-count and rate come from `motor_groups[].damping_response`. `disable` sends
-Robstride stop frames.
-
-Temperature has separate warning and fault thresholds. At or above
-`temperature_warning_c`, the motor remains `Online`, but its status detail and
-health telemetry report a warning. Temperature faults use hysteresis. A motor faults at or above
-`maximum_temperature_c`, remains thermally faulted while cooling, and becomes
-device-healthy only after staying at or below `temperature_recovery_c` for
-`temperature_recovery_duration_ms`. Any sample above the recovery threshold
-restarts the cool-down timer. Motor-device recovery never clears the group fault
-latch.
-
-An unavailable CAN bus therefore moves dependent motor device FSMs through
-fault and reconnect states. Every enabled or running group that depends on a
-unavailable motor applies its configured group fault response and enters
-its own fault-latched state. The CAN supervisor rejects queued safety frames,
-discards queued periodic commands, and reopens fresh SocketCAN sockets with
-bounded exponential backoff. A successful transport or motor reconnect never
-resumes motion: affected groups still require explicit recovery, enable, a
-fresh command, and start.
-
-Named serial transports own port opening, raw byte I/O, lifecycle state, and
-reconnect backoff. Named sensor drivers reference a transport and own framing,
-device configuration, decoding, and sample-validity rules. The EBIMU driver is
-the first sensor implementation: it accumulates newline-delimited ASCII frames,
-marks malformed input degraded, and requests a transport reconnect when valid
-samples become stale. This covers tty-backed USB serial devices; it is not a
-generic libusb device layer.
-
-The two hardware paths use the same layered topology:
+Groups are generic named motor sets. They may span buses, and buses may be
+shared by several groups. Every motor belongs to exactly one group.
 
 ```text
-raw CAN transport -----> Robstride motor device -----> motor group policy/FSM
-raw serial transport --> IMU sensor device
+Idle --enable--> Enabled --start--> Running
+  ^                 ^                 |
+  |                 +------stop-------+
+  +----recover---- Fault <--- watchdog / lease loss / safety fault
 ```
 
-Several serial devices and IMUs may be configured. A serial byte stream is
-exclusive, so validation prevents two enabled sensors from claiming the same
-serial transport.
+Enable configures impedance mode and waits for fresh, healthy feedback from
+every motor. Start requires a complete, fresh command from the current lease
+generation. Disable, fault, recovery, lease loss, and shutdown clear all cached
+commands and sequence state, so a new ownership epoch always requires a new
+command.
 
-The only motion command surface is impedance control: position, velocity,
-feed-forward torque, `kp`, and `kd`. The command-policy evaluator implements the same basic
-checks as the Motomind stack:
+Leases are exclusive per group. Every queued lifecycle operation and command is
+tagged with the lease generation and checked by the group worker at execution
+time. Release and expiry invalidate that generation before waking the worker.
+`ReleaseLease` waits until the group has applied its lease-loss reaction and
+returns the resulting typed state. Nonzero requested durations are clamped to
+20 ms through the configured maximum; expiry is polled every 5 ms.
 
-| Check | Condition | Default behavior in the example |
-| --- | --- | --- |
-| Command limit | A command field is non-finite or outside its configured/model range. | Finite out-of-range values are clamped and reported as warnings; non-finite values always fault and reject. |
-| Command position step | Target position differs from the latest measured position by more than `maximum_position_step`. | Reject and fault. |
-| Safe position | Measured position is outside `safe_position_min..=safe_position_max`. | Motor and group fault. |
-| Command timeout | No accepted fresh batch before `command_timeout_ms` or its shorter `valid_for_ms`. | Group fault. |
-| Stale feedback | An enabled motor has no fresh feedback within `feedback_timeout_ms`. | Motor and group fault. |
-| Temperature warning/fault | Temperature reaches the configured warning or fault threshold. | Warning remains online; fault latches with hysteresis. |
-| Motor fault | Robstride reports any nonzero fault bits. | Motor and group fault. |
-| Mode status | Fresh operating feedback does not report mode status `2`. | Motor and group fault. |
+The group worker accepts a small bounded queue of lifecycle operations and one
+latest-wins command snapshot. Lifecycle operations are always considered before
+the command mailbox, so command traffic cannot starve stop, disable, or recover.
+Complete command validation uses a name-indexed map and scales linearly with
+group size.
 
-Command-limit and step policies are independently configured per motor with
-`*_action` (`clamp` or `reject`) and `*_severity` (`warning` or `fault`). A
-warning may therefore clamp and accept, or reject without faulting. A fault
-always applies its cause-specific group response and latches the group fault.
-Complete group batches, monotonically increasing sequences, and freshness
-deadlines are enforced separately from this command policy.
+## Safety policy
 
-## gRPC API
+Each motor defines feedback health, command behavior, and a damping gain:
+
+```yaml
+health:
+  safe_position_min: -12.57
+  safe_position_max: 12.57
+  temperature_warning_c: 60.0
+  maximum_temperature_c: 80.0
+  temperature_recovery_c: 75.0
+  temperature_recovery_duration_ms: 2000
+command_policy:
+  maximum_position_step: 0.5
+  limit: clamp          # clamp | reject | fault
+  position_step: fault  # clamp | reject | fault
+fault_damping_kd: 2.0
+```
+
+`Clamp`, `Reject`, and `Fault` are complete behaviors; invalid action/severity
+combinations cannot be represented. Non-finite commands always fault. Thermal
+faults latch at `maximum_temperature_c` and clear at the device layer only after
+remaining below `temperature_recovery_c` for the configured duration. The group
+fault remains latched until explicit recovery.
+
+Group reaction configuration uses one default plus sparse typed overrides:
+
+```yaml
+fault_policy:
+  default: damping
+  overrides:
+    temperature: disable
+    reported_motor_fault: disable
+    exit: disable
+```
+
+Supported responses are `damping` and `disable`. There is no no-op fault
+response. Damping and stop are sent as one batch per bus. The controller submits
+the safety batch to every affected bus before waiting for any completion. A
+safety batch is a queue barrier: the transmit worker discards pending ordinary
+controls before writing it. Safety uses a dedicated queue ahead of both
+configuration and control traffic. A partial or late batch is treated as an
+indeterminate transmission and reconnects the bus. Thus a queued motion command
+cannot run after a stop or damping response.
+
+The CAN control queue is deliberately shallow and non-blocking. Saturation
+faults the affected group instead of accumulating old control ticks. Motor
+feedback routing is immediate. The feedback watchdog scan period is derived
+from the shortest configured feedback timeout and clamped to 1--20 ms, so it is
+responsive without scanning once per received frame.
+
+## Serial and EBIMU
+
+Named serial transports own byte I/O and reconnect. Every configured IMU is an
+active EBIMU sensor and exclusively owns one serial stream; omit an IMU from YAML
+to disable it. The driver always configures and parses one complete schema:
+quaternion, angular velocity, acceleration, and device timestamp. Missing
+measurements are rejected instead of represented by zero-filled optional fields.
+
+Malformed samples make the sensor degraded. Stale samples request a serial
+transport reconnect. Samples are event telemetry only; the daemon does not keep
+an unused latest-sample cache.
+
+## gRPC and telemetry
 
 The protobuf contract is
-[proto/bello/hardware/v1/hardware.proto](proto/bello/hardware/v1/hardware.proto).
-A client:
+[hardware.proto](proto/bello/hardware/v1/hardware.proto). Protobuf enums carry
+group state, device state, command results, fault causes, command-policy
+checks/behaviors, and fault responses. IMU vectors use fixed-shape messages
+rather than variable-length arrays. Unary lifecycle failures use gRPC status
+codes; successful responses contain the resulting typed state.
 
-1. calls `ListHardware` to discover buses, motors, arbitrary groups, and state;
-2. acquires an exclusive lease for one group and renews it before expiry;
-3. sends `EnableGroup`, a complete command batch, then `StartControl`;
-4. streams complete command batches while consuming acknowledgements and
-   `WatchTelemetry`;
-5. stops and disables the group, then releases its lease.
+The default listener is loopback-only. The service currently provides neither
+TLS nor client authentication, so binding it to a non-loopback address emits an
+explicit warning and should only be done behind a trusted network boundary.
 
-`ListHardware` includes named CAN buses, motors, serial devices, and IMUs with
-typed `DeviceStatus` values. Motor and IMU samples also carry the device status
-captured with that sample. `WatchTelemetry(include_health = true)` publishes
-every transport and device transition. IMU telemetry may be filtered by name
-through `WatchTelemetryRequest.imus`.
-`WatchTelemetry(include_command_policy_events = true)` publishes command-policy
-warnings and faults, including whether the command was modified or rejected and
-which response was selected. The same command-policy events
-are written as text logs when Rerun is enabled.
+`ListHardware` reports topology and current status. It does not mirror local
+safety thresholds or policy YAML. High-rate motor and IMU telemetry contains
+dynamic measurements plus logical identity; static addresses and status are
+available through inventory and health events.
 
-The protobuf lifecycle uses `DeviceState` rather than free-form state strings.
-Removed field numbers and names are reserved so obsolete fields cannot be
-accidentally reused in a later schema revision.
+Telemetry has one bounded Tokio broadcast ring. gRPC subscribers stream directly
+from it without a second per-client queue. Lag is reported as a health event.
+Group timing telemetry is published at 25 Hz; motor and IMU samples are emitted
+at their received rates. Optional Rerun consumes the same broadcast source.
 
-Leases are exclusive per group, not per bus. The server is intentionally
-insecure for an isolated robot LAN; deploy network isolation or a TLS proxy when
-crossing trust boundaries. A ROS migration bridge should be a separate process
-that translates existing messages to this gRPC API, keeping this binary ROS-free.
-
-## Runtime threads
-
-- one reconnecting supervisor per physical CAN bus, with transmit and receive
-  session workers while the interface is online;
-- one Robstride receive dispatcher that routes raw frames by `(bus, motor ID)`
-  and maintains the individual motor device FSMs;
-- one fixed-rate controller per logical group;
-- one reconnecting byte-stream supervisor per serial device;
-- one protocol/framing worker per enabled IMU;
-- Tokio tasks for gRPC streams, lease expiry, telemetry fan-out, and Rerun.
-
-The bus transmit worker arbitrates groups sharing an interface. Each bus has a
-high-priority channel for safety and lifecycle frames and a normal channel for
-periodic control frames; the writer always selects safety traffic first.
-Configuration rejects an estimated aggregate CAN load over each bus's
-utilization budget.
-
-Each group controller has separate inputs for lifecycle operations and the latest
-command snapshot. An incoming command replaces an older command that is still
-waiting to be validated, so network bursts cannot build a stale-command backlog.
-Lease verification and command-mailbox insertion share the lease expiry gate,
-so a command cannot be queued through a release or expiry race.
-Control ticks run before ordinary requests whenever their deadline is due. Lease
-loss and process shutdown are atomic, latched signals; they cannot be dropped
-when the lifecycle queue is full. Motor enable checks those signals throughout
-its feedback wait and retry periods. Damping, stop, enable, and other safety or
-lifecycle CAN frames use the priority enqueue path. Normal periodic control
-frames remain non-blocking and fault the group if the bus queue is saturated.
-
-Worker ownership is RAII-based. A partial startup failure signals and joins every
-worker that was already created. Normal shutdown stops and joins group workers
-before dropping transport supervisors, allowing final motor-stop frames to be
-transmitted when their buses are online.
+SIGINT or SIGTERM first stops command and lease admission, then requests the
+configured exit response from every group concurrently while CAN and motor
+workers are still alive. gRPC receives a two-second drain window and the lease
+watchdog joins. Transport and device workers are then destroyed while Rerun is
+still consuming telemetry; finally Rerun drains pending events and receives its
+own bounded join window. A panicked group worker enters an internal fault,
+attempts the configured reaction, rejects pending work, and emits terminal
+status instead of leaving callers waiting forever.
 
 ## Source layout
 
 ```text
 src/
-  app/                process assembly and worker ownership
-  api/grpc/           thin tonic service plus inventory and stream handlers
-  config/             serialized model and cross-boundary topology resolution
-  control/            group handle, worker, controller, FSM, command policy
-  domain/             transport-independent IDs, commands, telemetry, errors
-  hardware/can/       protocol-agnostic SocketCAN frame transport and bus FSM
-  hardware/imu/       EBIMU framing, configuration, parsing, and sensor worker
-  hardware/lifecycle  shared physical-device FSM and reconnect policy
-  hardware/robstride/ protocol codec, motor controllers, device FSMs, parameters
-  hardware/serial     generic byte-stream transport and reconnect supervisor
+  app/                 assembly, ownership, shutdown
+  api/grpc/            tonic service, conversions, inventory, streams
+  config/              YAML model and cross-boundary topology resolution
+  control/             group FSM, handle, worker, policy, fixed-rate loop
+  domain/              typed IDs, commands, telemetry, errors
+  hardware/can/        CAN handle/manager, spec, and session supervisor
+  hardware/serial/     serial handle/manager, spec, and session supervisor
+  hardware/robstride/  motor device controller and feedback dispatcher
+  hardware/imu/        EBIMU codec and sensor worker
+  hardware/lifecycle   shared device FSM, backoff, interruptible wait
 ```
 
-The gRPC layer converts generated protobuf messages at the API boundary. Control
-and hardware code use domain types and do not depend on protobuf.
-
-Raw `*Config` structures only describe the YAML format. Serial and CAN reconnect
-settings use `initial_delay_ms` and `maximum_delay_ms`; the delay doubles after
-each failed attempt and is capped at the configured maximum.
-`imus[].stale_timeout_ms` sets the maximum interval without a valid decoded
-sample. Motor configuration is deliberately separated by ownership:
-`motors[].health` contains feedback-derived health thresholds,
-`motors[].command_policy` contains incoming-command validation policy, and
-`motors[].fault_damping` contains the per-motor gain used only when the group
-selects a damping response. `motor_groups[].fault_responses` maps typed causes
-to coordinated responses, while `motor_groups[].damping_response` controls the
-burst timing. Topology validation requires the safe position range to contain
-the command position range, the warning and recovery temperatures to be
-strictly below the trip temperature, and a positive recovery duration. Each owning boundary
-converts its raw configuration into a side-effect-free `*Spec`: `RuntimeSpec`,
-`GrpcSpec`, `RerunSpec`, `BusSpec`, `SerialSpec`, `MotorSpec`, `GroupSpec`, and
-`ImuSpec`.
-Those conversions validate local values without opening devices or starting
-threads. `ResolvedTopology::load` parses, validates, and resolves exactly once.
-The topology resolver validates relationships across boundaries:
-unique names and CAN addresses, bus/motor and serial/sensor references,
-exclusive group and serial-stream ownership, and aggregate bus utilization.
-Only a fully resolved topology can be passed to runtime workers.
-
-Group state changes are published immediately. Periodic group timing statistics
-are decimated to 25 Hz; motor and IMU telemetry remain event-driven at their
-configured or device feedback rates. Per-motor health transitions use
-`motor/<name>`, independently of `can/<name>` and the group state. gRPC adds
-subscriber transport delay to the reported sample age and reports broadcast lag
-as health telemetry. Rerun reports lag and continues instead of silently
-terminating its subscriber.
+The public Rust library surface is intentionally narrow: generated protobuf
+types and the daemon `run`/`check` entrypoints. Runtime implementation modules
+remain private. `robstride-protocol` is a separate dependency with `model`,
+`frame`, and `codec` modules; its public API exposes semantic frame helpers, not
+raw header bit manipulation.

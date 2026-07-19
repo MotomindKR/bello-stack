@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+use std::collections::BinaryHeap;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
@@ -9,8 +11,34 @@ use crate::emulator::{Emulator, ScheduledFrame};
 
 struct PendingFrame {
     transmit_at: Instant,
+    sequence: u64,
     frame: Frame,
 }
+
+impl PartialEq for PendingFrame {
+    fn eq(&self, other: &Self) -> bool {
+        self.transmit_at == other.transmit_at && self.sequence == other.sequence
+    }
+}
+
+impl Eq for PendingFrame {}
+
+impl PartialOrd for PendingFrame {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for PendingFrame {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other
+            .transmit_at
+            .cmp(&self.transmit_at)
+            .then_with(|| other.sequence.cmp(&self.sequence))
+    }
+}
+
+const MAX_PENDING_FRAMES: usize = 65_536;
 
 pub fn run(config: Config) -> Result<()> {
     let socket = CanSocket::open(&config.interface)
@@ -20,15 +48,25 @@ pub fn run(config: Config) -> Result<()> {
     let actuator_count = config.actuators.len();
     let mut emulator = Emulator::new(config)?;
     let mut last_step = Instant::now();
-    let mut pending = Vec::<PendingFrame>::new();
+    let mut pending = BinaryHeap::<PendingFrame>::new();
+    let mut next_sequence = 0_u64;
     tracing::info!(%interface, actuator_count, "Robstride emulator online");
 
     loop {
         match socket.read_frame() {
-            Ok(frame) => emulator.handle(Frame {
-                id: frame.raw_id(),
-                data: frame.data().try_into().unwrap_or([0; 8]),
-            }),
+            Ok(frame) => {
+                let Ok(data) = frame.data().try_into() else {
+                    tracing::warn!(
+                        dlc = frame.data().len(),
+                        "discarding CAN frame with invalid payload length"
+                    );
+                    continue;
+                };
+                emulator.handle(Frame {
+                    id: frame.raw_id(),
+                    data,
+                });
+            }
             Err(error)
                 if matches!(
                     error.kind(),
@@ -40,20 +78,29 @@ pub fn run(config: Config) -> Result<()> {
         let now = Instant::now();
         let elapsed = now.saturating_duration_since(last_step);
         last_step = now;
-        pending.extend(emulator.advance(elapsed).into_iter().map(
-            |ScheduledFrame { delay, frame }| PendingFrame {
-                transmit_at: now + delay,
-                frame,
-            },
-        ));
-
-        let mut index = 0;
-        while index < pending.len() {
-            if pending[index].transmit_at > now {
-                index += 1;
+        let mut dropped = 0_usize;
+        for ScheduledFrame { delay, frame } in emulator.advance(elapsed) {
+            if pending.len() >= MAX_PENDING_FRAMES {
+                dropped += 1;
                 continue;
             }
-            let pending_frame = pending.swap_remove(index);
+            pending.push(PendingFrame {
+                transmit_at: now + delay,
+                sequence: next_sequence,
+                frame,
+            });
+            next_sequence = next_sequence.wrapping_add(1);
+        }
+        if dropped != 0 {
+            tracing::warn!(
+                dropped,
+                limit = MAX_PENDING_FRAMES,
+                "delayed feedback queue full"
+            );
+        }
+
+        while pending.peek().is_some_and(|frame| frame.transmit_at <= now) {
+            let pending_frame = pending.pop().expect("peeked pending frame");
             write(&socket, pending_frame.frame)?;
         }
     }

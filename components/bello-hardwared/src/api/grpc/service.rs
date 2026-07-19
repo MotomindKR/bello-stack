@@ -1,29 +1,28 @@
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
+use tokio::sync::watch;
 use tonic::{Request, Response, Status};
 
 use super::{command_stream, conversion, inventory, telemetry_stream};
 use crate::app::HardwareDaemon;
-use crate::control::Transition;
-use crate::domain::{GroupName, LeaseToken};
+use crate::control::{GroupQueueError, LifecycleAction, Transition};
+use crate::domain::{GroupName, ImuName};
+use crate::lease::LeaseError;
 use crate::proto::hardware_service_server::HardwareService;
 use crate::proto::*;
 
 #[derive(Clone)]
 pub struct HardwareGrpc {
     daemon: Arc<HardwareDaemon>,
+    shutdown: watch::Receiver<bool>,
 }
 
 impl HardwareGrpc {
-    pub fn new(daemon: Arc<HardwareDaemon>) -> Self {
-        Self { daemon }
+    pub fn new(daemon: Arc<HardwareDaemon>, shutdown: watch::Receiver<bool>) -> Self {
+        Self { daemon, shutdown }
     }
 }
-
-type GroupFuture<'a> =
-    Pin<Box<dyn std::future::Future<Output = anyhow::Result<Transition>> + Send + 'a>>;
 
 #[tonic::async_trait]
 impl HardwareService for HardwareGrpc {
@@ -41,9 +40,12 @@ impl HardwareService for HardwareGrpc {
         &self,
         request: Request<WatchTelemetryRequest>,
     ) -> Result<Response<Self::WatchTelemetryStream>, Status> {
+        let request = request.into_inner();
+        self.validate_telemetry_selectors(&request)?;
         Ok(Response::new(telemetry_stream::watch(
             self.daemon.clone(),
-            request.into_inner(),
+            request,
+            self.shutdown.clone(),
         )))
     }
 
@@ -52,6 +54,9 @@ impl HardwareService for HardwareGrpc {
         request: Request<AcquireLeaseRequest>,
     ) -> Result<Response<AcquireLeaseResponse>, Status> {
         let request = request.into_inner();
+        if request.client_name.trim().is_empty() {
+            return Err(Status::invalid_argument("client_name must be non-empty"));
+        }
         let group = GroupName::from(request.group);
         self.daemon
             .group(&group)
@@ -59,7 +64,7 @@ impl HardwareService for HardwareGrpc {
         let lease = self
             .daemon
             .acquire_lease(&group, &request.client_name, request.requested_duration_ms)
-            .map_err(|error| Status::failed_precondition(error.to_string()))?;
+            .map_err(lease_status)?;
         let (group, token, expires_in_ms) = lease_fields(lease);
         Ok(Response::new(AcquireLeaseResponse {
             group,
@@ -77,7 +82,7 @@ impl HardwareService for HardwareGrpc {
         let lease = self
             .daemon
             .renew_lease(token, request.requested_duration_ms)
-            .map_err(|error| Status::failed_precondition(error.to_string()))?;
+            .map_err(lease_status)?;
         let (group, token, expires_in_ms) = lease_fields(lease);
         Ok(Response::new(RenewLeaseResponse {
             group,
@@ -91,19 +96,16 @@ impl HardwareService for HardwareGrpc {
         request: Request<ReleaseLeaseRequest>,
     ) -> Result<Response<ReleaseLeaseResponse>, Status> {
         let token = conversion::lease_token(&request.into_inner().token)?;
-        let lease = self
+        let (_, transition) = self
             .daemon
             .release_lease(token)
-            .map_err(|error| Status::failed_precondition(error.to_string()))?;
-        let group = self
-            .daemon
-            .group(&lease.group)
-            .map_err(|error| Status::not_found(error.to_string()))?;
-        let state = group.snapshot.read().state.as_str().into();
+            .await
+            .map_err(operation_status)?;
+        if !transition.ok {
+            return Err(Status::failed_precondition(transition.message));
+        }
         Ok(Response::new(ReleaseLeaseResponse {
-            success: true,
-            message: "lease released".into(),
-            state,
+            state: conversion::group_state(transition.to),
         }))
     }
 
@@ -113,9 +115,11 @@ impl HardwareService for HardwareGrpc {
     ) -> Result<Response<EnableGroupResponse>, Status> {
         let request = request.into_inner();
         let transition = self
-            .group_operation(&request.group, &request.lease_token, |group| {
-                Box::pin(group.enable())
-            })
+            .group_operation(
+                &request.group,
+                &request.lease_token,
+                LifecycleAction::Enable,
+            )
             .await?;
         Ok(Response::new(EnableGroupResponse::from(transition)))
     }
@@ -126,9 +130,7 @@ impl HardwareService for HardwareGrpc {
     ) -> Result<Response<StartControlResponse>, Status> {
         let request = request.into_inner();
         let transition = self
-            .group_operation(&request.group, &request.lease_token, |group| {
-                Box::pin(group.start())
-            })
+            .group_operation(&request.group, &request.lease_token, LifecycleAction::Start)
             .await?;
         Ok(Response::new(StartControlResponse::from(transition)))
     }
@@ -139,9 +141,7 @@ impl HardwareService for HardwareGrpc {
     ) -> Result<Response<StopControlResponse>, Status> {
         let request = request.into_inner();
         let transition = self
-            .group_operation(&request.group, &request.lease_token, |group| {
-                Box::pin(group.stop())
-            })
+            .group_operation(&request.group, &request.lease_token, LifecycleAction::Stop)
             .await?;
         Ok(Response::new(StopControlResponse::from(transition)))
     }
@@ -152,9 +152,11 @@ impl HardwareService for HardwareGrpc {
     ) -> Result<Response<DisableGroupResponse>, Status> {
         let request = request.into_inner();
         let transition = self
-            .group_operation(&request.group, &request.lease_token, |group| {
-                Box::pin(group.disable())
-            })
+            .group_operation(
+                &request.group,
+                &request.lease_token,
+                LifecycleAction::Disable,
+            )
             .await?;
         Ok(Response::new(DisableGroupResponse::from(transition)))
     }
@@ -165,29 +167,13 @@ impl HardwareService for HardwareGrpc {
     ) -> Result<Response<RecoverGroupResponse>, Status> {
         let request = request.into_inner();
         let transition = self
-            .group_operation(&request.group, &request.lease_token, |group| {
-                Box::pin(group.recover())
-            })
+            .group_operation(
+                &request.group,
+                &request.lease_token,
+                LifecycleAction::Recover,
+            )
             .await?;
         Ok(Response::new(RecoverGroupResponse::from(transition)))
-    }
-
-    async fn fault_group(
-        &self,
-        request: Request<FaultGroupRequest>,
-    ) -> Result<Response<FaultGroupResponse>, Status> {
-        let request = request.into_inner();
-        let group_name = GroupName::from(request.group);
-        let lease_token = conversion::lease_token(&request.lease_token)?;
-        self.verify(&group_name, lease_token)?;
-        let transition = self
-            .daemon
-            .group(&group_name)
-            .map_err(|error| Status::not_found(error.to_string()))?
-            .fault(request.reason)
-            .await
-            .map_err(|error| Status::internal(error.to_string()))?;
-        Ok(Response::new(FaultGroupResponse::from(transition)))
     }
 
     async fn stream_commands(
@@ -197,40 +183,108 @@ impl HardwareService for HardwareGrpc {
         Ok(Response::new(command_stream::open(
             self.daemon.clone(),
             request.into_inner(),
+            self.shutdown.clone(),
         )))
     }
 }
 
 impl HardwareGrpc {
-    fn verify(&self, group: &GroupName, token: LeaseToken) -> Result<(), Status> {
-        self.daemon
-            .group(group)
-            .map_err(|error| Status::not_found(error.to_string()))?;
-        self.daemon
-            .verify_lease(group, token)
-            .map_err(|error| Status::permission_denied(error.to_string()))
-    }
-
-    async fn group_operation<F>(
+    async fn group_operation(
         &self,
         group_name: &str,
         lease_token: &str,
-        operation: F,
-    ) -> Result<Transition, Status>
-    where
-        F: for<'a> FnOnce(&'a crate::control::GroupHandle) -> GroupFuture<'a>,
-    {
+        action: LifecycleAction,
+    ) -> Result<Transition, Status> {
         let group_name = GroupName::from(group_name);
         let lease_token = conversion::lease_token(lease_token)?;
-        self.verify(&group_name, lease_token)?;
-        let group = self
-            .daemon
+        self.daemon
             .group(&group_name)
             .map_err(|error| Status::not_found(error.to_string()))?;
-        operation(group)
+        self.daemon
+            .group_operation(&group_name, lease_token, action)
             .await
-            .map_err(|error| Status::internal(error.to_string()))
+            .map_err(operation_status)
+            .and_then(|transition| {
+                if transition.ok {
+                    Ok(transition)
+                } else {
+                    Err(Status::failed_precondition(transition.message))
+                }
+            })
     }
+
+    fn validate_telemetry_selectors(&self, request: &WatchTelemetryRequest) -> Result<(), Status> {
+        for group in &request.groups {
+            if group.trim().is_empty() {
+                return Err(Status::invalid_argument(
+                    "telemetry group selectors must be non-empty",
+                ));
+            }
+            let group = GroupName::from(group.as_str());
+            if self
+                .daemon
+                .topology
+                .groups()
+                .all(|(name, _)| name != &group)
+            {
+                return Err(Status::invalid_argument(format!(
+                    "unknown telemetry group {group}"
+                )));
+            }
+        }
+        if !request.include_imu && !request.imus.is_empty() {
+            return Err(Status::invalid_argument(
+                "imu selectors require include_imu=true",
+            ));
+        }
+        for imu in &request.imus {
+            if imu.trim().is_empty() {
+                return Err(Status::invalid_argument(
+                    "telemetry IMU selectors must be non-empty",
+                ));
+            }
+            let imu = ImuName::from(imu.as_str());
+            if self.daemon.topology.imus().all(|(name, _)| name != &imu) {
+                return Err(Status::invalid_argument(format!(
+                    "unknown telemetry IMU {imu}"
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
+fn lease_status(error: LeaseError) -> Status {
+    let message = error.to_string();
+    match error {
+        LeaseError::AlreadyHeld { .. } => Status::failed_precondition(message),
+        LeaseError::Unavailable => Status::unavailable(message),
+        LeaseError::NoLease(_)
+        | LeaseError::UnknownToken
+        | LeaseError::WrongOwner
+        | LeaseError::Expired => Status::permission_denied(message),
+    }
+}
+
+fn operation_status(error: anyhow::Error) -> Status {
+    if let Some(error) = error.downcast_ref::<LeaseError>() {
+        return lease_status(error.clone());
+    }
+    if let Some(error) = error.downcast_ref::<GroupQueueError>() {
+        return match error {
+            GroupQueueError::Stopped | GroupQueueError::Disconnected => {
+                Status::unavailable(error.to_string())
+            }
+            GroupQueueError::Full => Status::resource_exhausted(error.to_string()),
+        };
+    }
+    if error
+        .downcast_ref::<tokio::sync::oneshot::error::RecvError>()
+        .is_some()
+    {
+        return Status::unavailable("group controller stopped before replying");
+    }
+    Status::internal(error.to_string())
 }
 
 fn lease_fields(lease: crate::lease::Lease) -> (String, String, u64) {
@@ -251,9 +305,7 @@ macro_rules! impl_transition_response {
             impl From<Transition> for $response {
                 fn from(transition: Transition) -> Self {
                     Self {
-                        success: transition.ok,
-                        message: transition.message,
-                        state: transition.to.as_str().into(),
+                        state: conversion::group_state(transition.to),
                     }
                 }
             }
@@ -267,5 +319,4 @@ impl_transition_response!(
     StopControlResponse,
     DisableGroupResponse,
     RecoverGroupResponse,
-    FaultGroupResponse,
 );

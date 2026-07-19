@@ -33,12 +33,16 @@ buf format -d --exit-code
 buf lint
 ```
 
-The hardware end-to-end scenario has an explicit vcan prerequisite and therefore
-runs separately from hermetic Cargo tests:
+The hardware end-to-end test has an explicit host vcan prerequisite. It is an
+ignored Cargo integration test, so ordinary workspace tests remain hermetic:
 
 ```sh
-cargo e2e
+cargo test -p bello-hardware-e2e --test vcan -- --ignored --nocapture
 ```
 
-Buf configuration is shared at the repository root. Protobuf modules use the
-`STANDARD` lint profile and `FILE`-level breaking-change detection.
+`cargo e2e` is an alias for that command.
+
+Buf configuration is shared at the repository root and protobuf modules use the
+`STANDARD` lint profile. The hardware API is greenfield; backward compatibility
+is not required, so obsolete fields are removed instead of retained as aliases
+or reserved migration scaffolding.

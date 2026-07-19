@@ -1,16 +1,37 @@
 [package]
 name = "bello-hardware-e2e"
-version = "0.1.0"
-edition = "2024"
-license = "Proprietary"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
 description = "Process-level vcan and gRPC integration scenarios for Bello hardware"
+autobins = false
 
 [dependencies]
-anyhow = "1"
-bello-hardwared = { path = "../bello-hardwared" }
-clap = { version = "4", features = ["derive"] }
-nix = { version = "0.29", features = ["signal"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
-tokio-stream = { version = "0.1", features = ["sync"] }
-tonic = { version = "0.14", features = ["transport"] }
+anyhow.workspace = true
+bello-hardwared.workspace = true
+robstride-emulator.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "sync"] }
 
+[dev-dependencies]
+nix = { workspace = true, features = ["signal"] }
+tokio-stream.workspace = true
+tonic = { workspace = true, features = ["transport"] }
+tempfile.workspace = true
+
+[[bin]]
+name = "hardwared-e2e-fixture"
+path = "src/bin/hardwared.rs"
+test = false
+bench = false
+
+[[bin]]
+name = "robstride-emulator-e2e-fixture"
+path = "src/bin/robstride_emulator.rs"
+test = false
+bench = false
+
+[[test]]
+name = "vcan"
+path = "tests/vcan.rs"

@@ -1,66 +1,92 @@
 use anyhow::Result;
-
-use crate::config::{RerunConfig, RerunMode};
 #[cfg(feature = "rerun")]
-use crate::domain::TelemetryPayload;
+use std::collections::HashSet;
+use std::time::Duration;
+
+use crate::config::RerunConfig;
+#[cfg(feature = "rerun")]
+use crate::domain::{TelemetryEvent, TelemetryPayload};
 use crate::telemetry::Telemetry;
+use tokio::sync::watch;
 
 #[derive(Clone, Debug)]
-pub struct RerunSpec {
-    mode: RerunMode,
-    #[cfg(feature = "rerun")]
-    path: String,
-    #[cfg(feature = "rerun")]
-    address: String,
+#[cfg_attr(not(feature = "rerun"), allow(dead_code))]
+pub enum RerunSpec {
+    Off,
+    Save(String),
+    Connect(String),
 }
 
 impl TryFrom<&RerunConfig> for RerunSpec {
     type Error = anyhow::Error;
 
     fn try_from(config: &RerunConfig) -> Result<Self> {
-        match config.mode {
-            RerunMode::Save if config.path.is_empty() => {
+        match config {
+            RerunConfig::Save { path } if path.trim().is_empty() => {
                 anyhow::bail!("rerun.path must be non-empty in save mode")
             }
-            RerunMode::Connect if config.address.is_empty() => {
+            RerunConfig::Connect { address } if address.trim().is_empty() => {
                 anyhow::bail!("rerun.address must be non-empty in connect mode")
+            }
+            RerunConfig::Connect { address } if address.chars().any(char::is_whitespace) => {
+                anyhow::bail!("rerun.address must not contain whitespace")
             }
             _ => {}
         }
-        Ok(Self {
-            mode: config.mode,
-            #[cfg(feature = "rerun")]
-            path: config.path.clone(),
-            #[cfg(feature = "rerun")]
-            address: config.address.clone(),
+        #[cfg(not(feature = "rerun"))]
+        if !matches!(config, RerunConfig::Off) {
+            anyhow::bail!("Rerun mode requested but binary was built without --features rerun");
+        }
+        Ok(match config {
+            RerunConfig::Off => Self::Off,
+            RerunConfig::Save { path } => Self::Save(path.clone()),
+            RerunConfig::Connect { address } => Self::Connect(address.clone()),
         })
     }
 }
 
 #[cfg(not(feature = "rerun"))]
-pub fn start(config: &RerunSpec, _telemetry: Telemetry) -> Result<()> {
-    if !matches!(config.mode, RerunMode::Off) {
+pub fn start(
+    config: &RerunSpec,
+    _telemetry: Telemetry,
+    _shutdown: watch::Receiver<bool>,
+) -> Result<RerunWorker> {
+    if !matches!(config, RerunSpec::Off) {
         anyhow::bail!("Rerun mode requested but binary was built without --features rerun");
     }
-    Ok(())
+    Ok(RerunWorker { join: None })
 }
 
 #[cfg(feature = "rerun")]
-pub fn start(config: &RerunSpec, telemetry: Telemetry) -> Result<()> {
-    let recording = match config.mode {
-        RerunMode::Off => return Ok(()),
-        RerunMode::Save => {
-            rerun::RecordingStreamBuilder::new("bello_hardware").save(&config.path)?
-        }
-        RerunMode::Connect => rerun::RecordingStreamBuilder::new("bello_hardware")
-            .connect_grpc_opts(format!("rerun+http://{}/proxy", config.address))?,
+pub fn start(
+    config: &RerunSpec,
+    telemetry: Telemetry,
+    mut shutdown: watch::Receiver<bool>,
+) -> Result<RerunWorker> {
+    let recording = match config {
+        RerunSpec::Off => return Ok(RerunWorker { join: None }),
+        RerunSpec::Save(path) => rerun::RecordingStreamBuilder::new("bello_hardware").save(path)?,
+        RerunSpec::Connect(address) => rerun::RecordingStreamBuilder::new("bello_hardware")
+            .connect_grpc_opts(format!("rerun+http://{address}/proxy"))?,
     };
     let mut rx = telemetry.subscribe();
-    tokio::spawn(async move {
+    let join = tokio::spawn(async move {
+        let mut configured_series = HashSet::new();
         loop {
-            match rx.recv().await {
+            let event = tokio::select! {
+                biased;
+                changed = shutdown.changed() => {
+                    if changed.is_err() || *shutdown.borrow() {
+                        drain_pending(&recording, &mut configured_series, &mut rx);
+                        break;
+                    }
+                    continue;
+                }
+                event = rx.recv() => event,
+            };
+            match event {
                 Ok(event) => {
-                    if let Err(error) = log_event(&recording, event.payload) {
+                    if let Err(error) = log_event(&recording, &mut configured_series, event) {
                         tracing::warn!(%error, "Rerun logging failed");
                     }
                 }
@@ -71,59 +97,126 @@ pub fn start(config: &RerunSpec, telemetry: Telemetry) -> Result<()> {
             }
         }
     });
-    Ok(())
+    Ok(RerunWorker { join: Some(join) })
 }
 
 #[cfg(feature = "rerun")]
-fn log_event(recording: &rerun::RecordingStream, payload: TelemetryPayload) -> Result<()> {
-    let scalar = |path: String, value: f64| -> Result<()> {
-        recording.log(path, &rerun::Scalars::single(value))?;
-        Ok(())
-    };
-    match payload {
+fn drain_pending(
+    recording: &rerun::RecordingStream,
+    configured_series: &mut HashSet<String>,
+    source: &mut tokio::sync::broadcast::Receiver<TelemetryEvent>,
+) {
+    loop {
+        match source.try_recv() {
+            Ok(event) => {
+                if let Err(error) = log_event(recording, configured_series, event) {
+                    tracing::warn!(%error, "Rerun logging failed during shutdown");
+                }
+            }
+            Err(tokio::sync::broadcast::error::TryRecvError::Lagged(dropped)) => {
+                tracing::warn!(dropped, "Rerun telemetry subscriber lagged during shutdown");
+            }
+            Err(
+                tokio::sync::broadcast::error::TryRecvError::Empty
+                | tokio::sync::broadcast::error::TryRecvError::Closed,
+            ) => break,
+        }
+    }
+}
+
+pub struct RerunWorker {
+    join: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl RerunWorker {
+    pub async fn join(mut self) {
+        if let Some(mut join) = self.join.take() {
+            match tokio::time::timeout(Duration::from_secs(2), &mut join).await {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => tracing::warn!(%error, "Rerun task failed during shutdown"),
+                Err(_) => {
+                    tracing::warn!("Rerun task did not stop within 2 seconds; aborting it");
+                    join.abort();
+                    let _ = join.await;
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "rerun")]
+fn log_event(
+    recording: &rerun::RecordingStream,
+    configured_series: &mut HashSet<String>,
+    event: TelemetryEvent,
+) -> Result<()> {
+    recording.set_time("time_since_start", Duration::from_nanos(event.monotonic_ns));
+    match event.payload {
         TelemetryPayload::Motor(value) => {
             let path = format!("motors/{}/{}", value.group, value.motor);
-            scalar(format!("{path}/position"), value.position)?;
-            scalar(format!("{path}/velocity"), value.velocity)?;
-            scalar(format!("{path}/torque"), value.torque)?;
-            scalar(format!("{path}/temperature"), value.temperature)?;
-            scalar(format!("{path}/fault_bits"), value.fault_bits as f64)?;
+            log_scalars(
+                recording,
+                configured_series,
+                path,
+                [
+                    "position",
+                    "velocity",
+                    "torque",
+                    "temperature",
+                    "fault_bits",
+                ],
+                [
+                    value.position,
+                    value.velocity,
+                    value.torque,
+                    value.temperature,
+                    f64::from(value.fault_bits),
+                ],
+            )?;
         }
         TelemetryPayload::Imu(value) => {
             let path = format!("imus/{}", value.imu);
-            for (axis, value) in ["x", "y", "z", "w"].into_iter().zip(value.orientation_xyzw) {
-                scalar(format!("{path}/orientation/{axis}"), value)?;
-            }
-            for (axis, value) in ["x", "y", "z"].into_iter().zip(value.angular_velocity_xyz) {
-                scalar(format!("{path}/angular_velocity/{axis}"), value)?;
-            }
-            for (axis, value) in ["x", "y", "z"]
-                .into_iter()
-                .zip(value.linear_acceleration_xyz)
-            {
-                scalar(format!("{path}/linear_acceleration/{axis}"), value)?;
-            }
+            log_scalars(
+                recording,
+                configured_series,
+                format!("{path}/orientation"),
+                ["x", "y", "z", "w"],
+                value.orientation_xyzw,
+            )?;
+            log_scalars(
+                recording,
+                configured_series,
+                format!("{path}/angular_velocity"),
+                ["x", "y", "z"],
+                value.angular_velocity_xyz,
+            )?;
+            log_scalars(
+                recording,
+                configured_series,
+                format!("{path}/linear_acceleration"),
+                ["x", "y", "z"],
+                value.linear_acceleration_xyz,
+            )?;
         }
         TelemetryPayload::Group(value) => {
-            scalar(
-                format!("groups/{}/control_tick", value.group),
-                value.control_tick as f64,
-            )?;
-            scalar(
-                format!("groups/{}/jitter_us", value.group),
-                value.jitter_us as f64,
-            )?;
-            scalar(
-                format!("groups/{}/command_count", value.group),
-                value.command_count as f64,
+            log_scalars(
+                recording,
+                configured_series,
+                format!("groups/{}", value.group),
+                ["control_tick", "jitter_us", "command_count"],
+                [
+                    value.control_tick as f64,
+                    value.jitter_us as f64,
+                    value.command_count as f64,
+                ],
             )?;
         }
         TelemetryPayload::CommandPolicy(value) => {
             recording.log(
                 format!("command_policy/{}/{}", value.group, value.motor),
                 &rerun::TextLog::new(format!(
-                    "{} {}: {}; modified={}, rejected={}, response={}",
-                    value.severity,
+                    "{:?} {:?}: {}; modified={}, rejected={}, response={:?}",
+                    value.behavior,
                     value.check,
                     value.detail,
                     value.command_modified,
@@ -135,9 +228,24 @@ fn log_event(recording: &rerun::RecordingStream, payload: TelemetryPayload) -> R
         TelemetryPayload::Health(value) => {
             recording.log(
                 format!("health/{}", value.component),
-                &rerun::TextLog::new(format!("{}: {}", value.status, value.detail)),
+                &rerun::TextLog::new(format!("{}: {}", value.status.state, value.status.detail)),
             )?;
         }
     }
+    Ok(())
+}
+
+#[cfg(feature = "rerun")]
+fn log_scalars<const N: usize>(
+    recording: &rerun::RecordingStream,
+    configured_series: &mut HashSet<String>,
+    path: String,
+    names: [&str; N],
+    values: [f64; N],
+) -> Result<()> {
+    if configured_series.insert(path.clone()) {
+        recording.log_static(path.as_str(), &rerun::SeriesLines::new().with_names(names))?;
+    }
+    recording.log(path, &rerun::Scalars::new(values))?;
     Ok(())
 }

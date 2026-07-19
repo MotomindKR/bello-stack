@@ -4,56 +4,92 @@ package bello.hardware.v1;
 
 // Provides exclusive motor-group control and read-only hardware telemetry.
 service HardwareService {
-  // Returns the configured hardware topology and current component states.
   rpc ListHardware(ListHardwareRequest) returns (ListHardwareResponse);
-
-  // Streams selected telemetry until the client disconnects.
   rpc WatchTelemetry(WatchTelemetryRequest) returns (stream WatchTelemetryResponse);
-
-  // Acquires exclusive command ownership of one motor group.
   rpc AcquireLease(AcquireLeaseRequest) returns (AcquireLeaseResponse);
-
-  // Extends an existing command lease.
   rpc RenewLease(RenewLeaseRequest) returns (RenewLeaseResponse);
-
-  // Relinquishes command ownership.
   rpc ReleaseLease(ReleaseLeaseRequest) returns (ReleaseLeaseResponse);
-
-  // Moves a group from Idle to Enabled after hardware checks pass.
   rpc EnableGroup(EnableGroupRequest) returns (EnableGroupResponse);
-
-  // Moves a group from Enabled to Running when a fresh command exists.
   rpc StartControl(StartControlRequest) returns (StartControlResponse);
-
-  // Moves a group from Running to Enabled and applies damping.
   rpc StopControl(StopControlRequest) returns (StopControlResponse);
-
-  // Stops the motors and moves an enabled or running group to Idle.
   rpc DisableGroup(DisableGroupRequest) returns (DisableGroupResponse);
-
-  // Clears motor faults and moves a faulted group to Idle.
   rpc RecoverGroup(RecoverGroupRequest) returns (RecoverGroupResponse);
-
-  // Explicitly applies the configured fault response and faults a group.
-  rpc FaultGroup(FaultGroupRequest) returns (FaultGroupResponse);
-
-  // Accepts complete impedance-command snapshots and acknowledges each one.
   rpc StreamCommands(stream StreamCommandsRequest) returns (stream StreamCommandsResponse);
 }
 
-message ListHardwareRequest {}
-
-// Lifecycle shared by physical transports and sensor drivers.
 enum DeviceState {
   DEVICE_STATE_UNSPECIFIED = 0;
-  DEVICE_STATE_DISABLED = 1;
-  DEVICE_STATE_STARTING = 2;
-  DEVICE_STATE_CONNECTING = 3;
-  DEVICE_STATE_ONLINE = 4;
-  DEVICE_STATE_DEGRADED = 5;
-  DEVICE_STATE_RECONNECTING = 6;
-  DEVICE_STATE_FAULT = 7;
-  DEVICE_STATE_SHUTDOWN = 8;
+  DEVICE_STATE_STARTING = 1;
+  DEVICE_STATE_CONNECTING = 2;
+  DEVICE_STATE_ONLINE = 3;
+  DEVICE_STATE_DEGRADED = 4;
+  DEVICE_STATE_RECONNECTING = 5;
+  DEVICE_STATE_FAULT = 6;
+  DEVICE_STATE_SHUTDOWN = 7;
+}
+
+enum GroupState {
+  GROUP_STATE_UNSPECIFIED = 0;
+  GROUP_STATE_IDLE = 1;
+  GROUP_STATE_ENABLED = 2;
+  GROUP_STATE_RUNNING = 3;
+  GROUP_STATE_FAULT = 4;
+  GROUP_STATE_SHUTDOWN = 5;
+}
+
+enum CommandPolicyCheck {
+  COMMAND_POLICY_CHECK_UNSPECIFIED = 0;
+  COMMAND_POLICY_CHECK_LIMIT = 1;
+  COMMAND_POLICY_CHECK_POSITION_STEP = 2;
+}
+
+enum CommandBehavior {
+  COMMAND_BEHAVIOR_UNSPECIFIED = 0;
+  COMMAND_BEHAVIOR_CLAMP = 1;
+  COMMAND_BEHAVIOR_REJECT = 2;
+  COMMAND_BEHAVIOR_FAULT = 3;
+}
+
+enum FaultResponse {
+  FAULT_RESPONSE_UNSPECIFIED = 0;
+  FAULT_RESPONSE_DAMPING = 1;
+  FAULT_RESPONSE_DISABLE = 2;
+}
+
+enum FaultCause {
+  FAULT_CAUSE_UNSPECIFIED = 0;
+  FAULT_CAUSE_COMMAND_LIMIT = 1;
+  FAULT_CAUSE_COMMAND_POSITION_STEP = 2;
+  FAULT_CAUSE_COMMAND_TIMEOUT = 3;
+  FAULT_CAUSE_SAFE_POSITION = 4;
+  FAULT_CAUSE_STALE_FEEDBACK = 5;
+  FAULT_CAUSE_TEMPERATURE = 6;
+  FAULT_CAUSE_REPORTED_MOTOR_FAULT = 7;
+  FAULT_CAUSE_MODE_STATUS = 8;
+  FAULT_CAUSE_COMMUNICATION = 9;
+  FAULT_CAUSE_ENABLE = 10;
+  FAULT_CAUSE_START = 11;
+  FAULT_CAUSE_STOP = 12;
+  FAULT_CAUSE_TRANSMISSION = 13;
+  FAULT_CAUSE_LEASE_LOSS = 14;
+  FAULT_CAUSE_DISABLE = 15;
+  FAULT_CAUSE_RECOVER = 16;
+  FAULT_CAUSE_EXIT = 17;
+  FAULT_CAUSE_INTERNAL = 18;
+}
+
+enum CommandResult {
+  COMMAND_RESULT_UNSPECIFIED = 0;
+  COMMAND_RESULT_ACCEPTED = 1;
+  COMMAND_RESULT_UNKNOWN_GROUP = 2;
+  COMMAND_RESULT_LEASE_LOST = 3;
+  COMMAND_RESULT_INVALID_STATE = 4;
+  COMMAND_RESULT_INCOMPLETE_GROUP = 5;
+  COMMAND_RESULT_STALE_SEQUENCE = 6;
+  COMMAND_RESULT_UNSAFE = 7;
+  COMMAND_RESULT_SUPERSEDED = 8;
+  COMMAND_RESULT_CONTROLLER_STOPPED = 9;
+  COMMAND_RESULT_EXPIRED = 10;
 }
 
 message DeviceStatus {
@@ -68,13 +104,10 @@ message MotorAddress {
 }
 
 message BusInfo {
-  reserved 4, 5;
-  reserved "state", "detail";
-
   string name = 1;
   string interface = 2;
   uint32 host_id = 3;
-  DeviceStatus status = 6;
+  DeviceStatus status = 4;
 }
 
 message SerialDeviceInfo {
@@ -87,100 +120,59 @@ message SerialDeviceInfo {
 message ImuInfo {
   string name = 1;
   string serial_device = 2;
-  string model = 3;
-  DeviceStatus status = 4;
-}
-
-message MotorHealthInfo {
-  double safe_position_min = 1;
-  double safe_position_max = 2;
-  double temperature_warning_c = 3;
-  double maximum_temperature_c = 4;
-  double temperature_recovery_c = 5;
-  uint64 temperature_recovery_duration_ms = 6;
-}
-
-message MotorCommandPolicyInfo {
-  double maximum_position_step = 1;
-  string limit_action = 2;
-  string limit_severity = 3;
-  string position_step_action = 4;
-  string position_step_severity = 5;
-}
-
-message MotorFaultDampingInfo {
-  double kd = 1;
+  DeviceStatus status = 3;
 }
 
 message MotorInfo {
-  reserved 7;
-  reserved "required";
-
   string name = 1;
   string joint = 2;
   string group = 3;
   MotorAddress address = 4;
   string model = 5;
   int32 direction = 6;
-  DeviceStatus status = 8;
-  MotorHealthInfo health = 9;
-  MotorCommandPolicyInfo command_policy = 10;
-  MotorFaultDampingInfo fault_damping = 11;
-}
-
-message FaultResponseInfo {
-  string cause = 1;
-  string response = 2;
+  DeviceStatus status = 7;
 }
 
 message GroupInfo {
   string name = 1;
   double control_rate_hz = 2;
-  string state = 3;
+  GroupState state = 3;
   repeated MotorAddress motors = 4;
-  repeated FaultResponseInfo fault_responses = 5;
-  uint32 damping_send_count = 6;
-  double damping_send_rate_hz = 7;
 }
 
-message ListHardwareResponse {
-  reserved 4;
-  reserved "imu_health";
+message ListHardwareRequest {}
 
+message ListHardwareResponse {
   repeated BusInfo buses = 1;
   repeated MotorInfo motors = 2;
   repeated GroupInfo groups = 3;
-  repeated SerialDeviceInfo serial_devices = 5;
-  repeated ImuInfo imus = 6;
+  repeated SerialDeviceInfo serial_devices = 4;
+  repeated ImuInfo imus = 5;
 }
 
 message AcquireLeaseRequest {
   string group = 1;
   string client_name = 2;
+  // Zero selects the server default; nonzero values are clamped to the supported range.
   uint64 requested_duration_ms = 3;
 }
 
 message AcquireLeaseResponse {
-  reserved 1, 2;
-  reserved "success", "message";
-
-  string group = 3;
-  string token = 4;
-  uint64 expires_in_ms = 5;
+  string group = 1;
+  string token = 2;
+  uint64 expires_in_ms = 3;
 }
 
 message RenewLeaseRequest {
   string token = 1;
+  // Zero selects the server default; nonzero values are clamped to the supported range.
   uint64 requested_duration_ms = 2;
 }
 
 message RenewLeaseResponse {
-  reserved 1, 2;
-  reserved "success", "message";
-
-  string group = 3;
-  string token = 4;
-  uint64 expires_in_ms = 5;
+  string group = 1;
+  string token = 2;
+  uint64 expires_in_ms = 3;
 }
 
 message ReleaseLeaseRequest {
@@ -188,9 +180,7 @@ message ReleaseLeaseRequest {
 }
 
 message ReleaseLeaseResponse {
-  bool success = 1;
-  string message = 2;
-  string state = 3;
+  GroupState state = 1;
 }
 
 message EnableGroupRequest {
@@ -199,9 +189,7 @@ message EnableGroupRequest {
 }
 
 message EnableGroupResponse {
-  bool success = 1;
-  string message = 2;
-  string state = 3;
+  GroupState state = 1;
 }
 
 message StartControlRequest {
@@ -210,9 +198,7 @@ message StartControlRequest {
 }
 
 message StartControlResponse {
-  bool success = 1;
-  string message = 2;
-  string state = 3;
+  GroupState state = 1;
 }
 
 message StopControlRequest {
@@ -221,9 +207,7 @@ message StopControlRequest {
 }
 
 message StopControlResponse {
-  bool success = 1;
-  string message = 2;
-  string state = 3;
+  GroupState state = 1;
 }
 
 message DisableGroupRequest {
@@ -232,9 +216,7 @@ message DisableGroupRequest {
 }
 
 message DisableGroupResponse {
-  bool success = 1;
-  string message = 2;
-  string state = 3;
+  GroupState state = 1;
 }
 
 message RecoverGroupRequest {
@@ -243,21 +225,7 @@ message RecoverGroupRequest {
 }
 
 message RecoverGroupResponse {
-  bool success = 1;
-  string message = 2;
-  string state = 3;
-}
-
-message FaultGroupRequest {
-  string group = 1;
-  string lease_token = 2;
-  string reason = 3;
-}
-
-message FaultGroupResponse {
-  bool success = 1;
-  string message = 2;
-  string state = 3;
+  GroupState state = 1;
 }
 
 message MotorCommand {
@@ -273,6 +241,7 @@ message StreamCommandsRequest {
   string group = 1;
   string lease_token = 2;
   uint64 sequence = 3;
+  // Freshness from server receipt; zero uses, and nonzero is capped by, the group timeout.
   uint64 valid_for_ms = 4;
   repeated MotorCommand commands = 5;
 }
@@ -280,9 +249,9 @@ message StreamCommandsRequest {
 message StreamCommandsResponse {
   string group = 1;
   uint64 sequence = 2;
-  bool accepted = 3;
-  string message = 4;
-  string state = 5;
+  CommandResult result = 3;
+  string detail = 4;
+  GroupState state = 5;
 }
 
 message WatchTelemetryRequest {
@@ -290,7 +259,6 @@ message WatchTelemetryRequest {
   bool include_motors = 2;
   bool include_imu = 3;
   bool include_health = 4;
-  // Empty selects every configured IMU when include_imu is true.
   repeated string imus = 5;
   bool include_command_policy_events = 6;
 }
@@ -298,59 +266,62 @@ message WatchTelemetryRequest {
 message MotorTelemetry {
   string group = 1;
   string motor_name = 2;
-  MotorAddress address = 3;
-  double position = 4;
-  double velocity = 5;
-  double torque = 6;
-  double temperature = 7;
-  uint32 fault_bits = 8;
-  uint32 mode_status = 9;
-  uint64 feedback_age_ms = 10;
-  DeviceStatus status = 11;
+  double position = 3;
+  double velocity = 4;
+  double torque = 5;
+  double temperature = 6;
+  uint32 fault_bits = 7;
+  uint32 mode_status = 8;
+  uint64 feedback_age_ms = 9;
 }
 
 message ImuTelemetry {
-  reserved 1;
-  reserved "health";
-
-  repeated double orientation_xyzw = 2;
-  repeated double angular_velocity_xyz = 3;
-  repeated double linear_acceleration_xyz = 4;
+  string imu_name = 1;
+  Quaternion orientation = 2;
+  Vector3 angular_velocity = 3;
+  Vector3 linear_acceleration = 4;
   uint64 device_timestamp_ms = 5;
   uint64 sample_age_ms = 6;
-  string imu_name = 7;
-  string serial_device = 8;
-  DeviceStatus status = 9;
+}
+
+message Quaternion {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+  double w = 4;
+}
+
+message Vector3 {
+  double x = 1;
+  double y = 2;
+  double z = 3;
 }
 
 message GroupTelemetry {
   string group = 1;
-  string state = 2;
-  string fault_reason = 3;
-  string lease_owner = 4;
-  uint64 command_count = 5;
-  uint64 control_tick = 6;
-  int64 jitter_us = 7;
+  GroupState state = 2;
+  string fault_detail = 3;
+  uint64 command_count = 4;
+  uint64 control_tick = 5;
+  int64 jitter_us = 6;
+  FaultCause fault_cause = 7;
 }
 
 message CommandPolicyTelemetry {
   string group = 1;
   string motor_name = 2;
-  string check = 3;
-  string severity = 4;
+  CommandPolicyCheck check = 3;
+  CommandBehavior behavior = 4;
   string detail = 5;
   bool command_modified = 6;
   bool command_rejected = 7;
-  string response = 8;
+  FaultResponse fault_response = 8;
 }
 
 message HealthTelemetry {
-  reserved 2, 3;
-  reserved "status", "detail";
-
   string component = 1;
-  uint64 dropped_events = 4;
-  DeviceStatus device_status = 5;
+  DeviceStatus device_status = 2;
+  uint64 dropped_events = 3;
 }
 
 message WatchTelemetryResponse {

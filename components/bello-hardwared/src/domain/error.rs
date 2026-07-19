@@ -35,8 +35,10 @@ pub enum CommandError {
         motor: MotorName,
         violation: SafetyViolation,
     },
-    #[error("command was superseded by a newer pending batch")]
+    #[error("command was superseded before it could be applied")]
     Superseded,
+    #[error("command expired before it could be applied")]
+    Expired,
     #[error("group controller stopped")]
     ControllerStopped,
 }

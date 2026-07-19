@@ -11,10 +11,6 @@ macro_rules! string_id {
         pub struct $name(Arc<str>);
 
         impl $name {
-            pub fn new(value: impl Into<Arc<str>>) -> Self {
-                Self(value.into())
-            }
-
             pub fn as_str(&self) -> &str {
                 &self.0
             }

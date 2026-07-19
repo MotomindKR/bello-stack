@@ -1,8 +1,10 @@
 [package]
 name = "bello-hardwared"
-version = "0.1.0"
-edition = "2024"
-license = "Proprietary"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
 description = "Monolithic Robstride and EBIMU hardware daemon"
 
 [features]
@@ -10,26 +12,27 @@ default = []
 rerun = ["dep:rerun"]
 
 [dependencies]
-anyhow = "1"
-clap = { version = "4", features = ["derive"] }
-crossbeam-channel = "0.5"
-futures-core = "0.3"
-parking_lot = "0.12"
-prost = "0.14"
-rerun = { version = "0.31.1", optional = true, default-features = false, features = ["sdk"] }
-robstride-protocol = { path = "../robstride-protocol" }
-serde = { version = "1", features = ["derive"] }
-serde_yaml = "0.9"
-serialport = { version = "4", default-features = false }
-socketcan = { version = "3.6", default-features = false }
-thiserror = "2"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
-tokio-stream = { version = "0.1", features = ["sync"] }
-tonic = { version = "0.14", features = ["transport"] }
-tonic-prost = "0.14"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-uuid = { version = "1", features = ["v4"] }
+anyhow.workspace = true
+async-stream.workspace = true
+clap = { workspace = true, features = ["derive"] }
+crossbeam-channel.workspace = true
+futures-core.workspace = true
+parking_lot.workspace = true
+prost.workspace = true
+rerun = { workspace = true, optional = true }
+robstride-protocol.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_yaml.workspace = true
+serialport.workspace = true
+socketcan.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-stream.workspace = true
+tonic = { workspace = true, features = ["transport"] }
+tonic-prost.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
+uuid = { workspace = true, features = ["v4"] }
 
 [build-dependencies]
-tonic-prost-build = "0.14"
+tonic-prost-build.workspace = true

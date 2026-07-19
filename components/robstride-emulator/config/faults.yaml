@@ -12,16 +12,15 @@ actuators:
 
 events:
   # Crosses the example hardwared temperature fault threshold, then cools.
-  - { at_ms: 5000, actuator_id: 1, action: set_temperature, celsius: 85.0 }
-  - { at_ms: 8000, actuator_id: 1, action: set_temperature, celsius: 70.0 }
+  - { at_ms: 5000, actuator_id: 1, action: { type: set_temperature, celsius: 85.0 } }
+  - { at_ms: 8000, actuator_id: 1, action: { type: set_temperature, celsius: 70.0 } }
 
   # Interrupts motor 2 feedback long enough to trigger its watchdog.
-  - { at_ms: 12000, actuator_id: 2, action: drop_feedback, enabled: true }
-  - { at_ms: 14000, actuator_id: 2, action: drop_feedback, enabled: false }
+  - { at_ms: 12000, actuator_id: 2, action: { type: drop_feedback, enabled: true } }
+  - { at_ms: 14000, actuator_id: 2, action: { type: drop_feedback, enabled: false } }
 
   # Exercises reported motor faults and an invalid operating mode.
-  - { at_ms: 17000, actuator_id: 2, action: set_fault_bits, value: 1 }
-  - { at_ms: 19000, actuator_id: 2, action: set_fault_bits, value: 0 }
-  - { at_ms: 22000, actuator_id: 1, action: set_mode_status, value: 1 }
-  - { at_ms: 24000, actuator_id: 1, action: clear_mode_status }
-
+  - { at_ms: 17000, actuator_id: 2, action: { type: set_fault_bits, value: 1 } }
+  - { at_ms: 19000, actuator_id: 2, action: { type: set_fault_bits, value: 0 } }
+  - { at_ms: 22000, actuator_id: 1, action: { type: set_mode_status, value: 1 } }
+  - { at_ms: 24000, actuator_id: 1, action: { type: clear_mode_status } }

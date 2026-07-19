@@ -5,7 +5,6 @@ use anyhow::{Result, anyhow, bail};
 
 use super::Config;
 use crate::api::grpc::GrpcSpec;
-use crate::app::RuntimeSpec;
 use crate::control::GroupSpec;
 use crate::domain::{BusName, GroupName, ImuName, MotorAddress, MotorName, SerialDeviceName};
 use crate::hardware::can::BusSpec;
@@ -22,7 +21,7 @@ pub(crate) struct ResolvedMotor {
 
 #[derive(Clone)]
 pub struct ResolvedTopology {
-    runtime: RuntimeSpec,
+    telemetry_capacity: usize,
     grpc: GrpcSpec,
     rerun: RerunSpec,
     serial_devices: HashMap<SerialDeviceName, SerialSpec>,
@@ -39,13 +38,19 @@ impl ResolvedTopology {
 
     pub fn resolve(config: Config) -> Result<Self> {
         validate_root(&config)?;
-        let runtime = RuntimeSpec::try_from(&config.runtime)?;
+        if !(64..=1_000_000).contains(&config.runtime.telemetry_capacity) {
+            bail!("runtime.telemetry_capacity must be in 64..=1000000");
+        }
         let grpc = GrpcSpec::try_from(&config.grpc)?;
         let rerun = RerunSpec::try_from(&config.rerun)?;
 
         let mut serial_devices = HashMap::new();
+        let mut serial_ports = HashSet::new();
         for raw in &config.serial_devices {
             let spec = SerialSpec::try_from(raw)?;
+            if !serial_ports.insert(spec.port.clone()) {
+                bail!("serial port {} is configured more than once", spec.port);
+            }
             if serial_devices.insert(spec.name.clone(), spec).is_some() {
                 bail!("duplicate serial device name {}", raw.name);
             }
@@ -62,9 +67,9 @@ impl ResolvedTopology {
                     spec.serial_device
                 );
             }
-            if spec.enabled && !claimed_serial_devices.insert(spec.serial_device.clone()) {
+            if !claimed_serial_devices.insert(spec.serial_device.clone()) {
                 bail!(
-                    "serial device {} is assigned to more than one enabled sensor",
+                    "serial device {} is assigned to more than one sensor",
                     spec.serial_device
                 );
             }
@@ -72,10 +77,23 @@ impl ResolvedTopology {
                 bail!("duplicate IMU name {}", raw.name);
             }
         }
+        if let Some(unused) = serial_devices
+            .keys()
+            .find(|name| !claimed_serial_devices.contains(*name))
+        {
+            bail!("serial device {unused} is not assigned to a sensor");
+        }
 
         let mut buses = HashMap::new();
+        let mut can_interfaces = HashSet::new();
         for raw in &config.buses {
             let spec = BusSpec::try_from(raw)?;
+            if !can_interfaces.insert(spec.interface.clone()) {
+                bail!(
+                    "CAN interface {} is configured more than once",
+                    spec.interface
+                );
+            }
             if buses.insert(spec.name.clone(), spec).is_some() {
                 bail!("duplicate CAN bus name {}", raw.name);
             }
@@ -85,12 +103,15 @@ impl ResolvedTopology {
         let mut addresses = HashSet::<MotorAddress>::new();
         for raw in &config.motors {
             let spec = MotorSpec::try_from(raw)?;
-            if !buses.contains_key(&spec.address.bus) {
-                bail!(
+            let bus = buses.get(&spec.address.bus).ok_or_else(|| {
+                anyhow!(
                     "motor {} refers to unknown bus {}",
                     spec.name,
                     spec.address.bus
-                );
+                )
+            })?;
+            if spec.address.id == bus.host_id {
+                bail!("motor {} id conflicts with bus host_id", spec.name);
             }
             if !addresses.insert(spec.address.clone()) {
                 bail!(
@@ -102,6 +123,13 @@ impl ResolvedTopology {
             if motor_specs.insert(spec.name.clone(), spec).is_some() {
                 bail!("duplicate motor name {}", raw.name);
             }
+        }
+        let used_buses: HashSet<_> = motor_specs
+            .values()
+            .map(|motor| &motor.address.bus)
+            .collect();
+        if let Some(unused) = buses.keys().find(|name| !used_buses.contains(name)) {
+            bail!("CAN bus {unused} has no motors");
         }
 
         let mut groups = HashMap::new();
@@ -134,7 +162,7 @@ impl ResolvedTopology {
 
         validate_bus_utilization(&buses, &motors, &groups)?;
         Ok(Self {
-            runtime,
+            telemetry_capacity: config.runtime.telemetry_capacity,
             grpc,
             rerun,
             serial_devices,
@@ -145,8 +173,8 @@ impl ResolvedTopology {
         })
     }
 
-    pub fn runtime(&self) -> &RuntimeSpec {
-        &self.runtime
+    pub(crate) fn telemetry_capacity(&self) -> usize {
+        self.telemetry_capacity
     }
 
     pub fn grpc(&self) -> &GrpcSpec {
@@ -202,24 +230,32 @@ fn validate_bus_utilization(
     motors: &HashMap<MotorName, ResolvedMotor>,
     groups: &HashMap<GroupName, GroupSpec>,
 ) -> Result<()> {
-    // Conservative budget: 150 wire bits for each extended 8-byte command or reply.
     for bus in buses.values() {
-        let frames_per_second = groups
-            .values()
-            .map(|group| {
-                let motors_on_bus = group
-                    .motors
-                    .iter()
-                    .filter(|name| {
-                        motors
-                            .get(*name)
-                            .is_some_and(|motor| motor.spec.address.bus == bus.name)
-                    })
-                    .count();
-                group.control_rate_hz * motors_on_bus as f64 * 2.0
-            })
-            .sum::<f64>();
-        let utilization = frames_per_second * 150.0 / bus.bitrate as f64;
+        let mut frames_per_second = 0.0;
+        for group in groups.values() {
+            let motors_on_bus = group
+                .motors
+                .iter()
+                .filter(|name| {
+                    motors
+                        .get(*name)
+                        .is_some_and(|motor| motor.spec.address.bus == bus.name)
+                })
+                .count();
+            if motors_on_bus == 0 {
+                continue;
+            }
+            let batch_budget = bus.control_batch_budget(motors_on_bus);
+            if batch_budget >= group.period() {
+                bail!(
+                    "bus {} cannot transmit group {} control batch within its freshness period",
+                    bus.name,
+                    group.name
+                );
+            }
+            frames_per_second += group.control_rate_hz * motors_on_bus as f64 * 2.0;
+        }
+        let utilization = bus.estimated_utilization(frames_per_second);
         if utilization > bus.maximum_utilization {
             bail!(
                 "bus {} estimated utilization {:.1}% exceeds configured {:.1}%",

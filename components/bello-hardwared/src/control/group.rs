@@ -1,6 +1,6 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -8,20 +8,17 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use parking_lot::{Mutex, RwLock};
 
-use crate::config::{CommandViolationSeverity, FaultResponse};
+use crate::config::{CommandBehavior, FaultCause, FaultResponse};
 use crate::domain::{
     CommandBatch, CommandError, CommandPolicyTelemetry, GroupTelemetry, ImpedanceCommand,
-    LeaseToken, TelemetryEvent, TelemetryPayload,
+    TelemetryPayload,
 };
-use crate::hardware::can::BusError;
 use crate::hardware::robstride::{MotorController, MotorFaultCause};
 use crate::telemetry::Telemetry;
 
-use super::command_policy::{
-    CommandPolicyCheck, CommandPolicyIssue, check_command, damping_command,
-};
+use super::command_policy::{CommandPolicyCheck, CommandPolicyIssue, check_command};
 use super::fsm::{GroupFsm, GroupState};
-use super::group_handle::{CommandSubmission, GroupSnapshot, LifecycleRequest};
+use super::group_handle::{CommandSubmission, GroupSnapshot, LifecycleAction, LifecycleRequest};
 use super::spec::GroupSpec;
 
 const GROUP_TELEMETRY_PERIOD: Duration = Duration::from_millis(40);
@@ -39,10 +36,14 @@ impl GroupMotor {
         }
     }
 }
+
 pub(super) struct ControllerInputs {
     pub lifecycle_rx: Receiver<LifecycleRequest>,
+    pub wake_rx: Receiver<()>,
     pub command_mailbox: Arc<Mutex<Option<CommandSubmission>>>,
     pub lease_lost: Arc<AtomicBool>,
+    pub lease_generation: Arc<AtomicU64>,
+    pub lease_loss_waiters: Arc<Mutex<Vec<tokio::sync::oneshot::Sender<super::Transition>>>>,
     pub shutdown: Arc<AtomicBool>,
     pub snapshot: Arc<RwLock<GroupSnapshot>>,
 }
@@ -51,20 +52,25 @@ pub(super) struct GroupController {
     spec: GroupSpec,
     motors: Vec<GroupMotor>,
     lifecycle_rx: Receiver<LifecycleRequest>,
+    wake_rx: Receiver<()>,
     command_mailbox: Arc<Mutex<Option<CommandSubmission>>>,
     lease_lost: Arc<AtomicBool>,
+    lease_generation: Arc<AtomicU64>,
+    lease_loss_waiters: Arc<Mutex<Vec<tokio::sync::oneshot::Sender<super::Transition>>>>,
     shutdown: Arc<AtomicBool>,
     fsm: GroupFsm,
+    fault_cause: Option<FaultCause>,
     snapshot: Arc<RwLock<GroupSnapshot>>,
     telemetry: Telemetry,
     command_deadline: Option<Instant>,
     command_count: u64,
-    command_token: Option<LeaseToken>,
+    command_generation: Option<u64>,
     last_sequence: Option<u64>,
     tick: u64,
     last_publish: Instant,
     last_published_state: GroupState,
-    last_published_fault: String,
+    last_published_fault_cause: Option<FaultCause>,
+    last_published_fault_detail: String,
 }
 
 impl GroupController {
@@ -78,24 +84,29 @@ impl GroupController {
             spec,
             motors,
             lifecycle_rx: inputs.lifecycle_rx,
+            wake_rx: inputs.wake_rx,
             command_mailbox: inputs.command_mailbox,
             lease_lost: inputs.lease_lost,
+            lease_generation: inputs.lease_generation,
+            lease_loss_waiters: inputs.lease_loss_waiters,
             shutdown: inputs.shutdown,
             fsm: GroupFsm::default(),
+            fault_cause: None,
             snapshot: inputs.snapshot,
             telemetry,
             command_deadline: None,
             command_count: 0,
-            command_token: None,
+            command_generation: None,
             last_sequence: None,
             tick: 0,
             last_publish: Instant::now(),
             last_published_state: GroupState::Idle,
-            last_published_fault: String::new(),
+            last_published_fault_cause: None,
+            last_published_fault_detail: String::new(),
         }
     }
 
-    pub(super) fn run(mut self) {
+    pub(super) fn run(&mut self) {
         let period = self.spec.period();
         let mut next_tick = Instant::now() + period;
         loop {
@@ -105,6 +116,26 @@ impl GroupController {
             }
             if self.lease_lost.swap(false, Ordering::AcqRel) {
                 self.handle_lease_loss();
+                continue;
+            }
+            let handled_lifecycle = match self.lifecycle_rx.try_recv() {
+                Ok(request) => {
+                    self.handle(request);
+                    true
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.perform_shutdown();
+                    break;
+                }
+                Err(mpsc::TryRecvError::Empty) => false,
+            };
+            if self.shutdown.load(Ordering::Acquire) {
+                self.perform_shutdown();
+                break;
+            }
+            if self.lease_lost.swap(false, Ordering::AcqRel) {
+                self.handle_lease_loss();
+                continue;
             }
             let now = Instant::now();
             if now >= next_tick {
@@ -121,13 +152,22 @@ impl GroupController {
             }
             let pending_command = { self.command_mailbox.lock().take() };
             if let Some(submission) = pending_command {
-                let result = self.accept_commands(submission.batch);
+                let result = self.accept_commands(
+                    submission.batch,
+                    submission.lease_generation,
+                    submission.submitted_at,
+                );
                 let _ = submission.reply.send(result);
                 continue;
             }
+            if handled_lifecycle {
+                // Drain queued lifecycle work without relying on one wake token
+                // per request, but re-check the control deadline each iteration.
+                continue;
+            }
             let timeout = next_tick.saturating_duration_since(Instant::now());
-            match self.lifecycle_rx.recv_timeout(timeout) {
-                Ok(request) => self.handle(request),
+            match self.wake_rx.recv_timeout(timeout) {
+                Ok(()) => {}
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
                     self.perform_shutdown();
@@ -138,103 +178,180 @@ impl GroupController {
     }
 
     fn perform_shutdown(&mut self) {
-        if let Err(error) = self.respond(self.spec.fault_responses.exit) {
+        self.clear_command_state();
+        if let Err(error) = self.respond(self.response(FaultCause::Exit)) {
             tracing::error!(group=%self.spec.name, %error, "failed to apply exit response during shutdown");
         }
+        self.fault_cause = None;
         self.fsm.shutdown();
         self.publish(0);
     }
 
     fn handle(&mut self, request: LifecycleRequest) {
         match request {
-            LifecycleRequest::Enable(reply) => {
-                let result = self.enable_hardware();
-                let transition = match result {
-                    Ok(()) => self.fsm.enable(true),
-                    Err(error) => self.enter_fault(error, self.spec.fault_responses.enable),
-                };
-                self.update_snapshot(0);
+            LifecycleRequest::Operation {
+                action,
+                lease_generation,
+                reply,
+            } => {
+                if lease_generation == 0
+                    || self.lease_generation.load(Ordering::Acquire) != lease_generation
+                {
+                    let state = self.fsm.state();
+                    let _ = reply.send(super::Transition {
+                        ok: false,
+                        to: state,
+                        message: "lease expired before operation execution".into(),
+                    });
+                    return;
+                }
+                let transition = self.handle_action(action, lease_generation);
                 let _ = reply.send(transition);
             }
-            LifecycleRequest::Start(reply) => {
-                let fresh = self
-                    .command_deadline
-                    .is_some_and(|deadline| deadline > Instant::now())
-                    && self.motors.iter().all(|motor| motor.command.is_some());
-                let result = if fresh {
-                    self.fsm.start(true)
-                } else {
-                    self.enter_fault(
-                        "initial command is missing, stale, or unsafe".into(),
-                        self.spec.fault_responses.start,
-                    )
-                };
-                self.update_snapshot(0);
-                let _ = reply.send(result);
-            }
-            LifecycleRequest::Stop(reply) => {
-                let result = match self.send_damping() {
-                    Ok(()) => self.fsm.stop(),
-                    Err(error) => self.enter_fault(
-                        format!("failed to apply stop damping: {error}"),
-                        self.spec.fault_responses.stop,
-                    ),
-                };
-                self.update_snapshot(0);
-                let _ = reply.send(result);
-            }
-            LifecycleRequest::Disable(reply) => {
-                let result = match self.stop_motors(false) {
-                    Ok(()) => self.fsm.disable(),
-                    Err(error) => self.enter_fault(
-                        format!("failed to disable motors: {error}"),
-                        self.spec.fault_responses.disable,
-                    ),
-                };
-                self.update_snapshot(0);
-                let _ = reply.send(result);
-            }
-            LifecycleRequest::Recover(reply) => {
-                let result = match self.recover_hardware() {
-                    Ok(()) => self.fsm.recover(true),
-                    Err(error) => self.enter_fault(
-                        format!("recovery guards failed: {error}"),
-                        self.spec.fault_responses.disable,
-                    ),
-                };
-                self.update_snapshot(0);
-                let _ = reply.send(result);
-            }
-            LifecycleRequest::Fault(reason, reply) => {
-                let result = self.enter_fault(reason, self.spec.fault_responses.manual);
-                self.update_snapshot(0);
-                let _ = reply.send(result);
-            }
-            LifecycleRequest::Wake => {}
         }
+    }
+
+    fn handle_action(
+        &mut self,
+        action: LifecycleAction,
+        lease_generation: u64,
+    ) -> super::Transition {
+        let transition = match action {
+            LifecycleAction::Enable => {
+                if let Some(rejection) = self.fsm.validate_enable() {
+                    rejection
+                } else {
+                    self.clear_command_state();
+                    match self.enable_hardware() {
+                        Ok(()) => {
+                            self.fault_cause = None;
+                            self.fsm.enable()
+                        }
+                        Err(error) => self.enter_fault(FaultCause::Enable, error),
+                    }
+                }
+            }
+            LifecycleAction::Start => {
+                if let Some(rejection) = self.fsm.validate_start() {
+                    rejection
+                } else {
+                    let fresh = self
+                        .command_deadline
+                        .is_some_and(|deadline| deadline > Instant::now())
+                        && self.command_generation == Some(lease_generation)
+                        && self.motors.iter().all(|motor| motor.command.is_some());
+                    if fresh {
+                        self.fsm.start()
+                    } else {
+                        self.enter_fault(
+                            FaultCause::Start,
+                            "initial command is missing, stale, or unsafe".into(),
+                        )
+                    }
+                }
+            }
+            LifecycleAction::Stop => {
+                if let Some(rejection) = self.fsm.validate_stop() {
+                    rejection
+                } else {
+                    self.clear_command_state();
+                    match self.send_damping() {
+                        Ok(()) => self.fsm.stop(),
+                        Err(error) => self.enter_fault(
+                            FaultCause::Stop,
+                            format!("failed to apply stop damping: {error}"),
+                        ),
+                    }
+                }
+            }
+            LifecycleAction::Disable => {
+                if let Some(rejection) = self.fsm.validate_disable() {
+                    rejection
+                } else if self.fsm.state() == GroupState::Idle {
+                    self.fsm.disable()
+                } else {
+                    self.clear_command_state();
+                    match self.stop_motors(false) {
+                        Ok(()) => self.fsm.disable(),
+                        Err(error) => self.enter_fault(
+                            FaultCause::Disable,
+                            format!("failed to disable motors: {error}"),
+                        ),
+                    }
+                }
+            }
+            LifecycleAction::Recover => {
+                if let Some(rejection) = self.fsm.validate_recover() {
+                    rejection
+                } else {
+                    self.clear_command_state();
+                    match self.recover_hardware() {
+                        Ok(()) => {
+                            self.fault_cause = None;
+                            self.fsm.recover()
+                        }
+                        Err(error) => self.enter_fault(
+                            FaultCause::Recover,
+                            format!("recovery guards failed: {error}"),
+                        ),
+                    }
+                }
+            }
+        };
+        self.update_snapshot(0);
+        transition
     }
 
     fn handle_lease_loss(&mut self) {
-        if matches!(self.fsm.state(), GroupState::Enabled | GroupState::Running) {
-            self.enter_fault(
-                "control lease lost".into(),
-                self.spec.fault_responses.lease_loss,
-            );
+        self.clear_command_state();
+        let transition = if matches!(self.fsm.state(), GroupState::Enabled | GroupState::Running) {
+            let transition = self.enter_fault(FaultCause::LeaseLoss, "control lease lost".into());
             self.update_snapshot(0);
+            transition
+        } else {
+            let state = self.fsm.state();
+            super::Transition {
+                ok: true,
+                to: state,
+                message: "lease released".into(),
+            }
+        };
+        for waiter in self.lease_loss_waiters.lock().drain(..) {
+            let _ = waiter.send(transition.clone());
         }
     }
 
-    fn enter_fault(&mut self, reason: String, response: FaultResponse) -> super::Transition {
+    fn clear_command_state(&mut self) {
+        if let Some(pending) = self.command_mailbox.lock().take() {
+            let _ = pending.reply.send(Err(CommandError::Superseded));
+        }
+        for motor in &mut self.motors {
+            motor.command = None;
+        }
+        self.command_deadline = None;
+        self.command_generation = None;
+        self.last_sequence = None;
+    }
+
+    fn enter_fault(&mut self, cause: FaultCause, reason: String) -> super::Transition {
+        self.clear_command_state();
         // Latch and publish the fault before a bounded response burst can block this worker.
+        self.fault_cause = Some(cause);
         let mut transition = self.fsm.fault(reason.clone());
         self.update_snapshot(0);
-        if let Err(error) = self.respond(response) {
+        if let Err(error) = self.respond(self.response(cause)) {
             transition = self
                 .fsm
                 .fault(format!("{reason}; fault response failed: {error}"));
             self.update_snapshot(0);
         }
         transition
+    }
+
+    pub(super) fn handle_worker_panic(&mut self) {
+        self.clear_command_state();
+        self.enter_fault(FaultCause::Internal, "group controller panicked".into());
+        self.update_snapshot(0);
     }
 
     fn enable_hardware(&mut self) -> Result<(), String> {
@@ -319,49 +436,55 @@ impl GroupController {
         Err(format!("motors are not healthy: {unavailable}"))
     }
 
-    fn accept_commands(&mut self, batch: CommandBatch) -> Result<(), CommandError> {
-        if self.lease_lost.load(Ordering::Acquire) {
+    fn accept_commands(
+        &mut self,
+        batch: CommandBatch,
+        lease_generation: u64,
+        submitted_at: Instant,
+    ) -> Result<(), CommandError> {
+        if lease_generation == 0
+            || self.lease_generation.load(Ordering::Acquire) != lease_generation
+        {
             return Err(CommandError::LeaseLost);
         }
         if !matches!(self.fsm.state(), GroupState::Enabled | GroupState::Running) {
             return Err(CommandError::InvalidState);
         }
-        let expected: HashSet<&str> = self
-            .motors
-            .iter()
-            .map(|motor| motor.controller.spec.name.as_str())
-            .collect();
-        let supplied: HashSet<&str> = batch
-            .commands
-            .iter()
-            .map(|command| command.motor.as_str())
-            .collect();
-        if supplied.len() != batch.commands.len() || supplied != expected {
-            return Err(CommandError::IncompleteGroup);
+        let configured_timeout = self.spec.command_timeout;
+        let valid_for = batch.valid_for.map_or(configured_timeout, |duration| {
+            duration.min(configured_timeout)
+        });
+        let command_deadline = submitted_at + valid_for;
+        if command_deadline <= Instant::now() {
+            return Err(CommandError::Expired);
         }
-        if self.command_token == Some(batch.lease_token) {
-            if let Some(previous) = self
+        let same_generation = self.command_generation == Some(lease_generation);
+        if same_generation
+            && let Some(previous) = self
                 .last_sequence
                 .filter(|sequence| batch.sequence <= *sequence)
-            {
-                return Err(CommandError::StaleSequence {
-                    received: batch.sequence,
-                    previous,
-                });
-            }
-        } else {
-            self.command_token = Some(batch.lease_token);
-            self.last_sequence = None;
+        {
+            return Err(CommandError::StaleSequence {
+                received: batch.sequence,
+                previous,
+            });
         }
-        let mut staged = Vec::new();
+        let mut supplied = HashMap::with_capacity(batch.commands.len());
+        for command in batch.commands {
+            if supplied.insert(command.motor, command.impedance).is_some() {
+                return Err(CommandError::IncompleteGroup);
+            }
+        }
+        if supplied.len() != self.motors.len() {
+            return Err(CommandError::IncompleteGroup);
+        }
+        let mut staged = Vec::with_capacity(self.motors.len());
         for motor in &self.motors {
-            let command = batch
-                .commands
-                .iter()
-                .find(|command| command.motor == motor.controller.spec.name)
-                .expect("set equality checked");
+            let Some(command) = supplied.remove(&motor.controller.spec.name) else {
+                return Err(CommandError::IncompleteGroup);
+            };
             let report = check_command(
-                command.impedance,
+                command,
                 motor
                     .controller
                     .feedback()
@@ -370,13 +493,15 @@ impl GroupController {
             );
             let motor_name = motor.controller.spec.name.clone();
             for issue in &report.issues {
-                let response = self.command_fault_response(issue.check);
+                let cause = self.command_fault_cause(issue.check);
+                let response =
+                    (issue.behavior == CommandBehavior::Fault).then(|| self.response(cause));
                 self.publish_command_policy_event(&motor_name, issue, response);
-                if issue.severity == CommandViolationSeverity::Fault {
+                if issue.behavior == CommandBehavior::Fault {
                     let violation = issue.violation.clone();
                     self.enter_fault(
+                        cause,
                         format!("{} {}: {}", motor_name, issue.check.as_str(), issue.detail),
-                        response,
                     );
                     self.update_snapshot(0);
                     return Err(CommandError::Unsafe {
@@ -384,7 +509,7 @@ impl GroupController {
                         violation,
                     });
                 }
-                if issue.command_rejected {
+                if matches!(issue.behavior, CommandBehavior::Reject) {
                     return Err(CommandError::Unsafe {
                         motor: motor_name,
                         violation: issue.violation.clone(),
@@ -396,12 +521,9 @@ impl GroupController {
         for (motor, command) in self.motors.iter_mut().zip(staged) {
             motor.command = Some(command);
         }
-        let configured_timeout = self.spec.command_timeout;
-        let valid_for = batch.valid_for.map_or(configured_timeout, |duration| {
-            duration.min(configured_timeout)
-        });
-        self.command_deadline = Some(Instant::now() + valid_for);
+        self.command_deadline = Some(command_deadline);
         self.command_count += 1;
+        self.command_generation = Some(lease_generation);
         self.last_sequence = Some(batch.sequence);
         self.update_snapshot(0);
         Ok(())
@@ -422,17 +544,15 @@ impl GroupController {
                 })
             })
         {
-            let response = fault
-                .as_ref()
-                .map_or(self.spec.fault_responses.communication, |fault| {
-                    self.motor_fault_response(fault.cause)
-                });
+            let cause = fault.as_ref().map_or(FaultCause::Communication, |fault| {
+                self.motor_fault_cause(fault.cause)
+            });
             let detail = fault
                 .as_ref()
                 .map_or(status.detail.as_str(), |fault| fault.detail.as_str());
             self.enter_fault(
+                cause,
                 format!("motor {name} unavailable: {} ({})", status.state, detail),
-                response,
             );
             self.update_snapshot(jitter_us);
             return;
@@ -443,8 +563,8 @@ impl GroupController {
                 .is_none_or(|deadline| Instant::now() >= deadline)
             {
                 self.enter_fault(
+                    FaultCause::CommandTimeout,
                     "command watchdog expired".into(),
-                    self.spec.fault_responses.command_timeout,
                 );
                 self.update_snapshot(jitter_us);
                 return;
@@ -454,11 +574,11 @@ impl GroupController {
                     && let Err(error) = motor.controller.send_control(command)
                 {
                     self.enter_fault(
+                        FaultCause::Transmission,
                         format!(
                             "{} control transmit failed: {error}",
                             motor.controller.spec.name
                         ),
-                        self.spec.fault_responses.transmission,
                     );
                     self.update_snapshot(jitter_us);
                     return;
@@ -468,114 +588,87 @@ impl GroupController {
         self.update_snapshot(jitter_us);
     }
 
-    fn respond(&self, response: FaultResponse) -> Result<(), BusError> {
+    fn respond(&self, response: FaultResponse) -> Result<(), String> {
         match response {
-            FaultResponse::None => Ok(()),
-            FaultResponse::Damping => self.send_damping_burst(),
+            FaultResponse::Damping => self.send_damping(),
             FaultResponse::Disable => self.stop_motors(false),
         }
     }
-    fn send_damping_burst(&self) -> Result<(), BusError> {
-        for index in 0..self.spec.damping_send_count {
-            self.send_damping()?;
-            if index + 1 < self.spec.damping_send_count {
-                thread::sleep(self.spec.damping_send_period);
-            }
-        }
-        Ok(())
+    fn send_damping(&self) -> Result<(), String> {
+        super::safety::send_damping(self.motors.iter().map(|motor| &motor.controller))
     }
-    fn send_damping(&self) -> Result<(), BusError> {
-        for motor in &self.motors {
-            let feedback = motor.controller.feedback().map(|feedback| feedback.value);
-            let command = damping_command(feedback, &motor.controller.spec);
-            motor.controller.send_safety_command(command)?;
-        }
-        Ok(())
+    fn stop_motors(&self, clear_fault: bool) -> Result<(), String> {
+        super::safety::stop(
+            self.motors.iter().map(|motor| &motor.controller),
+            clear_fault,
+        )
     }
-    fn stop_motors(&self, clear_fault: bool) -> Result<(), BusError> {
-        for motor in &self.motors {
-            motor.controller.stop(clear_fault)?;
-        }
-        Ok(())
-    }
-    fn command_fault_response(&self, check: CommandPolicyCheck) -> FaultResponse {
+    fn command_fault_cause(&self, check: CommandPolicyCheck) -> FaultCause {
         match check {
-            CommandPolicyCheck::CommandLimit => self.spec.fault_responses.command_limit,
-            CommandPolicyCheck::PositionStep => self.spec.fault_responses.command_position_step,
+            CommandPolicyCheck::CommandLimit => FaultCause::CommandLimit,
+            CommandPolicyCheck::PositionStep => FaultCause::CommandPositionStep,
         }
     }
-    fn motor_fault_response(&self, cause: MotorFaultCause) -> FaultResponse {
+    fn motor_fault_cause(&self, cause: MotorFaultCause) -> FaultCause {
         match cause {
-            MotorFaultCause::Communication => self.spec.fault_responses.communication,
-            MotorFaultCause::StaleFeedback => self.spec.fault_responses.stale_feedback,
-            MotorFaultCause::SafePosition => self.spec.fault_responses.safe_position,
-            MotorFaultCause::Temperature => self.spec.fault_responses.temperature,
-            MotorFaultCause::ReportedFault => self.spec.fault_responses.reported_motor_fault,
-            MotorFaultCause::ModeStatus => self.spec.fault_responses.mode_status,
+            MotorFaultCause::Communication => FaultCause::Communication,
+            MotorFaultCause::StaleFeedback => FaultCause::StaleFeedback,
+            MotorFaultCause::SafePosition => FaultCause::SafePosition,
+            MotorFaultCause::Temperature => FaultCause::Temperature,
+            MotorFaultCause::ReportedFault => FaultCause::ReportedMotorFault,
+            MotorFaultCause::ModeStatus => FaultCause::ModeStatus,
         }
+    }
+    fn response(&self, cause: FaultCause) -> FaultResponse {
+        self.spec.fault_policy.response(cause)
     }
     fn publish_command_policy_event(
         &self,
         motor: &crate::domain::MotorName,
         issue: &CommandPolicyIssue,
-        response: FaultResponse,
+        response: Option<FaultResponse>,
     ) {
-        self.telemetry.send(TelemetryEvent {
-            monotonic_ns: 0,
-            payload: TelemetryPayload::CommandPolicy(CommandPolicyTelemetry {
+        self.telemetry
+            .send(TelemetryPayload::CommandPolicy(CommandPolicyTelemetry {
                 group: self.spec.name.clone(),
                 motor: motor.clone(),
-                check: issue.check.as_str().into(),
-                severity: match issue.severity {
-                    CommandViolationSeverity::Warning => "warning",
-                    CommandViolationSeverity::Fault => "fault",
-                }
-                .into(),
+                check: issue.check,
+                behavior: issue.behavior,
                 detail: issue.detail.clone(),
                 command_modified: issue.command_modified,
                 command_rejected: issue.command_rejected,
-                response: fault_response_name(response).into(),
-            }),
-        });
+                response,
+            }));
     }
     fn update_snapshot(&mut self, jitter_us: i64) {
         let state = self.fsm.state();
-        let fault_reason = self.fsm.fault_reason().to_owned();
-        let mut snapshot = self.snapshot.write();
-        *snapshot = GroupSnapshot {
-            state,
-            fault_reason: fault_reason.clone(),
-        };
-        drop(snapshot);
-        let changed =
-            state != self.last_published_state || fault_reason != self.last_published_fault;
+        let fault_detail = self.fsm.fault_detail().to_owned();
+        self.snapshot.write().state = state;
+        let fault_cause = (state == GroupState::Fault)
+            .then_some(self.fault_cause)
+            .flatten();
+        let changed = state != self.last_published_state
+            || fault_cause != self.last_published_fault_cause
+            || fault_detail != self.last_published_fault_detail;
         if changed || self.last_publish.elapsed() >= GROUP_TELEMETRY_PERIOD {
             self.publish(jitter_us);
             self.last_publish = Instant::now();
             self.last_published_state = state;
-            self.last_published_fault = fault_reason;
+            self.last_published_fault_cause = fault_cause;
+            self.last_published_fault_detail = fault_detail;
         }
     }
     fn publish(&self, jitter_us: i64) {
-        self.telemetry.send(TelemetryEvent {
-            monotonic_ns: 0,
-            payload: TelemetryPayload::Group(GroupTelemetry {
-                group: self.spec.name.clone(),
-                state: self.fsm.state(),
-                fault_reason: self.fsm.fault_reason().into(),
-                lease_owner: None,
-                command_count: self.command_count,
-                control_tick: self.tick,
-                jitter_us,
-            }),
-        });
-    }
-}
-
-fn fault_response_name(response: FaultResponse) -> &'static str {
-    match response {
-        FaultResponse::None => "none",
-        FaultResponse::Damping => "damping",
-        FaultResponse::Disable => "disable",
+        self.telemetry.send(TelemetryPayload::Group(GroupTelemetry {
+            group: self.spec.name.clone(),
+            state: self.fsm.state(),
+            fault_cause: (self.fsm.state() == GroupState::Fault)
+                .then_some(self.fault_cause)
+                .flatten(),
+            fault_detail: self.fsm.fault_detail().into(),
+            command_count: self.command_count,
+            control_tick: self.tick,
+            jitter_us,
+        }));
     }
 }
