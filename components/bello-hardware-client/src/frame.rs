@@ -5,16 +5,16 @@ use bello_hardware_api::MotorCommand;
 use crate::inventory::GroupDefinition;
 use crate::{Error, MotorGroup};
 
-/// One joint's hybrid impedance target, expressed in SI units.
+/// One coordinate's hybrid impedance target, expressed in SI units.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct JointTarget {
+pub struct CoordinateTarget {
     position: f64,
     velocity: f64,
     torque_feedforward: f64,
     gains: Option<(f64, f64)>,
 }
 
-impl JointTarget {
+impl CoordinateTarget {
     /// Creates a position target. Call [`Self::gains`] before adding it to a frame.
     pub fn position(position_radians: f64) -> Self {
         Self {
@@ -76,9 +76,9 @@ impl JointTarget {
         self
     }
 
-    fn validate(self, joint: &str) -> Result<ValidatedTarget, Error> {
+    fn validate(self, coordinate: &str) -> Result<ValidatedTarget, Error> {
         let (kp, kd) = self.gains.ok_or_else(|| Error::InvalidTarget {
-            joint: joint.into(),
+            coordinate: coordinate.into(),
             detail: "position targets require explicit kp and kd gains".into(),
         })?;
         for (field, value) in [
@@ -90,14 +90,14 @@ impl JointTarget {
         ] {
             if !value.is_finite() {
                 return Err(Error::InvalidTarget {
-                    joint: joint.into(),
+                    coordinate: coordinate.into(),
                     detail: format!("{field} must be finite"),
                 });
             }
         }
         if kp < 0.0 || kd < 0.0 {
             return Err(Error::InvalidTarget {
-                joint: joint.into(),
+                coordinate: coordinate.into(),
                 detail: "kp and kd must be non-negative".into(),
             });
         }
@@ -135,21 +135,25 @@ impl CommandFrameBuilder {
         }
     }
 
-    pub fn joint(mut self, joint: impl AsRef<str>, target: JointTarget) -> Result<Self, Error> {
-        let joint = joint.as_ref();
-        let Some(&index) = self.group.joint_indices.get(joint) else {
-            return Err(Error::UnknownJoint {
+    pub fn coordinate(
+        mut self,
+        coordinate: impl AsRef<str>,
+        target: CoordinateTarget,
+    ) -> Result<Self, Error> {
+        let coordinate = coordinate.as_ref();
+        let Some(&index) = self.group.coordinate_indices.get(coordinate) else {
+            return Err(Error::UnknownCoordinate {
                 group: self.group.name.clone(),
-                joint: joint.into(),
+                coordinate: coordinate.into(),
             });
         };
         if self.targets[index].is_some() {
-            return Err(Error::DuplicateJoint {
+            return Err(Error::DuplicateCoordinate {
                 group: self.group.name.clone(),
-                joint: joint.into(),
+                coordinate: coordinate.into(),
             });
         }
-        self.targets[index] = Some(target.validate(joint)?);
+        self.targets[index] = Some(target.validate(coordinate)?);
         Ok(self)
     }
 
@@ -159,7 +163,7 @@ impl CommandFrameBuilder {
             .iter()
             .enumerate()
             .filter(|(_, target)| target.is_none())
-            .map(|(index, _)| self.group.motors[index].joint().to_owned())
+            .map(|(index, _)| self.group.motors[index].coordinate().to_owned())
             .collect::<Vec<_>>();
         if !missing.is_empty() {
             return Err(Error::IncompleteFrame {
@@ -240,7 +244,7 @@ mod tests {
         let motors: Arc<[Motor]> = vec![
             Motor {
                 name: "motor_a".into(),
-                joint: "joint_a".into(),
+                coordinate: "coordinate_a".into(),
                 group: "pair".into(),
                 bus: "can0".into(),
                 id: 1,
@@ -250,7 +254,7 @@ mod tests {
             },
             Motor {
                 name: "motor_b".into(),
-                joint: "joint_b".into(),
+                coordinate: "coordinate_b".into(),
                 group: "pair".into(),
                 bus: "can0".into(),
                 id: 2,
@@ -264,22 +268,25 @@ mod tests {
             name: "pair".into(),
             control_rate_hz: 250.0,
             initial_state: GroupState::Idle,
-            joint_indices: motors
+            coordinate_indices: motors
                 .iter()
                 .enumerate()
-                .map(|(index, motor)| (motor.joint().to_owned(), index))
+                .map(|(index, motor)| (motor.coordinate().to_owned(), index))
                 .collect::<BTreeMap<_, _>>(),
             motors,
         })
     }
 
     #[test]
-    fn complete_frame_maps_joints_to_motor_commands() {
+    fn complete_frame_maps_coordinates_to_motor_commands() {
         let group = group();
         let frame = CommandFrameBuilder::new(group)
-            .joint("joint_b", JointTarget::torque(2.0))
+            .coordinate("coordinate_b", CoordinateTarget::torque(2.0))
             .unwrap()
-            .joint("joint_a", JointTarget::position(1.0).gains(20.0, 1.0))
+            .coordinate(
+                "coordinate_a",
+                CoordinateTarget::position(1.0).gains(20.0, 1.0),
+            )
             .unwrap()
             .build()
             .unwrap();
@@ -293,15 +300,15 @@ mod tests {
     fn incomplete_and_duplicate_frames_fail_locally() {
         let group = group();
         let incomplete = CommandFrameBuilder::new(Arc::clone(&group))
-            .joint("joint_a", JointTarget::damping(1.0))
+            .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
             .unwrap()
             .build();
         assert!(matches!(incomplete, Err(Error::IncompleteFrame { .. })));
 
         let duplicate = CommandFrameBuilder::new(group)
-            .joint("joint_a", JointTarget::damping(1.0))
+            .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
             .unwrap()
-            .joint("joint_a", JointTarget::damping(1.0));
-        assert!(matches!(duplicate, Err(Error::DuplicateJoint { .. })));
+            .coordinate("coordinate_a", CoordinateTarget::damping(1.0));
+        assert!(matches!(duplicate, Err(Error::DuplicateCoordinate { .. })));
     }
 }

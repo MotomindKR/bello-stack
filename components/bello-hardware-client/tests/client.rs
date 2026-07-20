@@ -12,7 +12,7 @@ use bello_hardware_client::raw::{
     CommandStreamOptions, CommandValidity, EnumValue, HardwareClient, LeaseDuration, LeaseStatus,
     TelemetryFilter,
 };
-use bello_hardware_client::{ControlOptions, Error, JointTarget, Robot};
+use bello_hardware_client::{ControlOptions, CoordinateTarget, Error, Robot};
 use tokio::net::TcpListener;
 use tokio::sync::{Notify, oneshot};
 use tokio_stream::Stream;
@@ -99,6 +99,16 @@ impl HardwareService for FakeHardware {
         _: Request<ListHardwareRequest>,
     ) -> Result<Response<ListHardwareResponse>, Status> {
         Ok(Response::new(ListHardwareResponse {
+            buses: vec![BusInfo {
+                name: "test_bus".into(),
+                interface: "vcan-test".into(),
+                host_id: 127,
+                status: Some(DeviceStatus {
+                    state: DeviceState::Online as i32,
+                    detail: "bus online".into(),
+                    transition_count: 2,
+                }),
+            }],
             groups: vec![GroupInfo {
                 name: GROUP.into(),
                 control_rate_hz: 250.0,
@@ -110,7 +120,7 @@ impl HardwareService for FakeHardware {
             }],
             motors: vec![MotorInfo {
                 name: "motor_a".into(),
-                joint: "joint_a".into(),
+                coordinate: "coordinate_a".into(),
                 group: GROUP.into(),
                 address: Some(MotorAddress {
                     bus: "test_bus".into(),
@@ -118,9 +128,31 @@ impl HardwareService for FakeHardware {
                 }),
                 model: "test_motor".into(),
                 direction: 1,
-                status: None,
+                status: Some(DeviceStatus {
+                    state: DeviceState::Online as i32,
+                    detail: "motor online".into(),
+                    transition_count: 1,
+                }),
             }],
-            ..Default::default()
+            serial_devices: vec![SerialDeviceInfo {
+                name: "test_serial".into(),
+                port: "/dev/ttyTEST0".into(),
+                baud_rate: 921_600,
+                status: Some(DeviceStatus {
+                    state: DeviceState::Online as i32,
+                    detail: "serial online".into(),
+                    transition_count: 4,
+                }),
+            }],
+            imus: vec![ImuInfo {
+                name: "test_imu".into(),
+                serial_device: "test_serial".into(),
+                status: Some(DeviceStatus {
+                    state: DeviceState::Online as i32,
+                    detail: "IMU online".into(),
+                    transition_count: 5,
+                }),
+            }],
         }))
     }
 
@@ -128,11 +160,12 @@ impl HardwareService for FakeHardware {
         &self,
         request: Request<WatchTelemetryRequest>,
     ) -> Result<Response<Self::WatchTelemetryStream>, Status> {
+        let filter = request.into_inner();
         self.state
             .lock()
             .expect("fake state mutex poisoned")
             .telemetry
-            .push(request.into_inner());
+            .push(filter.clone());
         let group = WatchTelemetryResponse {
             monotonic_ns: 42,
             payload: Some(Payload::Group(GroupTelemetry {
@@ -152,10 +185,62 @@ impl HardwareService for FakeHardware {
                 ..Default::default()
             })),
         };
-        Ok(Response::new(Box::pin(tokio_stream::iter([
-            Ok(group),
-            Ok(motor),
-        ]))))
+        let mut events = vec![Ok(group)];
+        if filter.include_motors {
+            events.push(Ok(motor));
+        }
+        if filter.include_imu {
+            events.push(Ok(WatchTelemetryResponse {
+                monotonic_ns: 44,
+                payload: Some(Payload::Imu(ImuTelemetry {
+                    imu_name: "test_imu".into(),
+                    orientation: Some(Quaternion {
+                        w: 1.0,
+                        ..Default::default()
+                    }),
+                    angular_velocity: Some(Vector3 {
+                        x: 0.1,
+                        ..Default::default()
+                    }),
+                    linear_acceleration: Some(Vector3 {
+                        z: 9.81,
+                        ..Default::default()
+                    }),
+                    device_timestamp_ms: 123,
+                    sample_age_ms: 4,
+                })),
+            }));
+        }
+        if filter.include_health {
+            events.push(Ok(WatchTelemetryResponse {
+                monotonic_ns: 45,
+                payload: Some(Payload::Health(HealthTelemetry {
+                    component: "can/test_bus".into(),
+                    device_status: Some(DeviceStatus {
+                        state: DeviceState::Degraded as i32,
+                        detail: "test degradation".into(),
+                        transition_count: 3,
+                    }),
+                    dropped_events: 7,
+                })),
+            }));
+        }
+        if filter.include_command_policy_events {
+            events.push(Ok(WatchTelemetryResponse {
+                monotonic_ns: 46,
+                payload: Some(Payload::CommandPolicy(CommandPolicyTelemetry {
+                    group: GROUP.into(),
+                    motor_name: "motor_a".into(),
+                    check: CommandPolicyCheck::Limit as i32,
+                    behavior: CommandBehavior::Clamp as i32,
+                    detail: "position clamped".into(),
+                    command_modified: true,
+                    command_rejected: false,
+                    fault_response: FaultResponse::Unspecified as i32,
+                })),
+            }));
+        }
+        Ok(Response::new(Box::pin(tokio_stream::iter(events))))
     }
 
     async fn acquire_lease(
@@ -407,6 +492,20 @@ async fn canonical_workflow_binds_group_token_sequences_and_filters() {
         .expect("motor telemetry event");
     assert_eq!(event.monotonic_ns, 43);
     assert!(matches!(event.payload, Payload::Motor(motor) if motor.motor_name == "motor_a"));
+    let event = telemetry
+        .message()
+        .await
+        .expect("receive health telemetry")
+        .expect("health telemetry event");
+    assert!(matches!(event.payload, Payload::Health(health) if health.component == "can/test_bus"));
+    let event = telemetry
+        .message()
+        .await
+        .expect("receive command-policy telemetry")
+        .expect("command-policy telemetry event");
+    assert!(
+        matches!(event.payload, Payload::CommandPolicy(policy) if policy.motor_name == "motor_a")
+    );
     assert!(telemetry.message().await.expect("telemetry EOF").is_none());
 
     let mut lease = client
@@ -859,17 +958,44 @@ async fn ergonomic_robot_api_hides_lease_stream_and_acknowledgement_workflow() {
         .await
         .expect("load robot inventory");
     let group = robot.group(GROUP).expect("resolve group");
-    assert_eq!(group.joint_names().collect::<Vec<_>>(), ["joint_a"]);
+    assert_eq!(
+        group.coordinate_names().collect::<Vec<_>>(),
+        ["coordinate_a"]
+    );
+    let bus = robot.buses().next().expect("configured bus");
+    assert_eq!(bus.name(), "test_bus");
+    assert_eq!(bus.interface(), "vcan-test");
+    assert_eq!(bus.host_id(), 127);
+    assert_eq!(
+        bus.initial_status().map(|status| status.state()),
+        Some(bello_hardware_client::DeviceState::Online)
+    );
+    let serial = robot
+        .serial_devices()
+        .next()
+        .expect("configured serial device");
+    assert_eq!(serial.name(), "test_serial");
+    assert_eq!(serial.port(), "/dev/ttyTEST0");
+    assert_eq!(serial.baud_rate(), 921_600);
+    let imu = robot.imus().next().expect("configured IMU");
+    assert_eq!(imu.name(), "test_imu");
+    assert_eq!(imu.serial_device(), "test_serial");
 
     let initial = group
         .frame()
-        .joint("joint_a", JointTarget::position(0.0).gains(20.0, 1.0))
+        .coordinate(
+            "coordinate_a",
+            CoordinateTarget::position(0.0).gains(20.0, 1.0),
+        )
         .expect("assign initial target")
         .build()
         .expect("build initial frame");
     let next = group
         .frame()
-        .joint("joint_a", JointTarget::position(0.1).gains(20.0, 1.0))
+        .coordinate(
+            "coordinate_a",
+            CoordinateTarget::position(0.1).gains(20.0, 1.0),
+        )
         .expect("assign next target")
         .build()
         .expect("build next frame");
@@ -919,14 +1045,78 @@ async fn ergonomic_state_stream_aggregates_events_without_protobuf_matching() {
     let group = state.group(GROUP).expect("aggregated group state");
     assert_eq!(group.monotonic_ns, 42);
     assert_eq!(group.state, bello_hardware_client::GroupState::Idle);
+    assert!(matches!(
+        state.last_change(),
+        Some(bello_hardware_client::RobotStateChange::Group(changed))
+            if changed.group == GROUP
+    ));
     let state = states
         .changed()
         .await
         .expect("receive motor state")
         .expect("motor state event");
-    let joint = state.joint("joint_a").expect("aggregated joint state");
-    assert_eq!(joint.position, 0.25);
-    assert_eq!(joint.temperature, 32.0);
+    let coordinate = state
+        .coordinate("coordinate_a")
+        .expect("aggregated coordinate state");
+    assert_eq!(coordinate.position, 0.25);
+    assert_eq!(coordinate.temperature, 32.0);
+    assert!(matches!(
+        state.last_change(),
+        Some(bello_hardware_client::RobotStateChange::Motor(changed))
+            if changed.motor == "motor_a"
+    ));
+    let state = states
+        .changed()
+        .await
+        .expect("receive IMU state")
+        .expect("IMU state event");
+    let imu = state.imu("test_imu").expect("aggregated IMU state");
+    assert_eq!(imu.sample_age, Duration::from_millis(4));
+    assert_eq!(imu.linear_acceleration.z, 9.81);
+    assert!(matches!(
+        state.last_change(),
+        Some(bello_hardware_client::RobotStateChange::Imu(changed))
+            if changed.imu == "test_imu"
+    ));
+    let state = states
+        .changed()
+        .await
+        .expect("receive health state")
+        .expect("health state event");
+    let health = state.health("can/test_bus").expect("aggregated bus health");
+    assert_eq!(health.dropped_events, 7);
+    assert_eq!(
+        health.status.as_ref().map(|status| status.state()),
+        Some(bello_hardware_client::DeviceState::Degraded)
+    );
+    assert_eq!(state.health_snapshots().count(), 1);
+    assert!(matches!(
+        state.last_change(),
+        Some(bello_hardware_client::RobotStateChange::Health(changed))
+            if changed.component == "can/test_bus"
+    ));
+    let state = states
+        .changed()
+        .await
+        .expect("receive command-policy state")
+        .expect("command-policy state event");
+    let policies = state.command_policies().collect::<Vec<_>>();
+    assert_eq!(policies.len(), 1);
+    assert_eq!(
+        policies[0].check,
+        bello_hardware_client::CommandPolicyCheck::Limit
+    );
+    assert_eq!(
+        policies[0].behavior,
+        bello_hardware_client::CommandBehavior::Clamp
+    );
+    assert!(policies[0].command_modified);
+    assert!(!policies[0].command_rejected);
+    assert!(matches!(
+        state.last_change(),
+        Some(bello_hardware_client::RobotStateChange::CommandPolicy(changed))
+            if changed.motor == "motor_a"
+    ));
 
     server.stop().await;
 }
@@ -990,7 +1180,7 @@ async fn ergonomic_control_surfaces_automatic_renewal_failure() {
         .expect("acquire control");
     let frame = group
         .frame()
-        .joint("joint_a", JointTarget::damping(1.0))
+        .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
         .expect("assign target")
         .build()
         .expect("build frame");
@@ -1030,7 +1220,7 @@ async fn ergonomic_control_never_retries_after_a_rejected_running_command() {
     let frame = || {
         group
             .frame()
-            .joint("joint_a", JointTarget::damping(1.0))
+            .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
             .expect("assign target")
             .build()
             .expect("build frame")

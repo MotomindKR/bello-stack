@@ -22,19 +22,22 @@ mod types;
 pub(crate) use client::HardwareClient;
 pub(crate) use command::{CommandStream, CommandStreamOptions, CommandValidity};
 pub use control::{ControlOptions, ControlSession, ControlState};
-pub use endpoint::ConnectOptions;
+pub use endpoint::{ConnectOptions, TlsOptions};
 pub(crate) use enum_value::EnumValue;
 pub use error::Error;
-pub use frame::{CommandFrame, CommandFrameBuilder, JointTarget};
-pub use inventory::{DeviceStatus, Motor};
+pub use frame::{CommandFrame, CommandFrameBuilder, CoordinateTarget};
+pub use inventory::{Bus, DeviceStatus, Imu, Motor, SerialDevice};
 pub(crate) use lease::{GroupLease, LeaseDuration};
 pub use robot::{MotorGroup, Robot};
 pub use state::{
-    GroupSnapshot, HealthSnapshot, ImuSnapshot, MotorSnapshot, Quaternion, RobotState, RobotStates,
-    StateStreamOptions, Vector3,
+    CommandPolicySnapshot, GroupSnapshot, HealthSnapshot, ImuSnapshot, MotorSnapshot, Quaternion,
+    RobotState, RobotStateChange, RobotStates, StateStreamOptions, Vector3,
 };
 pub(crate) use telemetry::{TelemetryEvent, TelemetryFilter, TelemetryStream};
-pub use types::{CommandResult, DeviceState, FaultCause, GroupState};
+pub use types::{
+    CommandBehavior, CommandPolicyCheck, CommandResult, DeviceState, FaultCause, FaultResponse,
+    GroupState,
+};
 
 /// Low-level protobuf, lease, command-stream, and telemetry primitives.
 ///

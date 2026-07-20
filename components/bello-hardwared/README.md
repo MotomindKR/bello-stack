@@ -28,9 +28,8 @@ The default configuration path is this component's `config/bello.yaml`.
 SocketCAN interfaces and serial-device settings must already exist and match
 the YAML. The daemon does not create CAN links or change their bitrate.
 
-Visualization is deliberately outside this process. The optional
-[`bello-rerun`](../bello-rerun) component subscribes to the daemon's read-only
-gRPC telemetry stream and may be started, stopped, or hosted remotely without
+Visualization and recording are deliberately outside this process. External
+tools can subscribe to the daemon's read-only gRPC telemetry stream without
 affecting hardware ownership.
 
 ## Interfaces
@@ -40,7 +39,9 @@ affecting hardware ownership.
 - Rust applications can use the maintained
   [`bello-hardware-client`](../bello-hardware-client) wrapper.
 - The maintained physical-hardware example is [`config/bello.yaml`](config/bello.yaml).
-- The maintained emulator example is [`config/vcan.yaml`](config/vcan.yaml).
+- The full Bello MuJoCo HIL example is
+  [`config/bello-vcan.yaml`](config/bello-vcan.yaml).
+- The minimal two-motor emulator example is [`config/vcan.yaml`](config/vcan.yaml).
 - The Rust library intentionally exposes only the `run` and `check` entrypoints;
   shared generated protobuf types live in [`bello-hardware-api`](../bello-hardware-api).
 

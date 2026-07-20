@@ -1,4 +1,5 @@
 mod daemon;
+mod listener;
 mod run;
 
 pub(crate) use daemon::HardwareDaemon;

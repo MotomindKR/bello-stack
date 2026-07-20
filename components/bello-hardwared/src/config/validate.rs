@@ -32,9 +32,35 @@ mod tests {
 buses:
   - { name: shared, interface: vcan0, maximum_utilization: 1.0 }
 motors:
-  - { name: motor_a, joint: joint_a, bus: shared, id: 1, model: ROBSTRIDE_03 }
-  - { name: motor_b, joint: joint_b, bus: shared, id: 2, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: coordinate_a, bus: shared, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_b, coordinate: coordinate_b, bus: shared, id: 2, model: ROBSTRIDE_03 }
 "#;
+
+    fn one_group(prefix: &str) -> String {
+        format!("{prefix}\nmotor_groups:\n  - {{ name: group, motors: [motor_a, motor_b] }}\n")
+    }
+
+    #[test]
+    fn unix_listener_requires_an_absolute_path_and_octal_mode() {
+        let relative = one_group(&format!(
+            "{PREFIX}\ngrpc:\n  listen: {{ type: unix, path: relative.sock }}"
+        ));
+        assert!(parse(&relative).is_err());
+
+        let bad_mode = one_group(&format!(
+            "{PREFIX}\ngrpc:\n  listen: {{ type: unix, path: /tmp/hardwared.sock, mode: \"0680\" }}"
+        ));
+        assert!(parse(&bad_mode).is_err());
+    }
+
+    #[test]
+    fn unix_listener_rejects_tls() {
+        let source = one_group(&format!(
+            "{PREFIX}\ngrpc:\n  listen: {{ type: unix, path: /tmp/hardwared.sock }}\n  tls:\n    certificate: missing-cert.pem\n    private_key: missing-key.pem"
+        ));
+        let error = parse(&source).unwrap_err().to_string();
+        assert!(error.contains("cannot be combined"), "{error}");
+    }
 
     #[test]
     fn groups_can_share_a_bus() {
@@ -50,8 +76,8 @@ motors:
 buses:
   - { name: slow, interface: vcan0, bitrate: 10000, maximum_utilization: 1.0 }
 motors:
-  - { name: motor_a, joint: joint_a, bus: slow, id: 1, model: ROBSTRIDE_03 }
-  - { name: motor_b, joint: joint_b, bus: slow, id: 2, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: coordinate_a, bus: slow, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_b, coordinate: coordinate_b, bus: slow, id: 2, model: ROBSTRIDE_03 }
 motor_groups:
   - { name: group_a, motors: [motor_a], control_rate_hz: 20.0 }
   - { name: group_b, motors: [motor_b], control_rate_hz: 20.0 }
@@ -66,7 +92,7 @@ motor_groups:
 buses:
   - { name: saturated, interface: vcan0, bitrate: 10000, maximum_utilization: 1.0 }
 motors:
-  - { name: motor_a, joint: joint_a, bus: saturated, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: coordinate_a, bus: saturated, id: 1, model: ROBSTRIDE_03 }
 motor_groups:
   - { name: group, motors: [motor_a], control_rate_hz: 33.333333333333336 }
 "#;
@@ -120,8 +146,8 @@ buses:
   - { name: first, interface: can0 }
   - { name: second, interface: can0 }
 motors:
-  - { name: motor_a, joint: joint_a, bus: first, id: 1, model: ROBSTRIDE_03 }
-  - { name: motor_b, joint: joint_b, bus: second, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: coordinate_a, bus: first, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_b, coordinate: coordinate_b, bus: second, id: 1, model: ROBSTRIDE_03 }
 motor_groups:
   - { name: group, motors: [motor_a, motor_b] }
 "#;
@@ -151,7 +177,7 @@ buses:
   - { name: used, interface: can0 }
   - { name: unused, interface: can1 }
 motors:
-  - { name: motor_a, joint: joint_a, bus: used, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: coordinate_a, bus: used, id: 1, model: ROBSTRIDE_03 }
 motor_groups:
   - { name: group, motors: [motor_a] }
 "#;

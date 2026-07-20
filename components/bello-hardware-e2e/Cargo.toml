@@ -17,7 +17,9 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "sy
 [dev-dependencies]
 bello-hardware-api.workspace = true
 bello-hardware-client.workspace = true
+bello-visualizer = { path = "../bello-visualizer" }
 nix = { workspace = true, features = ["feature", "signal"] }
+rcgen.workspace = true
 robstride-protocol.workspace = true
 socketcan.workspace = true
 tokio-stream.workspace = true
@@ -39,3 +41,7 @@ bench = false
 [[test]]
 name = "vcan"
 path = "tests/vcan.rs"
+
+[[test]]
+name = "transports"
+path = "tests/transports.rs"

@@ -9,14 +9,22 @@ pub fn hardwared_with_control_rate(
     listen: SocketAddr,
     control_rate_hz: f64,
 ) -> String {
+    hardwared_with_grpc(
+        interface,
+        &format!(
+            "  listen: {{ type: tcp, address: {listen} }}\n  default_lease_ms: 1000\n  maximum_lease_ms: 10000"
+        ),
+        control_rate_hz,
+    )
+}
+
+pub fn hardwared_with_grpc(interface: &str, grpc: &str, control_rate_hz: f64) -> String {
     format!(
         r#"runtime:
   telemetry_capacity: 4096
 
 grpc:
-  listen: {listen}
-  default_lease_ms: 1000
-  maximum_lease_ms: 10000
+{grpc}
 
 buses:
   - name: e2e_can
@@ -28,13 +36,13 @@ buses:
 
 motors:
   - name: e2e_motor_1
-    joint: e2e_joint_1
+    coordinate: e2e_joint_1
     bus: e2e_can
     id: 1
     model: ROBSTRIDE_03
     direction: 1
   - name: e2e_motor_2
-    joint: e2e_joint_2
+    coordinate: e2e_joint_2
     bus: e2e_can
     id: 2
     model: ROBSTRIDE_03

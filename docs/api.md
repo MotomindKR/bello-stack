@@ -10,6 +10,17 @@ applications should normally use the robot-oriented
 [`bello-hardware-client`](../components/bello-hardware-client). Generated tonic
 types and lease-oriented primitives remain available under its explicit `raw`
 module for diagnostics and specialized integrations.
+Python applications should normally use the pure-Python
+[`bello-hardware`](../components/bello-hardware-python) package. It presents the
+same robot, group, complete-frame, renewed-session, and latest-state concepts
+over generated blocking gRPC bindings.
+
+The Rust client's `Robot` inventory exposes buses, serial devices, motors,
+groups, and IMUs with their initial status. `RobotStates` aggregates live motor,
+group, IMU, component-health, and command-policy telemetry; the visualizer uses
+these high-level interfaces rather than matching protobuf payloads itself.
+`RobotState::last_change()` identifies the exact aggregate entry changed by an
+event; consumers do not treat daemon-relative timestamps as unique IDs.
 
 The protobuf package is `bello.hardware.v1` and the fully qualified service is
 `bello.hardware.v1.HardwareService`. It uses proto3 conventions: enum value zero
@@ -22,7 +33,7 @@ fixed-shape messages rather than variable-length arrays.
 
 The [`bello-hardware-client` README](../components/bello-hardware-client/README.md)
 contains the complete application workflow. `Robot` loads and validates daemon
-inventory, `MotorGroup` creates complete joint-oriented command frames,
+inventory, `MotorGroup` creates complete coordinate-oriented command frames,
 `ControlSession` owns automatic lease renewal and synchronous acknowledgement
 handling, and `RobotStates` aggregates event telemetry into typed latest-value
 state.
@@ -36,6 +47,27 @@ Specialized tooling can use `bello_hardware_client::raw`. Its `HardwareClient`,
 `GroupLease`, `LeaseRenewer`, command stream, and telemetry filter preserve the
 protocol-oriented behavior. `raw::proto` exposes the generated wire contract
 and `HardwareClient::grpc_client` returns the tonic stub.
+
+## Maintained Python client
+
+The [`bello-hardware Python README`](../components/bello-hardware-python/README.md)
+contains its concise application workflow. The package uses `grpcio` directly;
+it does not load or bind the Rust client. Generated protobuf modules are a
+private transport detail shipped in the wheel, so application machines need
+neither Rust nor `protoc`.
+
+The public API is deliberately blocking. Lease renewal, command
+acknowledgements, and latest-state telemetry reception use small background I/O
+threads so user control code remains synchronous. `ControlSession.send` still
+returns only after the matching daemon acknowledgement. Ambiguous or rejected
+motion is never reconnected, reacquired, or replayed automatically.
+Lifecycle transport failures retain their gRPC status through
+`ControlRpcError`; lease denial remains the more specific `LeaseLostError`.
+
+Both maintained clients are peers over this protocol. Daemon-side validation,
+group lifecycle, safety policy, and lease reactions remain authoritative; the
+clients duplicate only the small amount of state needed for safe and ergonomic
+use of the wire contract.
 
 ## Access model
 
@@ -170,23 +202,46 @@ events happen later and are not guaranteed over gRPC. These semantics live in
 [`telemetry_stream.rs`](../components/bello-hardwared/src/api/grpc/telemetry_stream.rs)
 and [`telemetry.rs`](../components/bello-hardwared/src/telemetry.rs).
 
-The optional [`bello-rerun`](../components/bello-rerun) process is a normal
-read-only client of this API. It requests all telemetry classes, has no private
-in-process access to daemon state, and decouples its gRPC task from Rerun output
-through a separate bounded writer queue. Observer-local queue drops are marked
-in the Rerun recording rather than reported as `grpc_telemetry` events.
-
 ## Security boundary
 
-The server provides no TLS, client authentication, authorization policy, or
-token confidentiality. Its default listener is loopback-only; a non-loopback
-binding logs a warning. Run plaintext gRPC only inside a trusted host/network
-boundary, or place an authenticated encrypted proxy in front of it and restrict
-direct access with host firewall rules. Anyone who can reach the endpoint can
-read topology and telemetry, acquire an unleased group, and use a captured
-lease token. The lease mechanism coordinates motion ownership; it is not a
-security system.
+The daemon can listen on plaintext TCP, TLS TCP, mutually authenticated TLS, or
+a Unix-domain socket. Plaintext TCP defaults to loopback. A non-loopback
+plaintext binding warns that it has neither encryption nor authentication;
+server-only TLS on a non-loopback address warns that client authentication is
+absent.
+
+TLS protects token confidentiality in transit and authenticates the robot.
+Configuring a client CA additionally rejects connections without a client
+certificate signed by that CA. A Unix socket relies on filesystem ownership and
+permissions for same-host access control. Certificate identities and Unix users
+are not mapped to per-RPC roles: every connected client can read topology and
+telemetry and can attempt to acquire an available group. Use separate network
+or process boundaries if read-only and control clients require different
+permissions. The lease mechanism coordinates motion ownership; it is not an
+authorization system.
+
+Transport configuration, certificate requirements, and Unix socket behavior
+are documented in [`configuration.md`](configuration.md#grpc).
 
 For startup, hardware, diagnostics, and shutdown procedures, see
 [`operations.md`](operations.md). For build and review conventions, see
 [`development.md`](development.md).
+
+## External pose stream
+
+[`pose.proto`](../components/bello-pose-api/proto/bello/pose/v1/pose.proto)
+defines the independent `bello.pose.v1.PoseService`. `WatchPose` streams a
+requested reference/tracked frame pair with sequence, translation in metres,
+normalized `xyzw` orientation, and producer-reported age. Its convention is
+`reference_from_tracked`. The visualizer composes the configured
+`tracked_from_model_root`; disconnects, frame/sequence errors, or stale samples
+freeze the last display transform and do not affect command or safety logic.
+
+[`bello-state-estimatord`](../components/bello-state-estimatord) is the
+maintained local provider for Bello. It consumes the high-level
+`bello-hardware-client`, uses the EBIMU quaternion for orientation, and applies
+encoder/URDF stationary-foot corrections to IMU-propagated translation. It
+implements this existing RPC directly; clients do not submit estimates and no
+second estimator-specific service exists. The service publishes only pose,
+sequence, frame names, and age. Filter covariance and contact internals remain
+private implementation details.

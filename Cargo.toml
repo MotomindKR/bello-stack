@@ -5,7 +5,9 @@ members = [
   "components/bello-hardware-client",
   "components/bello-hardware-e2e",
   "components/bello-hardwared",
-  "components/bello-rerun",
+  "components/bello-pose-api",
+  "components/bello-state-estimatord",
+  "components/bello-visualizer",
   "components/robstride-emulator",
   "components/robstride-protocol",
 ]
@@ -23,17 +25,20 @@ async-stream = "0.3"
 bello-hardware-api = { path = "components/bello-hardware-api" }
 bello-hardware-client = { path = "components/bello-hardware-client" }
 bello-hardwared = { path = "components/bello-hardwared" }
+bello-pose-api = { path = "components/bello-pose-api" }
 clap = "4"
 crossbeam-channel = "0.5"
 futures-core = "0.3"
 nix = "0.29"
 parking_lot = "0.12"
 prost = "0.14"
-rerun = { version = "0.31.1", default-features = false, features = ["sdk"] }
+nalgebra = "0.34"
+rcgen = "0.14"
 robstride-emulator = { path = "components/robstride-emulator" }
 robstride-protocol = { path = "components/robstride-protocol" }
 serde = "1"
 serde_yaml = { package = "serde_yaml_ng", version = "0.10" }
+roxmltree = "0.21"
 serialport = { version = "4", default-features = false }
 socketcan = { version = "3.6", default-features = false }
 thiserror = "2"

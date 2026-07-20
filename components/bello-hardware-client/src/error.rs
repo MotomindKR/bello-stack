@@ -27,16 +27,16 @@ pub enum Error {
     InvalidInventory(String),
     #[error("unknown motor group {0:?}")]
     UnknownGroup(String),
-    #[error("unknown joint {joint:?} in motor group {group:?}")]
-    UnknownJoint { group: String, joint: String },
-    #[error("joint {joint:?} was assigned more than once in motor group {group:?}")]
-    DuplicateJoint { group: String, joint: String },
-    #[error("command frame for {group:?} is incomplete; missing joints: {missing:?}")]
+    #[error("unknown coordinate {coordinate:?} in motor group {group:?}")]
+    UnknownCoordinate { group: String, coordinate: String },
+    #[error("coordinate {coordinate:?} was assigned more than once in motor group {group:?}")]
+    DuplicateCoordinate { group: String, coordinate: String },
+    #[error("command frame for {group:?} is incomplete; missing coordinates: {missing:?}")]
     IncompleteFrame { group: String, missing: Vec<String> },
     #[error("command frame belongs to {actual:?}, not control group {expected:?}")]
     FrameGroupMismatch { expected: String, actual: String },
-    #[error("invalid command target for joint {joint:?}: {detail}")]
-    InvalidTarget { joint: String, detail: String },
+    #[error("invalid command target for coordinate {coordinate:?}: {detail}")]
+    InvalidTarget { coordinate: String, detail: String },
     #[error("control session for {group:?} cannot {operation} while it is {state}")]
     InvalidSessionState {
         group: String,

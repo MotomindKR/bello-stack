@@ -1,7 +1,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-use crate::inventory::{GroupDefinition, Inventory, Motor};
+use crate::inventory::{Bus, GroupDefinition, Imu, Inventory, Motor, SerialDevice};
 use crate::{ConnectOptions, Error, GroupState, HardwareClient, RobotStates, StateStreamOptions};
 
 /// Connected robot with a validated, cached hardware inventory.
@@ -61,6 +61,21 @@ impl Robot {
         self.inner.inventory.motors.values()
     }
 
+    /// Returns configured CAN buses in stable name order.
+    pub fn buses(&self) -> impl ExactSizeIterator<Item = &Bus> {
+        self.inner.inventory.buses.values()
+    }
+
+    /// Returns configured serial transports in stable name order.
+    pub fn serial_devices(&self) -> impl ExactSizeIterator<Item = &SerialDevice> {
+        self.inner.inventory.serial_devices.values()
+    }
+
+    /// Returns configured IMUs in stable name order.
+    pub fn imus(&self) -> impl ExactSizeIterator<Item = &Imu> {
+        self.inner.inventory.imus.values()
+    }
+
     /// Opens an aggregated stream of the latest robot state.
     pub async fn states(&self) -> Result<RobotStates, Error> {
         self.states_with(StateStreamOptions::default()).await
@@ -80,8 +95,11 @@ impl fmt::Debug for Robot {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("Robot")
+            .field("buses", &self.inner.inventory.buses.len())
             .field("groups", &self.inner.inventory.groups.len())
             .field("motors", &self.inner.inventory.motors.len())
+            .field("serial_devices", &self.inner.inventory.serial_devices.len())
+            .field("imus", &self.inner.inventory.imus.len())
             .finish_non_exhaustive()
     }
 }
@@ -110,8 +128,8 @@ impl MotorGroup {
         &self.definition.motors
     }
 
-    pub fn joint_names(&self) -> impl ExactSizeIterator<Item = &str> {
-        self.definition.motors.iter().map(Motor::joint)
+    pub fn coordinate_names(&self) -> impl ExactSizeIterator<Item = &str> {
+        self.definition.motors.iter().map(Motor::coordinate)
     }
 }
 

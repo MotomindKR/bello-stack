@@ -119,67 +119,44 @@ The Cargo-native end-to-end test owns its phases deterministically and is the
 preferred regression check; see
 [`development.md`](development.md#host-vcan-integration-test).
 
-## Rerun observation
+## Local pose and visualization
 
-Rerun is an optional standalone, read-only gRPC client. `bello-hardwared` has no
-Rerun feature or YAML section, so visualization dependencies and failures stay
-outside the process that owns hardware.
-
-The maintained observer configuration records to an `.rrd` file:
-
-```yaml
-hardware_endpoint: http://127.0.0.1:50051
-
-reconnect:
-  initial_delay_ms: 100
-  maximum_delay_ms: 5000
-
-output:
-  mode: save
-  path: bello_hardware.rrd
-```
-
-Validate and run it independently:
+Start the pose estimator after hardwared is online. It reads the same telemetry
+as any other read-only Rust client and does not acquire motor-group leases:
 
 ```sh
-cargo run -p bello-rerun -- \
-  --check --config components/bello-rerun/config/bello.yaml
-cargo run -p bello-rerun -- \
-  --config components/bello-rerun/config/bello.yaml
+cargo run -p bello-state-estimatord -- \
+  --check --config components/bello-state-estimatord/config/bello-vcan.yaml
+cargo run -p bello-state-estimatord -- \
+  --config components/bello-state-estimatord/config/bello-vcan.yaml
 ```
 
-For a live external viewer, provide a Rerun listener separately and configure
-its already-listening endpoint. The repository's Nix shell does not install or
-start a viewer:
+The maintained configuration publishes `odom_from_pelvis_link` on port 50052.
+The filter advances at the incoming IMU rate rather than imposing a fixed
+500 Hz loop. Inspect the existing pose stream with:
 
-```yaml
-output:
-  mode: connect
-  address: 127.0.0.1:9876
+```sh
+grpcurl -plaintext \
+  -import-path components/bello-pose-api/proto \
+  -proto bello/pose/v1/pose.proto \
+  -d '{"referenceFrame":"odom","trackedFrame":"pelvis_link"}' \
+  127.0.0.1:50052 bello.pose.v1.PoseService/WatchPose
 ```
 
-The observer calls only `WatchTelemetry`; it never acquires a lease or sends a
-command. It may start before hardwared, run remotely, and restart without
-changing control state. Connection failures use bounded exponential backoff
-indefinitely. A disconnect/restoration marker is recorded, and subscriber-drop
-health events remain visible rather than being hidden. HTTPS hardware endpoints
-use native certificate roots. HTTP/2 keepalive runs every 10 seconds with a
-three-second timeout, including while the connection is otherwise idle.
+Generate the viewer MJCF once, then launch the visualizer. Its vCAN
+configuration already points root tracking at the estimator:
 
-Incoming events enter a fixed, nonblocking 4096-event queue for a dedicated
-Rerun writer thread. Rerun SDK calls and output backpressure therefore do not
-delay gRPC reception or signal polling. A full queue drops observer events,
-warns once for that burst, and adds a health marker after the writer resumes.
+```sh
+cd ../bello_mujoco
+uv run bello-prepare-assets --config-name visualizer
+cd ../bello_stack
+cargo run -p bello-visualizer -- \
+  --config components/bello-visualizer/config/bello-vcan.yaml
+```
 
-Source `monotonic_ns` timestamps form the Rerun time axis. If a daemon restart
-resets that clock, the observer marks the restart and offsets the new segment so
-the recording remains monotonic. Malformed optional fields are warned about and
-skipped. Failure to initialize the configured Rerun output is fatal. SIGINT and
-SIGTERM are handled independently of hardwared. Either signal closes the writer
-queue and attempts to drain queued work and flush output. The main task waits at
-most two seconds, then detaches an unfinished writer so shutdown stays bounded.
-See the [`bello-rerun` README](../components/bello-rerun/README.md) and
-[configuration reference](configuration.md#rerun-observer-configuration).
+If hardware or pose telemetry disconnects or becomes stale, the visualizer
+freezes the last root transform and shows the condition; root tracking never
+participates in command or safety decisions.
 
 ## Shutdown behavior
 
@@ -203,12 +180,6 @@ cannot perform the configured exit reaction, so system-level power removal and
 emergency-stop design remain necessary. See
 [`run.rs`](../components/bello-hardwared/src/app/run.rs) and
 [`daemon.rs`](../components/bello-hardwared/src/app/daemon.rs).
-
-Stop a separately running `bello-rerun` with SIGINT or SIGTERM after hardwared
-when recording the final motor-group shutdown transition. Transport teardown
-statuses occur after gRPC closes and are not guaranteed to reach remote
-observers. The observer's shutdown is independent and does not participate in
-the hardware safety sequence.
 
 ## Diagnostics and troubleshooting
 

@@ -125,7 +125,7 @@ message ImuInfo {
 
 message MotorInfo {
   string name = 1;
-  string joint = 2;
+  string coordinate = 2;
   string group = 3;
   MotorAddress address = 4;
   string model = 5;

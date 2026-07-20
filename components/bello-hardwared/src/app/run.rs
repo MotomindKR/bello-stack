@@ -1,12 +1,15 @@
+use std::future::Future;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use tokio::sync::watch;
-use tonic::transport::{Server, server::TcpIncoming};
 
 use super::HardwareDaemon;
+use super::listener::GrpcIncoming;
+use crate::api::grpc::GrpcListenSpec;
 use crate::api::grpc::HardwareGrpc;
 use crate::config::ResolvedTopology;
 use crate::telemetry::Telemetry;
@@ -21,12 +24,22 @@ pub fn check(config_path: impl AsRef<Path>) -> Result<()> {
 
 pub async fn run(config_path: impl AsRef<Path>) -> Result<()> {
     let topology = ResolvedTopology::load(config_path)?;
-    let listen = topology.grpc().listen();
-    if !listen.ip().is_loopback() {
-        tracing::warn!(%listen, "gRPC control is exposed without transport authentication");
+    let listen = topology.grpc().listen().clone();
+    match &listen {
+        GrpcListenSpec::Tcp(address)
+            if !address.ip().is_loopback() && !topology.grpc().uses_tls() =>
+        {
+            tracing::warn!(%address, "gRPC control is exposed without transport encryption or authentication");
+        }
+        GrpcListenSpec::Tcp(address)
+            if !address.ip().is_loopback() && !topology.grpc().requires_client_certificate() =>
+        {
+            tracing::warn!(%address, "gRPC TLS is enabled without client authentication");
+        }
+        _ => {}
     }
-    let incoming = TcpIncoming::bind(listen)
-        .map_err(|error| anyhow!("binding gRPC listener {listen}: {error}"))?;
+    let incoming = GrpcIncoming::bind(&listen)?;
+    let mut server = topology.grpc().server()?;
     let mut signals = ShutdownSignals::install()?;
     let telemetry = Telemetry::new(topology.telemetry_capacity());
     let (server_shutdown_tx, server_shutdown_rx) = watch::channel(false);
@@ -37,15 +50,29 @@ pub async fn run(config_path: impl AsRef<Path>) -> Result<()> {
         watchdog_shutdown_rx,
     ));
 
-    tracing::info!(%listen, "Bello hardware daemon ready");
+    tracing::info!(?listen, "Bello hardware daemon ready");
     let server_result = {
-        let server = Server::builder()
-            .add_service(HardwareServiceServer::new(HardwareGrpc::new(
-                daemon.clone(),
-                server_shutdown_rx.clone(),
-            )))
-            .serve_with_incoming_shutdown(incoming, wait_for_shutdown(server_shutdown_rx));
-        tokio::pin!(server);
+        type ServerFuture =
+            Pin<Box<dyn Future<Output = Result<(), tonic::transport::Error>> + Send + 'static>>;
+        let service = HardwareServiceServer::new(HardwareGrpc::new(
+            daemon.clone(),
+            server_shutdown_rx.clone(),
+        ));
+        let mut server: ServerFuture = match incoming {
+            GrpcIncoming::Tcp(incoming) => Box::pin(
+                server
+                    .add_service(service)
+                    .serve_with_incoming_shutdown(incoming, wait_for_shutdown(server_shutdown_rx)),
+            ),
+            #[cfg(unix)]
+            GrpcIncoming::Unix { incoming, socket } => Box::pin(async move {
+                let _socket = socket;
+                server
+                    .add_service(service)
+                    .serve_with_incoming_shutdown(incoming, wait_for_shutdown(server_shutdown_rx))
+                    .await
+            }),
+        };
         tokio::select! {
             result = server.as_mut() => {
                 begin_shutdown(&daemon, &watchdog_shutdown_tx, &server_shutdown_tx);

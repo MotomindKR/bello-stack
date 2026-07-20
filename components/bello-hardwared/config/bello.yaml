@@ -1,9 +1,15 @@
+# Bello physical-hardware topology for the sphere-hand morphology.
+# Motor identities, CAN assignments, models, directions, and coordinates mirror:
+#   ~/bello_mujoco/configs/robstride/{lower_body,upper_body}.yaml
+# Group cadence mirrors configs/robstride_runner/default.yaml. Hardwared-only
+# transport and safety policy remains local to this file. Sphere replacement
+# removes wrist-yaw joints, so arm motors 7 (CAN IDs 37 and 47) are omitted.
 runtime:
   telemetry_capacity: 4096
 
 grpc:
   # Keep control local unless the deployment adds authenticated transport security.
-  listen: 127.0.0.1:50051
+  listen: { type: tcp, address: 127.0.0.1:50051 }
   default_lease_ms: 1000
   maximum_lease_ms: 5000
 
@@ -21,26 +27,27 @@ imus:
     output_rate_hz: 500
 
 buses:
-  - name: can_a
+  - name: can0
     interface: can0
-    host_id: 253
+    host_id: 0
     bitrate: 1000000 # Must match the externally configured classic CAN interface.
     maximum_utilization: 0.75
     reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
-  - name: can_b
+  - name: can1
     interface: can1
-    host_id: 253
+    host_id: 0
     bitrate: 1000000 # Must match the externally configured classic CAN interface.
     maximum_utilization: 0.75
     reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
 
 motors:
-  - name: motor_a
-    joint: joint_a
-    bus: can_a
-    id: 1
-    model: ROBSTRIDE_03
-    direction: 1
+  # Lower body (can0).
+  - name: waist_yaw
+    coordinate: waist_yaw_joint
+    bus: can0
+    id: 53
+    model: ROBSTRIDE_04
+    direction: -1
     health: &motor_health
       safe_position_min: -12.57
       safe_position_max: 12.57
@@ -53,40 +60,244 @@ motors:
       limit: clamp
       position_step: fault
     fault_damping_kd: 2.0
-  - name: motor_b
-    joint: joint_b
-    bus: can_b
-    id: 1
+  - name: left_hip_pitch
+    coordinate: left_hip_pitch_joint
+    bus: can0
+    id: 61
+    model: ROBSTRIDE_04
+    direction: -1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: left_hip_roll
+    coordinate: left_hip_roll_joint
+    bus: can0
+    id: 62
     model: ROBSTRIDE_03
     direction: -1
     health: *motor_health
     command_policy: *command_policy
     fault_damping_kd: 2.0
-  - name: motor_c
-    joint: joint_c
-    bus: can_a
-    id: 2
+  - name: left_hip_yaw
+    coordinate: left_hip_yaw_joint
+    bus: can0
+    id: 63
     model: ROBSTRIDE_03
+    direction: -1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: left_knee_mix_1
+    coordinate: left_knee_joint
+    bus: can0
+    id: 64
+    model: ROBSTRIDE_04
     direction: 1
     health: *motor_health
     command_policy: *command_policy
     fault_damping_kd: 2.0
-  - name: motor_d
-    joint: joint_d
-    bus: can_b
-    id: 2
+  - name: left_ankle_1
+    coordinate: left_ankle_motor_1
+    bus: can0
+    id: 67
+    model: ROBSTRIDE_06
+    direction: -1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: left_ankle_2
+    coordinate: left_ankle_motor_2
+    bus: can0
+    id: 66
+    model: ROBSTRIDE_06
+    direction: -1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: right_hip_pitch
+    coordinate: right_hip_pitch_joint
+    bus: can0
+    id: 71
+    model: ROBSTRIDE_04
+    direction: -1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: right_hip_roll
+    coordinate: right_hip_roll_joint
+    bus: can0
+    id: 72
     model: ROBSTRIDE_03
+    direction: -1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: right_hip_yaw
+    coordinate: right_hip_yaw_joint
+    bus: can0
+    id: 73
+    model: ROBSTRIDE_03
+    direction: -1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: right_knee_mix_1
+    coordinate: right_knee_joint
+    bus: can0
+    id: 74
+    model: ROBSTRIDE_04
+    direction: 1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: right_ankle_1
+    coordinate: right_ankle_motor_1
+    bus: can0
+    id: 77
+    model: ROBSTRIDE_06
+    direction: -1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: right_ankle_2
+    coordinate: right_ankle_motor_2
+    bus: can0
+    id: 76
+    model: ROBSTRIDE_06
     direction: -1
     health: *motor_health
     command_policy: *command_policy
     fault_damping_kd: 2.0
 
-# Groups are arbitrary ownership units. Groups may span and share buses; each
-# motor belongs to exactly one group.
+  # Upper body (can1).
+  - name: left_arm_1
+    coordinate: left_shoulder_pitch_joint
+    bus: can1
+    id: 31
+    model: ROBSTRIDE_04
+    direction: -1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: left_arm_2
+    coordinate: left_shoulder_roll_joint
+    bus: can1
+    id: 32
+    model: ROBSTRIDE_03
+    direction: -1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: left_arm_3
+    coordinate: left_shoulder_yaw_joint
+    bus: can1
+    id: 33
+    model: ROBSTRIDE_06
+    direction: 1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: left_arm_4
+    coordinate: left_elbow_pitch_joint
+    bus: can1
+    id: 34
+    model: ROBSTRIDE_06
+    direction: 1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: left_arm_5
+    coordinate: left_elbow_yaw_joint
+    bus: can1
+    id: 35
+    model: ROBSTRIDE_00
+    direction: 1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: left_arm_6
+    coordinate: left_wrist_pitch_joint
+    bus: can1
+    id: 36
+    model: ROBSTRIDE_00
+    direction: -1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: right_arm_1
+    coordinate: right_shoulder_pitch_joint
+    bus: can1
+    id: 41
+    model: ROBSTRIDE_04
+    direction: -1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: right_arm_2
+    coordinate: right_shoulder_roll_joint
+    bus: can1
+    id: 42
+    model: ROBSTRIDE_03
+    direction: -1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: right_arm_3
+    coordinate: right_shoulder_yaw_joint
+    bus: can1
+    id: 43
+    model: ROBSTRIDE_06
+    direction: 1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: right_arm_4
+    coordinate: right_elbow_pitch_joint
+    bus: can1
+    id: 44
+    model: ROBSTRIDE_06
+    direction: 1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: right_arm_5
+    coordinate: right_elbow_yaw_joint
+    bus: can1
+    id: 45
+    model: ROBSTRIDE_00
+    direction: 1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+  - name: right_arm_6
+    coordinate: right_wrist_pitch_joint
+    bus: can1
+    id: 46
+    model: ROBSTRIDE_00
+    direction: -1
+    health: *motor_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
+
+# The source configuration is split into lower- and upper-body files, so those
+# files define hardwared's synchronized ownership and fault-containment groups.
 motor_groups:
-  - name: group_alpha
-    motors: [motor_a, motor_b]
-    control_rate_hz: 250.0
+  - name: lower_body
+    motors:
+      - waist_yaw
+      - left_hip_pitch
+      - left_hip_roll
+      - left_hip_yaw
+      - left_knee_mix_1
+      - left_ankle_1
+      - left_ankle_2
+      - right_hip_pitch
+      - right_hip_roll
+      - right_hip_yaw
+      - right_knee_mix_1
+      - right_ankle_1
+      - right_ankle_2
+    control_rate_hz: 100.0
     command_timeout_ms: 100
     feedback_timeout_ms: 100
     enable_timeout_ms: 500
@@ -96,9 +307,21 @@ motor_groups:
       overrides:
         temperature: disable
         reported_motor_fault: disable
-  - name: group_beta
-    motors: [motor_c, motor_d]
-    control_rate_hz: 250.0
+  - name: upper_body
+    motors:
+      - left_arm_1
+      - left_arm_2
+      - left_arm_3
+      - left_arm_4
+      - left_arm_5
+      - left_arm_6
+      - right_arm_1
+      - right_arm_2
+      - right_arm_3
+      - right_arm_4
+      - right_arm_5
+      - right_arm_6
+    control_rate_hz: 100.0
     command_timeout_ms: 100
     feedback_timeout_ms: 100
     enable_timeout_ms: 500

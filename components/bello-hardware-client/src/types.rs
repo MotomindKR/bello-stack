@@ -120,6 +120,71 @@ impl FaultCause {
     }
 }
 
+/// Safety check that produced a command-policy telemetry event.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum CommandPolicyCheck {
+    Unspecified,
+    Limit,
+    PositionStep,
+    Unknown(i32),
+}
+
+impl CommandPolicyCheck {
+    pub(crate) fn from_raw(raw: i32) -> Self {
+        match proto::CommandPolicyCheck::try_from(raw) {
+            Ok(proto::CommandPolicyCheck::Unspecified) => Self::Unspecified,
+            Ok(proto::CommandPolicyCheck::Limit) => Self::Limit,
+            Ok(proto::CommandPolicyCheck::PositionStep) => Self::PositionStep,
+            Err(_) => Self::Unknown(raw),
+        }
+    }
+}
+
+/// Configured reaction associated with a command-policy event.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum CommandBehavior {
+    Unspecified,
+    Clamp,
+    Reject,
+    Fault,
+    Unknown(i32),
+}
+
+impl CommandBehavior {
+    pub(crate) fn from_raw(raw: i32) -> Self {
+        match proto::CommandBehavior::try_from(raw) {
+            Ok(proto::CommandBehavior::Unspecified) => Self::Unspecified,
+            Ok(proto::CommandBehavior::Clamp) => Self::Clamp,
+            Ok(proto::CommandBehavior::Reject) => Self::Reject,
+            Ok(proto::CommandBehavior::Fault) => Self::Fault,
+            Err(_) => Self::Unknown(raw),
+        }
+    }
+}
+
+/// Motor reaction requested when command policy transitions a group to fault.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum FaultResponse {
+    Unspecified,
+    Damping,
+    Disable,
+    Unknown(i32),
+}
+
+impl FaultResponse {
+    pub(crate) fn from_raw(raw: i32) -> Self {
+        match proto::FaultResponse::try_from(raw) {
+            Ok(proto::FaultResponse::Unspecified) => Self::Unspecified,
+            Ok(proto::FaultResponse::Damping) => Self::Damping,
+            Ok(proto::FaultResponse::Disable) => Self::Disable,
+            Err(_) => Self::Unknown(raw),
+        }
+    }
+}
+
 /// Result of a submitted command snapshot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]

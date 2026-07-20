@@ -33,9 +33,42 @@ pub(crate) struct CommandPolicyReport {
     pub(crate) issues: Vec<CommandPolicyIssue>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum PositionReference {
+    Measured(f64),
+    PreviousTarget(f64),
+}
+
+impl PositionReference {
+    fn value(self) -> f64 {
+        match self {
+            Self::Measured(value) | Self::PreviousTarget(value) => value,
+        }
+    }
+
+    fn description(self) -> &'static str {
+        match self {
+            Self::Measured(_) => "measured position",
+            Self::PreviousTarget(_) => "previous accepted target",
+        }
+    }
+}
+
+pub(crate) fn select_position_reference(
+    same_lease_generation: bool,
+    previous_target: Option<f64>,
+    measured_position: Option<f64>,
+) -> Option<PositionReference> {
+    if same_lease_generation {
+        previous_target.map(PositionReference::PreviousTarget)
+    } else {
+        measured_position.map(PositionReference::Measured)
+    }
+}
+
 pub(crate) fn check_command(
     mut command: ImpedanceCommand,
-    measured_position: Option<f64>,
+    position_reference: Option<PositionReference>,
     motor: &MotorSpec,
 ) -> CommandPolicyReport {
     let mut issues = Vec::new();
@@ -112,13 +145,14 @@ pub(crate) fn check_command(
         }
     }
 
-    if let Some(measured_position) = measured_position {
-        let delta = command.position - measured_position;
+    if let Some(reference) = position_reference {
+        let reference_position = reference.value();
+        let delta = command.position - reference_position;
         if delta.abs() > motor.command_policy.maximum_position_step {
             let behavior = motor.command_policy.position_step;
             let modified = behavior == CommandBehavior::Clamp;
             if modified {
-                command.position = measured_position
+                command.position = reference_position
                     + delta.clamp(
                         -motor.command_policy.maximum_position_step,
                         motor.command_policy.maximum_position_step,
@@ -129,7 +163,8 @@ pub(crate) fn check_command(
                 behavior,
                 violation: SafetyViolation::PositionStep,
                 detail: format!(
-                    "position target step {delta} from measured position {measured_position} exceeds {}",
+                    "position target step {delta} from {} {reference_position} exceeds {}",
+                    reference.description(),
                     motor.command_policy.maximum_position_step
                 ),
                 command_modified: modified,
@@ -183,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn position_step_is_measured_from_feedback() {
+    fn position_step_reports_its_reference() {
         let mut motor = motor();
         motor.command_policy.maximum_position_step = 0.5;
         let report = check_command(
@@ -191,9 +226,33 @@ mod tests {
                 position: 1.0,
                 ..Default::default()
             },
-            Some(0.0),
+            Some(PositionReference::Measured(0.0)),
             &motor,
         );
         assert_eq!(report.issues[0].check, CommandPolicyCheck::PositionStep);
+        assert!(report.issues[0].detail.contains("measured position"));
+
+        let report = check_command(
+            ImpedanceCommand {
+                position: 1.0,
+                ..Default::default()
+            },
+            Some(PositionReference::PreviousTarget(0.25)),
+            &motor,
+        );
+        assert_eq!(report.issues[0].check, CommandPolicyCheck::PositionStep);
+        assert!(report.issues[0].detail.contains("previous accepted target"));
+    }
+
+    #[test]
+    fn first_target_uses_feedback_then_later_targets_use_the_last_accepted_target() {
+        assert_eq!(
+            select_position_reference(false, Some(0.75), Some(0.1)),
+            Some(PositionReference::Measured(0.1))
+        );
+        assert_eq!(
+            select_position_reference(true, Some(0.75), Some(0.1)),
+            Some(PositionReference::PreviousTarget(0.75))
+        );
     }
 }

@@ -9,7 +9,18 @@
       forAllSystems = nixpkgs.lib.genAttrs systems;
     in {
       devShells = forAllSystems (system:
-        let pkgs = import nixpkgs { inherit system; };
+        let
+          pkgs = import nixpkgs { inherit system; };
+          visualizerRuntimeLibraries = with pkgs; [
+            wayland
+            libxkbcommon
+            libx11
+            libxcursor
+            libxi
+            libxrandr
+            libglvnd
+            vulkan-loader
+          ];
         in {
           default = pkgs.mkShell {
             packages = with pkgs; [
@@ -24,12 +35,21 @@
               can-utils
               iproute2
               buf
-            ];
+              (python3.withPackages (python: with python; [
+                grpcio
+                grpcio-tools
+                hatchling
+                mypy
+                pytest
+              ]))
+              ruff
+            ] ++ visualizerRuntimeLibraries;
             RUST_BACKTRACE = "1";
             # Keep Cargo artifacts outside this non-Git path flake. Otherwise Nix
             # copies target/ into every source snapshot before entering the shell.
             shellHook = ''
               export CARGO_TARGET_DIR="''${XDG_CACHE_HOME:-''${HOME}/.cache}/bello-stack/cargo-target"
+              export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath visualizerRuntimeLibraries}:''${LD_LIBRARY_PATH:-}"
             '';
           };
         });

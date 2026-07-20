@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{env, path::PathBuf, process::Command, time::Duration};
 
 use anyhow::{Context, Result, anyhow, bail};
 use bello_hardware_client::raw::proto::watch_telemetry_response::Payload;
@@ -7,7 +7,7 @@ use bello_hardware_client::raw::{
     CommandStreamOptions, CommandValidity, EnumValue, GroupLease, HardwareClient, LeaseDuration,
     TelemetryFilter, TelemetryStream,
 };
-use bello_hardware_client::{CommandFrame, ControlOptions, JointTarget, Robot};
+use bello_hardware_client::{CommandFrame, ControlOptions, CoordinateTarget, Robot};
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, sleep, timeout};
 
@@ -40,6 +40,7 @@ pub async fn connect(
 
 pub async fn run(
     client: HardwareClient,
+    endpoint: &str,
     timeout_duration: Duration,
     hardwared: &mut ManagedProcess,
     emulator: &mut ManagedProcess,
@@ -54,7 +55,10 @@ pub async fn run(
         )
         .await?;
 
+    // Monitoring must make motors available before any lease, enable, or command.
+    wait_for_motors_online(&client, timeout_duration, hardwared, emulator).await?;
     run_ergonomic_smoke(&client).await?;
+    run_python_smoke(endpoint).await?;
 
     let mut lease = client
         .acquire_lease(
@@ -140,7 +144,34 @@ pub async fn run(
     Ok(())
 }
 
-async fn run_ergonomic_smoke(client: &HardwareClient) -> Result<()> {
+async fn run_python_smoke(endpoint: &str) -> Result<()> {
+    let endpoint = endpoint.to_owned();
+    tokio::task::spawn_blocking(move || {
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let package = manifest
+            .parent()
+            .expect("E2E component must have a components parent")
+            .join("bello-hardware-python");
+        let output = Command::new("python3")
+            .arg(package.join("tests/vcan_smoke.py"))
+            .arg(endpoint)
+            .env("PYTHONPATH", package.join("src"))
+            .output()
+            .context("running the Python gRPC smoke client")?;
+        if !output.status.success() {
+            bail!(
+                "Python gRPC smoke client failed with {}: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+        Ok(())
+    })
+    .await
+    .context("joining the Python gRPC smoke client")?
+}
+
+pub(crate) async fn run_ergonomic_smoke(client: &HardwareClient) -> Result<()> {
     let robot = Robot::from_hardware_client(client.clone()).await?;
     let group = robot.group(GROUP)?;
     let mut control = group
@@ -162,13 +193,13 @@ fn ergonomic_frame(
 ) -> Result<CommandFrame> {
     Ok(group
         .frame()
-        .joint(
+        .coordinate(
             "e2e_joint_1",
-            JointTarget::position(position).gains(20.0, 1.0),
+            CoordinateTarget::position(position).gains(20.0, 1.0),
         )?
-        .joint(
+        .coordinate(
             "e2e_joint_2",
-            JointTarget::position(position).gains(20.0, 1.0),
+            CoordinateTarget::position(position).gains(20.0, 1.0),
         )?
         .build()?)
 }

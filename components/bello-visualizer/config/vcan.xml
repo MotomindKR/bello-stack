@@ -1,0 +1,17 @@
+<mujoco model="bello_vcan_demo">
+  <compiler angle="radian"/>
+  <worldbody>
+    <body name="base">
+      <joint name="emulated_joint_1" type="hinge" axis="0 0 1" range="-1 1"/>
+      <geom type="box" size="0.05 0.05 0.2" rgba="0.25 0.65 0.9 1"/>
+      <body name="link" pos="0 0 0.4">
+        <joint name="emulated_joint_2" type="hinge" axis="0 1 0" range="-1 1"/>
+        <geom type="box" size="0.04 0.04 0.18" rgba="0.9 0.55 0.2 1"/>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <position name="emulated_joint_1_position" joint="emulated_joint_1" ctrlrange="-1 1" user="0"/>
+    <position name="emulated_joint_2_position" joint="emulated_joint_2" ctrlrange="-1 1" user="0"/>
+  </actuator>
+</mujoco>

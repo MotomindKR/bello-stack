@@ -1,9 +1,0 @@
-hardware_endpoint: http://127.0.0.1:50051
-
-reconnect:
-  initial_delay_ms: 100
-  maximum_delay_ms: 5000
-
-output:
-  mode: save
-  path: bello_hardware.rrd

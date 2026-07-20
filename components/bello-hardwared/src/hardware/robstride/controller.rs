@@ -112,6 +112,7 @@ pub(crate) struct MotorController {
     control_batcher: Arc<ControlBatcher>,
     feedback: Arc<RwLock<Option<TimedFeedback>>>,
     feedback_expected_since: Arc<RwLock<Option<Instant>>>,
+    monitoring_request: Arc<Mutex<Option<(u64, Instant)>>>,
     thermal_health: Arc<Mutex<ThermalHealth>>,
     fault: Arc<RwLock<Option<MotorFault>>>,
     feedback_timeout: Duration,
@@ -136,6 +137,7 @@ impl MotorController {
             control_batcher,
             feedback: Arc::new(RwLock::new(None)),
             feedback_expected_since: Arc::new(RwLock::new(None)),
+            monitoring_request: Arc::new(Mutex::new(None)),
             thermal_health: Arc::new(Mutex::new(ThermalHealth::default())),
             fault: Arc::new(RwLock::new(None)),
             feedback_timeout,
@@ -255,12 +257,38 @@ impl MotorController {
     pub(super) fn sync_bus(&self) {
         let bus = self.bus.status();
         if bus.state.is_online() {
-            self.lifecycle.mark_connecting(format!(
-                "CAN bus {} restored; waiting for feedback",
+            let feedback_is_fresh = self
+                .feedback
+                .read()
+                .is_some_and(|feedback| feedback.received.elapsed() <= self.feedback_timeout);
+            let mut monitoring_request = self.monitoring_request.lock();
+            let request_generation_is_current = monitoring_request
+                .is_some_and(|(generation, _)| generation == bus.transition_count);
+            let request_is_current = monitoring_request.is_some_and(|(generation, requested)| {
+                generation == bus.transition_count && requested.elapsed() < self.feedback_timeout
+            });
+            if feedback_is_fresh && request_generation_is_current {
+                return;
+            }
+            if request_is_current {
+                return;
+            }
+            self.lifecycle.await_feedback(format!(
+                "requesting active feedback on CAN bus {}",
                 self.bus.spec.name
             ));
+            match self.bus.enqueue_configuration_batch(vec![
+                active_report_frame(self.bus.spec.host_id, self.spec.address.id, true).into(),
+            ]) {
+                Ok(()) => *monitoring_request = Some((bus.transition_count, Instant::now())),
+                Err(error) => self.lifecycle.degrade_or_update(format!(
+                    "could not request active feedback on CAN bus {}: {error}",
+                    self.bus.spec.name
+                )),
+            }
             return;
         }
+        *self.monitoring_request.lock() = None;
         let detail = format!(
             "CAN bus {} unavailable: {} ({})",
             self.bus.spec.name, bus.state, bus.detail

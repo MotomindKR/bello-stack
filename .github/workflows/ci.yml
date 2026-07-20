@@ -23,6 +23,18 @@ jobs:
         run: |
           nix develop --command buf format --diff --exit-code
           nix develop --command buf lint
+      - name: Generated Python protobuf bindings
+        run: |
+          nix develop --command python components/bello-hardware-python/scripts/generate_proto.py
+          git diff --exit-code -- components/bello-hardware-python/src/bello_hardware/_generated
+      - name: Python client
+        working-directory: components/bello-hardware-python
+        run: |
+          nix develop --command ruff format --check .
+          nix develop --command ruff check .
+          nix develop --command mypy src/bello_hardware tests
+          nix develop --command pytest
+          nix develop --command python -m hatchling build
 
   vcan-integration:
     needs: checks

@@ -10,9 +10,9 @@ documented in [`operations.md`](operations.md), the external contract in
 
 ## Nix and direnv
 
-The checked-in Nix flake supplies Rust/Cargo, rustfmt, Clippy, system `protoc`,
-Buf, `grpcurl`, can-utils, iproute2, and native build dependencies. Enter it
-automatically:
+The checked-in Nix flake supplies Rust/Cargo, rustfmt, Clippy, Python, gRPC
+Python tooling, pytest, Ruff, mypy, system `protoc`, Buf, `grpcurl`, can-utils,
+iproute2, and native build dependencies. Enter it automatically:
 
 ```sh
 direnv allow
@@ -46,18 +46,24 @@ greenfield: backward compatibility is not currently required, but field types,
 enum values, workflow changes, and downstream test updates should still be
 reviewed together.
 
+The Python package commits private generated bindings so wheels do not require
+a protobuf compiler. Regenerate them after every contract change and review the
+result with the handwritten conversions:
+
+```sh
+python components/bello-hardware-python/scripts/generate_proto.py
+```
+
 ## Workspace and source layout
 
-The Cargo workspace contains seven components:
+The Cargo workspace contains six components:
 
 - [`bello-hardware-api`](../components/bello-hardware-api): protobuf source and
   generated tonic client/server types;
 - [`bello-hardware-client`](../components/bello-hardware-client): maintained
-  robot/group/joint client with internal lease, command, and state machinery;
+  robot/group/coordinate client with internal lease, command, and state machinery;
 - [`bello-hardwared`](../components/bello-hardwared): daemon and `run`/`check`
   library entrypoints;
-- [`bello-rerun`](../components/bello-rerun): optional read-only gRPC observer
-  and Rerun output;
 - [`robstride-protocol`](../components/robstride-protocol): Robstride wire model,
   frame layout, and codec helpers;
 - [`robstride-emulator`](../components/robstride-emulator): thin SocketCAN
@@ -65,8 +71,13 @@ The Cargo workspace contains seven components:
 - [`bello-hardware-e2e`](../components/bello-hardware-e2e): process-level,
   Cargo-driven vcan integration test.
 
+The adjacent
+[`bello-hardware-python`](../components/bello-hardware-python) component is a
+pure-Python package rather than a Cargo workspace member. It uses generated
+blocking gRPC bindings behind a small robot/group API.
+
 Conceptually, configuration assembles transport and device workers, group
-control consumes narrow hardware handles, and the API/observers present daemon
+control consumes narrow hardware handles, and the API presents daemon
 state. This is an ownership and data-flow model, not a claim that Rust module
 dependencies are strictly one-way. The maintained directory map and layering rationale are in
 [`architecture.md`](architecture.md). Avoid a generic transport abstraction
@@ -83,6 +94,12 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 buf format --diff --exit-code
 buf lint
+cd components/bello-hardware-python
+ruff format --check .
+ruff check .
+mypy src/bello_hardware tests
+pytest
+python -m hatchling build
 ```
 
 During iteration, use focused package/test commands first, then finish with the
@@ -96,8 +113,6 @@ cargo run -p bello-hardwared -- \
   --check --config components/bello-hardwared/config/vcan.yaml
 cargo run -p robstride-emulator -- \
   --check --config components/robstride-emulator/config/vcan.yaml
-cargo run -p bello-rerun -- \
-  --check --config components/bello-rerun/config/bello.yaml
 ```
 
 Do not hide warnings or make host hardware a prerequisite for ordinary unit and
@@ -107,9 +122,9 @@ type name or call path.
 
 ## Host-vcan integration test
 
-The process-level scenario is an ignored Cargo integration test. Normal
-`cargo test` compiles it but does not require `vcan0`. To run it, create and
-bring up a host interface:
+TLS, mTLS, and Unix-socket process tests run under normal `cargo test` without
+host hardware. The vCAN control scenario remains an ignored Cargo integration
+test. To run it, create and bring up a host interface:
 
 ```sh
 sudo modprobe vcan
@@ -127,6 +142,16 @@ loopback gRPC port, controls fault phases by suspending/resuming the emulator,
 and verifies child-process liveness. Details are in the
 [E2E README](../components/bello-hardware-e2e/README.md) and
 [`tests/vcan.rs`](../components/bello-hardware-e2e/tests/vcan.rs).
+
+Visualizer model, transform, transmission, stale-input, and strict-rejection
+tests run without a GPU as part of the normal workspace suite. A fake hardware
+server additionally checks complete diagnostic telemetry, disconnect freezing,
+fresh immutable control seeding, complete command frames, configured cadence,
+and lease cleanup. The vCAN fixture verifies both its matching MJCF transmission
+and that the headless visualizer controller keeps its configured send rate
+without renderer calls. Native window interaction remains a documented manual
+smoke test in the
+[`bello-visualizer` README](../components/bello-visualizer/README.md).
 
 ## CI
 
@@ -151,8 +176,7 @@ For a first full review, read in this order:
    [`hardware/`](../components/bello-hardwared/src/hardware),
    [`control/`](../components/bello-hardwared/src/control), and
    [`api/grpc/`](../components/bello-hardwared/src/api/grpc) for accepted input,
-   local validation, and resolved topology. The observer has its own independent
-   configuration boundary under [`bello-rerun`](../components/bello-rerun).
+   local validation, and resolved topology.
 3. [`domain/`](../components/bello-hardwared/src/domain) for IDs, commands,
    telemetry, and errors shared across boundaries.
 4. [`app/run.rs`](../components/bello-hardwared/src/app/run.rs) and
@@ -170,8 +194,9 @@ For a first full review, read in this order:
 8. [`api/grpc/`](../components/bello-hardwared/src/api/grpc),
    [`bello-hardware-client`](../components/bello-hardware-client), and
    [`telemetry.rs`](../components/bello-hardwared/src/telemetry.rs) for external
-   presentation, followed by [`bello-rerun`](../components/bello-rerun) for one
-   read-only observer implementation.
+   presentation, followed by
+   [`bello-hardware-python`](../components/bello-hardware-python) for the other
+   maintained language client.
 9. [`robstride-emulator`](../components/robstride-emulator) and the
    [`vcan` integration test](../components/bello-hardware-e2e/tests/vcan.rs) for
    executable examples of the full boundary.

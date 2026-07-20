@@ -2,7 +2,7 @@ runtime:
   telemetry_capacity: 4096
 
 grpc:
-  listen: 127.0.0.1:50051
+  listen: { type: tcp, address: 127.0.0.1:50051 }
   default_lease_ms: 1000
   maximum_lease_ms: 5000
 
@@ -16,13 +16,13 @@ buses:
 
 motors:
   - name: emulated_motor_1
-    joint: emulated_joint_1
+    coordinate: emulated_joint_1
     bus: emulated_can
     id: 1
     model: ROBSTRIDE_03
     direction: 1
   - name: emulated_motor_2
-    joint: emulated_joint_2
+    coordinate: emulated_joint_2
     bus: emulated_can
     id: 2
     model: ROBSTRIDE_03

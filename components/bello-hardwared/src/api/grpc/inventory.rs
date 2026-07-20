@@ -25,7 +25,7 @@ pub fn list(daemon: &HardwareDaemon) -> ListHardwareResponse {
         .motors()
         .map(|(_, motor)| MotorInfo {
             name: motor.spec.name.to_string(),
-            joint: motor.spec.joint.clone(),
+            coordinate: motor.spec.coordinate.clone(),
             group: motor.group.to_string(),
             address: Some(MotorAddress {
                 bus: motor.spec.address.bus.to_string(),

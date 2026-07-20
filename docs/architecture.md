@@ -5,16 +5,27 @@
 `bello-hardwared` is one production process with explicit internal ownership
 boundaries. It owns the physical transports, protocol devices, sensor drivers,
 motor-group controllers, leases, telemetry fan-out, and gRPC server. The
-optional `bello-rerun` process observes the public read-only gRPC stream;
-higher-level motion generation, kinematics, and robot behavior remain outside
-the daemon.
+public read-only gRPC stream supports external monitoring; higher-level motion
+generation, kinematics, and robot behavior remain outside the daemon.
 
 The process is monolithic in deployment, not in implementation: each layer has
 one kind of policy and communicates through narrow handles and bounded queues.
 The adjacent API and Robstride protocol libraries contain shared wire-format
-knowledge. The high-level Rust client binds application-side leases and command
-streams without entering the daemon, while the observer, emulator, and
+knowledge. The high-level Rust and Python clients bind application-side leases
+and command streams without entering the daemon, while the emulator and
 end-to-end test components remain outside the hardware process.
+
+`bello-visualizer` is also a separate client process. Kiss3d, egui, scene nodes,
+and the camera stay on its main thread. A background Tokio runtime continuously
+drains hardware and optional pose streams, publishes latest-wins snapshots at
+60 Hz, and owns lease/command sessions. Rendering therefore cannot backpressure
+telemetry or set the command cadence. External root tracking modifies display
+transforms only; command conversion and safety use actuator/model coordinates.
+The visualizer uses the maintained `bello-hardware-client` for validated
+inventory, aggregated telemetry, reconnect boundaries, and control sessions.
+It does not implement a parallel gRPC client. Its diagnostic publisher retains
+latest motor/IMU/group/device values and a bounded low-rate event history;
+ordinary sample traffic never enters the history.
 
 ## Boundaries
 
@@ -27,8 +38,7 @@ end-to-end test components remain outside the hardware process.
 | CAN and serial transports | Physical sessions, queues, deadlines, reconnect | Motor or IMU meaning |
 | Robstride and EBIMU devices | Protocol configuration, feedback parsing, device health | Group ownership or client sessions |
 | Telemetry | Timestamped in-process event fan-out | Durable storage or backpressure on producers |
-| Rust hardware client | Application-side channel, lease handles, command sequencing, and telemetry filters | Automatic motion recovery, server safety policy, or hardware ownership |
-| Rerun observer | gRPC subscription, bounded writer queue, visualization timeline, and output | Hardware ownership, leases, or safety decisions |
+| Hardware clients | Application-side channels, lease renewal, command sequencing, and telemetry access | Automatic motion recovery, server safety policy, or hardware ownership |
 
 The assembly boundary is [`app/daemon.rs`](../components/bello-hardwared/src/app/daemon.rs).
 The API receives an `Arc<HardwareDaemon>` and calls its methods rather than
@@ -59,12 +69,6 @@ supervisor reconnecting rather than failing process assembly.
    [`app/daemon.rs`](../components/bello-hardwared/src/app/daemon.rs).
 5. The lease watchdog is spawned and the tonic server begins serving.
 
-`bello-rerun` has an independent lifecycle. It can start before or after the
-daemon and retries a missing or interrupted gRPC connection with bounded
-exponential backoff. It uses only `WatchTelemetry`, never acquires a lease, and
-is not on a control or device I/O path. Its own SIGINT/SIGTERM handling does not
-signal hardwared.
-
 If assembly fails partway through, already-created managers are dropped and
 join their workers. The production daemon has no in-process simulation branch;
 hardware-free actuator testing uses the separate
@@ -86,8 +90,6 @@ blocking I/O but does not make them hard real-time.
 | Serial supervisor | One persistent thread per serial device | Open/reopen the port and own reconnect state |
 | Serial session workers | One writer and one reader thread while a session is open | Deadline-bound writes and byte-chunk reception |
 | IMU worker | One thread per IMU | Configure EBIMU, frame and parse samples, detect stale input |
-| `bello-rerun` async task | Zero or more external instances | Read-only gRPC subscription, reconnect, and signal handling |
-| Rerun writer | One OS thread per observer | Telemetry mapping, timeline state, Rerun SDK calls, and output |
 
 The group topology is generic: a group can contain any non-empty set of motors,
 can span multiple buses, and has no body-position semantics. A bus can serve
@@ -121,14 +123,7 @@ The code uses different channel semantics deliberately:
   session.
 - Telemetry uses a bounded Tokio broadcast ring. Each gRPC subscriber has an
   independent cursor; a slow subscriber can lose its own old events without
-  blocking producers or other subscribers. A Rerun observer is such an
-  external subscriber.
-- Inside `bello-rerun`, the async gRPC task uses nonblocking `try_send` into a
-  fixed 4096-event queue owned by its writer thread. A full queue drops observer
-  events instead of delaying gRPC reception or signal handling. One warning is
-  emitted per drop burst, followed by a Rerun health marker when the writer
-  resumes. The connection generation travels with every telemetry item, so a
-  dropped connection marker does not disable restart-time rebasing.
+  blocking producers or other subscribers.
 
 The concrete queue ownership is visible in
 [`control/group_handle.rs`](../components/bello-hardwared/src/control/group_handle.rs),
@@ -208,15 +203,12 @@ and [`hardware/imu/ebimu.rs`](../components/bello-hardwared/src/hardware/imu/ebi
 
 Transports, motors, sensors, command policy, and groups publish timestamped
 domain events to one broadcaster. gRPC applies per-subscriber filters and
-reports subscriber-local lag as a health event. `bello-rerun` requests the
-complete read-only stream over gRPC and translates it into Rerun entities; it
-does not share daemon memory or dependencies. All Rerun SDK work runs on its
-dedicated writer thread, so viewer or recording backpressure cannot block the
-gRPC task. Telemetry capacity is the daemon's shared ring-retention window; it
-is distinct from the observer's fixed writer queue and is not a sampling rate
-or a request to average data. See
+reports subscriber-local lag as a health event. External consumers use the
+public `WatchTelemetry` RPC; the daemon does not own visualization or durable
+storage. Telemetry capacity is the daemon's shared ring-retention window, not a
+sampling rate or a request to average data. See
 [`api/grpc/telemetry_stream.rs`](../components/bello-hardwared/src/api/grpc/telemetry_stream.rs)
-and [`bello-rerun`](../components/bello-rerun).
+and [`telemetry.rs`](../components/bello-hardwared/src/telemetry.rs).
 
 ## Shared device lifecycle
 
@@ -283,11 +275,6 @@ startup and error paths. The ordering is implemented in
 [`app/daemon.rs`](../components/bello-hardwared/src/app/daemon.rs), and the
 worker modules linked above.
 
-`bello-rerun` shuts down independently. It closes the writer queue so the
-dedicated thread can drain queued events and flush Rerun output, but main waits
-at most two seconds and then detaches an unfinished writer to keep process
-shutdown bounded.
-
 ## Source layout
 
 ```text
@@ -307,23 +294,30 @@ components/bello-hardwared/
   src/lease.rs             exclusive group lease store
   src/telemetry.rs         in-process event broadcaster
 
-components/bello-rerun/
-  src/observer.rs          asynchronous gRPC subscription and reconnect
-  src/writer.rs            bounded queue and dedicated Rerun SDK thread
-  src/mapping.rs           protobuf telemetry to Rerun entities
-  src/timeline.rs          source-time preservation and restart rebasing
-
 components/bello-hardware-client/
   src/client.rs            connection, inventory, and lease acquisition
   src/lease.rs             group-bound lifecycle and restricted renewal
   src/command.rs           command sequencing and acknowledgements
   src/telemetry.rs         filters and event stream
+
+components/bello-hardware-python/
+  src/bello_hardware/      blocking robot, control, and latest-state API
+  tests/                   gRPC behavior and vCAN smoke driver
+
+components/bello-visualizer/
+  src/mjcf.rs              strict flattened-MJCF loader
+  src/transmission.rs      fixed-linear forward/inverse mappings
+  src/runtime.rs           telemetry, pose, leases, and command sessions
+  src/scene.rs             main-thread Kiss3d hierarchy
+
+components/bello-pose-api/
+  proto/                   neutral external-pose streaming contract
 ```
 
 Workspace-level supporting components are
 [`bello-hardware-api`](../components/bello-hardware-api),
 [`bello-hardware-client`](../components/bello-hardware-client),
-[`bello-rerun`](../components/bello-rerun),
+[`bello-hardware-python`](../components/bello-hardware-python),
 [`robstride-protocol`](../components/robstride-protocol),
 [`robstride-emulator`](../components/robstride-emulator), and
 [`bello-hardware-e2e`](../components/bello-hardware-e2e). Configuration fields

@@ -1,0 +1,16 @@
+# Same sphere-hand kinematic contract, connected to the local hardware emulator.
+urdf: ../../../../bello_mujoco/assets/source/bello/full_body/urdf/bello_full_body.urdf
+hardware_endpoint: http://127.0.0.1:50051
+listen: 127.0.0.1:50052
+imu: imu
+reference_frame: odom
+tracked_frame: pelvis_link
+left_foot: left_ankle_roll_link
+right_foot: right_ankle_roll_link
+imu_stale_ms: 20
+motor_stale_ms: 50
+contact_entry_speed_mps: 0.15
+contact_exit_speed_mps: 0.30
+contact_entry_height_m: 0.03
+contact_exit_height_m: 0.06
+contact_dwell_ms: 40

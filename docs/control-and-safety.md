@@ -227,7 +227,7 @@ measured temperature. The group has no warning or degraded state of its own.
 ## Command safety policy
 
 Every impedance field must be finite. Non-finite input always uses fault
-behavior. Configured command limits and maximum measured-position step each
+behavior. Configured command limits and maximum position-target step each
 select one of three behaviors:
 
 - `clamp` modifies the offending value, publishes a command-policy event, and
@@ -237,8 +237,11 @@ select one of three behaviors:
 - `fault` publishes an event, latches the corresponding group fault, applies
   its configured response, and rejects the batch.
 
-Position step is measured from the latest motor feedback, not from the previous
-command. Limit checks cover position, velocity, torque, `kp`, and `kd`. No
+The first position target in a new lease generation is measured from fresh
+motor feedback, preventing an initial jump. Every later position step in that
+generation is measured from the previously accepted target, so normal tracking
+error does not become a command-step fault. Limit checks cover position,
+velocity, torque, `kp`, and `kd`. No
 staged command is committed until every motor succeeds; a rejecting or faulting
 issue exits admission early, and fault behavior deliberately transitions the
 group immediately. See

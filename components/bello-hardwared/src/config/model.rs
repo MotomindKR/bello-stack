@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 
 use robstride_protocol::{CONTROL_POSITION_MAX, CONTROL_POSITION_MIN};
 use serde::Deserialize;
@@ -36,18 +37,53 @@ impl Default for RuntimeConfig {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct GrpcConfig {
-    pub listen: SocketAddr,
+    pub listen: GrpcListenConfig,
+    pub tls: Option<GrpcTlsConfig>,
     pub default_lease_ms: u64,
     pub maximum_lease_ms: u64,
 }
 impl Default for GrpcConfig {
     fn default() -> Self {
         Self {
-            listen: "127.0.0.1:50051".parse().expect("valid default address"),
+            listen: GrpcListenConfig::default(),
+            tls: None,
             default_lease_ms: 1000,
             maximum_lease_ms: 5000,
         }
     }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum GrpcListenConfig {
+    Tcp {
+        address: SocketAddr,
+    },
+    Unix {
+        path: PathBuf,
+        #[serde(default = "default_unix_socket_mode")]
+        mode: String,
+    },
+}
+
+impl Default for GrpcListenConfig {
+    fn default() -> Self {
+        Self::Tcp {
+            address: "127.0.0.1:50051".parse().expect("valid default address"),
+        }
+    }
+}
+
+fn default_unix_socket_mode() -> String {
+    "0660".to_owned()
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GrpcTlsConfig {
+    pub certificate: PathBuf,
+    pub private_key: PathBuf,
+    pub client_ca: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -108,7 +144,7 @@ impl Default for ReconnectConfig {
 #[serde(deny_unknown_fields)]
 pub struct MotorConfig {
     pub name: String,
-    pub joint: String,
+    pub coordinate: String,
     pub bus: String,
     pub id: u8,
     pub model: String,

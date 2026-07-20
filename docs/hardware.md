@@ -322,8 +322,8 @@ a successful reconnect.
 
 Unlike a motor, an IMU does not belong to a motor group and therefore does not
 directly invoke a group safety reaction. Its serial and IMU lifecycle events
-are published for supervision, while valid samples continue into gRPC and,
-when requested, a separate Rerun observer consuming that gRPC stream.
+are published for supervision, while valid samples continue into the public
+gRPC telemetry stream.
 
 ## Rates and timing at a glance
 

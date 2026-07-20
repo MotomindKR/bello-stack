@@ -11,7 +11,8 @@ source comments.
 | Understand the complete process | [Architecture](architecture.md) | [Hardware](hardware.md), [Control and safety](control-and-safety.md) |
 | Prepare a robot configuration | [Configuration](configuration.md) | [Operations](operations.md) |
 | Build a Rust gRPC client | [`bello-hardware-client`](../components/bello-hardware-client) | [API](api.md), [Control and safety](control-and-safety.md) |
-| Visualize or record telemetry | [Operations](operations.md#rerun-observation) | [API](api.md#inventory-and-telemetry) |
+| Build a Python client | [`bello-hardware-python`](../components/bello-hardware-python) | [API](api.md), [Control and safety](control-and-safety.md) |
+| Monitor or command against MJCF | [`bello-visualizer`](../components/bello-visualizer) | [Configuration](configuration.md), [API](api.md) |
 | Diagnose CAN, motor, serial, or IMU faults | [Hardware](hardware.md) | [Operations](operations.md) |
 | Run or test the stack | [Operations](operations.md) | [Development](development.md) |
 | Review or modify the code | [Architecture](architecture.md) | [Development](development.md) |
@@ -20,8 +21,8 @@ source comments.
 
 - [Architecture](architecture.md) explains process boundaries, ownership,
   workers, data flow, lifecycle, and shutdown.
-- [Configuration](configuration.md) describes the hardware-daemon and observer
-  YAML models, validation boundaries, topology rules, and examples.
+- [Configuration](configuration.md) describes the hardware-daemon YAML model,
+  validation boundaries, topology rules, and examples.
 - [Hardware](hardware.md) covers SocketCAN, Robstride devices, serial sessions,
   EBIMU configuration, timing, and reconnect behavior.
 - [Control and safety](control-and-safety.md) covers leases, the motor-group FSM,
@@ -30,8 +31,12 @@ source comments.
   results, telemetry filters, and security boundary.
 - [`bello-hardware-client`](../components/bello-hardware-client) documents the
   maintained high-level Rust client, explicit renewal, and command streams.
-- [Operations](operations.md) provides startup, vCAN emulation, standalone
-  Rerun observation, diagnostics, and shutdown procedures.
+- [`bello-hardware-python`](../components/bello-hardware-python) documents the
+  blocking pure-Python client and its latest-state cache.
+- [`bello-visualizer`](../components/bello-visualizer) documents native MJCF
+  rendering, transmission reconstruction, tracking, and toggle control.
+- [Operations](operations.md) provides startup, vCAN emulation, diagnostics,
+  and shutdown procedures.
 - [Development](development.md) documents the toolchain, source layout, checks,
   integration tests, and a code-review order.
 
@@ -45,10 +50,10 @@ source comments.
 - A **motor group** is a generic, exclusive control and safety unit containing
   one or more motors. Groups may span buses; buses may serve several groups.
 - A **lease** is temporary exclusive write ownership of one motor group.
+- A **coordinate** is the hardware-facing position named by daemon inventory;
+  it may map to an MJCF joint directly or through a fixed tendon.
 - **Telemetry** is the event stream produced by transports, devices, and group
-  controllers and exposed through gRPC. The optional Rerun process is one
-  read-only gRPC client; its dedicated bounded writer queue isolates gRPC from
-  visualization backpressure.
+  controllers and exposed through gRPC.
 
 ## Sources of truth
 

@@ -2,9 +2,10 @@
 
 [Documentation index](README.md)
 
-`bello-hardwared` reads one YAML document, validates it without touching the
+`bello-hardwared` reads one YAML document, validates it without opening the
 hardware, and resolves it into the topology used for the lifetime of the
-process. Configuration is not hot-reloaded.
+process. TLS certificate files are read and validated during this step.
+Configuration and certificates are not hot-reloaded.
 
 Validate a file before deployment with:
 
@@ -62,16 +63,66 @@ can drop old events without blocking hardware control.
 
 ```yaml
 grpc:
-  listen: 127.0.0.1:50051
+  listen: { type: tcp, address: 127.0.0.1:50051 }
   default_lease_ms: 1000
   maximum_lease_ms: 5000
 ```
 
-The listen address defaults to loopback. The lease values must satisfy
+The TCP listener defaults to loopback. The lease values must satisfy
 `20 <= default_lease_ms <= maximum_lease_ms <= 300000`. Control leases are
 exclusive per motor group; read-only telemetry streams do not require a
-control lease. Do not expose the server on a non-loopback address unless the
-deployment provides the required network isolation and transport security.
+control lease.
+
+For server-authenticated TLS, configure an absolute PEM certificate and private
+key path:
+
+```yaml
+grpc:
+  listen: { type: tcp, address: 0.0.0.0:50051 }
+  tls:
+    certificate: /etc/bello/tls/server.crt
+    private_key: /etc/bello/tls/server.key
+  default_lease_ms: 1000
+  maximum_lease_ms: 5000
+```
+
+Adding `client_ca` enables mutual TLS. A connection must then present a client
+certificate signed by that CA:
+
+```yaml
+  tls:
+    certificate: /etc/bello/tls/server.crt
+    private_key: /etc/bello/tls/server.key
+    client_ca: /etc/bello/tls/client-ca.crt
+```
+
+The hostname used by clients must appear in the server certificate's subject
+alternative names. Keep private keys readable only by the service account.
+
+For same-host clients, a Unix-domain socket avoids exposing a TCP port:
+
+```yaml
+grpc:
+  listen:
+    type: unix
+    path: /run/bello/hardwared.sock
+    mode: "0660"
+  default_lease_ms: 1000
+  maximum_lease_ms: 5000
+```
+
+The socket path must be absolute and its parent directory must already exist.
+The daemon applies the configured permission mode, removes a demonstrably stale
+socket before binding, and removes only its own socket inode during shutdown.
+Protect the parent directory as well, because its permissions control who can
+reach the socket throughout creation. Run the service with the desired owning
+user/group, or configure those through the service manager. TLS is intentionally
+rejected for Unix sockets.
+
+Do not expose plaintext TCP on a non-loopback address. Server-only TLS encrypts
+traffic and authenticates the robot but does not restrict which clients may
+connect; use mTLS, firewall policy, or a protected Unix socket where control
+access must be restricted.
 
 See [`api/grpc/spec.rs`](../components/bello-hardwared/src/api/grpc/spec.rs)
 for validation and the
@@ -148,7 +199,7 @@ and the utilization check in
 ```yaml
 motors:
   - name: motor_a
-    joint: joint_a
+    coordinate: coordinate_a
     bus: can_a
     id: 1
     model: ROBSTRIDE_03
@@ -170,7 +221,7 @@ motors:
     fault_damping_kd: 2.0
 ```
 
-`name` identifies the device, while `joint` is its external robot/joint name.
+`name` identifies the device, while `coordinate` is its external robot/coordinate name.
 `bus` must name an existing bus. The `(bus, id)` address is unique, and a motor
 ID cannot equal that bus's `host_id`. `direction` is `1` or `-1`.
 
@@ -192,7 +243,9 @@ fault remains latched until explicit recovery.
 
 Command policy behavior values are `clamp`, `reject`, and `fault`. The fault
 damping gain must be positive and no greater than the effective motor `kd`
-limit. Model-dependent bounds are intentionally documented in
+limit. `maximum_position_step` compares the first target of a lease generation
+with fresh measured feedback and subsequent targets with the previously
+accepted target. Model-dependent bounds are intentionally documented in
 [`hardware/robstride/spec.rs`](../components/bello-hardwared/src/hardware/robstride/spec.rs)
 rather than duplicated here.
 
@@ -275,59 +328,6 @@ Validation is deliberately distributed while still forming one startup pass:
 This keeps hardware-specific rules close to the hardware boundary without
 allowing partially validated configuration to reach runtime code.
 
-## Rerun observer configuration
-
-`bello-rerun` reads its own YAML document; Rerun settings are not accepted in
-the hardware-daemon configuration. The maintained observer example is
-[`config/bello.yaml`](../components/bello-rerun/config/bello.yaml):
-
-```yaml
-hardware_endpoint: http://127.0.0.1:50051
-
-reconnect:
-  initial_delay_ms: 100
-  maximum_delay_ms: 5000
-
-output:
-  mode: save
-  path: bello_hardware.rrd
-```
-
-To send events to an existing Rerun listener instead, replace `output` with:
-
-```yaml
-output:
-  mode: connect
-  address: 127.0.0.1:9876
-```
-
-Validate the observer independently without contacting hardwared or opening an
-output:
-
-```sh
-cargo run -p bello-rerun -- \
-  --check --config components/bello-rerun/config/bello.yaml
-```
-
-Unknown fields are rejected. The hardware endpoint must be a valid gRPC HTTP or
-HTTPS URI. Reconnect delays must be positive, `maximum_delay_ms` must be at least
-`initial_delay_ms`, and the maximum is limited to 60000 ms. A save path or
-connect address must be non-empty for its respective mode. The connect address
-is a bare `host:port` with a port in `1..=65535`; schemes, paths, queries, and
-credentials are rejected. `hardware_endpoint` and `output` are required;
-omitting `reconnect`
-selects 100 ms initially and 5000 ms maximum. There is no `off` mode: omit the
-optional process when visualization is not wanted.
-
-HTTPS hardware endpoints use the host's native certificate roots and HTTP/2.
-Connections use a five-second connect timeout plus HTTP/2 keepalive every 10
-seconds, with a three-second keepalive timeout even while otherwise idle.
-
-The observer-to-writer queue is deliberately not configurable. It holds 4096
-events and drops on overflow so Rerun output cannot backpressure gRPC or signal
-handling. This queue is separate from the daemon's configurable
-`runtime.telemetry_capacity` broadcast ring.
-
 ## YAML anchors and aliases
 
 YAML anchors are useful for repeated complete objects. The production example
@@ -368,3 +368,19 @@ reversed direction, and the group runs at 250 Hz. It deliberately omits serial
 and IMU sections. Its `bitrate` remains present because scheduling and load
 validation need nominal timing even though a virtual CAN interface has no
 physical bitrate.
+
+## Visualizer YAML
+
+The visualizer accepts one independent YAML file containing a local flattened
+MJCF path, hardware endpoint/TLS settings, fixed or externally tracked root
+configuration, refresh rate, and optional group control profiles. Relative
+MJCF and certificate paths resolve from the YAML directory. The maintained
+example is [`config/vcan.yaml`](../components/bello-visualizer/config/vcan.yaml).
+
+Control is unavailable unless a selected group has an explicit profile whose
+coordinate names exactly match daemon inventory. Every coordinate supplies
+position, velocity, torque-feed-forward, `kp`, and `kd` bounds/defaults plus
+group command rate, validity, and feedback-staleness limits. Defaults are 50 Hz,
+100 ms, and 200 ms respectively. These are reviewed hardware limits; MJCF
+simulation gains are never imported. See the
+[`bello-visualizer` guide](../components/bello-visualizer/README.md).

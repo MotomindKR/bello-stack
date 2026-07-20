@@ -1,13 +1,14 @@
 # Bello stack
 
-Bello stack is a Linux-oriented Rust workspace for actuator and IMU hardware
-integration. Its production hardware component is one monolithic daemon that
+Bello stack is a Linux-oriented hardware workspace centered on a Rust actuator
+and IMU daemon with Rust and Python clients. Its production hardware component
+is one monolithic daemon that
 owns SocketCAN buses, Robstride actuators, serial devices, EBIMU sensors,
-motor-group control, safety, gRPC, and telemetry. An optional standalone Rerun
-observer visualizes that telemetry through the read-only gRPC API.
+motor-group control, safety, gRPC, and telemetry.
 
-Robot-level kinematics, pose generation, and behavior policy are intentionally
-outside this repository.
+Behavior policy remains outside this repository. Robot-level local pose
+generation is provided as a separate read-only service and never participates
+in hardware command safety.
 
 ## Workspace
 
@@ -15,8 +16,11 @@ outside this repository.
 | --- | --- | --- |
 | [`bello-hardwared`](components/bello-hardwared) | Production hardware ownership, control, safety, gRPC, and telemetry | `bello-hardwared` binary and narrow Rust library entrypoint |
 | [`bello-hardware-api`](components/bello-hardware-api) | Shared protobuf contract and generated tonic types | Rust library |
-| [`bello-hardware-client`](components/bello-hardware-client) | Robot/group/joint control and aggregated state; raw gRPC access is an explicit escape hatch | Rust library |
-| [`bello-rerun`](components/bello-rerun) | Optional read-only gRPC telemetry visualization and recording | `bello-rerun` binary |
+| [`bello-hardware-client`](components/bello-hardware-client) | Robot/group/coordinate control and aggregated state; raw gRPC access is an explicit escape hatch | Rust library |
+| [`bello-hardware-python`](components/bello-hardware-python) | Thin blocking robot/group/coordinate client with background lease and telemetry I/O | Pure-Python package |
+| [`bello-pose-api`](components/bello-pose-api) | Neutral streaming contract for external root-pose providers | Rust library and protobuf descriptor |
+| [`bello-state-estimatord`](components/bello-state-estimatord) | URDF/IMU/encoder contact-aided local pose provider | `bello-state-estimatord` binary |
+| [`bello-visualizer`](components/bello-visualizer) | Native MJCF monitor and toggle-controlled multi-group command UI | `bello-visualizer` binary |
 | [`robstride-protocol`](components/robstride-protocol) | Robstride extended-CAN frames, codecs, and model limits | Rust library |
 | [`robstride-emulator`](components/robstride-emulator) | Thin SocketCAN actuator emulator with deterministic faults | `robstride-emulator` binary |
 | [`bello-hardware-e2e`](components/bello-hardware-e2e) | Process-level gRPC and vCAN scenarios | Cargo integration tests |
@@ -46,13 +50,6 @@ cargo run -p bello-hardwared -- \
   --config components/bello-hardwared/config/bello.yaml
 ```
 
-Optionally record its read-only telemetry from another shell:
-
-```sh
-cargo run -p bello-rerun -- \
-  --config components/bello-rerun/config/bello.yaml
-```
-
 For a hardware-free actuator path, use the vCAN configuration and Robstride
 emulator described in the [operations guide](docs/operations.md).
 
@@ -72,6 +69,10 @@ The protobuf contract is
 [`hardware.proto`](components/bello-hardware-api/proto/bello/hardware/v1/hardware.proto).
 Rust applications should normally start with the
 [`bello-hardware-client` guide](components/bello-hardware-client/README.md).
+Python applications should start with the
+[`bello-hardware` package guide](components/bello-hardware-python/README.md).
+The native viewer and its single-file YAML contract are documented in the
+[`bello-visualizer` guide](components/bello-visualizer/README.md).
 
 ## Repository checks
 
@@ -81,6 +82,11 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 buf format --diff --exit-code
 buf lint
+cd components/bello-hardware-python
+ruff format --check .
+ruff check .
+mypy src/bello_hardware tests
+pytest
 ```
 
 The host-vCAN end-to-end scenario is explicit because it requires a Linux CAN

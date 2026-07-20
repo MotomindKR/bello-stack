@@ -1,6 +1,8 @@
+use std::fmt;
+use std::path::Path;
 use std::time::Duration;
 
-use tonic::transport::{ClientTlsConfig, Endpoint};
+use tonic::transport::{Certificate, ClientTlsConfig, Endpoint, Identity};
 
 use crate::{Error, HardwareClient};
 
@@ -14,6 +16,46 @@ pub struct ConnectOptions {
     endpoint: String,
     connect_timeout: Duration,
     keepalive: Option<Keepalive>,
+    tls: Option<TlsOptions>,
+}
+
+/// Optional private CA and client identity for an HTTPS connection.
+#[derive(Clone, Default)]
+pub struct TlsOptions {
+    ca_certificate: Option<Vec<u8>>,
+    identity: Option<(Vec<u8>, Vec<u8>)>,
+}
+
+impl fmt::Debug for TlsOptions {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("TlsOptions")
+            .field("custom_ca", &self.ca_certificate.is_some())
+            .field("client_identity", &self.identity.is_some())
+            .finish()
+    }
+}
+
+impl TlsOptions {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Adds a PEM-encoded CA certificate in addition to native trusted roots.
+    pub fn ca_certificate(mut self, pem: impl Into<Vec<u8>>) -> Self {
+        self.ca_certificate = Some(pem.into());
+        self
+    }
+
+    /// Sets the PEM-encoded client certificate chain and private key for mTLS.
+    pub fn identity(
+        mut self,
+        certificate_chain: impl Into<Vec<u8>>,
+        private_key: impl Into<Vec<u8>>,
+    ) -> Self {
+        self.identity = Some((certificate_chain.into(), private_key.into()));
+        self
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -35,6 +77,7 @@ impl ConnectOptions {
                 timeout: DEFAULT_KEEPALIVE_TIMEOUT,
                 while_idle: true,
             }),
+            tls: None,
         }
     }
 
@@ -64,6 +107,12 @@ impl ConnectOptions {
         self
     }
 
+    /// Uses custom trust roots and, optionally, a client identity for mTLS.
+    pub fn tls(mut self, tls: TlsOptions) -> Self {
+        self.tls = Some(tls);
+        self
+    }
+
     pub async fn connect(self) -> Result<HardwareClient, Error> {
         HardwareClient::connect_with(self).await
     }
@@ -75,9 +124,32 @@ impl ConnectOptions {
             ));
         }
         let https = self.endpoint.starts_with("https://");
-        if !https && !self.endpoint.starts_with("http://") {
+        let http = self.endpoint.starts_with("http://");
+        let unix = self.endpoint.starts_with("unix:");
+        if !https && !http && !unix {
             return Err(Error::InvalidArgument(
-                "endpoint must start with http:// or https://".into(),
+                "endpoint must start with http://, https://, or unix://".into(),
+            ));
+        }
+        if unix {
+            if !self.endpoint.starts_with("unix:///") {
+                return Err(Error::InvalidArgument(
+                    "Unix endpoint must use unix:///absolute/path".into(),
+                ));
+            }
+            let path = self
+                .endpoint
+                .strip_prefix("unix://")
+                .expect("validated Unix endpoint prefix");
+            if !Path::new(path).is_absolute() {
+                return Err(Error::InvalidArgument(
+                    "Unix endpoint path must be absolute".into(),
+                ));
+            }
+        }
+        if !https && self.tls.is_some() {
+            return Err(Error::InvalidArgument(
+                "TLS options require an https:// endpoint".into(),
             ));
         }
         if self.connect_timeout.is_zero() {
@@ -87,11 +159,18 @@ impl ConnectOptions {
         }
         let mut endpoint = Endpoint::from_shared(self.endpoint)?;
         if https {
-            endpoint = endpoint.tls_config(
-                ClientTlsConfig::new()
-                    .with_native_roots()
-                    .assume_http2(true),
-            )?;
+            let mut config = ClientTlsConfig::new()
+                .with_native_roots()
+                .assume_http2(true);
+            if let Some(tls) = self.tls {
+                if let Some(ca_certificate) = tls.ca_certificate {
+                    config = config.ca_certificate(Certificate::from_pem(ca_certificate));
+                }
+                if let Some((certificate_chain, private_key)) = tls.identity {
+                    config = config.identity(Identity::from_pem(certificate_chain, private_key));
+                }
+            }
+            endpoint = endpoint.tls_config(config)?;
         }
         endpoint = endpoint.connect_timeout(self.connect_timeout);
         if let Some(keepalive) = self.keepalive {
@@ -124,6 +203,30 @@ mod tests {
             ConnectOptions::new("http://127.0.0.1:50051")
                 .into_endpoint()
                 .is_ok()
+        );
+        assert!(
+            ConnectOptions::new("unix:///run/bello/hardwared.sock")
+                .into_endpoint()
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn unix_endpoint_requires_an_absolute_path() {
+        assert!(
+            ConnectOptions::new("unix://relative.sock")
+                .into_endpoint()
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn tls_options_require_https() {
+        assert!(
+            ConnectOptions::new("http://127.0.0.1:50051")
+                .tls(TlsOptions::new().ca_certificate(b"test".to_vec()))
+                .into_endpoint()
+                .is_err()
         );
     }
 

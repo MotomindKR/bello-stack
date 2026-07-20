@@ -16,7 +16,9 @@ use crate::domain::{
 use crate::hardware::robstride::{MotorController, MotorFaultCause};
 use crate::telemetry::Telemetry;
 
-use super::command_policy::{CommandPolicyCheck, CommandPolicyIssue, check_command};
+use super::command_policy::{
+    CommandPolicyCheck, CommandPolicyIssue, check_command, select_position_reference,
+};
 use super::fsm::{GroupFsm, GroupState};
 use super::group_handle::{CommandSubmission, GroupSnapshot, LifecycleAction, LifecycleRequest};
 use super::spec::GroupSpec;
@@ -483,14 +485,15 @@ impl GroupController {
             let Some(command) = supplied.remove(&motor.controller.spec.name) else {
                 return Err(CommandError::IncompleteGroup);
             };
-            let report = check_command(
-                command,
+            let position_reference = select_position_reference(
+                same_generation,
+                motor.command.map(|previous| previous.position),
                 motor
                     .controller
                     .feedback()
                     .map(|feedback| feedback.value.position),
-                &motor.controller.spec,
             );
+            let report = check_command(command, position_reference, &motor.controller.spec);
             let motor_name = motor.controller.spec.name.clone();
             for issue in &report.issues {
                 let cause = self.command_fault_cause(issue.check);

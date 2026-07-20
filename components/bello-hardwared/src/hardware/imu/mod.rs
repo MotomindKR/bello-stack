@@ -1,13 +1,13 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use anyhow::{Result, bail};
 use tracing::{info, warn};
 
 use crate::domain::{ImuName, ImuTelemetry, TelemetryPayload};
-use crate::hardware::lifecycle::{DeviceLifecycle, DeviceState, wait_for_stop};
+use crate::hardware::lifecycle::{DeviceLifecycle, DeviceState};
 use crate::hardware::serial::{SerialChunk, SerialHandle};
 use crate::telemetry::Telemetry;
 
@@ -201,17 +201,54 @@ fn run_sensor(
 }
 
 fn configure_device(config: &ImuSpec, serial: &SerialHandle, stop: &AtomicBool) -> Result<()> {
-    for command in output_commands(config) {
+    let commands = std::iter::once("<stop>".to_owned())
+        .chain(output_commands(config))
+        .chain(std::iter::once("<start>".to_owned()));
+    for command in commands {
         if stop.load(Ordering::Acquire) {
             bail!("IMU configuration cancelled by shutdown");
         }
-        serial.send(command.into_bytes(), stop)?;
-        if wait_for_stop(stop, Duration::from_millis(20)) {
-            bail!("IMU configuration cancelled by shutdown");
-        }
+        serial.send(command.clone().into_bytes(), stop)?;
+        await_command_ack(serial, stop, &command)?;
     }
     info!(imu=%config.name, serial=%serial.spec.name, "EBIMU configured");
     Ok(())
+}
+
+fn await_command_ack(serial: &SerialHandle, stop: &AtomicBool, command: &str) -> Result<()> {
+    let deadline = Instant::now() + serial.spec.timeout;
+    let mut response = Vec::with_capacity(128);
+    loop {
+        if stop.load(Ordering::Acquire) {
+            bail!("IMU configuration cancelled by shutdown");
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            bail!("timed out waiting for EBIMU acknowledgement to {command}");
+        }
+        match serial.recv_timeout(POLL_PERIOD.min(remaining)) {
+            Ok(chunk) => {
+                response.extend_from_slice(&chunk.bytes);
+                if contains_token(&response, b"<er>") {
+                    bail!("EBIMU rejected configuration command {command}");
+                }
+                if contains_token(&response, b"<ok>") {
+                    return Ok(());
+                }
+                if response.len() > 64 * 1024 {
+                    bail!("EBIMU acknowledgement exceeded 64 KiB for {command}");
+                }
+            }
+            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
+            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+                bail!("serial receive channel disconnected while configuring EBIMU");
+            }
+        }
+    }
+}
+
+fn contains_token(buffer: &[u8], token: &[u8]) -> bool {
+    buffer.windows(token.len()).any(|window| window == token)
 }
 
 fn frame_ascii_lines(buffer: &mut Vec<u8>, chunk: SerialChunk) -> Result<Vec<(String, Instant)>> {
@@ -256,6 +293,7 @@ fn publish(state: &ImuHandle, telemetry: &Telemetry, sample: ImuSample) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn imu_driver_frames_lines_across_transport_chunks() {
         let received = Instant::now();
@@ -281,5 +319,12 @@ mod tests {
         .unwrap();
         assert_eq!(lines[0].0, "*1,2,3");
         assert_eq!(lines[1].0, "*4,5,6");
+    }
+
+    #[test]
+    fn command_reply_tokens_are_found_among_stream_data() {
+        assert!(contains_token(b"*0,0,0\r\n<ok>", b"<ok>"));
+        assert!(contains_token(b"partial<er>trailing", b"<er>"));
+        assert!(!contains_token(b"*0,0,0\r\n", b"<ok>"));
     }
 }
