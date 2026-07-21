@@ -17,16 +17,27 @@ uv run bello-prepare-assets --config-name visualizer
 ```
 
 The maintained recipe generates sphere end effectors at
-`assets/generated/visualizer/`. With the full Bello vCAN hardware daemon
-running, start the local pose provider and then launch the matching
-configuration:
+`assets/generated/visualizer/`. For the maintained Bello vCAN path, start the
+Robstride runner in one terminal; it supplies both SocketCAN/EBIMU simulation
+and MuJoCo ground-truth PoseService:
 
 ```bash
-cargo run -p bello-state-estimatord -- \
-  --config components/bello-state-estimatord/config/bello-vcan.yaml
+cd ~/bello_mujoco
+uv run bello-robstride-runner headless=true
+```
+
+Then start local hardwared and the visualizer from `~/bello_stack`:
+
+```bash
+cargo run -p bello-hardwared -- \
+  --config components/bello-hardwared/config/bello-vcan.yaml
 cargo run -p bello-visualizer -- \
   --config components/bello-visualizer/config/bello-vcan.yaml
 ```
+
+Do not start `bello-state-estimatord` in this vCAN flow: the runner publishes
+MuJoCo ground truth bound to `0.0.0.0:50052`. The local visualizer connects to
+it through `127.0.0.1:50052`.
 
 The sphere morphology intentionally omits the two wrist-yaw coordinates and
 their CAN motors. Hardware inventory supplies each group's coordinate names;
@@ -91,8 +102,9 @@ increase their ages; frozen samples can never seed control. The daemon does not
 currently publish motor voltage or current, CAN frame/error counters, or serial
 byte/error counters, so the UI does not invent values for them.
 
-Tracked roots use `root.source: external_pose`. The maintained provider is
-`bello-state-estimatord`, which implements the neutral PoseService consumed by
+Tracked roots use `root.source: external_pose`. In the maintained vCAN recipe
+the provider is `bello-robstride-runner`; physical deployments can instead use
+`bello-state-estimatord`. Both implement the neutral PoseService consumed by
 the visualizer. Pose samples are
 `reference_from_tracked`; `tracked_from_model_root` is composed on the display
 path only. A stale or disconnected tracker freezes the last root pose and never

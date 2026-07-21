@@ -5,7 +5,8 @@ runtime:
   telemetry_capacity: 4096
 
 grpc:
-  listen: { type: tcp, address: 127.0.0.1:50051 }
+  # Plaintext HIL endpoint exposed on every host interface by request.
+  listen: { type: tcp, address: 0.0.0.0:50051 }
   default_lease_ms: 1000
   maximum_lease_ms: 5000
 
@@ -21,7 +22,7 @@ imus:
   - name: imu
     serial_device: imu_serial
     stale_timeout_ms: 500
-    output_rate_hz: 200
+    output_rate_hz: 250
 
 buses:
   - name: can0
@@ -53,9 +54,9 @@ motors:
       temperature_recovery_c: 75.0
       temperature_recovery_duration_ms: 2000
     command_policy: &command_policy
-      maximum_position_step: 0.5
+      maximum_position_step: 25.14
       limit: clamp
-      position_step: fault
+      position_step: reject
     fault_damping_kd: 2.0
   - { name: left_hip_pitch, coordinate: left_hip_pitch_joint, bus: can0, id: 61, model: ROBSTRIDE_04, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
   - { name: left_hip_roll, coordinate: left_hip_roll_joint, bus: can0, id: 62, model: ROBSTRIDE_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
@@ -88,7 +89,7 @@ motor_groups:
   - name: lower_body
     motors: [waist_yaw, left_hip_pitch, left_hip_roll, left_hip_yaw, left_knee_mix_1, left_ankle_1, left_ankle_2, right_hip_pitch, right_hip_roll, right_hip_yaw, right_knee_mix_1, right_ankle_1, right_ankle_2]
     control_rate_hz: 100.0
-    command_timeout_ms: 100
+    command_timeout_ms: 500
     feedback_timeout_ms: 100
     enable_timeout_ms: 500
     enable_retries: 3
@@ -100,7 +101,7 @@ motor_groups:
   - name: upper_body
     motors: [left_arm_1, left_arm_2, left_arm_3, left_arm_4, left_arm_5, left_arm_6, right_arm_1, right_arm_2, right_arm_3, right_arm_4, right_arm_5, right_arm_6]
     control_rate_hz: 100.0
-    command_timeout_ms: 100
+    command_timeout_ms: 500
     feedback_timeout_ms: 100
     enable_timeout_ms: 500
     enable_retries: 3

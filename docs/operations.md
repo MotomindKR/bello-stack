@@ -119,21 +119,27 @@ The Cargo-native end-to-end test owns its phases deterministically and is the
 preferred regression check; see
 [`development.md`](development.md#host-vcan-integration-test).
 
-## Local pose and visualization
+## Bello vCAN pose and visualization
 
-Start the pose estimator after hardwared is online. It reads the same telemetry
-as any other read-only Rust client and does not acquire motor-group leases:
+The maintained vCAN flow uses `bello-robstride-runner` as its pose provider.
+Prepare the HIL interfaces and viewer asset, then start the runner from
+`~/bello_mujoco`:
 
 ```sh
-cargo run -p bello-state-estimatord -- \
-  --check --config components/bello-state-estimatord/config/bello-vcan.yaml
-cargo run -p bello-state-estimatord -- \
-  --config components/bello-state-estimatord/config/bello-vcan.yaml
+./scripts/setup_hil.sh
+uv run bello-prepare-assets --config-name visualizer
+uv run bello-robstride-runner headless=true
 ```
 
-The maintained configuration publishes `odom_from_pelvis_link` on port 50052.
-The filter advances at the incoming IMU rate rather than imposing a fixed
-500 Hz loop. Inspect the existing pose stream with:
+While the runner owns the terminal, press Enter to release the torso guide; the
+next press restores the simulated home pose and re-engages it. This cycle works
+in headless mode.
+
+The runner publishes exact MuJoCo `odom_from_pelvis_link` ground truth at
+200 Hz and binds PoseService to all host interfaces on port 50052. The Bello
+vCAN hardwared configuration likewise binds plaintext gRPC to all interfaces
+on port 50051. Local clients use loopback addresses; inspect the pose stream
+with:
 
 ```sh
 grpcurl -plaintext \
@@ -143,16 +149,19 @@ grpcurl -plaintext \
   127.0.0.1:50052 bello.pose.v1.PoseService/WatchPose
 ```
 
-Generate the viewer MJCF once, then launch the visualizer. Its vCAN
-configuration already points root tracking at the estimator:
+In two more terminals under `~/bello_stack`, start local hardwared and the
+visualizer. The Bello vCAN visualizer configuration points hardware to port
+50051 and runner pose to port 50052 on loopback:
 
 ```sh
-cd ../bello_mujoco
-uv run bello-prepare-assets --config-name visualizer
-cd ../bello_stack
+cargo run -p bello-hardwared -- \
+  --config components/bello-hardwared/config/bello-vcan.yaml
 cargo run -p bello-visualizer -- \
   --config components/bello-visualizer/config/bello-vcan.yaml
 ```
+
+Do not run `bello-state-estimatord` in this vCAN flow because the runner owns
+the same pose port. The estimator remains the provider for physical hardware.
 
 If hardware or pose telemetry disconnects or becomes stale, the visualizer
 freezes the last root transform and shows the condition; root tracking never

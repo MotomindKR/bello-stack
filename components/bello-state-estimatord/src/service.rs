@@ -10,7 +10,9 @@ use bello_pose_api::pose_service_server::{PoseService, PoseServiceServer};
 use bello_pose_api::{Orientation, Translation, WatchPoseRequest, WatchPoseResponse};
 use futures_core::Stream;
 use nalgebra::{Quaternion, UnitQuaternion, Vector3};
+use tokio::net::TcpListener;
 use tokio::sync::{oneshot, watch};
+use tokio_stream::wrappers::TcpListenerStream;
 use tonic::{Request, Response, Status};
 use tracing::{info, warn};
 
@@ -78,6 +80,10 @@ impl PoseService for PoseServer {
 
 pub async fn run(path: &Path) -> anyhow::Result<()> {
     let (config, model) = load(path)?;
+    let listen = config.listen;
+    let listener = TcpListener::bind(listen)
+        .await
+        .with_context(|| format!("bind pose service to {listen}"))?;
     let robot = Robot::connect(config.hardware_endpoint.clone())
         .await
         .with_context(|| format!("connect to hardware at {}", config.hardware_endpoint))?;
@@ -89,12 +95,11 @@ pub async fn run(path: &Path) -> anyhow::Result<()> {
         tracked_frame: Arc::from(config.tracked_frame.as_str()),
         poses: pose_receiver,
     };
-    let listen = config.listen;
     let (server_shutdown, server_shutdown_receiver) = oneshot::channel();
-    let server = tokio::spawn(async move {
+    let mut server = tokio::spawn(async move {
         tonic::transport::Server::builder()
             .add_service(PoseServiceServer::new(pose_server))
-            .serve_with_shutdown(listen, async move {
+            .serve_with_incoming_shutdown(TcpListenerStream::new(listener), async move {
                 let _ = server_shutdown_receiver.await;
             })
             .await
@@ -116,6 +121,13 @@ pub async fn run(path: &Path) -> anyhow::Result<()> {
                 Err(error) => Err(anyhow::anyhow!("hardware monitor task failed: {error}")),
             }
         }
+        result = &mut server => {
+            match result {
+                Ok(Ok(())) => Err(anyhow::anyhow!("pose server stopped unexpectedly")),
+                Ok(Err(error)) => Err(anyhow::anyhow!("pose server failed: {error}")),
+                Err(error) => Err(anyhow::anyhow!("pose server task failed: {error}")),
+            }
+        }
         signal = tokio::signal::ctrl_c() => {
             signal.context("install Ctrl-C handler")?;
             Ok(())
@@ -132,8 +144,22 @@ pub async fn run(path: &Path) -> anyhow::Result<()> {
         monitor.abort();
         let _ = monitor.await;
     }
-    server.await.context("pose server task failed")??;
-    result
+    let server_result = if server.is_finished() {
+        Ok(())
+    } else {
+        match tokio::time::timeout(Duration::from_secs(1), &mut server).await {
+            Ok(joined) => joined
+                .context("pose server task failed")?
+                .map_err(Into::into),
+            Err(_) => {
+                warn!("pose server did not stop within the shutdown deadline; aborting it");
+                server.abort();
+                let _ = server.await;
+                Err(anyhow::anyhow!("pose server shutdown timed out"))
+            }
+        }
+    };
+    result.and(server_result)
 }
 
 pub fn check(path: &Path) -> anyhow::Result<()> {
