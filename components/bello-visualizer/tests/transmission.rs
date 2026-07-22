@@ -7,13 +7,13 @@ use bello_visualizer::transmission::{
 };
 
 fn model(tendon: &str) -> Model {
-    Model::parse(
+    Model::from_str(
         &format!(
             r#"<mujoco><worldbody><body name="b">
               <joint name="pitch" type="hinge"/><joint name="roll" type="hinge"/>
             </body></worldbody><tendon>{tendon}</tendon></mujoco>"#
         ),
-        "/tmp/model.xml",
+        "/tmp",
     )
     .unwrap()
 }

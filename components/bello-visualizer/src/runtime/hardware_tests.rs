@@ -766,7 +766,7 @@ fn profile_config() -> GroupControlProfile {
 }
 
 fn control_model() -> Model {
-    Model::parse(
+    Model::from_str(
         r#"<mujoco><worldbody><body name="body">
           <joint name="hip" range="-2 2"/>
           <joint name="knee" range="-2 2"/>
@@ -776,7 +776,7 @@ fn control_model() -> Model {
           <position name="knee_position" joint="knee" ctrlrange="-2 2" user="0"/>
           <position name="shoulder_position" joint="shoulder" ctrlrange="-2 2" user="0"/>
         </actuator></mujoco>"#,
-        "/tmp/control-model.xml",
+        "/tmp",
     )
     .unwrap()
 }

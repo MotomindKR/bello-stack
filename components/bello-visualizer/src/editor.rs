@@ -30,7 +30,10 @@ impl GroupEditor {
             .joint_names()
             .iter()
             .map(|name| {
-                let joint = &model.joints[name];
+                let (body, index) = model
+                    .joint_by_name(name)
+                    .ok_or_else(|| anyhow::anyhow!("model joint {name:?} disappeared"))?;
+                let joint = &model.bodies[body].body.joints[index];
                 let range = joint.range.ok_or_else(|| {
                     anyhow::anyhow!("model joint {name:?} has no MJCF range for safe editing")
                 })?;
@@ -201,7 +204,7 @@ mod tests {
 
     #[test]
     fn model_edits_convert_through_tendons_without_rewriting_actuator_gains() {
-        let model = Model::parse(
+        let model = Model::from_str(
             r#"<mujoco>
                 <worldbody><body name="ankle">
                   <joint name="pitch" range="-100 100"/><joint name="roll" range="-100 100"/>
@@ -215,7 +218,7 @@ mod tests {
                   <position name="motor_2_position" tendon="motor_2" ctrlrange="-100 100" user="0"/>
                 </actuator>
               </mujoco>"#,
-            "/tmp/model.xml",
+            "/tmp",
         )
         .unwrap();
         let profile = GroupControlProfile {

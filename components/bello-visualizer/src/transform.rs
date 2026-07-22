@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
-use crate::mjcf::ModelError;
+#[derive(Debug, Error)]
+#[error("invalid transform: {0}")]
+pub struct TransformError(String);
 
 /// Rigid transform with translation in metres and quaternion in xyzw order.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -28,14 +31,14 @@ impl Transform {
         orientation_xyzw: identity_xyzw(),
     };
 
-    pub fn checked(self, context: &str) -> Result<Self, ModelError> {
+    pub fn checked(self, context: &str) -> Result<Self, TransformError> {
         if !self
             .translation
             .iter()
             .chain(self.orientation_xyzw.iter())
             .all(|value| value.is_finite())
         {
-            return Err(ModelError::InvalidTransform(format!(
+            return Err(TransformError(format!(
                 "{context} contains a non-finite value"
             )));
         }
@@ -46,7 +49,7 @@ impl Transform {
             .sum::<f64>()
             .sqrt();
         if norm <= 1.0e-12 {
-            return Err(ModelError::InvalidTransform(format!(
+            return Err(TransformError(format!(
                 "{context} has a zero-length quaternion"
             )));
         }
@@ -71,10 +74,6 @@ impl Transform {
     }
 }
 
-pub(crate) fn wxyz_to_xyzw(values: [f64; 4]) -> [f64; 4] {
-    [values[1], values[2], values[3], values[0]]
-}
-
 fn multiply(a: [f64; 4], b: [f64; 4]) -> [f64; 4] {
     let (ax, ay, az, aw) = (a[0], a[1], a[2], a[3]);
     let (bx, by, bz, bw) = (b[0], b[1], b[2], b[3]);
@@ -96,11 +95,6 @@ fn rotate(q: [f64; 4], v: [f64; 3]) -> [f64; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn converts_mujoco_wxyz_to_renderer_xyzw() {
-        assert_eq!(wxyz_to_xyzw([1.0, 2.0, 3.0, 4.0]), [2.0, 3.0, 4.0, 1.0]);
-    }
 
     #[test]
     fn composes_translation_through_rotation() {

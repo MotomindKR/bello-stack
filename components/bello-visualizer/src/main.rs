@@ -42,12 +42,17 @@ async fn main() {
 async fn run() -> anyhow::Result<()> {
     let arguments = Arguments::parse();
     let config = VisualizerConfig::load(&arguments.config)?;
-    let model = Model::load(&config.mjcf)?;
+    let mjcf_path = config.mjcf.clone();
+    let model = Model::from_file(&mjcf_path)?;
     let profile_configs = config.control_profiles.clone();
     let runtime = RuntimeHandle::spawn(config, model.clone())?;
     let mut editors = BTreeMap::<String, GroupEditor>::new();
 
-    let mut window = Window::new(&format!("Bello visualizer — {}", model.name)).await;
+    let mut window = Window::new(&format!(
+        "Bello visualizer — {}",
+        model.name.as_deref().unwrap_or("unnamed")
+    ))
+    .await;
     window.set_background_color(Color::new(0.035, 0.045, 0.06, 1.0));
     window.set_ambient(0.4);
     window.set_ambient_color(Color::new(0.85, 0.9, 1.0, 1.0));
@@ -79,7 +84,7 @@ async fn run() -> anyhow::Result<()> {
         .set_color(Color::new(0.28, 0.30, 0.34, 1.0))
         .set_metallic(0.0)
         .set_roughness(0.9);
-    let mut model_scene = ModelScene::build(&mut scene, &model)?;
+    let mut model_scene = ModelScene::build(&mut scene, &model, &mjcf_path)?;
 
     let mut selected = BTreeSet::<String>::new();
     let mut diagnostics = DiagnosticsUi::new();

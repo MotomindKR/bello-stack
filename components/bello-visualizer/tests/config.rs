@@ -93,7 +93,7 @@ fn maintained_bello_vcan_profiles_cover_every_sphere_hand_coordinate() {
         }
         RootConfig::Fixed { .. } => panic!("Bello vCAN must use runner PoseService"),
     }
-    let model = Model::load(&config.mjcf).unwrap();
+    let model = Model::from_file(&config.mjcf).unwrap();
     let lower_names = BTreeSet::from([
         "waist_yaw_joint",
         "left_hip_pitch_joint",

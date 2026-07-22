@@ -1,10 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
+use mjcf_rs::body::JointType;
 use nalgebra::{DMatrix, DVector};
 use thiserror::Error;
 
-use crate::mjcf::{JointKind, Model};
+use crate::Model;
 
 #[derive(Debug, Error, PartialEq)]
 pub enum TransmissionError {
@@ -54,13 +55,22 @@ impl Transmission {
         let mut rows = Vec::<BTreeMap<String, f64>>::new();
         let mut affected = BTreeSet::new();
         for coordinate in &coordinate_names {
-            let row = if let Some(joint) = model.joints.get(coordinate) {
-                if !matches!(joint.kind, JointKind::Hinge | JointKind::Slide) {
+            let row = if let Some((body, index)) = model.joint_by_name(coordinate) {
+                let joint = &model.bodies[body].body.joints[index];
+                if !matches!(joint.type_, JointType::Hinge | JointType::Slide) {
                     return Err(TransmissionError::UnknownCoordinate(coordinate.clone()));
                 }
                 BTreeMap::from([(coordinate.clone(), 1.0)])
-            } else if let Some(tendon) = model.fixed_tendons.get(coordinate) {
-                tendon.coefficients.clone()
+            } else if let Some(tendon) = model
+                .tendons
+                .iter()
+                .find(|tendon| tendon.name.as_deref() == Some(coordinate))
+            {
+                tendon
+                    .joints
+                    .iter()
+                    .map(|term| (term.joint.clone(), term.coef))
+                    .collect()
             } else {
                 return Err(TransmissionError::UnknownCoordinate(coordinate.clone()));
             };

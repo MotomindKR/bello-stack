@@ -13,10 +13,10 @@ bello-pose-api.workspace = true
 clap = { workspace = true, features = ["derive"] }
 crossbeam-channel.workspace = true
 kiss3d = { version = "0.45", features = ["egui"] }
+mjcf-rs.workspace = true
 nalgebra.workspace = true
 parking_lot.workspace = true
 rfd = "0.15"
-roxmltree.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_yaml.workspace = true
 stl_io = "0.11"

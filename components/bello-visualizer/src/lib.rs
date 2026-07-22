@@ -3,13 +3,12 @@
 pub mod config;
 pub mod diagnostics;
 pub mod editor;
-pub mod mjcf;
 pub mod runtime;
 pub mod scene;
 pub mod transform;
 pub mod transmission;
 
 pub use config::VisualizerConfig;
-pub use mjcf::Model;
+pub use mjcf_rs::Model;
 pub use transform::Transform;
 pub use transmission::Transmission;

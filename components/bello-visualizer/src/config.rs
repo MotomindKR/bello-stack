@@ -279,7 +279,23 @@ impl GroupControlProfile {
         let mut resolved = BTreeMap::new();
         for coordinate in coordinates {
             let coordinate = coordinate.as_ref();
-            let actuator = model.position_actuators.get(coordinate).ok_or_else(|| {
+            let actuator = model
+                .actuators
+                .iter()
+                .find(|actuator| {
+                    actuator.kind == mjcf_rs::extras::ActuatorKind::Position
+                        && actuator
+                            .joint
+                            .as_deref()
+                            .or(actuator.tendon.as_deref())
+                            == Some(coordinate)
+                })
+                .ok_or_else(|| {
+                    ConfigError::Invalid(format!(
+                        "hardware coordinate {coordinate:?} has no matching MJCF position actuator with ctrlrange"
+                    ))
+                })?;
+            let range = actuator.ctrl_range.ok_or_else(|| {
                 ConfigError::Invalid(format!(
                     "hardware coordinate {coordinate:?} has no matching MJCF position actuator with ctrlrange"
                 ))
@@ -288,9 +304,9 @@ impl GroupControlProfile {
                 coordinate.to_owned(),
                 CoordinateControlProfile {
                     position: BoundedDefault {
-                        min: actuator.control_range[0],
-                        max: actuator.control_range[1],
-                        default: actuator.default_position,
+                        min: range[0],
+                        max: range[1],
+                        default: 0.0_f64.clamp(range[0], range[1]),
                     },
                     velocity: self.velocity,
                     torque_feedforward: self.torque_feedforward,

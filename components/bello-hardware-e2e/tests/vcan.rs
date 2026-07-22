@@ -18,7 +18,7 @@ use bello_hardware_api::{
     WatchTelemetryRequest,
 };
 use bello_visualizer::runtime::{ControlStatus, DisplaySnapshot, RuntimeHandle};
-use bello_visualizer::{Model as VisualizerModel, Transmission, VisualizerConfig};
+use bello_visualizer::{Model, Transmission, VisualizerConfig};
 use robstride_protocol::{
     ControlCommand, Feedback, Frame, MotorParams, control_frame, feedback_frame, parse_feedback,
 };
@@ -42,9 +42,8 @@ fn generated_runtime_configs_are_valid() -> Result<()> {
     bello_hardwared::check(&hardwared_config)?;
     robstride_emulator::config::Config::load(&emulator_config)?;
 
-    let model = VisualizerModel::load(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vcan.xml"),
-    )?;
+    let model =
+        Model::from_file(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vcan.xml"))?;
     let mapping = Transmission::from_model(&model, ["e2e_joint_1", "e2e_joint_2"])?;
     assert_eq!(mapping.joint_to_coordinate(&[0.1, -0.2])?, [0.1, -0.2]);
     Ok(())
@@ -119,7 +118,7 @@ async fn visualizer_runtime_commands_at_profile_rate_without_rendering() -> Resu
     )?;
 
     let config = VisualizerConfig::load(&visualizer_config)?;
-    let model = VisualizerModel::load(&config.mjcf)?;
+    let model = Model::from_file(&config.mjcf)?;
     let mapping = Transmission::from_model(&model, ["e2e_joint_1", "e2e_joint_2"])?;
     assert_eq!(mapping.coordinate_names(), ["e2e_joint_1", "e2e_joint_2"]);
 
