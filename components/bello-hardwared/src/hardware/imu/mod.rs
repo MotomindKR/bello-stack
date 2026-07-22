@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
 use tracing::{info, warn};
@@ -17,6 +17,10 @@ mod spec;
 use ebimu::{output_commands, parse_ascii_line};
 pub(crate) use spec::ImuSpec;
 use spec::POLL_PERIOD;
+
+// EBIMU setting commands may persist configuration before acknowledging. Real
+// hardware takes roughly 650 ms, independently of the serial I/O timeout.
+const COMMAND_ACK_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Debug)]
 pub struct ImuSample {
@@ -216,7 +220,7 @@ fn configure_device(config: &ImuSpec, serial: &SerialHandle, stop: &AtomicBool) 
 }
 
 fn await_command_ack(serial: &SerialHandle, stop: &AtomicBool, command: &str) -> Result<()> {
-    let deadline = Instant::now() + serial.spec.timeout;
+    let deadline = Instant::now() + COMMAND_ACK_TIMEOUT;
     let mut response = Vec::with_capacity(128);
     loop {
         if stop.load(Ordering::Acquire) {

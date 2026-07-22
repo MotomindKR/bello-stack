@@ -8,22 +8,22 @@ runtime:
   telemetry_capacity: 4096
 
 grpc:
-  # Keep control local unless the deployment adds authenticated transport security.
-  listen: { type: tcp, address: 127.0.0.1:50051 }
+  # Exposes control on every IPv4 interface; restrict access with deployment firewall policy.
+  listen: { type: tcp, address: 0.0.0.0:50051 }
   default_lease_ms: 1000
   maximum_lease_ms: 5000
 
 serial_devices:
   - name: imu_serial
-    port: /dev/ttyUSB0
-    baud_rate: 921600
+    port: /dev/ttyACM0
+    baud_rate: 460800
     timeout_ms: 100
     reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
 
 imus:
   - name: imu
     serial_device: imu_serial
-    stale_timeout_ms: 500
+    stale_timeout_ms: 1000
     output_rate_hz: 500
 
 buses:
@@ -44,7 +44,7 @@ motors:
   # Lower body (can0).
   - name: waist_yaw
     coordinate: waist_yaw_joint
-    bus: can0
+    bus: can1
     id: 53
     model: ROBSTRIDE_04
     direction: -1

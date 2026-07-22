@@ -247,8 +247,9 @@ worker.
 ### Configuration sequence
 
 The EBIMU worker waits for its serial transport to be online. On every new
-transport generation it sends the following commands, in order, with an
-interruptible 20 ms pause between commands:
+transport generation it sends the following commands in order. It waits up to
+two seconds for each `<ok>` acknowledgement because physical EBIMU devices may
+persist a setting before replying:
 
 ```text
 <soc1>               ASCII output
@@ -272,10 +273,8 @@ and orchestration is in
 The serial layer opens the configured baud rate but does not change the EBIMU's
 stored baud setting; the two must already match. The sequence also does not set
 gyro/accelerometer range, accelerometer filtering, magnetometer operating mode,
-or calibration. Commands are sent 20 ms apart without waiting for an
-acknowledgement to each one. The operational confirmation is the arrival of a
-valid stream matching the complete schema; failure to produce one eventually
-triggers the stale-sample reconnect path.
+or calibration. A rejected command, missing acknowledgement, or failure to
+produce a valid stream triggers the reconnect path.
 
 ### Wire schema and units
 
