@@ -1,7 +1,7 @@
 """Blocking Python interface to the Bello hardware daemon."""
 
 from ._inventory import Inventory, MotorGroup
-from .control import CommandReceipt, ControlSession
+from .control import CommandPipeline, CommandReceipt, ControlSession
 from .errors import (
     AcknowledgementError,
     BelloError,
@@ -48,6 +48,7 @@ __all__ = [
     "BelloError",
     "Bus",
     "CleanupError",
+    "CommandPipeline",
     "CommandReceipt",
     "CommandRejectedError",
     "CommandResult",

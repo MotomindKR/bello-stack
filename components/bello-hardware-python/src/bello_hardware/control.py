@@ -7,6 +7,7 @@ import queue
 import threading
 import time
 import warnings
+from collections import deque
 from collections.abc import Iterator, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
@@ -45,6 +46,8 @@ def _milliseconds(seconds: float | None, field: str) -> int:
 @dataclass(slots=True)
 class _Pending:
     event: threading.Event
+    submitted_at: float
+    completed_at: float | None = None
     response: Any = None
     error: BaseException | None = None
 
@@ -61,6 +64,15 @@ class CommandReceipt:
 
     def done(self) -> bool:
         return self._pending.event.is_set()
+
+    @property
+    def acknowledgement_latency_ms(self) -> float | None:
+        """Return submit-to-acknowledgement latency, or None while pending."""
+
+        completed_at = self._pending.completed_at
+        if completed_at is None:
+            return None
+        return max(0.0, completed_at - self._pending.submitted_at) * 1_000.0
 
     def result(self) -> None:
         if self._resolved:
@@ -97,7 +109,7 @@ class _CommandStream:
             yield request
 
     def submit(self, request: proto.StreamCommandsRequest, timeout: float) -> _Pending:
-        pending = _Pending(threading.Event())
+        pending = _Pending(threading.Event(), submitted_at=time.monotonic())
         with self._lock:
             if self._fatal is not None:
                 raise self._fatal
@@ -147,6 +159,7 @@ class _CommandStream:
                     )
                     return
                 pending.response = response
+                pending.completed_at = time.monotonic()
                 pending.event.set()
             if not self._closing:
                 self._fail(AcknowledgementError("command acknowledgement stream closed"))
@@ -165,6 +178,7 @@ class _CommandStream:
             self._pending.clear()
         for item in pending:
             item.error = error
+            item.completed_at = time.monotonic()
             item.event.set()
 
     def close(self, timeout: float) -> None:
@@ -177,6 +191,7 @@ class _CommandStream:
         error = AcknowledgementError("command stream closed")
         for item in pending:
             item.error = error
+            item.completed_at = time.monotonic()
             item.event.set()
         with suppress(queue.Full):
             self._requests.put_nowait(self._SENTINEL)
@@ -611,3 +626,70 @@ class ControlSession:
         stream, self._stream = self._stream, None
         if stream is not None:
             stream.close(self._rpc_timeout)
+
+
+class CommandPipeline:
+    """Bounded non-blocking command submission for fixed-rate control loops."""
+
+    def __init__(self, session: ControlSession, *, max_pending: int) -> None:
+        if isinstance(max_pending, bool) or not isinstance(max_pending, int):
+            raise TypeError("maximum pending commands must be an integer")
+        if max_pending <= 0:
+            raise ValueError("maximum pending commands must be positive")
+        self._session = session
+        self._max_pending = max_pending
+        self._pending: deque[CommandReceipt] = deque()
+        self._acknowledgement_latencies_ms: deque[float] = deque(maxlen=256)
+        self._last_submission_latency_ms = 0.0
+        self._maximum_submission_latency_ms = 0.0
+
+    @property
+    def pending_count(self) -> int:
+        return len(self._pending)
+
+    @property
+    def acknowledgement_latencies_ms(self) -> tuple[float, ...]:
+        return tuple(self._acknowledgement_latencies_ms)
+
+    @property
+    def last_submission_latency_ms(self) -> float:
+        return self._last_submission_latency_ms
+
+    @property
+    def maximum_submission_latency_ms(self) -> float:
+        return self._maximum_submission_latency_ms
+
+    def send(self, targets: Mapping[str, CoordinateTarget]) -> CommandReceipt:
+        """Submit one frame without waiting unless the pending bound is full."""
+
+        self.poll()
+        started_at = time.monotonic()
+        receipt = self._session.send_async(targets)
+        submission_latency_ms = (time.monotonic() - started_at) * 1_000.0
+        self._last_submission_latency_ms = submission_latency_ms
+        self._maximum_submission_latency_ms = max(
+            self._maximum_submission_latency_ms,
+            submission_latency_ms,
+        )
+        self._pending.append(receipt)
+        while len(self._pending) > self._max_pending:
+            self._resolve(self._pending.popleft())
+        return receipt
+
+    def poll(self) -> None:
+        """Resolve completed receipts and surface command failures."""
+
+        while self._pending and self._pending[0].done():
+            self._resolve(self._pending.popleft())
+
+    def drain(self) -> None:
+        """Wait for and validate every pending acknowledgement."""
+
+        while self._pending:
+            self._resolve(self._pending.popleft())
+
+    def _resolve(self, receipt: CommandReceipt) -> None:
+        receipt.result()
+        latency_ms = receipt.acknowledgement_latency_ms
+        if latency_ms is not None:
+            self._acknowledgement_latencies_ms.append(latency_ms)

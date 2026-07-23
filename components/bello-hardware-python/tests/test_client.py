@@ -9,14 +9,18 @@ import pytest
 from bello_hardware import (
     AcknowledgementError,
     CleanupError,
+    CommandPipeline,
     CommandRejectedError,
     ControlRpcError,
     ControlState,
     CoordinateTarget,
+    DeviceState,
     InvalidTargetError,
     LeaseLostError,
     Robot,
+    StateUnavailableError,
 )
+from bello_hardware._generated import hardware_pb2 as proto
 
 from .conftest import RunningServer
 
@@ -56,11 +60,53 @@ def test_async_commands_pipeline_before_acknowledgements(
         receipts = [control.send_async(frame(value)) for value in (0.1, 0.2, 0.3)]
         submit_elapsed = time.monotonic() - started
         assert submit_elapsed < 0.04
+        assert receipts[-1].acknowledgement_latency_ms is None
         for receipt in receipts:
             receipt.result()
         assert all(receipt.done() for receipt in receipts)
+        assert all(receipt.acknowledgement_latency_ms is not None for receipt in receipts)
+        assert receipts[0].acknowledgement_latency_ms is not None
+        assert receipts[0].acknowledgement_latency_ms >= 30.0
 
     assert hardware_server.service.command_count == 4
+
+
+def test_bounded_command_pipeline_preserves_fixed_rate_submission(
+    hardware_server: RunningServer,
+) -> None:
+    with (
+        Robot.connect(hardware_server.endpoint) as robot,
+        robot.group("leg").control("pytest", acknowledgement_timeout=0.5) as control,
+    ):
+        control.start(frame())
+        hardware_server.service.command_delay = 0.04
+        pipeline = CommandPipeline(control, max_pending=4)
+
+        started = time.monotonic()
+        for value in (0.1, 0.2, 0.3):
+            pipeline.send(frame(value))
+        assert time.monotonic() - started < 0.04
+        assert pipeline.pending_count == 3
+
+        pipeline.drain()
+
+        assert pipeline.pending_count == 0
+        assert len(pipeline.acknowledgement_latencies_ms) == 3
+        assert max(pipeline.acknowledgement_latencies_ms) >= 30.0
+        assert pipeline.maximum_submission_latency_ms < 40.0
+
+
+def test_command_pipeline_rejects_invalid_pending_bound(
+    hardware_server: RunningServer,
+) -> None:
+    with (
+        Robot.connect(hardware_server.endpoint) as robot,
+        robot.group("leg").control("pytest") as control,
+    ):
+        with pytest.raises(ValueError, match="positive"):
+            CommandPipeline(control, max_pending=0)
+        with pytest.raises(TypeError, match="integer"):
+            CommandPipeline(control, max_pending=True)
 
 
 def test_async_rejection_makes_session_uncertain(
@@ -118,6 +164,58 @@ def test_latest_state_cache(hardware_server: RunningServer) -> None:
         assert hip.position == pytest.approx(0.25)
         assert hip.temperature == pytest.approx(32.0)
         assert states.group("leg").monotonic_ns == 2_000
+
+
+def test_cached_sample_ages_continue_increasing(
+    hardware_server: RunningServer,
+) -> None:
+    with Robot.connect(hardware_server.endpoint) as robot, robot.states() as states:
+        deadline = time.monotonic() + 1.0
+        while (not states.motors or not states.imus) and time.monotonic() < deadline:
+            assert states.wait_for_change(timeout=1.0)
+        motor_age = states.motor("hip_motor").feedback_age_ms
+        imu_age = states.imu("body").sample_age_ms
+
+        time.sleep(0.03)
+
+        assert states.motor("hip_motor").feedback_age_ms >= motor_age + 20
+        assert states.imu("body").sample_age_ms >= imu_age + 20
+
+
+def test_unhealthy_imu_invalidates_cached_sample(
+    hardware_server: RunningServer,
+) -> None:
+    with Robot.connect(hardware_server.endpoint) as robot, robot.states() as states:
+        deadline = time.monotonic() + 1.0
+        while not states.imus and time.monotonic() < deadline:
+            assert states.wait_for_change(timeout=1.0)
+
+        hardware_server.service.emit_telemetry(
+            proto.WatchTelemetryResponse(
+                monotonic_ns=5_000,
+                health=proto.HealthTelemetry(
+                    component="imu/body",
+                    device_status=proto.DeviceStatus(
+                        state=proto.DEVICE_STATE_RECONNECTING,
+                        detail="no valid IMU sample",
+                        transition_count=2,
+                    ),
+                ),
+            )
+        )
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            health = states.health("imu/body")
+            if (
+                health is not None
+                and health.status is not None
+                and health.status.state == DeviceState.RECONNECTING
+            ):
+                break
+            assert states.wait_for_change(timeout=1.0)
+
+        with pytest.raises(StateUnavailableError):
+            states.imu("body")
 
 
 def test_target_validation() -> None:

@@ -20,6 +20,7 @@ impl GrpcIncoming {
     pub(crate) fn bind(spec: &GrpcListenSpec) -> Result<Self> {
         match spec {
             GrpcListenSpec::Tcp(address) => TcpIncoming::bind(*address)
+                .map(|incoming| incoming.with_nodelay(Some(true)))
                 .map(Self::Tcp)
                 .map_err(|error| anyhow!("binding gRPC TCP listener {address}: {error}")),
             GrpcListenSpec::Unix { path, mode } => bind_unix(path, *mode),
@@ -131,5 +132,32 @@ impl Drop for UnixSocketGuard {
                 "failed to remove gRPC Unix socket during shutdown"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio_stream::StreamExt;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn tcp_connections_disable_nagle() {
+        let spec = GrpcListenSpec::Tcp("127.0.0.1:0".parse().expect("valid test address"));
+        let GrpcIncoming::Tcp(mut incoming) =
+            GrpcIncoming::bind(&spec).expect("bind test listener")
+        else {
+            panic!("TCP listen spec produced a Unix listener");
+        };
+        let address = incoming.local_addr().expect("test listener address");
+        let client = tokio::spawn(tokio::net::TcpStream::connect(address));
+        let accepted = incoming
+            .next()
+            .await
+            .expect("accepted stream")
+            .expect("accept connection");
+        let _client = client.await.expect("client task").expect("connect client");
+
+        assert!(accepted.nodelay().expect("read TCP_NODELAY"));
     }
 }
