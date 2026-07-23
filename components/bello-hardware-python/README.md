@@ -148,7 +148,11 @@ Useful accessors include:
 Telemetry reconnects after transient gRPC failures by default. Reconnection
 clears the cache and increments `states.generation`, preventing stale values
 from looking current after a daemon or connection restart. Each thread calling
-`wait_for_change` has its own change cursor.
+`wait_for_change` has its own change cursor. Motor `feedback_age_ms` and IMU
+`sample_age_ms` continue increasing from their client arrival time while a
+cached value is retained. An IMU health transition away from `ONLINE`
+invalidates its cached sample, so `states.imu(...)` raises
+`StateUnavailableError` until a new sample arrives.
 
 ## Control a motor group
 
@@ -184,6 +188,27 @@ coordinate frame, and starts the daemon's group controller. `control.send` block
 until the daemon acknowledges that exact command. Leaving the control context
 stops control, disables the group, stops automatic lease renewal, and releases
 the lease.
+
+Latency-sensitive fixed-rate loops can use a bounded pipeline so delayed
+acknowledgements do not directly schedule the next command:
+
+```python
+from bello_hardware import CommandPipeline
+
+pipeline = CommandPipeline(control, max_pending=4)
+pipeline.send(target)
+pipeline.poll()  # surfaces completed acknowledgement errors without waiting
+# ...
+pipeline.drain()
+```
+
+`pipeline.send` uses `control.send_async` and waits only when the explicit
+pending bound is full. Recent submit-to-acknowledgement measurements are
+available through `pipeline.acknowledgement_latencies_ms`, while submission
+queue delay is exposed by `last_submission_latency_ms` and
+`maximum_submission_latency_ms`. Applications must call `poll()` every control
+tick and `drain()` during orderly shutdown. Asynchronous submission does not
+weaken the daemon's command-validity watchdog.
 
 Every `start` and `send` call must contain exactly one target for every coordinate in
 `leg.coordinates`. A partial command is rejected before it reaches the daemon.

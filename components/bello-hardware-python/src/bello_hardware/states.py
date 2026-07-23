@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Literal
 
 import grpc  # type: ignore[import-untyped]
@@ -81,8 +82,10 @@ class RobotStates:
         self._consumer_cursor = _ConsumerCursor()
         self._monotonic_ns = 0
         self._motors: dict[str, MotorState] = {}
+        self._motor_received_ns: dict[str, int] = {}
         self._groups: dict[str, GroupStatus] = {}
         self._imus: dict[str, ImuState] = {}
+        self._imu_received_ns: dict[str, int] = {}
         self._health: dict[str, HealthStatus] = {}
         self._error: BaseException | None = None
         self._ended = False
@@ -130,7 +133,7 @@ class RobotStates:
     def motor(self, name: str) -> MotorState:
         with self._condition:
             try:
-                return self._motors[name]
+                return self._current_motor(name)
             except KeyError as error:
                 raise StateUnavailableError(f"no current state for motor {name!r}") from error
 
@@ -150,7 +153,7 @@ class RobotStates:
     def imu(self, name: str) -> ImuState:
         with self._condition:
             try:
-                return self._imus[name]
+                return self._current_imu(name)
             except KeyError as error:
                 raise StateUnavailableError(f"no current state for IMU {name!r}") from error
 
@@ -161,7 +164,7 @@ class RobotStates:
     @property
     def motors(self) -> tuple[MotorState, ...]:
         with self._condition:
-            return tuple(self._motors[name] for name in sorted(self._motors))
+            return tuple(self._current_motor(name) for name in sorted(self._motors))
 
     @property
     def groups(self) -> tuple[GroupStatus, ...]:
@@ -171,7 +174,7 @@ class RobotStates:
     @property
     def imus(self) -> tuple[ImuState, ...]:
         with self._condition:
-            return tuple(self._imus[name] for name in sorted(self._imus))
+            return tuple(self._current_imu(name) for name in sorted(self._imus))
 
     def close(self) -> None:
         with self._close_lock:
@@ -243,8 +246,10 @@ class RobotStates:
             self._generation += 1
             self._monotonic_ns = 0
             self._motors.clear()
+            self._motor_received_ns.clear()
             self._groups.clear()
             self._imus.clear()
+            self._imu_received_ns.clear()
             self._health.clear()
 
     def _apply(self, response: proto.WatchTelemetryResponse) -> None:
@@ -272,6 +277,7 @@ class RobotStates:
                     motor.mode_status,
                     motor.feedback_age_ms,
                 )
+                self._motor_received_ns[motor.motor_name] = time.monotonic_ns()
             elif payload == "imu":
                 imu = response.imu
                 known = {item.name for item in self._robot.inventory.imus}
@@ -305,6 +311,7 @@ class RobotStates:
                     imu.device_timestamp_ms,
                     imu.sample_age_ms,
                 )
+                self._imu_received_ns[imu.imu_name] = time.monotonic_ns()
             elif payload == "group":
                 group = response.group
                 if group.group not in self._robot.group_names:
@@ -343,8 +350,41 @@ class RobotStates:
                     status,
                     health.dropped_events,
                 )
+                if (
+                    status is not None
+                    and status.state != DeviceState.ONLINE
+                    and health.component.startswith("imu/")
+                ):
+                    imu_name = health.component.removeprefix("imu/")
+                    self._imus.pop(imu_name, None)
+                    self._imu_received_ns.pop(imu_name, None)
             self._update_count += 1
             self._condition.notify_all()
+
+    def _current_motor(self, name: str) -> MotorState:
+        state = self._motors[name]
+        return replace(
+            state,
+            feedback_age_ms=self._current_age_ms(
+                state.feedback_age_ms,
+                self._motor_received_ns[name],
+            ),
+        )
+
+    def _current_imu(self, name: str) -> ImuState:
+        state = self._imus[name]
+        return replace(
+            state,
+            sample_age_ms=self._current_age_ms(
+                state.sample_age_ms,
+                self._imu_received_ns[name],
+            ),
+        )
+
+    @staticmethod
+    def _current_age_ms(reported_age_ms: int, received_ns: int) -> int:
+        elapsed_ns = max(0, time.monotonic_ns() - received_ns)
+        return reported_age_ms + elapsed_ns // 1_000_000
 
     def _fail(self, error: BaseException) -> None:
         with self._condition:

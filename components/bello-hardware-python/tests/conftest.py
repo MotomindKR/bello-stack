@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import queue
 import threading
 import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -30,6 +32,10 @@ class FakeHardware:
         self.disable_failure: grpc.StatusCode | None = None
         self.telemetry_failures = 0
         self.telemetry_calls = 0
+        self.telemetry_events: queue.Queue[proto.WatchTelemetryResponse] = queue.Queue()
+
+    def emit_telemetry(self, response: proto.WatchTelemetryResponse) -> None:
+        self.telemetry_events.put(response)
 
     def ListHardware(self, request: Any, context: Any) -> proto.ListHardwareResponse:
         del request, context
@@ -188,8 +194,31 @@ class FakeHardware:
                 command_count=self.command_count,
             ),
         )
+        yield proto.WatchTelemetryResponse(
+            monotonic_ns=3_000,
+            health=proto.HealthTelemetry(
+                component="imu/body",
+                device_status=proto.DeviceStatus(
+                    state=proto.DEVICE_STATE_ONLINE,
+                    detail="streaming",
+                    transition_count=1,
+                ),
+            ),
+        )
+        yield proto.WatchTelemetryResponse(
+            monotonic_ns=4_000,
+            imu=proto.ImuTelemetry(
+                imu_name="body",
+                orientation=proto.Quaternion(w=1.0),
+                angular_velocity=proto.Vector3(),
+                linear_acceleration=proto.Vector3(z=9.80665),
+                device_timestamp_ms=100,
+                sample_age_ms=3,
+            ),
+        )
         while context.is_active():
-            time.sleep(0.01)
+            with suppress(queue.Empty):
+                yield self.telemetry_events.get(timeout=0.01)
 
 
 @dataclass(frozen=True)
