@@ -18,6 +18,28 @@ enum VisualizerTab {
     Environment,
 }
 
+#[derive(Default)]
+struct EguiPassGate {
+    pending_at: Option<u64>,
+}
+
+impl EguiPassGate {
+    fn ready_to_draw(&mut self, completed_passes: u64) -> bool {
+        match self.pending_at {
+            Some(pending_at) if pending_at == completed_passes => false,
+            Some(_) => {
+                self.pending_at = None;
+                true
+            }
+            None => true,
+        }
+    }
+
+    fn mark_drawn(&mut self, completed_passes: u64) {
+        self.pending_at = Some(completed_passes);
+    }
+}
+
 #[derive(Parser)]
 #[command(about = "Monitor and safely command Bello hardware against a flattened MJCF")]
 struct Arguments {
@@ -99,8 +121,20 @@ async fn run() -> anyhow::Result<()> {
     let mut sky_rotation_degrees = 0.0_f32;
     let mut sky_intensity = 1.0_f32;
     let mut sky_status = "Using solid color".to_string();
+    let mut egui_pass_gate = EguiPassGate::default();
 
     while window.render_3d(&mut scene, &mut camera).await {
+        let completed_egui_passes = window.egui_context().cumulative_pass_nr();
+        if !egui_pass_gate.ready_to_draw(completed_egui_passes) {
+            // Kiss3d returns early when a visible window temporarily has no
+            // drawable surface (for example, while minimized on macOS). That
+            // leaves the previous egui pass open. Appending another UI to that
+            // pass on every retry grows memory without bound, so wait for the
+            // renderer to complete it and avoid an unthrottled retry loop.
+            std::thread::sleep(Duration::from_millis(16));
+            continue;
+        }
+
         let snapshot = runtime.latest();
         for (group, profile) in &profile_configs {
             if editors.contains_key(group) {
@@ -320,6 +354,7 @@ async fn run() -> anyhow::Result<()> {
                     });
                 });
         });
+        egui_pass_gate.mark_drawn(completed_egui_passes);
 
         if ground_changed {
             ground.set_visible(show_ground);
@@ -718,5 +753,19 @@ mod tests {
         assert_eq!(project_world_axis(Quat::IDENTITY, Vec3::X), Vec2::X);
         assert_eq!(project_world_axis(Quat::IDENTITY, Vec3::Y), -Vec2::Y);
         assert_eq!(project_world_axis(Quat::IDENTITY, Vec3::Z), Vec2::ZERO);
+    }
+
+    #[test]
+    fn egui_pass_gate_does_not_append_while_rendering_is_skipped() {
+        let mut gate = EguiPassGate::default();
+
+        assert!(gate.ready_to_draw(7));
+        gate.mark_drawn(7);
+        assert!(!gate.ready_to_draw(7));
+        assert!(!gate.ready_to_draw(7));
+
+        assert!(gate.ready_to_draw(8));
+        gate.mark_drawn(8);
+        assert!(!gate.ready_to_draw(8));
     }
 }
