@@ -9,6 +9,8 @@ description = "Dynamixel teaching-arm teleoperation for Bello's upper-body motor
 readme = "README.md"
 requires-python = ">=3.10"
 license = "LicenseRef-Proprietary"
+license-files = ["LICENSE"]
+classifiers = ["Private :: Do Not Upload"]
 dependencies = [
   "bello-hardware>=0.1,<0.2",
   "dynamixel-sdk>=3.7,<4",
