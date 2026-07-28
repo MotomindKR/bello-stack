@@ -7,7 +7,9 @@ use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Config {
+pub(crate) struct Config {
+    #[serde(skip)]
+    pub(crate) robot_description: PathBuf,
     #[serde(default)]
     pub runtime: RuntimeConfig,
     #[serde(default)]
@@ -39,6 +41,7 @@ pub(crate) struct DeploymentConfig {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct HardwareDescription {
+    pub robot_description: PathBuf,
     pub logical_buses: Vec<LogicalBusConfig>,
     #[serde(default)]
     pub serial_devices: Vec<LogicalSerialDeviceConfig>,
@@ -272,7 +275,7 @@ pub struct MotorCommandPolicy {
 impl Default for MotorCommandPolicy {
     fn default() -> Self {
         Self {
-            maximum_position_step: 0.5,
+            maximum_position_step: 0.05,
             limit: CommandBehavior::Reject,
             position_step: CommandBehavior::Fault,
         }

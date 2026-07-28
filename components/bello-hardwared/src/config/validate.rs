@@ -10,6 +10,7 @@ use super::{Config, DeploymentConfig, HardwareDescription};
 use crate::control::GroupSpec;
 use crate::hardware::can::BusSpec;
 use crate::hardware::robstride::MotorSpec;
+use crate::mechanics::{MechanicalEnvelope, apply_coordinate_limits};
 
 impl Config {
     pub(crate) fn load_raw(path: impl AsRef<Path>) -> Result<Self> {
@@ -23,7 +24,7 @@ impl Config {
                 .join(&deployment.description)
         };
         let description: HardwareDescription = load_yaml(&description_path)?;
-        Self::compose(description, deployment).with_context(|| {
+        Self::compose(description, deployment, &description_path).with_context(|| {
             format!(
                 "failed to compose {} with {}",
                 path.display(),
@@ -32,7 +33,26 @@ impl Config {
         })
     }
 
-    fn compose(description: HardwareDescription, deployment: DeploymentConfig) -> Result<Self> {
+    fn compose(
+        description: HardwareDescription,
+        deployment: DeploymentConfig,
+        description_path: &Path,
+    ) -> Result<Self> {
+        let robot_description = if description.robot_description.is_absolute() {
+            description.robot_description.clone()
+        } else {
+            description_path
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join(&description.robot_description)
+        };
+        let robot = bello_robot_description::RobotDescription::load(&robot_description)
+            .with_context(|| {
+                format!(
+                    "hardware description references invalid robot description {}",
+                    robot_description.display()
+                )
+            })?;
         if description.logical_buses.is_empty() {
             bail!("hardware description must declare at least one logical bus");
         }
@@ -55,10 +75,13 @@ impl Config {
         }
 
         let mut motors = HashMap::new();
+        let mut resolved_motors = HashMap::new();
         let mut coordinates = HashSet::new();
         let mut addresses = HashSet::new();
         for motor in &description.motors {
-            MotorSpec::try_from(motor)?;
+            let mut spec = MotorSpec::try_from(motor)?;
+            apply_coordinate_limits(&robot, &mut spec)?;
+            resolved_motors.insert(spec.name.clone(), spec);
             if !logical_buses.contains(&motor.bus) {
                 bail!(
                     "motor {} refers to undeclared logical bus {}",
@@ -86,7 +109,8 @@ impl Config {
         let mut groups = HashMap::new();
         let mut membership = HashMap::new();
         for group in &description.motor_groups {
-            GroupSpec::try_from(group)?;
+            let spec = GroupSpec::try_from(group)?;
+            MechanicalEnvelope::build(&robot, &spec.motors, &resolved_motors)?;
             if groups.insert(group.name.as_str(), group).is_some() {
                 bail!("duplicate motor group name {}", group.name);
             }
@@ -196,6 +220,7 @@ impl Config {
             .collect();
 
         Ok(Self {
+            robot_description,
             runtime: deployment.runtime,
             grpc: deployment.grpc,
             serial_devices,
@@ -221,7 +246,9 @@ mod tests {
     use super::*;
 
     fn parse(yaml: &str) -> Result<Config> {
-        let config: Config = serde_yaml::from_str(yaml)?;
+        let mut config: Config = serde_yaml::from_str(yaml)?;
+        config.robot_description = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../descriptions/bello/full_body/urdf/bello_full_body.urdf");
         ResolvedTopology::resolve(config.clone())?;
         Ok(config)
     }
@@ -269,14 +296,14 @@ mod tests {
     #[test]
     fn deployment_group_selection_is_strict() {
         let component = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let description: HardwareDescription =
-            load_yaml(&component.join("../../descriptions/bello/hardware.yaml")).unwrap();
+        let description_path = component.join("../../descriptions/bello/hardware.yaml");
+        let description: HardwareDescription = load_yaml(&description_path).unwrap();
         let mut deployment: DeploymentConfig =
             load_yaml(&component.join("config/bello-vcan.yaml")).unwrap();
 
         deployment.enabled_groups.push("upper_body".into());
         assert!(
-            Config::compose(description.clone(), deployment)
+            Config::compose(description.clone(), deployment, &description_path)
                 .unwrap_err()
                 .to_string()
                 .contains("duplicate group")
@@ -286,7 +313,7 @@ mod tests {
             load_yaml(&component.join("config/bello-vcan.yaml")).unwrap();
         deployment.enabled_groups.push("missing".into());
         assert!(
-            Config::compose(description, deployment)
+            Config::compose(description, deployment, &description_path)
                 .unwrap_err()
                 .to_string()
                 .contains("unknown group")
@@ -296,8 +323,8 @@ mod tests {
     #[test]
     fn disabled_groups_are_still_validated() {
         let component = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let mut description: HardwareDescription =
-            load_yaml(&component.join("../../descriptions/bello/hardware.yaml")).unwrap();
+        let description_path = component.join("../../descriptions/bello/hardware.yaml");
+        let mut description: HardwareDescription = load_yaml(&description_path).unwrap();
         description
             .motors
             .iter_mut()
@@ -308,7 +335,7 @@ mod tests {
             load_yaml(&component.join("config/bello-vcan.yaml")).unwrap();
 
         assert!(
-            Config::compose(description, deployment)
+            Config::compose(description, deployment, &description_path)
                 .unwrap_err()
                 .to_string()
                 .contains("unsupported Robstride model")
@@ -318,13 +345,13 @@ mod tests {
     #[test]
     fn deployment_transport_bindings_must_be_exact() {
         let component = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let description: HardwareDescription =
-            load_yaml(&component.join("../../descriptions/bello/hardware.yaml")).unwrap();
+        let description_path = component.join("../../descriptions/bello/hardware.yaml");
+        let description: HardwareDescription = load_yaml(&description_path).unwrap();
         let mut missing_bus: DeploymentConfig =
             load_yaml(&component.join("config/bello-vcan.yaml")).unwrap();
         missing_bus.bus_interfaces.remove("can1");
         assert!(
-            Config::compose(description.clone(), missing_bus)
+            Config::compose(description.clone(), missing_bus, &description_path)
                 .unwrap_err()
                 .to_string()
                 .contains("missing")
@@ -336,7 +363,7 @@ mod tests {
             .serial_ports
             .insert("unknown".into(), "/dev/null".into());
         assert!(
-            Config::compose(description, extra_serial)
+            Config::compose(description, extra_serial, &description_path)
                 .unwrap_err()
                 .to_string()
                 .contains("unused")
@@ -347,8 +374,8 @@ mod tests {
 buses:
   - { name: shared, interface: vcan0, maximum_utilization: 1.0 }
 motors:
-  - { name: motor_a, coordinate: coordinate_a, bus: shared, id: 1, model: ROBSTRIDE_03 }
-  - { name: motor_b, coordinate: coordinate_b, bus: shared, id: 2, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: left_hip_pitch_joint, bus: shared, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_b, coordinate: right_hip_pitch_joint, bus: shared, id: 2, model: ROBSTRIDE_03 }
 "#;
 
     fn one_group(prefix: &str) -> String {
@@ -391,8 +418,8 @@ motors:
 buses:
   - { name: slow, interface: vcan0, bitrate: 10000, maximum_utilization: 1.0 }
 motors:
-  - { name: motor_a, coordinate: coordinate_a, bus: slow, id: 1, model: ROBSTRIDE_03 }
-  - { name: motor_b, coordinate: coordinate_b, bus: slow, id: 2, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: left_hip_pitch_joint, bus: slow, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_b, coordinate: right_hip_pitch_joint, bus: slow, id: 2, model: ROBSTRIDE_03 }
 motor_groups:
   - { name: group_a, motors: [motor_a], control_rate_hz: 20.0 }
   - { name: group_b, motors: [motor_b], control_rate_hz: 20.0 }
@@ -407,7 +434,7 @@ motor_groups:
 buses:
   - { name: saturated, interface: vcan0, bitrate: 10000, maximum_utilization: 1.0 }
 motors:
-  - { name: motor_a, coordinate: coordinate_a, bus: saturated, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: left_hip_pitch_joint, bus: saturated, id: 1, model: ROBSTRIDE_03 }
 motor_groups:
   - { name: group, motors: [motor_a], control_rate_hz: 33.333333333333336 }
 "#;
@@ -492,7 +519,7 @@ buses:
   - { name: used, interface: can0 }
   - { name: unused, interface: can1 }
 motors:
-  - { name: motor_a, coordinate: coordinate_a, bus: used, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: left_hip_pitch_joint, bus: used, id: 1, model: ROBSTRIDE_03 }
 motor_groups:
   - { name: group, motors: [motor_a] }
 "#;

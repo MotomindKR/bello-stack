@@ -68,14 +68,17 @@ pub(super) fn classify_feedback(
         ))
     } else if let Some(detail) = thermal_fault {
         Some((MotorFaultCause::Temperature, detail))
-    } else if !(spec.health.safe_position_min..=spec.health.safe_position_max)
-        .contains(&value.position)
+    } else if value.position < spec.health.safe_position_min - spec.feedback_position_tolerance
+        || value.position > spec.health.safe_position_max + spec.feedback_position_tolerance
     {
         Some((
             MotorFaultCause::SafePosition,
             format!(
-                "feedback position {:.4} outside configured safe range [{:.4}, {:.4}]",
-                value.position, spec.health.safe_position_min, spec.health.safe_position_max
+                "feedback position {:.4} outside configured safe range [{:.4}, {:.4}] (protocol tolerance {:.6})",
+                value.position,
+                spec.health.safe_position_min,
+                spec.health.safe_position_max,
+                spec.feedback_position_tolerance
             ),
         ))
     } else if expecting_operating_feedback && value.mode_status != RUNNING_MODE_STATUS {
@@ -97,10 +100,14 @@ mod tests {
     use crate::config::ResolvedTopology;
 
     fn motor_spec() -> MotorSpec {
+        motor_spec_named("left_hip_pitch")
+    }
+
+    fn motor_spec_named(name: &str) -> MotorSpec {
         ResolvedTopology::load(concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml"))
             .unwrap()
             .motors()
-            .next()
+            .find(|(_, motor)| motor.spec.name.as_str() == name)
             .unwrap()
             .1
             .spec
@@ -190,6 +197,25 @@ mod tests {
         assert!(matches!(
             classify_feedback(value, &spec, true, None),
             Some((MotorFaultCause::ModeStatus, _))
+        ));
+    }
+
+    #[test]
+    fn feedback_at_a_urdf_boundary_allows_protocol_quantization() {
+        let spec = motor_spec_named("left_knee_mix_1");
+        let within_quantization = Feedback {
+            position: -0.5 * spec.feedback_position_tolerance,
+            ..Default::default()
+        };
+        assert!(classify_feedback(within_quantization, &spec, false, None).is_none());
+
+        let outside_quantization = Feedback {
+            position: -2.0 * spec.feedback_position_tolerance,
+            ..Default::default()
+        };
+        assert!(matches!(
+            classify_feedback(outside_quantization, &spec, false, None),
+            Some((MotorFaultCause::SafePosition, _))
         ));
     }
 }

@@ -100,6 +100,30 @@ impl DifferentialTransmission {
             ),
         ])
     }
+
+    pub fn resolve_torques(
+        &self,
+        coordinates: &BTreeMap<String, f64>,
+    ) -> anyhow::Result<[(String, f64); 2]> {
+        let a1 = coordinates
+            .get(&self.coordinates[0])
+            .with_context(|| format!("missing coordinate {:?}", self.coordinates[0]))?;
+        let a2 = coordinates
+            .get(&self.coordinates[1])
+            .with_context(|| format!("missing coordinate {:?}", self.coordinates[1]))?;
+        Ok([
+            (
+                self.joints[0].clone(),
+                self.joint_reduction[0]
+                    * (self.coordinate_reduction[0] * a1 + self.coordinate_reduction[1] * a2),
+            ),
+            (
+                self.joints[1].clone(),
+                self.joint_reduction[1]
+                    * (self.coordinate_reduction[0] * a1 - self.coordinate_reduction[1] * a2),
+            ),
+        ])
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -266,6 +290,53 @@ impl RobotDescription {
             }
         }
         Some((minimum, maximum))
+    }
+
+    pub fn coordinate_velocity_limit(&self, coordinate: &str) -> Option<f64> {
+        if let Some(joint) = self.joint(coordinate) {
+            return Some(joint.limits.as_ref()?.velocity);
+        }
+        let transmission = self.transmission_for_coordinate(coordinate)?;
+        let coordinate_index = transmission
+            .coordinates
+            .iter()
+            .position(|name| name == coordinate)?;
+        let reduction = transmission.coordinate_reduction[coordinate_index].abs();
+        transmission
+            .joints
+            .iter()
+            .zip(transmission.joint_reduction)
+            .try_fold(0.0, |limit, (joint_name, joint_reduction)| {
+                Some(
+                    limit
+                        + reduction
+                            * joint_reduction.abs()
+                            * self.joint(joint_name)?.limits.as_ref()?.velocity,
+                )
+            })
+    }
+
+    pub fn coordinate_effort_limit(&self, coordinate: &str) -> Option<f64> {
+        if let Some(joint) = self.joint(coordinate) {
+            return Some(joint.limits.as_ref()?.effort);
+        }
+        let transmission = self.transmission_for_coordinate(coordinate)?;
+        let coordinate_index = transmission
+            .coordinates
+            .iter()
+            .position(|name| name == coordinate)?;
+        let coordinate_reduction = transmission.coordinate_reduction[coordinate_index].abs();
+        transmission
+            .joints
+            .iter()
+            .zip(transmission.joint_reduction)
+            .try_fold(0.0, |limit, (joint_name, joint_reduction)| {
+                Some(
+                    limit
+                        + self.joint(joint_name)?.limits.as_ref()?.effort
+                            / (2.0 * joint_reduction.abs() * coordinate_reduction),
+                )
+            })
     }
 
     pub fn kinematic_model(
@@ -1005,10 +1076,49 @@ mod tests {
 </robot>
 "#;
 
+    const NON_UNIT_DIFFERENTIAL_URDF: &str = r#"
+<robot name="non_unit_differential">
+  <link name="base"/>
+  <link name="first"/>
+  <link name="second"/>
+  <joint name="roll" type="revolute">
+    <parent link="base"/><child link="first"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-2" upper="3" effort="10" velocity="4"/>
+  </joint>
+  <joint name="pitch" type="revolute">
+    <parent link="first"/><child link="second"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1" upper="1" effort="6" velocity="8"/>
+  </joint>
+  <transmission name="scaled">
+    <type>transmission_interface/DifferentialTransmission</type>
+    <actuator name="motor_a" role="actuator1">
+      <mechanical_reduction>2</mechanical_reduction>
+    </actuator>
+    <actuator name="motor_b" role="actuator2">
+      <mechanical_reduction>-4</mechanical_reduction>
+    </actuator>
+    <joint name="roll" role="joint1">
+      <mechanical_reduction>-3</mechanical_reduction>
+    </joint>
+    <joint name="pitch" role="joint2">
+      <mechanical_reduction>5</mechanical_reduction>
+    </joint>
+  </transmission>
+</robot>
+"#;
+
     fn load_text(text: &str) -> anyhow::Result<KinematicModel> {
         let mut file = tempfile::NamedTempFile::new()?;
         file.write_all(text.as_bytes())?;
         KinematicModel::load(file.path(), "pelvis", "left_foot", "right_foot")
+    }
+
+    fn load_description_text(text: &str) -> anyhow::Result<RobotDescription> {
+        let mut file = tempfile::NamedTempFile::new()?;
+        file.write_all(text.as_bytes())?;
+        RobotDescription::load(file.path())
     }
 
     #[test]
@@ -1043,6 +1153,70 @@ mod tests {
         assert!((resolved[1].1.position - 0.7).abs() < 1.0e-12);
         assert!((resolved[0].1.velocity - 0.2).abs() < 1.0e-12);
         assert!((resolved[1].1.velocity - 0.5).abs() < 1.0e-12);
+
+        let torques = transmission
+            .resolve_torques(&BTreeMap::from([
+                ("motor_1".into(), 4.0),
+                ("motor_2".into(), 6.0),
+            ]))
+            .unwrap();
+        assert_eq!(torques[0], ("roll".into(), 10.0));
+        assert_eq!(torques[1], ("pitch".into(), 2.0));
+    }
+
+    #[test]
+    fn differential_reductions_preserve_virtual_work_and_project_bounds() {
+        let description = load_description_text(NON_UNIT_DIFFERENTIAL_URDF).unwrap();
+        let transmission = &description.transmissions()[0];
+        let coordinate_velocity = BTreeMap::from([
+            (
+                "motor_a".into(),
+                CoordinateState {
+                    position: 0.0,
+                    velocity: 0.7,
+                },
+            ),
+            (
+                "motor_b".into(),
+                CoordinateState {
+                    position: 0.0,
+                    velocity: -1.1,
+                },
+            ),
+        ]);
+        let joint_velocity = transmission.resolve(&coordinate_velocity).unwrap();
+        let coordinate_torque = BTreeMap::from([("motor_a".into(), 2.0), ("motor_b".into(), -3.0)]);
+        let joint_torque = transmission.resolve_torques(&coordinate_torque).unwrap();
+
+        assert_eq!(joint_torque[0], ("roll".into(), -48.0));
+        assert_eq!(joint_torque[1], ("pitch".into(), -40.0));
+        let coordinate_power = 2.0 * 0.7 + -3.0 * -1.1;
+        let joint_power = joint_torque[0].1 * joint_velocity[0].1.velocity
+            + joint_torque[1].1 * joint_velocity[1].1.velocity;
+        assert!((coordinate_power - joint_power).abs() < 1.0e-12);
+
+        assert_eq!(
+            description.coordinate_position_limits("motor_a"),
+            Some((-28.0, 22.0))
+        );
+        assert_eq!(
+            description.coordinate_position_limits("motor_b"),
+            Some((-44.0, 56.0))
+        );
+        assert_eq!(
+            description.coordinate_velocity_limit("motor_a"),
+            Some(104.0)
+        );
+        assert_eq!(
+            description.coordinate_velocity_limit("motor_b"),
+            Some(208.0)
+        );
+        assert!(
+            (description.coordinate_effort_limit("motor_a").unwrap() - 17.0 / 15.0).abs() < 1.0e-12
+        );
+        assert!(
+            (description.coordinate_effort_limit("motor_b").unwrap() - 17.0 / 30.0).abs() < 1.0e-12
+        );
     }
 
     #[test]

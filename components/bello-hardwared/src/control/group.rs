@@ -14,6 +14,7 @@ use crate::domain::{
     TelemetryPayload,
 };
 use crate::hardware::robstride::{MotorController, MotorFaultCause};
+use crate::mechanics::MechanicalViolation;
 use crate::telemetry::Telemetry;
 
 use super::command_policy::{
@@ -24,6 +25,11 @@ use super::group_handle::{CommandSubmission, GroupSnapshot, LifecycleAction, Lif
 use super::spec::GroupSpec;
 
 const GROUP_TELEMETRY_PERIOD: Duration = Duration::from_millis(40);
+
+enum DampingOutcome {
+    Applied,
+    Stopped(String),
+}
 
 pub(super) struct GroupMotor {
     // The group owns motion policy; protocol and transport remain behind this handle.
@@ -258,7 +264,13 @@ impl GroupController {
                 } else {
                     self.clear_command_state();
                     match self.send_damping() {
-                        Ok(()) => self.fsm.stop(),
+                        Ok(DampingOutcome::Applied) => self.fsm.stop(),
+                        Ok(DampingOutcome::Stopped(reason)) => self.latch_fault(
+                            FaultCause::Stop,
+                            format!(
+                                "safe stop damping was unavailable ({reason}); motors were stopped"
+                            ),
+                        ),
                         Err(error) => self.enter_fault(
                             FaultCause::Stop,
                             format!("failed to apply stop damping: {error}"),
@@ -336,17 +348,22 @@ impl GroupController {
     }
 
     fn enter_fault(&mut self, cause: FaultCause, reason: String) -> super::Transition {
-        self.clear_command_state();
-        // Latch and publish the fault before a bounded response burst can block this worker.
-        self.fault_cause = Some(cause);
-        let mut transition = self.fsm.fault(reason.clone());
-        self.update_snapshot(0);
+        let mut transition = self.latch_fault(cause, reason.clone());
         if let Err(error) = self.respond(self.response(cause)) {
             transition = self
                 .fsm
                 .fault(format!("{reason}; fault response failed: {error}"));
             self.update_snapshot(0);
         }
+        transition
+    }
+
+    fn latch_fault(&mut self, cause: FaultCause, reason: String) -> super::Transition {
+        self.clear_command_state();
+        // Latch and publish the fault before a bounded response burst can block this worker.
+        self.fault_cause = Some(cause);
+        let transition = self.fsm.fault(reason);
+        self.update_snapshot(0);
         transition
     }
 
@@ -373,6 +390,7 @@ impl GroupController {
                     .iter()
                     .all(|motor| motor.controller.feedback_ready());
                 if ready {
+                    self.validate_mechanical_feedback()?;
                     return Ok(());
                 }
                 thread::sleep(Duration::from_millis(5));
@@ -418,6 +436,7 @@ impl GroupController {
                 .iter()
                 .all(|motor| motor.controller.recovery_ready())
             {
+                self.validate_mechanical_feedback()?;
                 return Ok(());
             }
             thread::sleep(Duration::from_millis(5));
@@ -480,7 +499,7 @@ impl GroupController {
         if supplied.len() != self.motors.len() {
             return Err(CommandError::IncompleteGroup);
         }
-        let mut staged = Vec::with_capacity(self.motors.len());
+        let mut staged = HashMap::with_capacity(self.motors.len());
         for motor in &self.motors {
             let Some(command) = supplied.remove(&motor.controller.spec.name) else {
                 return Err(CommandError::IncompleteGroup);
@@ -519,10 +538,23 @@ impl GroupController {
                     });
                 }
             }
-            staged.push(report.command);
+            staged.insert(motor_name, report.command);
         }
-        for (motor, command) in self.motors.iter_mut().zip(staged) {
-            motor.command = Some(command);
+        let feedback = self
+            .motors
+            .iter()
+            .filter_map(|motor| {
+                motor
+                    .controller
+                    .feedback()
+                    .map(|value| (motor.controller.spec.name.clone(), value.value))
+            })
+            .collect();
+        if let Err(violation) = self.spec.mechanical.validate_commands(&staged, &feedback) {
+            return self.reject_mechanical_command(violation);
+        }
+        for motor in &mut self.motors {
+            motor.command = staged.remove(&motor.controller.spec.name);
         }
         self.command_deadline = Some(command_deadline);
         self.command_count += 1;
@@ -560,6 +592,13 @@ impl GroupController {
             self.update_snapshot(jitter_us);
             return;
         }
+        if matches!(self.fsm.state(), GroupState::Enabled | GroupState::Running)
+            && let Err(detail) = self.validate_mechanical_feedback()
+        {
+            self.enter_fault(FaultCause::SafePosition, detail);
+            self.update_snapshot(jitter_us);
+            return;
+        }
         if self.fsm.state() == GroupState::Running {
             if self
                 .command_deadline
@@ -569,6 +608,30 @@ impl GroupController {
                     FaultCause::CommandTimeout,
                     "command watchdog expired".into(),
                 );
+                self.update_snapshot(jitter_us);
+                return;
+            }
+            let commands = self
+                .motors
+                .iter()
+                .filter_map(|motor| {
+                    motor
+                        .command
+                        .map(|command| (motor.controller.spec.name.clone(), command))
+                })
+                .collect();
+            let feedback = self
+                .motors
+                .iter()
+                .filter_map(|motor| {
+                    motor
+                        .controller
+                        .feedback()
+                        .map(|value| (motor.controller.spec.name.clone(), value.value))
+                })
+                .collect();
+            if let Err(violation) = self.spec.mechanical.validate_commands(&commands, &feedback) {
+                self.enter_fault(FaultCause::CommandLimit, violation.detail);
                 self.update_snapshot(jitter_us);
                 return;
             }
@@ -591,15 +654,124 @@ impl GroupController {
         self.update_snapshot(jitter_us);
     }
 
+    fn validate_mechanical_feedback(&self) -> Result<(), String> {
+        let feedback = self
+            .motors
+            .iter()
+            .filter_map(|motor| {
+                motor
+                    .controller
+                    .feedback()
+                    .map(|value| (motor.controller.spec.name.clone(), value.value))
+            })
+            .collect();
+        self.spec
+            .mechanical
+            .validate_feedback_positions(&feedback)
+            .map_err(|violation| violation.detail)
+    }
+
+    fn reject_mechanical_command(
+        &mut self,
+        violation: MechanicalViolation,
+    ) -> Result<(), CommandError> {
+        let fault = violation.affected_motors.iter().any(|name| {
+            self.motors.iter().any(|motor| {
+                motor.controller.spec.name == *name
+                    && motor.controller.spec.command_policy.limit == CommandBehavior::Fault
+            })
+        });
+        let behavior = if fault {
+            CommandBehavior::Fault
+        } else {
+            CommandBehavior::Reject
+        };
+        let issue = CommandPolicyIssue {
+            check: CommandPolicyCheck::CommandLimit,
+            behavior,
+            violation: violation.violation.clone(),
+            detail: violation.detail.clone(),
+            command_modified: false,
+            command_rejected: true,
+        };
+        self.publish_command_policy_event(
+            &violation.motor,
+            &issue,
+            fault.then(|| self.response(FaultCause::CommandLimit)),
+        );
+        if fault {
+            self.enter_fault(FaultCause::CommandLimit, violation.detail);
+            self.update_snapshot(0);
+        }
+        Err(CommandError::Unsafe {
+            motor: violation.motor,
+            violation: violation.violation,
+        })
+    }
+
     fn respond(&self, response: FaultResponse) -> Result<(), String> {
         match response {
-            FaultResponse::Damping => self.send_damping(),
+            FaultResponse::Damping => {
+                if let DampingOutcome::Stopped(reason) = self.send_damping()? {
+                    tracing::warn!(
+                        group = %self.spec.name,
+                        %reason,
+                        "safe damping was unavailable; sent motor stop frames"
+                    );
+                }
+                Ok(())
+            }
             FaultResponse::Disable => self.stop_motors(false),
         }
     }
-    fn send_damping(&self) -> Result<(), String> {
-        super::safety::send_damping(self.motors.iter().map(|motor| &motor.controller))
+
+    fn send_damping(&self) -> Result<DampingOutcome, String> {
+        let feedback = self
+            .motors
+            .iter()
+            .map(|motor| {
+                let name = motor.controller.spec.name.clone();
+                let measured = motor.controller.feedback().ok_or_else(|| {
+                    format!("motor {name} has no feedback for damping torque validation")
+                })?;
+                if measured.received.elapsed() > self.spec.feedback_timeout {
+                    return Err(format!(
+                        "motor {name} feedback is stale for damping torque validation"
+                    ));
+                }
+                Ok((name, measured.value))
+            })
+            .collect::<Result<HashMap<_, _>, String>>();
+        let commands = feedback.and_then(|feedback| {
+            self.spec
+                .mechanical
+                .damping_commands(&feedback)
+                .map_err(|violation| violation.detail)
+        });
+        let commands = match commands {
+            Ok(commands) => commands,
+            Err(reason) => return self.stop_after_damping_failure(reason),
+        };
+        match super::safety::send_damping(
+            self.motors
+                .iter()
+                .map(|motor| (&motor.controller, commands[&motor.controller.spec.name])),
+        ) {
+            Ok(()) => Ok(DampingOutcome::Applied),
+            Err(error) => {
+                self.stop_after_damping_failure(format!("damping transmit failed: {error}"))
+            }
+        }
     }
+
+    fn stop_after_damping_failure(&self, reason: String) -> Result<DampingOutcome, String> {
+        self.stop_motors(false)
+            .map(|()| DampingOutcome::Stopped(reason.clone()))
+            .map_err(|error| {
+                format!("safe damping unavailable ({reason}); fallback motor stop failed: {error}")
+            })
+    }
+
     fn stop_motors(&self, clear_fault: bool) -> Result<(), String> {
         super::safety::stop(
             self.motors.iter().map(|motor| &motor.controller),

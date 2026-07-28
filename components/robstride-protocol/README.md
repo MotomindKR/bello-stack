@@ -26,6 +26,9 @@ schedule control. Those responsibilities belong to
 [`descriptions/robstride/models.yaml`](../../descriptions/robstride/models.yaml)
 is the sole handwritten model catalog. The build script validates it and
 generates the protocol lookup table and shared Type-1 position constants.
+`ModelLimits` also exposes the catalog's optional typed hardware metadata
+(no-load speed, rated voltage, and peak phase current) instead of discarding it
+at build time.
 
 Run its focused tests with:
 

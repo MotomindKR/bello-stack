@@ -68,8 +68,19 @@ fn main() {
     generated.push_str("    match model {\n");
     for (name, limits) in &catalog.models {
         validate(name, limits);
+        let hardware = limits.hardware.as_ref().map_or_else(
+            || "None".to_owned(),
+            |hardware| {
+                format!(
+                    "Some(ModelHardware {{ no_load_speed_rpm: {:?}, rated_voltage: {:?}, peak_phase_current: {:?} }})",
+                    hardware.no_load_speed_rpm,
+                    hardware.rated_voltage,
+                    hardware.peak_phase_current,
+                )
+            },
+        );
         generated.push_str(&format!(
-            "        {name:?} => Some(ModelLimits {{ position_min: {:?}, position_max: {:?}, velocity_min: {:?}, velocity_max: {:?}, torque_min: {:?}, torque_max: {:?}, kp_min: {:?}, kp_max: {:?}, kd_min: {:?}, kd_max: {:?} }}),\n",
+            "        {name:?} => Some(ModelLimits {{ position_min: {:?}, position_max: {:?}, velocity_min: {:?}, velocity_max: {:?}, torque_min: {:?}, torque_max: {:?}, kp_min: {:?}, kp_max: {:?}, kd_min: {:?}, kd_max: {:?}, hardware: {hardware} }}),\n",
             limits.position[0],
             limits.position[1],
             limits.velocity[0],
@@ -110,6 +121,14 @@ fn validate(name: &str, limits: &Limits) {
             "{name}.{field} must be non-negative"
         );
     }
+    assert_eq!(
+        limits.kp[0], 0.0,
+        "{name}.kp must support an exactly zero safety command"
+    );
+    assert_eq!(
+        limits.kd[0], 0.0,
+        "{name}.kd must support disabled or scaled-to-zero damping"
+    );
     if let Some(hardware) = &limits.hardware {
         for (field, value) in [
             ("no_load_speed_rpm", hardware.no_load_speed_rpm),

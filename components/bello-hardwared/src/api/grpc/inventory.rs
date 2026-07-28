@@ -41,14 +41,14 @@ pub fn list(daemon: &HardwareDaemon) -> ListHardwareResponse {
             limits: Some(MotorLimits {
                 position_min: motor.spec.limits.position_min,
                 position_max: motor.spec.limits.position_max,
-                velocity_min: motor.spec.params.velocity_min,
-                velocity_max: motor.spec.params.velocity_max,
-                torque_min: motor.spec.params.torque_min,
-                torque_max: motor.spec.params.torque_max,
-                kp_min: motor.spec.params.kp_min,
-                kp_max: motor.spec.params.kp_max,
-                kd_min: motor.spec.params.kd_min,
-                kd_max: motor.spec.params.kd_max,
+                velocity_min: motor.spec.limits.velocity_min,
+                velocity_max: motor.spec.limits.velocity_max,
+                torque_min: motor.spec.limits.torque_min,
+                torque_max: motor.spec.limits.torque_max,
+                kp_min: motor.spec.limits.kp_min,
+                kp_max: motor.spec.limits.kp_max,
+                kd_min: motor.spec.limits.kd_min,
+                kd_max: motor.spec.limits.kd_max,
             }),
         })
         .collect();

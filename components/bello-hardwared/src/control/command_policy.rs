@@ -1,6 +1,6 @@
 use crate::config::CommandBehavior;
 use crate::domain::{ImpedanceCommand, SafetyViolation};
-use crate::hardware::robstride::{Feedback, MotorSpec};
+use crate::hardware::robstride::MotorSpec;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CommandPolicyCheck {
@@ -104,26 +104,26 @@ pub(crate) fn check_command(
         (
             SafetyViolation::VelocityLimit,
             &mut command.velocity,
-            motor.params.velocity_min,
-            motor.params.velocity_max,
+            motor.limits.velocity_min,
+            motor.limits.velocity_max,
         ),
         (
             SafetyViolation::TorqueLimit,
             &mut command.torque,
-            motor.params.torque_min,
-            motor.params.torque_max,
+            motor.limits.torque_min,
+            motor.limits.torque_max,
         ),
         (
             SafetyViolation::GainLimit,
             &mut command.kp,
-            motor.params.kp_min,
-            motor.params.kp_max,
+            motor.limits.kp_min,
+            motor.limits.kp_max,
         ),
         (
             SafetyViolation::GainLimit,
             &mut command.kd,
-            motor.params.kd_min,
-            motor.params.kd_max,
+            motor.limits.kd_min,
+            motor.limits.kd_max,
         ),
     ];
     for (violation, value, minimum, maximum) in limits {
@@ -176,14 +176,6 @@ pub(crate) fn check_command(
     CommandPolicyReport { command, issues }
 }
 
-pub(crate) fn damping_command(feedback: Option<Feedback>, motor: &MotorSpec) -> ImpedanceCommand {
-    ImpedanceCommand {
-        position: feedback.map_or(0.0, |value| value.position),
-        kd: motor.fault_damping_kd,
-        ..Default::default()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,7 +185,7 @@ mod tests {
         ResolvedTopology::load(concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml"))
             .unwrap()
             .motors()
-            .next()
+            .find(|(_, motor)| motor.spec.name.as_str() == "left_hip_pitch")
             .unwrap()
             .1
             .spec
@@ -242,6 +234,24 @@ mod tests {
         );
         assert_eq!(report.issues[0].check, CommandPolicyCheck::PositionStep);
         assert!(report.issues[0].detail.contains("previous accepted target"));
+    }
+
+    #[test]
+    fn canonical_target_step_rejects_more_than_five_hundredths() {
+        let motor = motor();
+        assert_eq!(motor.command_policy.maximum_position_step, 0.05);
+        let report = check_command(
+            ImpedanceCommand {
+                position: 0.051,
+                ..Default::default()
+            },
+            Some(PositionReference::Measured(0.0)),
+            &motor,
+        );
+        assert_eq!(report.issues.len(), 1);
+        assert_eq!(report.issues[0].check, CommandPolicyCheck::PositionStep);
+        assert_eq!(report.issues[0].behavior, CommandBehavior::Reject);
+        assert!(report.issues[0].command_rejected);
     }
 
     #[test]

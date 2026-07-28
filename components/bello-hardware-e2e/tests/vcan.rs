@@ -44,6 +44,22 @@ fn generated_runtime_configs_are_valid() -> Result<()> {
     )?;
     let mapping = Transmission::from_description(&description, ["e2e_joint_1", "e2e_joint_2"])?;
     assert_eq!(mapping.joint_to_coordinate(&[0.1, -0.2])?, [0.1, -0.2]);
+
+    let canonical_hardwared = directory.path().join("canonical-hardwared.yaml");
+    let canonical_can0 = directory.path().join("canonical-can0.yaml");
+    let canonical_can1 = directory.path().join("canonical-can1.yaml");
+    let canonical = support::config::write_canonical_lower_body(
+        &canonical_hardwared,
+        [
+            (&canonical_can0, "vcan_canonical_0"),
+            (&canonical_can1, "vcan_canonical_1"),
+        ],
+        "127.0.0.1:50053".parse()?,
+    )?;
+    bello_hardwared::check(&canonical_hardwared)?;
+    robstride_emulator::config::Config::load(&canonical_can0)?;
+    robstride_emulator::config::Config::load(&canonical_can1)?;
+    assert_eq!(canonical.motor_names.len(), 13);
     Ok(())
 }
 
@@ -85,6 +101,164 @@ async fn control_fault_and_recovery_over_vcan() -> Result<()> {
         &mut emulator,
     )
     .await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires two host vcan interfaces; set BELLO_E2E_CAN_INTERFACES if not vcan0,vcan1"]
+async fn canonical_lower_body_enforces_coupled_ankle_limits_over_two_buses() -> Result<()> {
+    const GROUP: &str = "lower_body";
+
+    let [can0, can1] = selected_canonical_interfaces()?;
+    require_vcan(&can0)?;
+    require_vcan(&can1)?;
+    let listen = available_loopback_address()?;
+    let directory = tempfile::tempdir().context("creating canonical e2e directory")?;
+    let hardwared_config = directory.path().join("hardwared.yaml");
+    let can0_config = directory.path().join("can0-emulator.yaml");
+    let can1_config = directory.path().join("can1-emulator.yaml");
+    let fixture = support::config::write_canonical_lower_body(
+        &hardwared_config,
+        [(&can0_config, &can0), (&can1_config, &can1)],
+        listen,
+    )?;
+    bello_hardwared::check(&hardwared_config)?;
+
+    let mut emulator_can0 = ManagedProcess::spawn(
+        "robstride-emulator-can0",
+        env!("CARGO_BIN_EXE_robstride-emulator-e2e-fixture"),
+        [&can0_config],
+    )?;
+    let mut emulator_can1 = ManagedProcess::spawn(
+        "robstride-emulator-can1",
+        env!("CARGO_BIN_EXE_robstride-emulator-e2e-fixture"),
+        [&can1_config],
+    )?;
+    let mut hardwared = ManagedProcess::spawn(
+        "bello-hardwared",
+        env!("CARGO_BIN_EXE_hardwared-e2e-fixture"),
+        [&hardwared_config],
+    )?;
+    let endpoint = format!("http://{listen}");
+    let mut client = connect_canonical(
+        &endpoint,
+        Duration::from_secs(5),
+        &mut hardwared,
+        [&mut emulator_can0, &mut emulator_can1],
+    )
+    .await?;
+    wait_for_named_motors_online(&mut client, &fixture.motor_names, Duration::from_secs(5)).await?;
+
+    let lease = client
+        .acquire_lease(AcquireLeaseRequest {
+            group: GROUP.into(),
+            client_name: "canonical-lower-body-e2e".into(),
+            requested_duration_ms: 10_000,
+        })
+        .await?
+        .into_inner();
+    client
+        .enable_group(EnableGroupRequest {
+            group: GROUP.into(),
+            lease_token: lease.token.clone(),
+        })
+        .await?;
+    wait_for_named_motors_online(&mut client, &fixture.motor_names, Duration::from_secs(5)).await?;
+
+    let mut telemetry = client
+        .watch_telemetry(WatchTelemetryRequest {
+            groups: vec![GROUP.into()],
+            include_motors: false,
+            include_imu: false,
+            include_health: false,
+            imus: Vec::new(),
+            include_command_policy_events: true,
+        })
+        .await?
+        .into_inner();
+    let (command_tx, command_rx) = mpsc::channel(1);
+    let mut responses = client
+        .stream_commands(ReceiverStream::new(command_rx))
+        .await?
+        .into_inner();
+    command_tx
+        .send(canonical_lower_body_command(
+            &lease.token,
+            1,
+            &fixture.motor_names,
+            0.0,
+        ))
+        .await?;
+    require_accepted(&mut responses, 1).await?;
+    client
+        .start_control(StartControlRequest {
+            group: GROUP.into(),
+            lease_token: lease.token.clone(),
+        })
+        .await?;
+
+    for (sequence, ankle_position) in [(2, 0.04), (3, 0.08)] {
+        command_tx
+            .send(canonical_lower_body_command(
+                &lease.token,
+                sequence,
+                &fixture.motor_names,
+                ankle_position,
+            ))
+            .await?;
+        require_accepted(&mut responses, sequence).await?;
+    }
+    command_tx
+        .send(canonical_lower_body_command(
+            &lease.token,
+            4,
+            &fixture.motor_names,
+            0.12,
+        ))
+        .await?;
+    let rejected = timeout(Duration::from_secs(1), responses.message())
+        .await
+        .context("waiting for coupled-limit command acknowledgement")??
+        .context("command response stream closed")?;
+    if rejected.sequence != 4 || rejected.result != CommandResult::Unsafe as i32 {
+        bail!(
+            "coupled ankle violation was not rejected as unsafe: sequence={}, result={}, detail={}",
+            rejected.sequence,
+            rejected.result,
+            rejected.detail
+        );
+    }
+    wait_for_command_policy_detail(
+        &mut telemetry,
+        "left_ankle_roll_joint",
+        Duration::from_secs(1),
+    )
+    .await?;
+
+    let inventory = client
+        .list_hardware(ListHardwareRequest {})
+        .await?
+        .into_inner();
+    let lower = inventory
+        .groups
+        .iter()
+        .find(|group| group.name == GROUP)
+        .context("canonical lower_body group is missing")?;
+    if lower.state != bello_hardware_api::GroupState::Running as i32 {
+        bail!(
+            "coupled command rejection changed group state to {}",
+            lower.state
+        );
+    }
+    client
+        .stop_control(StopControlRequest {
+            group: GROUP.into(),
+            lease_token: lease.token,
+        })
+        .await?;
+    hardwared.ensure_running()?;
+    emulator_can0.ensure_running()?;
+    emulator_can1.ensure_running()?;
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -353,7 +527,7 @@ async fn grpc_can_latency_distribution() -> Result<()> {
         .await?
         .into_inner();
     command_tx
-        .send(command(&lease.token, 1, 0.0))
+        .send(latency_command(&lease.token, 1, 0.0))
         .await
         .context("submitting initial command")?;
     require_accepted(&mut responses, 1).await?;
@@ -389,7 +563,7 @@ async fn grpc_can_latency_distribution() -> Result<()> {
         sleep(Duration::from_micros((random % 4_000) as u64)).await;
 
         let sequence = index as u64 + 2;
-        let position = -0.4 + index as f64 * 0.0015;
+        let position = latency_triangle(index + 1);
         let expected = control_frame(
             params,
             ControlCommand {
@@ -397,13 +571,13 @@ async fn grpc_can_latency_distribution() -> Result<()> {
                 position,
                 velocity: 0.0,
                 torque: 0.0,
-                kp: 20.0,
+                kp: 0.0,
                 kd: 1.0,
             },
         );
         let started = Instant::now();
         command_tx
-            .send(command(&lease.token, sequence, position))
+            .send(latency_command(&lease.token, sequence, position))
             .await
             .context("submitting measured command")?;
         let observed = monitor
@@ -443,7 +617,7 @@ async fn grpc_can_latency_distribution() -> Result<()> {
             motor_id: MOTOR_ID,
             mode_status: 2,
             fault_bits: 0,
-            position: -9.0,
+            position: -0.9,
             velocity: 0.0,
             torque: 0.0,
             temperature: 30.0,
@@ -460,7 +634,7 @@ async fn grpc_can_latency_distribution() -> Result<()> {
 
     let mut inbound = Vec::with_capacity(samples);
     for index in 0..samples {
-        let position = -8.0 + index as f64 * 0.0015;
+        let position = -0.8 + latency_triangle(index);
         let frame = feedback_frame(
             HOST_ID,
             Feedback {
@@ -500,7 +674,12 @@ async fn grpc_can_latency_distribution() -> Result<()> {
     Ok(())
 }
 
-fn command(token: &str, sequence: u64, position: f64) -> StreamCommandsRequest {
+fn latency_triangle(index: usize) -> f64 {
+    let phase = index % 800;
+    phase.min(800 - phase) as f64 * 0.0015
+}
+
+fn latency_command(token: &str, sequence: u64, position: f64) -> StreamCommandsRequest {
     StreamCommandsRequest {
         group: "e2e_group".into(),
         lease_token: token.into(),
@@ -513,8 +692,35 @@ fn command(token: &str, sequence: u64, position: f64) -> StreamCommandsRequest {
                 position,
                 velocity: 0.0,
                 torque_feedforward: 0.0,
-                kp: 20.0,
+                kp: 0.0,
                 kd: 1.0,
+            })
+            .collect(),
+    }
+}
+
+fn canonical_lower_body_command(
+    token: &str,
+    sequence: u64,
+    motor_names: &[String],
+    left_ankle_position: f64,
+) -> StreamCommandsRequest {
+    StreamCommandsRequest {
+        group: "lower_body".into(),
+        lease_token: token.into(),
+        sequence,
+        valid_for_ms: 500,
+        commands: motor_names
+            .iter()
+            .map(|motor_name| MotorCommand {
+                motor_name: motor_name.clone(),
+                position: matches!(motor_name.as_str(), "left_ankle_1" | "left_ankle_2")
+                    .then_some(left_ankle_position)
+                    .unwrap_or(0.0),
+                velocity: 0.0,
+                torque_feedforward: 0.0,
+                kp: 0.0,
+                kd: 0.0,
             })
             .collect(),
     }
@@ -579,6 +785,98 @@ async fn wait_for_online(
             bail!("motors did not become online before latency measurement");
         }
         sleep(Duration::from_millis(10)).await;
+    }
+}
+
+async fn connect_canonical(
+    endpoint: &str,
+    duration: Duration,
+    hardwared: &mut ManagedProcess,
+    mut emulators: [&mut ManagedProcess; 2],
+) -> Result<HardwareServiceClient<tonic::transport::Channel>> {
+    let deadline = Instant::now() + duration;
+    loop {
+        hardwared.ensure_running()?;
+        for emulator in &mut emulators {
+            emulator.ensure_running()?;
+        }
+        match HardwareServiceClient::connect(endpoint.to_owned()).await {
+            Ok(client) => return Ok(client),
+            Err(error) if Instant::now() < deadline => {
+                let _ = error;
+                sleep(Duration::from_millis(20)).await;
+            }
+            Err(error) => return Err(error).context("connecting to canonical hardwared fixture"),
+        }
+    }
+}
+
+async fn wait_for_named_motors_online(
+    client: &mut HardwareServiceClient<tonic::transport::Channel>,
+    motor_names: &[String],
+    duration: Duration,
+) -> Result<()> {
+    let deadline = Instant::now() + duration;
+    loop {
+        let inventory = client
+            .list_hardware(ListHardwareRequest {})
+            .await?
+            .into_inner();
+        if motor_names.iter().all(|expected| {
+            inventory.motors.iter().any(|motor| {
+                motor.name == *expected
+                    && motor.status.as_ref().is_some_and(|status| {
+                        status.state == bello_hardware_api::DeviceState::Online as i32
+                    })
+            })
+        }) {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            let unavailable = inventory
+                .motors
+                .iter()
+                .filter(|motor| motor_names.contains(&motor.name))
+                .filter(|motor| {
+                    motor.status.as_ref().is_none_or(|status| {
+                        status.state != bello_hardware_api::DeviceState::Online as i32
+                    })
+                })
+                .map(|motor| {
+                    let status = motor.status.as_ref();
+                    format!(
+                        "{}={} ({})",
+                        motor.name,
+                        status.map_or(0, |value| value.state),
+                        status.map_or("missing status", |value| value.detail.as_str())
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            bail!("canonical lower-body motors did not become online: {unavailable}");
+        }
+        sleep(Duration::from_millis(20)).await;
+    }
+}
+
+async fn wait_for_command_policy_detail(
+    telemetry: &mut tonic::Streaming<bello_hardware_api::WatchTelemetryResponse>,
+    expected: &str,
+    duration: Duration,
+) -> Result<()> {
+    let deadline = Instant::now() + duration;
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        let event = timeout(remaining, telemetry.message())
+            .await
+            .context("waiting for coupled-limit telemetry")??
+            .context("telemetry stream closed")?;
+        if let Some(Payload::CommandPolicy(policy)) = event.payload
+            && policy.command_rejected
+            && policy.detail.contains(expected)
+        {
+            return Ok(());
+        }
     }
 }
 
@@ -749,6 +1047,29 @@ fn selected_interface() -> Result<String> {
         bail!("BELLO_E2E_CAN_INTERFACE must be a valid Linux interface name");
     }
     Ok(interface)
+}
+
+fn selected_canonical_interfaces() -> Result<[String; 2]> {
+    let configured =
+        std::env::var("BELLO_E2E_CAN_INTERFACES").unwrap_or_else(|_| "vcan0,vcan1".into());
+    let interfaces = configured.split(',').collect::<Vec<_>>();
+    let [first, second] = interfaces.as_slice() else {
+        bail!("BELLO_E2E_CAN_INTERFACES must contain exactly two comma-separated interfaces");
+    };
+    if first == second {
+        bail!("BELLO_E2E_CAN_INTERFACES must name two distinct interfaces");
+    }
+    for interface in [first, second] {
+        if interface.is_empty()
+            || interface.len() > 15
+            || !interface
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+        {
+            bail!("BELLO_E2E_CAN_INTERFACES contains an invalid Linux interface name");
+        }
+    }
+    Ok([(*first).to_owned(), (*second).to_owned()])
 }
 
 fn require_vcan(interface: &str) -> Result<()> {

@@ -1,5 +1,7 @@
 # Stable Bello hardware identity and protocol settings. Deployment files only
 # select groups and bind logical transports to host device names.
+robot_description: full_body/urdf/bello_full_body.urdf
+
 logical_buses:
   - name: can0
     host_id: 0
@@ -39,7 +41,7 @@ motors:
       temperature_recovery_c: 75.0
       temperature_recovery_duration_ms: 2000
     command_policy: &command_policy
-      maximum_position_step: 25.14
+      maximum_position_step: 0.05
       limit: clamp
       position_step: reject
     fault_damping_kd: 2.0

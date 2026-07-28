@@ -21,6 +21,8 @@ bello-visualizer = { path = "../bello-visualizer" }
 nix = { workspace = true, features = ["feature", "signal"] }
 rcgen.workspace = true
 robstride-protocol.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_yaml.workspace = true
 socketcan.workspace = true
 tokio-stream.workspace = true
 tonic = { workspace = true, features = ["transport"] }

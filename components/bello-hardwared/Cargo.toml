@@ -11,6 +11,7 @@ description = "Monolithic Robstride and EBIMU hardware daemon"
 anyhow.workspace = true
 async-stream.workspace = true
 bello-hardware-api.workspace = true
+bello-robot-description.workspace = true
 clap = { workspace = true, features = ["derive"] }
 crossbeam-channel.workspace = true
 futures-core.workspace = true
