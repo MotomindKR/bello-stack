@@ -120,13 +120,6 @@ jobs:
           assert provenance.is_file()
           assert "Stack source commit:" in provenance.read_text()
           PY
-
-  vcan-integration:
-    needs: checks
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-      - uses: DeterminateSystems/determinate-nix-action@v3
       - name: Create vcan interfaces
         run: |
           sudo apt-get update
