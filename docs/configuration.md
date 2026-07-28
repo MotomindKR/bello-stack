@@ -2,10 +2,12 @@
 
 [Documentation index](README.md)
 
-`bello-hardwared` reads one YAML document, validates it without opening the
-hardware, and resolves it into the topology used for the lifetime of the
-process. TLS certificate files are read and validated during this step.
-Configuration and certificates are not hot-reloaded.
+`bello-hardwared` reads a deployment YAML and the hardware description it
+references, validates both without opening hardware, and resolves them into the
+topology used for the lifetime of the process. The description owns stable
+logical buses, motor identity, group membership, and a reference to the
+canonical URDF. The deployment selects groups and binds transports. Neither
+document nor TLS certificates are hot-reloaded.
 
 Validate a file before deployment with:
 
@@ -18,11 +20,14 @@ cargo run -p bello-hardwared -- \
 does not prove that an interface or device is present, accessible, or configured
 to match the host. CAN and serial connectivity is opened asynchronously; an
 unavailable transport normally appears as reconnecting after process startup.
+`--config` is required for both paths; the daemon never selects a deployment
+file implicitly.
 
 The maintained examples are:
 
 - [production hardware](../components/bello-hardwared/config/bello.yaml)
-- [SocketCAN virtual-bus development](../components/bello-hardwared/config/vcan.yaml)
+- [full Bello vCAN deployment](../components/bello-hardwared/config/bello-vcan.yaml)
+- [canonical Bello hardware description](../descriptions/bello/hardware.yaml)
 
 The raw schema and defaults live in
 [`config/model.rs`](../components/bello-hardwared/src/config/model.rs). The
@@ -33,20 +38,31 @@ Those files are the source of truth when this guide and the executable differ.
 
 ## Document structure
 
-The top-level sections are:
+The deployment's top-level sections are:
 
 ```yaml
-runtime: {}          # optional; process-wide buffering
-grpc: {}             # optional; server and lease settings
-serial_devices: []   # optional only when no serial sensor is used
-imus: []             # optional only when no IMU is used
-buses: []            # required, with at least one entry
-motors: []           # required, with at least one entry
-motor_groups: []     # required, with at least one entry
+description: path/to/hardware.yaml
+runtime: {}
+grpc: {}
+bus_interfaces: {}   # logical bus name -> SocketCAN interface
+serial_ports: {}     # logical serial name -> host device path
+enabled_groups: []   # explicit selection from the description
 ```
 
 Unknown fields are rejected at every YAML object boundary. This catches
-misspelled keys instead of silently applying a default.
+misspelled keys instead of silently applying a default. Relative description
+paths resolve from the deployment file. Unknown or duplicate groups, missing or
+unused bus mappings, and incomplete description ownership are rejected.
+
+The hardware description must name its robot description:
+
+```yaml
+robot_description: full_body/urdf/bello_full_body.urdf
+```
+
+That path resolves from the hardware-description file. Every controlled
+coordinate must resolve to either a movable URDF joint or one actuator
+coordinate of a complete differential transmission.
 
 ### `runtime`
 
@@ -129,7 +145,7 @@ for validation and the
 [protobuf API](../components/bello-hardware-api/proto/bello/hardware/v1/hardware.proto)
 for lease semantics.
 
-### `serial_devices` and `imus`
+### Description `serial_devices` and `imus`
 
 A serial entry describes a transport. An IMU entry describes the sensor
 protocol running on that transport:
@@ -137,7 +153,6 @@ protocol running on that transport:
 ```yaml
 serial_devices:
   - name: imu_serial
-    port: /dev/ttyUSB0
     baud_rate: 921600
     timeout_ms: 100
     reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
@@ -149,7 +164,13 @@ imus:
     output_rate_hz: 500
 ```
 
-Serial names and physical ports must be unique. `baud_rate` must be positive,
+The deployment supplies only the host binding:
+
+```yaml
+serial_ports: { imu_serial: /dev/ttyUSB0 }
+```
+
+Serial names and mapped physical ports must be unique. `baud_rate` must be positive,
 and `timeout_ms` is in `1..=500`. The timeout bounds a write from queueing
 through completion; it is also the OS read timeout.
 
@@ -166,19 +187,24 @@ and the 20 ms sensor poll period.
 See [`hardware/serial/spec.rs`](../components/bello-hardwared/src/hardware/serial/spec.rs)
 and [`hardware/imu/spec.rs`](../components/bello-hardwared/src/hardware/imu/spec.rs).
 
-### `buses`
+### Description `logical_buses`
 
 ```yaml
-buses:
+logical_buses:
   - name: can_a
-    interface: can0
     host_id: 253
     bitrate: 1000000
     maximum_utilization: 0.75
     reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
 ```
 
-The daemon opens an existing SocketCAN interface; it does not bring the link up
+The deployment binds that name to the host:
+
+```yaml
+bus_interfaces: { can_a: can0 }
+```
+
+The daemon opens the mapped SocketCAN interface; it does not bring the link up
 or set its bitrate. `bitrate` is a timing and validation input and must match
 the externally configured classic-CAN interface. It is in
 `10000..=1000000`. `maximum_utilization` is finite and in `(0, 1]`.
@@ -194,7 +220,7 @@ period. See [`hardware/can/spec.rs`](../components/bello-hardwared/src/hardware/
 and the utilization check in
 [`config/resolved.rs`](../components/bello-hardwared/src/config/resolved.rs).
 
-### `motors`
+### Hardware-description `motors`
 
 ```yaml
 motors:
@@ -215,25 +241,34 @@ motors:
       temperature_recovery_c: 75.0
       temperature_recovery_duration_ms: 2000
     command_policy:
-      maximum_position_step: 0.5
+      maximum_position_step: 0.05
       limit: clamp
       position_step: fault
     fault_damping_kd: 2.0
 ```
 
 `name` identifies the device, while `coordinate` is its external robot/coordinate name.
-`bus` must name an existing bus. The `(bus, id)` address is unique, and a motor
+`bus` must name a declared logical bus. The `(bus, id)` address is unique, and a motor
 ID cannot equal that bus's `host_id`. `direction` is `1` or `-1`.
 
-The selected Robstride `model` supplies physical velocity, torque, and gain
-caps. Optional `limits` may only narrow those caps. Position command limits
-must be ordered and remain within the Type-1 protocol position span. The
-configured safe feedback range must contain the command position range.
+The selected Robstride `model` supplies protocol velocity, torque, and gain
+caps. The URDF supplies the robot-coordinate position, velocity, and effort
+envelope. The daemon intersects those sources, and optional `limits` may only
+narrow the result. Position command limits must be ordered and remain within
+the Type-1 protocol position span. The configured safe feedback range must
+contain the command position range; its effective range is also narrowed to
+the URDF coordinate envelope. Inventory reports these effective command
+limits, not the raw protocol span.
+
+For an asymmetric model range, `direction: -1` reverses and negates the range
+before it is exposed in robot coordinates. `velocity_abs` and `torque_abs`
+then intersect each side independently, so an absolute cap may narrow only the
+larger side.
 
 Supported model names are `ROBSTRIDE_00` through `ROBSTRIDE_06`. Their
 different velocity, torque, `kp`, and `kd` capabilities are defined centrally
 in
-[`robstride-protocol/src/model.rs`](../components/robstride-protocol/src/model.rs).
+[`descriptions/robstride/models.yaml`](../descriptions/robstride/models.yaml).
 
 Temperature handling has separate warning, fault, and recovery thresholds.
 The warning must be below the fault threshold. After a temperature fault, the
@@ -243,13 +278,26 @@ fault remains latched until explicit recovery.
 
 Command policy behavior values are `clamp`, `reject`, and `fault`. The fault
 damping gain must be positive and no greater than the effective motor `kd`
-limit. `maximum_position_step` compares the first target of a lease generation
+limit. At runtime, all gains in a group are scaled down together when needed to
+keep persistent damping torque within the motor and URDF mechanical envelope
+over the full model feedback-velocity range. `maximum_position_step` compares
+the first target of a lease generation
 with fresh measured feedback and subsequent targets with the previously
 accepted target. Model-dependent bounds are intentionally documented in
 [`hardware/robstride/spec.rs`](../components/bello-hardwared/src/hardware/robstride/spec.rs)
 rather than duplicated here.
 
-### `motor_groups`
+Direct joints use their URDF limits directly. Differential actuator
+coordinates receive conservative independent ranges for inventory and scalar
+admission, then every complete group command is transformed into joint space
+and checked against the exact coupled position, velocity, and effort limits.
+The effort check includes the requested impedance torque
+`tau_ff + kp * position_error + kd * velocity_error`. Coupled or
+impedance-derived violations are rejected rather than component-wise clamped,
+because independent clamping does not preserve a differential request. The
+same check runs before every retained command is transmitted.
+
+### Hardware-description `motor_groups`
 
 ```yaml
 motor_groups:
@@ -356,31 +404,35 @@ the target object schema. Prefer direct aliases as above. YAML merge keys
 
 ## Reading the examples
 
-The [production file](../components/bello-hardwared/config/bello.yaml) shows two
-physical CAN interfaces, a serial EBIMU, motors split across both buses, groups
-that span those buses, and anchors for shared policy objects. Its device paths,
-IDs, model names, directions, limits, and safety policy are deployment inputs,
-not universal defaults.
-
-The [vcan file](../components/bello-hardwared/config/vcan.yaml) is a minimal
-host-only topology: two emulated Robstride motors share `vcan0`, one has
-reversed direction, and the group runs at 250 Hz. It deliberately omits serial
-and IMU sections. Its `bitrate` remains present because scheduling and load
-validation need nominal timing even though a virtual CAN interface has no
-physical bitrate.
+The [hardware description](../descriptions/bello/hardware.yaml) defines Bello's
+logical buses, all physical motors (including wrist yaw), command policy, and
+three ownership groups. The
+[production deployment](../components/bello-hardwared/config/bello.yaml)
+enables all groups and maps `can0`/`can1` to physical interfaces. The
+[vCAN deployment](../components/bello-hardwared/config/bello-vcan.yaml)
+preserves those logical assignments while mapping to `vcan0`/`vcan1`; it omits
+the wrist-yaw group because the sphere-hand emulator does not expose IDs 37 and
+47.
 
 ## Visualizer YAML
 
-The visualizer accepts one independent YAML file containing a local flattened
-MJCF path, hardware endpoint/TLS settings, fixed or externally tracked root
-configuration, refresh rate, and optional group control profiles. Relative
-MJCF and certificate paths resolve from the YAML directory. The maintained
-example is [`config/vcan.yaml`](../components/bello-visualizer/config/vcan.yaml).
+The visualizer accepts one independent YAML file containing a local URDF path,
+hardware endpoint/TLS settings, fixed or externally tracked root configuration,
+refresh rate, and optional group control profiles. Relative URDF and certificate
+paths resolve from the YAML directory. The maintained full-Bello example is
+[`config/bello-vcan.yaml`](../components/bello-visualizer/config/bello-vcan.yaml);
+its hardware and pose endpoints default to localhost. Use
+`--hardware-endpoint` and `--pose-endpoint` to redirect those services without
+editing the YAML. The latter is valid only with `root.source: external_pose`.
+The adjacent [`config/vcan.yaml`](../components/bello-visualizer/config/vcan.yaml)
+and `vcan.urdf` are a minimal two-joint UI fixture.
 
-Control is unavailable unless a selected group has an explicit profile whose
-coordinate names exactly match daemon inventory. Every coordinate supplies
-position, velocity, torque-feed-forward, `kp`, and `kd` bounds/defaults plus
-group command rate, validity, and feedback-staleness limits. Defaults are 50 Hz,
-100 ms, and 200 ms respectively. These are reviewed hardware limits; MJCF
-simulation gains are never imported. See the
+Control is unavailable unless a selected group has an explicit profile.
+Hardwared inventory supplies group membership, coordinate names, and hard
+position, velocity, torque, `kp`, and `kd` bounds. Profiles may narrow the
+non-position bounds and configure their defaults, plus group command rate,
+validity, slew, and feedback-staleness limits. Defaults are 50 Hz, 100 ms, and
+200 ms respectively. The URDF supplies rendering, hierarchy, joint limits, and
+direct or differential coordinate mappings; it never supplies hardware gains.
+See the
 [`bello-visualizer` guide](../components/bello-visualizer/README.md).

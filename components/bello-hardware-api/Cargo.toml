@@ -3,7 +3,7 @@ name = "bello-hardware-api"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+license-file.workspace = true
 publish.workspace = true
 description = "Shared gRPC and protobuf API for Bello hardware components"
 

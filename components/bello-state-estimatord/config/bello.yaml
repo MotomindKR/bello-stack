@@ -1,5 +1,5 @@
 # Contact-aided local pose estimator for physical Bello hardware.
-urdf: ../../../../bello_mujoco/assets/source/bello/full_body/urdf/bello_full_body.urdf
+urdf: ../../../descriptions/bello/full_body/urdf/bello_full_body.urdf
 hardware_endpoint: http://127.0.0.1:50051
 listen: 127.0.0.1:50052
 imu: imu

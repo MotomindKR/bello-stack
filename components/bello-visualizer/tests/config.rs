@@ -1,20 +1,20 @@
-use std::collections::BTreeSet;
 use std::fs;
 
-use bello_visualizer::Model;
-use bello_visualizer::config::{ConfigError, RootConfig, VisualizerConfig};
-use bello_visualizer::editor::GroupEditor;
+use bello_visualizer::RobotDescription;
+use bello_visualizer::config::{
+    BoundedDefault, ConfigError, CoordinateLimits, GroupControlProfile, RootConfig,
+    VisualizerConfig,
+};
 use tempfile::tempdir;
 
 #[test]
 fn loads_one_yaml_and_resolves_local_paths_with_safe_defaults() {
     let directory = tempdir().unwrap();
-    fs::write(directory.path().join("model.xml"), "<mujoco/>").unwrap();
     let path = directory.path().join("visualizer.yaml");
     fs::write(
         &path,
         r#"
-mjcf: model.xml
+urdf: model.urdf
 hardware:
   endpoint: http://127.0.0.1:50051
 control_profiles:
@@ -28,7 +28,7 @@ control_profiles:
     .unwrap();
 
     let config = VisualizerConfig::load(&path).unwrap();
-    assert_eq!(config.mjcf, directory.path().join("model.xml"));
+    assert_eq!(config.urdf, directory.path().join("model.urdf"));
     assert_eq!(config.refresh_hz, 60.0);
     assert!(matches!(config.root, RootConfig::Fixed { .. }));
     let profile = &config.control_profiles["legs"];
@@ -39,13 +39,48 @@ control_profiles:
 }
 
 #[test]
+fn normalizes_external_pose_model_root_transform() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("visualizer.yaml");
+    fs::write(
+        &path,
+        r#"
+urdf: model.urdf
+hardware:
+  endpoint: http://127.0.0.1:50051
+root:
+  source: external_pose
+  endpoint: http://127.0.0.1:50052
+  reference_frame: odom
+  tracked_frame: pelvis_link
+  tracked_from_model_root:
+    orientation_xyzw: [0.0, 0.0, 0.0, 2.0]
+"#,
+    )
+    .unwrap();
+
+    let config = VisualizerConfig::load(path).unwrap();
+    let RootConfig::ExternalPose {
+        tracked_from_model_root,
+        ..
+    } = config.root
+    else {
+        panic!("expected external pose root");
+    };
+    assert_eq!(
+        tracked_from_model_root.orientation_xyzw,
+        [0.0, 0.0, 0.0, 1.0]
+    );
+}
+
+#[test]
 fn rejects_partial_tls_identity_and_unsafe_gain_bounds() {
     let directory = tempdir().unwrap();
     let path = directory.path().join("visualizer.yaml");
     fs::write(
         &path,
         r#"
-mjcf: model.xml
+urdf: model.urdf
 hardware:
   endpoint: https://robot.example
   tls:
@@ -74,7 +109,7 @@ control_profiles:
 }
 
 #[test]
-fn maintained_bello_vcan_profiles_cover_every_sphere_hand_coordinate() {
+fn maintained_bello_vcan_configuration_loads_the_canonical_description() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("config/bello-vcan.yaml");
     let config = VisualizerConfig::load(path).unwrap();
     assert_eq!(config.hardware.endpoint, "http://127.0.0.1:50051");
@@ -93,71 +128,130 @@ fn maintained_bello_vcan_profiles_cover_every_sphere_hand_coordinate() {
         }
         RootConfig::Fixed { .. } => panic!("Bello vCAN must use runner PoseService"),
     }
-    let model = Model::from_file(&config.mjcf).unwrap();
-    let lower_names = BTreeSet::from([
-        "waist_yaw_joint",
-        "left_hip_pitch_joint",
-        "left_hip_roll_joint",
-        "left_hip_yaw_joint",
-        "left_knee_joint",
-        "left_ankle_motor_1",
-        "left_ankle_motor_2",
-        "right_hip_pitch_joint",
-        "right_hip_roll_joint",
-        "right_hip_yaw_joint",
-        "right_knee_joint",
-        "right_ankle_motor_1",
-        "right_ankle_motor_2",
-    ]);
-    let upper_names = BTreeSet::from([
-        "left_shoulder_pitch_joint",
-        "left_shoulder_roll_joint",
-        "left_shoulder_yaw_joint",
-        "left_elbow_pitch_joint",
-        "left_elbow_yaw_joint",
-        "left_wrist_pitch_joint",
-        "right_shoulder_pitch_joint",
-        "right_shoulder_roll_joint",
-        "right_shoulder_yaw_joint",
-        "right_elbow_pitch_joint",
-        "right_elbow_yaw_joint",
-        "right_wrist_pitch_joint",
-    ]);
-    let lower = config.control_profiles["lower_body"]
-        .resolve(&model, lower_names.iter())
-        .unwrap();
-    let upper = config.control_profiles["upper_body"]
-        .resolve(&model, upper_names.iter())
-        .unwrap();
+    let description = RobotDescription::load(&config.urdf).unwrap();
+    assert_eq!(description.name(), "bello_full_body");
+    assert!(description.joint("left_hip_pitch_joint").is_some());
+    assert!(
+        description
+            .transmission_for_coordinate("left_ankle_motor_1")
+            .is_some()
+    );
     assert_eq!(
-        lower
-            .coordinates
+        config
+            .control_profiles
             .keys()
             .map(String::as_str)
-            .collect::<BTreeSet<_>>(),
-        lower_names
+            .collect::<Vec<_>>(),
+        ["lower_body", "upper_body"]
     );
-    assert_eq!(
-        upper
-            .coordinates
-            .keys()
-            .map(String::as_str)
-            .collect::<BTreeSet<_>>(),
-        upper_names
-    );
-    assert_eq!(
-        lower.coordinates["left_ankle_motor_1"].position.min,
-        -1.04723
-    );
-    assert_eq!(
-        upper.coordinates["left_shoulder_yaw_joint"].position.max,
-        2.0
-    );
-    GroupEditor::new(&model, lower).unwrap();
-    GroupEditor::new(&model, upper).unwrap();
     assert!(config.control_profiles.values().all(|profile| {
         profile.command_rate_hz == 50.0
             && profile.validity_ms == 500
             && profile.telemetry_staleness_ms == 200
     }));
+}
+
+#[test]
+fn live_position_limits_are_intersected_with_direct_and_differential_urdf_limits() {
+    let directory = tempdir().unwrap();
+    let urdf = directory.path().join("limits.urdf");
+    fs::write(
+        &urdf,
+        r#"<robot name="limits">
+          <link name="base"/><link name="direct_link"/><link name="roll_link"/><link name="pitch_link"/>
+          <joint name="direct" type="revolute">
+            <parent link="base"/><child link="direct_link"/>
+            <limit lower="-1" upper="2" effort="10" velocity="10"/>
+          </joint>
+          <joint name="roll" type="revolute">
+            <parent link="direct_link"/><child link="roll_link"/>
+            <limit lower="-0.5" upper="0.75" effort="10" velocity="10"/>
+          </joint>
+          <joint name="pitch" type="revolute">
+            <parent link="roll_link"/><child link="pitch_link"/>
+            <limit lower="-1" upper="1.5" effort="10" velocity="10"/>
+          </joint>
+          <transmission name="ankle">
+            <type>transmission_interface/DifferentialTransmission</type>
+            <actuator name="motor_1" role="actuator1"/>
+            <actuator name="motor_2" role="actuator2"/>
+            <joint name="roll" role="joint1"/>
+            <joint name="pitch" role="joint2">
+              <mechanical_reduction>-1</mechanical_reduction>
+            </joint>
+          </transmission>
+        </robot>"#,
+    )
+    .unwrap();
+    let description = RobotDescription::load(&urdf).unwrap();
+    let bounds = BoundedDefault {
+        min: -10.0,
+        max: 10.0,
+        default: 0.0,
+    };
+    let profile = GroupControlProfile {
+        command_rate_hz: 50.0,
+        validity_ms: 100,
+        telemetry_staleness_ms: 200,
+        position_slew_rate: 0.5,
+        velocity: bounds,
+        torque_feedforward: bounds,
+        kp: BoundedDefault {
+            min: 0.0,
+            max: 10.0,
+            default: 1.0,
+        },
+        kd: BoundedDefault {
+            min: 0.0,
+            max: 10.0,
+            default: 1.0,
+        },
+    };
+    let limits = |position_min, position_max| CoordinateLimits {
+        position_min,
+        position_max,
+        velocity_min: -10.0,
+        velocity_max: 10.0,
+        torque_min: -10.0,
+        torque_max: 10.0,
+        kp_min: 0.0,
+        kp_max: 10.0,
+        kd_min: 0.0,
+        kd_max: 10.0,
+    };
+    let resolved = profile
+        .resolve_limits(
+            &description,
+            [
+                ("direct".into(), limits(-0.8, 10.0)),
+                ("motor_1".into(), limits(-1.8, 10.0)),
+                ("motor_2".into(), limits(-10.0, 2.0)),
+            ],
+        )
+        .unwrap();
+
+    assert_eq!(
+        resolved.coordinates["direct"].position,
+        BoundedDefault {
+            min: -0.8,
+            max: 2.0,
+            default: 0.0,
+        }
+    );
+    assert_eq!(
+        resolved.coordinates["motor_1"].position,
+        BoundedDefault {
+            min: -1.8,
+            max: 1.75,
+            default: 0.0,
+        }
+    );
+    assert_eq!(
+        resolved.coordinates["motor_2"].position,
+        BoundedDefault {
+            min: -1.5,
+            max: 2.0,
+            default: 0.0,
+        }
+    );
 }

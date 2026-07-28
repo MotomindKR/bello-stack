@@ -632,6 +632,8 @@ dependencies = [
  "rcgen",
  "robstride-emulator",
  "robstride-protocol",
+ "serde",
+ "serde_yaml_ng",
  "socketcan",
  "tempfile",
  "tokio",
@@ -646,6 +648,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "bello-hardware-api",
+ "bello-robot-description",
  "clap",
  "crossbeam-channel",
  "futures-core",
@@ -675,6 +678,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bello-robot-description"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "nalgebra",
+ "roxmltree",
+ "tempfile",
+]
+
+[[package]]
 name = "bello-state-estimatord"
 version = "0.1.0"
 dependencies = [
@@ -682,10 +695,11 @@ dependencies = [
  "async-stream",
  "bello-hardware-client",
  "bello-pose-api",
+ "bello-robot-description",
  "clap",
  "futures-core",
  "nalgebra",
- "roxmltree 0.21.1",
+ "roxmltree",
  "serde",
  "serde_yaml_ng",
  "tempfile",
@@ -704,11 +718,11 @@ dependencies = [
  "async-stream",
  "bello-hardware-client",
  "bello-pose-api",
+ "bello-robot-description",
  "clap",
  "crossbeam-channel",
  "futures-core",
  "kiss3d",
- "mjcf-rs",
  "nalgebra",
  "parking_lot",
  "rfd",
@@ -2867,18 +2881,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mjcf-rs"
-version = "0.34.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b27038465d6229470ccde3b62095f6e570af88b09b2b8f9e34bc77d92f50913c"
-dependencies = [
- "glamx",
- "log",
- "roxmltree 0.20.0",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "moxcms"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4259,12 +4261,10 @@ dependencies = [
 [[package]]
 name = "robstride-protocol"
 version = "0.1.0"
-
-[[package]]
-name = "roxmltree"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
+dependencies = [
+ "serde",
+ "serde_yaml_ng",
+]
 
 [[package]]
 name = "roxmltree"

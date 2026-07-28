@@ -74,7 +74,10 @@ The Cargo workspace contains six components:
 The adjacent
 [`bello-hardware-python`](../components/bello-hardware-python) component is a
 pure-Python package rather than a Cargo workspace member. It uses generated
-blocking gRPC bindings behind a small robot/group API.
+blocking gRPC bindings behind a small robot/group API. The
+[`bello-upper-body-teleop`](../components/bello-upper-body-teleop) application
+owns the Dynamixel teaching-arm port and consumes that API; it never opens CAN
+or bypasses daemon group leases.
 
 Conceptually, configuration assembles transport and device workers, group
 control consumes narrow hardware handles, and the API presents daemon
@@ -100,7 +103,18 @@ ruff check .
 mypy src/bello_hardware tests
 pytest
 python -m hatchling build
+cd ../bello-upper-body-teleop
+ruff format --check .
+ruff check .
+mypy src/bello_upper_body_teleop tests
+pytest
+python -m hatchling build
 ```
+
+Both Python distributions are private and include the repository's proprietary
+license notice in their source and wheel metadata. The teleop artifacts also
+record the exact Git commit and digest of their embedded URDF; packaging rejects
+an uncommitted change to that source asset.
 
 During iteration, use focused package/test commands first, then finish with the
 workspace commands. Configuration-only validation is quick and does not open
@@ -110,7 +124,7 @@ hardware:
 cargo run -p bello-hardwared -- \
   --check --config components/bello-hardwared/config/bello.yaml
 cargo run -p bello-hardwared -- \
-  --check --config components/bello-hardwared/config/vcan.yaml
+  --check --config components/bello-hardwared/config/bello-vcan.yaml
 cargo run -p robstride-emulator -- \
   --check --config components/robstride-emulator/config/vcan.yaml
 ```
@@ -123,23 +137,27 @@ type name or call path.
 ## Host-vcan integration test
 
 TLS, mTLS, and Unix-socket process tests run under normal `cargo test` without
-host hardware. The vCAN control scenario remains an ignored Cargo integration
-test. To run it, create and bring up a host interface:
+host hardware. The vCAN control scenarios remain ignored Cargo integration
+tests. To run the complete file, create and bring up two host interfaces:
 
 ```sh
 sudo modprobe vcan
 sudo ip link add dev vcan0 type vcan
 sudo ip link set dev vcan0 up
+sudo ip link add dev vcan1 type vcan
+sudo ip link set dev vcan1 up
 cargo test -p bello-hardware-e2e --test vcan -- \
   --ignored --nocapture --test-threads=1
 ```
 
 `cargo e2e` is an alias for the final command. The single test thread is
-required because both scenarios exclusively own `vcan0`. Set
-`BELLO_E2E_CAN_INTERFACE=vcan1` to select another interface; the test writes that
-name into both generated runtime configurations. It also chooses a free
-loopback gRPC port, controls fault phases by suspending/resuming the emulator,
-and verifies child-process liveness. Details are in the
+required because the scenarios exclusively own their shared interfaces. Set
+`BELLO_E2E_CAN_INTERFACE=vcan2` to select the interface used by the single-bus
+scenarios. Set `BELLO_E2E_CAN_INTERFACES=vcan2,vcan3` to select the ordered pair
+used by the canonical multi-bus scenario. Each test writes those names into its
+generated runtime configurations. The suite also chooses free loopback gRPC
+ports, controls fault phases by suspending/resuming the emulator, and verifies
+child-process liveness. Details are in the
 [E2E README](../components/bello-hardware-e2e/README.md) and
 [`tests/vcan.rs`](../components/bello-hardware-e2e/tests/vcan.rs).
 
@@ -147,7 +165,7 @@ Visualizer model, transform, transmission, stale-input, and strict-rejection
 tests run without a GPU as part of the normal workspace suite. A fake hardware
 server additionally checks complete diagnostic telemetry, disconnect freezing,
 fresh immutable control seeding, complete command frames, configured cadence,
-and lease cleanup. The vCAN fixture verifies both its matching MJCF transmission
+and lease cleanup. The vCAN fixture verifies both its matching URDF transmission
 and that the headless visualizer controller keeps its configured send rate
 without renderer calls. Native window interaction remains a documented manual
 smoke test in the
@@ -159,7 +177,8 @@ smoke test in the
 
 1. hermetic formatting, workspace Clippy with warnings denied, all-feature
    workspace tests, and Buf format/lint;
-2. after those pass, creation of `vcan0` and the ignored Cargo integration test.
+2. after those pass, creation of `vcan0` and `vcan1` and the ignored Cargo
+   integration tests.
 
 Keep local commands aligned with CI. A change is not complete when only the
 focused test passes; run the proportionate workspace checks before handoff.

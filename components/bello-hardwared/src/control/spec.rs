@@ -4,6 +4,7 @@ use anyhow::{Result, bail};
 
 use crate::config::{FaultPolicyConfig, GroupConfig};
 use crate::domain::{GroupName, MotorName};
+use crate::mechanics::MechanicalEnvelope;
 
 /// Validated, side-effect-free definition of a synchronized motor group.
 #[derive(Clone, Debug)]
@@ -16,6 +17,7 @@ pub(crate) struct GroupSpec {
     pub(crate) enable_timeout: Duration,
     pub(crate) enable_retries: u32,
     pub(crate) fault_policy: FaultPolicyConfig,
+    pub(crate) mechanical: MechanicalEnvelope,
 }
 
 impl GroupSpec {
@@ -68,6 +70,7 @@ impl TryFrom<&GroupConfig> for GroupSpec {
             enable_timeout: Duration::from_millis(config.enable_timeout_ms),
             enable_retries: config.enable_retries,
             fault_policy: config.fault_policy.clone(),
+            mechanical: MechanicalEnvelope::default(),
         })
     }
 }

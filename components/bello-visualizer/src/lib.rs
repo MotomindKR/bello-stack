@@ -8,7 +8,7 @@ pub mod scene;
 pub mod transform;
 pub mod transmission;
 
+pub use bello_robot_description::RobotDescription;
 pub use config::VisualizerConfig;
-pub use mjcf_rs::Model;
 pub use transform::Transform;
 pub use transmission::Transmission;

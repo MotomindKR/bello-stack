@@ -1,6 +1,7 @@
 use crate::app::HardwareDaemon;
 use bello_hardware_api::{
-    BusInfo, GroupInfo, ImuInfo, ListHardwareResponse, MotorAddress, MotorInfo, SerialDeviceInfo,
+    BusInfo, GroupInfo, ImuInfo, ListHardwareResponse, MotorAddress, MotorInfo, MotorLimits,
+    SerialDeviceInfo,
 };
 
 use super::conversion;
@@ -37,6 +38,18 @@ pub fn list(daemon: &HardwareDaemon) -> ListHardwareResponse {
                 .motor_status(&motor.spec.name)
                 .as_ref()
                 .map(conversion::device_status),
+            limits: Some(MotorLimits {
+                position_min: motor.spec.limits.position_min,
+                position_max: motor.spec.limits.position_max,
+                velocity_min: motor.spec.limits.velocity_min,
+                velocity_max: motor.spec.limits.velocity_max,
+                torque_min: motor.spec.limits.torque_min,
+                torque_max: motor.spec.limits.torque_max,
+                kp_min: motor.spec.limits.kp_min,
+                kp_max: motor.spec.limits.kp_max,
+                kd_min: motor.spec.limits.kd_min,
+                kd_max: motor.spec.limits.kd_max,
+            }),
         })
         .collect();
     motors.sort_by(|left, right| left.name.cmp(&right.name));

@@ -21,6 +21,11 @@
             libglvnd
             vulkan-loader
           ];
+          pythonWheelRuntimeLibraries = [
+            pkgs.stdenv.cc.cc.lib
+          ];
+          runtimeLibraries =
+            visualizerRuntimeLibraries ++ pythonWheelRuntimeLibraries;
         in {
           default = pkgs.mkShell {
             packages = with pkgs; [
@@ -49,7 +54,7 @@
             # copies target/ into every source snapshot before entering the shell.
             shellHook = ''
               export CARGO_TARGET_DIR="''${XDG_CACHE_HOME:-''${HOME}/.cache}/bello-stack/cargo-target"
-              export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath visualizerRuntimeLibraries}:''${LD_LIBRARY_PATH:-}"
+              export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibraries}:''${LD_LIBRARY_PATH:-}"
             '';
           };
         });

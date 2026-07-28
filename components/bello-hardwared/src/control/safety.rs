@@ -1,19 +1,16 @@
 use std::collections::BTreeMap;
 
-use crate::domain::BusName;
+use crate::domain::{BusName, ImpedanceCommand};
 use crate::hardware::can::CanFrame;
 use crate::hardware::robstride::MotorController;
-
-use super::command_policy::damping_command;
 
 type BusBatch = (MotorController, Vec<CanFrame>);
 
 pub(super) fn send_damping<'a>(
-    motors: impl IntoIterator<Item = &'a MotorController>,
+    motors: impl IntoIterator<Item = (&'a MotorController, ImpedanceCommand)>,
 ) -> Result<(), String> {
     let mut batches = BTreeMap::<BusName, BusBatch>::new();
-    for motor in motors {
-        let command = damping_command(motor.feedback().map(|feedback| feedback.value), &motor.spec);
+    for (motor, command) in motors {
         batch_for(&mut batches, motor).push(motor.safety_control_frame(command));
     }
     deliver(batches)

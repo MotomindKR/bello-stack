@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -33,6 +34,21 @@ const TOKEN: &str = "visualizer-test-token";
 const SOURCE_NS: u64 = 9_876_543;
 
 type ResponseStream<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send + 'static>>;
+
+fn motor_limits() -> proto::MotorLimits {
+    proto::MotorLimits {
+        position_min: -2.0,
+        position_max: 2.0,
+        velocity_min: -5.0,
+        velocity_max: 5.0,
+        torque_min: -8.0,
+        torque_max: 8.0,
+        kp_min: 0.0,
+        kp_max: 100.0,
+        kd_min: 0.0,
+        kd_max: 10.0,
+    }
+}
 
 #[derive(Clone)]
 struct FakeHardware {
@@ -405,6 +421,7 @@ fn inventory() -> proto::ListHardwareResponse {
                 model: "test-a".into(),
                 direction: 1,
                 status: Some(online("hip online", 4)),
+                limits: Some(motor_limits()),
             },
             proto::MotorInfo {
                 name: MOTOR_B.into(),
@@ -417,6 +434,7 @@ fn inventory() -> proto::ListHardwareResponse {
                 model: "test-b".into(),
                 direction: -1,
                 status: Some(online("knee online", 5)),
+                limits: Some(motor_limits()),
             },
         ],
         imus: vec![proto::ImuInfo {
@@ -453,6 +471,7 @@ fn isolation_inventory() -> proto::ListHardwareResponse {
             detail: "shoulder online".into(),
             transition_count: 7,
         }),
+        limits: Some(motor_limits()),
     });
     inventory
 }
@@ -741,10 +760,6 @@ fn profile() -> ResolvedGroupControlProfile {
         validity_ms: 90,
         telemetry_staleness_ms: 200,
         position_slew_rate: 0.5,
-        velocity: bounds(-5.0, 5.0, 0.125),
-        torque_feedforward: bounds(-8.0, 8.0, 0.25),
-        kp: bounds(0.0, 100.0, 20.0),
-        kd: bounds(0.0, 10.0, 1.5),
         coordinates: BTreeMap::from([
             (COORDINATE_A.into(), coordinate_profile()),
             (COORDINATE_B.into(), coordinate_profile()),
@@ -765,20 +780,29 @@ fn profile_config() -> GroupControlProfile {
     }
 }
 
-fn control_model() -> Model {
-    Model::from_str(
-        r#"<mujoco><worldbody><body name="body">
-          <joint name="hip" range="-2 2"/>
-          <joint name="knee" range="-2 2"/>
-          <joint name="shoulder" range="-2 2"/>
-        </body></worldbody><actuator>
-          <position name="hip_position" joint="hip" ctrlrange="-2 2" user="0"/>
-          <position name="knee_position" joint="knee" ctrlrange="-2 2" user="0"/>
-          <position name="shoulder_position" joint="shoulder" ctrlrange="-2 2" user="0"/>
-        </actuator></mujoco>"#,
-        "/tmp",
+fn control_description() -> RobotDescription {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("control.urdf");
+    fs::write(
+        &path,
+        r#"<robot name="control">
+          <link name="base"/><link name="hip_link"/><link name="knee_link"/><link name="shoulder_link"/>
+          <joint name="hip" type="revolute">
+            <parent link="base"/><child link="hip_link"/>
+            <limit lower="-2" upper="2" effort="8" velocity="5"/>
+          </joint>
+          <joint name="knee" type="revolute">
+            <parent link="hip_link"/><child link="knee_link"/>
+            <limit lower="-2" upper="2" effort="8" velocity="5"/>
+          </joint>
+          <joint name="shoulder" type="revolute">
+            <parent link="knee_link"/><child link="shoulder_link"/>
+            <limit lower="-2" upper="2" effort="8" velocity="5"/>
+          </joint>
+        </robot>"#,
     )
-    .unwrap()
+    .unwrap();
+    RobotDescription::load(&path).unwrap()
 }
 
 fn feedback_motor(
@@ -796,6 +820,18 @@ fn feedback_motor(
         id,
         model: "fake".into(),
         direction: 1,
+        limits: CoordinateLimits {
+            position_min: -2.0,
+            position_max: 2.0,
+            velocity_min: -5.0,
+            velocity_max: 5.0,
+            torque_min: -8.0,
+            torque_max: 8.0,
+            kp_min: 0.0,
+            kp_max: 100.0,
+            kd_min: 0.0,
+            kd_max: 10.0,
+        },
         status: None,
         feedback_available: true,
         feedback_current_connection: true,
@@ -1090,7 +1126,7 @@ async fn rejected_command_stops_only_its_group_while_other_group_keeps_running()
     let supervisor = tokio::spawn(control_supervisor(
         endpoint(&server.endpoint),
         profiles,
-        control_model(),
+        control_description(),
         command_receiver,
         Arc::clone(&latest),
         shutdown_receiver,

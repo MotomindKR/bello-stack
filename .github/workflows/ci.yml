@@ -35,17 +35,99 @@ jobs:
           nix develop --command mypy src/bello_hardware tests
           nix develop --command pytest
           nix develop --command python -m hatchling build
-
-  vcan-integration:
-    needs: checks
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v6
-      - uses: DeterminateSystems/determinate-nix-action@v3
-      - name: Create vcan interface
+          cmp LICENSE ../../LICENSE
+          hardware_sdist="$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)"
+          hardware_wheel="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+          tar -xO --wildcards -f "$hardware_sdist" '*/LICENSE' | cmp - ../../LICENSE
+          unzip -p "$hardware_wheel" '*/licenses/LICENSE' | cmp - ../../LICENSE
+          for artifact in "$hardware_sdist" "$hardware_wheel"; do
+            metadata_pattern='*/PKG-INFO'
+            metadata_command=(tar -xO --wildcards -f)
+            if [[ "$artifact" == *.whl ]]; then
+              metadata_pattern='*/METADATA'
+              metadata_command=(unzip -p)
+            fi
+            "${metadata_command[@]}" "$artifact" "$metadata_pattern" |
+              grep -Fx 'License-Expression: LicenseRef-Proprietary'
+            "${metadata_command[@]}" "$artifact" "$metadata_pattern" |
+              grep -Fx 'License-File: LICENSE'
+            "${metadata_command[@]}" "$artifact" "$metadata_pattern" |
+              grep -Fx 'Classifier: Private :: Do Not Upload'
+          done
+      - name: Upper-body teleop
+        working-directory: components/bello-upper-body-teleop
         run: |
+          nix develop --command ruff format --check .
+          nix develop --command ruff check .
+          nix develop --command mypy src/bello_upper_body_teleop tests
+          nix develop --command pytest
+          nix develop --command python -m hatchling build
+          cmp LICENSE ../../LICENSE
+          sdist_path="$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)"
+          source_wheel="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+          provenance="$RUNNER_TEMP/teleop-ASSET_PROVENANCE.md"
+          tar -xO --wildcards -f "$sdist_path" \
+            '*/src/bello_upper_body_teleop/_assets/ASSET_PROVENANCE.md' > "$provenance"
+          tar -xO --wildcards -f "$sdist_path" \
+            '*/src/bello_upper_body_teleop/_assets/bello_full_body.urdf' |
+            cmp - ../../descriptions/bello/full_body/urdf/bello_full_body.urdf
+          tar -xO --wildcards -f "$sdist_path" '*/LICENSE' | cmp - ../../LICENSE
+          unzip -p "$source_wheel" '*/_assets/ASSET_PROVENANCE.md' | cmp - "$provenance"
+          unzip -p "$source_wheel" '*/licenses/LICENSE' | cmp - ../../LICENSE
+          commit="$(git rev-parse HEAD)"
+          digest="$(sha256sum ../../descriptions/bello/full_body/urdf/bello_full_body.urdf |
+            cut -d ' ' -f 1)"
+          grep -Fx -- "- Stack source commit: \`$commit\`" "$provenance"
+          grep -Fx -- "- Embedded URDF SHA-256: \`$digest\`" "$provenance"
+          grep -F 'contains only the canonical full-body URDF' "$provenance"
+          grep -F 'does not contain the adjacent visual or' "$provenance"
+          sdist_root="$RUNNER_TEMP/teleop-sdist"
+          mkdir -p "$sdist_root"
+          tar -xzf "$sdist_path" -C "$sdist_root"
+          source_root="$(find "$sdist_root" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          (cd "$source_root" && nix develop "$GITHUB_WORKSPACE" --command python -m hatchling build -t wheel)
+          teleop_wheel="$(find "$source_root/dist" -maxdepth 1 -name '*.whl' -print -quit)"
+          hardware_wheel="$(find ../bello-hardware-python/dist -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$teleop_wheel"
+          test -n "$hardware_wheel"
+          unzip -p "$teleop_wheel" '*/_assets/ASSET_PROVENANCE.md' | cmp - "$provenance"
+          unzip -p "$teleop_wheel" '*/_assets/bello_full_body.urdf' |
+            cmp - ../../descriptions/bello/full_body/urdf/bello_full_body.urdf
+          unzip -p "$teleop_wheel" '*/licenses/LICENSE' | cmp - ../../LICENSE
+          for artifact in "$sdist_path" "$source_wheel" "$teleop_wheel"; do
+            metadata_pattern='*/PKG-INFO'
+            metadata_command=(tar -xO --wildcards -f)
+            if [[ "$artifact" == *.whl ]]; then
+              metadata_pattern='*/METADATA'
+              metadata_command=(unzip -p)
+            fi
+            "${metadata_command[@]}" "$artifact" "$metadata_pattern" |
+              grep -Fx 'License-Expression: LicenseRef-Proprietary'
+            "${metadata_command[@]}" "$artifact" "$metadata_pattern" |
+              grep -Fx 'License-File: LICENSE'
+            "${metadata_command[@]}" "$artifact" "$metadata_pattern" |
+              grep -Fx 'Classifier: Private :: Do Not Upload'
+          done
+          PYTHONPATH="$teleop_wheel:$hardware_wheel" nix develop --command python - <<'PY'
+          from importlib.resources import files
+
+          from bello_upper_body_teleop.config import _CANONICAL_FULL_BODY_URDF
+
+          assert _CANONICAL_FULL_BODY_URDF.is_file()
+          provenance = files("bello_upper_body_teleop").joinpath(
+              "_assets/ASSET_PROVENANCE.md"
+          )
+          assert provenance.is_file()
+          assert "Stack source commit:" in provenance.read_text()
+          PY
+      - name: Create vcan interfaces
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes "linux-modules-extra-$(uname -r)"
           sudo modprobe vcan
           sudo ip link add dev vcan0 type vcan
           sudo ip link set dev vcan0 up
+          sudo ip link add dev vcan1 type vcan
+          sudo ip link set dev vcan1 up
       - name: Run ignored vcan integration test
         run: nix develop --command cargo e2e

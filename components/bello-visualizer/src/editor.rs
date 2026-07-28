@@ -1,9 +1,11 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use nalgebra::{DMatrix, DVector};
+
 use crate::config::{BoundedDefault, ResolvedGroupControlProfile};
 use crate::runtime::{CoordinateCommand, DisplaySnapshot};
-use crate::{Model, Transmission};
+use crate::{RobotDescription, Transmission};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum EditorMode {
@@ -16,6 +18,8 @@ pub struct GroupEditor {
     pub profile: ResolvedGroupControlProfile,
     pub transmission: Transmission,
     pub joint_position_bounds: Vec<BoundedDefault>,
+    pub joint_velocity_bounds: Vec<BoundedDefault>,
+    pub joint_effort_bounds: Vec<BoundedDefault>,
     pub actuator: BTreeMap<String, CoordinateCommand>,
     pub model_position: Vec<f64>,
     pub model_velocity: Vec<f64>,
@@ -24,26 +28,60 @@ pub struct GroupEditor {
 }
 
 impl GroupEditor {
-    pub fn new(model: &Model, profile: ResolvedGroupControlProfile) -> anyhow::Result<Self> {
-        let transmission = Transmission::from_model(model, profile.coordinates.keys())?;
+    pub fn new(
+        description: &RobotDescription,
+        profile: ResolvedGroupControlProfile,
+    ) -> anyhow::Result<Self> {
+        let transmission = Transmission::from_description(description, profile.coordinates.keys())?;
         let joint_position_bounds = transmission
             .joint_names()
             .iter()
             .map(|name| {
-                let (body, index) = model
-                    .joint_by_name(name)
+                let joint = description
+                    .joint(name)
                     .ok_or_else(|| anyhow::anyhow!("model joint {name:?} disappeared"))?;
-                let joint = &model.bodies[body].body.joints[index];
-                let range = joint.range.ok_or_else(|| {
-                    anyhow::anyhow!("model joint {name:?} has no MJCF range for safe editing")
+                let limits = joint.limits.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("model joint {name:?} has no URDF limits for safe editing")
                 })?;
                 Ok(BoundedDefault {
-                    min: range[0],
-                    max: range[1],
-                    default: 0.0_f64.clamp(range[0], range[1]),
+                    min: limits.lower,
+                    max: limits.upper,
+                    default: 0.0_f64.clamp(limits.lower, limits.upper),
                 })
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
+        let coordinate_velocity_bounds = transmission
+            .coordinate_names()
+            .iter()
+            .map(|name| profile.coordinates[name].velocity)
+            .collect::<Vec<_>>();
+        let coordinate_velocity_default = coordinate_velocity_bounds
+            .iter()
+            .map(|bounds| bounds.default)
+            .collect::<Vec<_>>();
+        let joint_velocity_default =
+            transmission.coordinate_velocity_to_joint(&coordinate_velocity_default)?;
+        let joint_velocity_bounds = conservative_joint_bounds(
+            transmission.forward_matrix(),
+            &joint_velocity_default,
+            &coordinate_velocity_bounds,
+        )?;
+        let coordinate_effort_bounds = transmission
+            .coordinate_names()
+            .iter()
+            .map(|name| profile.coordinates[name].torque_feedforward)
+            .collect::<Vec<_>>();
+        let coordinate_effort_default = coordinate_effort_bounds
+            .iter()
+            .map(|bounds| bounds.default)
+            .collect::<Vec<_>>();
+        let joint_effort_default =
+            transmission.coordinate_effort_to_joint(&coordinate_effort_default)?;
+        let joint_effort_bounds = conservative_joint_bounds(
+            transmission.model_effort_to_coordinate_matrix(),
+            &joint_effort_default,
+            &coordinate_effort_bounds,
+        )?;
         let actuator = profile
             .coordinates
             .iter()
@@ -64,6 +102,8 @@ impl GroupEditor {
             profile,
             transmission,
             joint_position_bounds,
+            joint_velocity_bounds,
+            joint_effort_bounds,
             actuator,
             model_position: Vec::new(),
             model_velocity: Vec::new(),
@@ -136,13 +176,29 @@ impl GroupEditor {
             .iter()
             .map(|name| self.actuator[name])
             .collect::<Vec<_>>();
-        self.model_position = self.transmission.coordinate_to_joint(
+        let mut model_position = self.transmission.coordinate_to_joint(
             &ordered
                 .iter()
                 .map(|target| target.position)
                 .collect::<Vec<_>>(),
         )?;
-        self.model_velocity = self.transmission.coordinate_to_joint(
+        let mut position_clamped = false;
+        for (position, bounds) in model_position.iter_mut().zip(&self.joint_position_bounds) {
+            let bounded = position.clamp(bounds.min, bounds.max);
+            position_clamped |= bounded != *position;
+            *position = bounded;
+        }
+        if position_clamped {
+            let coordinate_position = self.transmission.joint_to_coordinate(&model_position)?;
+            for (index, name) in self.transmission.coordinate_names().iter().enumerate() {
+                self.actuator
+                    .get_mut(name)
+                    .expect("actuator editor contains every transmission coordinate")
+                    .position = coordinate_position[index];
+            }
+        }
+        self.model_position = model_position;
+        self.model_velocity = self.transmission.coordinate_velocity_to_joint(
             &ordered
                 .iter()
                 .map(|target| target.velocity)
@@ -158,12 +214,14 @@ impl GroupEditor {
     }
 
     pub fn sync_actuator_from_model(&mut self) -> anyhow::Result<()> {
+        clamp_values(&mut self.model_velocity, &self.joint_velocity_bounds);
+        clamp_values(&mut self.model_effort, &self.joint_effort_bounds);
         let position = self
             .transmission
             .joint_to_coordinate(&self.model_position)?;
         let velocity = self
             .transmission
-            .joint_to_coordinate(&self.model_velocity)?;
+            .joint_velocity_to_coordinate(&self.model_velocity)?;
         let effort = self
             .transmission
             .joint_effort_to_coordinate(&self.model_effort)?;
@@ -188,9 +246,88 @@ impl GroupEditor {
     }
 }
 
+fn clamp_values(values: &mut [f64], bounds: &[BoundedDefault]) {
+    for (value, bounds) in values.iter_mut().zip(bounds) {
+        *value = value.clamp(bounds.min, bounds.max);
+    }
+}
+
+fn conservative_joint_bounds(
+    mapping: &DMatrix<f64>,
+    joint_default: &[f64],
+    coordinate_bounds: &[BoundedDefault],
+) -> anyhow::Result<Vec<BoundedDefault>> {
+    if mapping.ncols() != joint_default.len() || mapping.nrows() != coordinate_bounds.len() {
+        anyhow::bail!("transmission bounds do not match the mapping dimensions");
+    }
+    let default_coordinates = mapping * DVector::from_column_slice(joint_default);
+    for (index, (value, bounds)) in default_coordinates
+        .iter()
+        .zip(coordinate_bounds)
+        .enumerate()
+    {
+        if *value < bounds.min || *value > bounds.max {
+            anyhow::bail!(
+                "transmission default for coordinate {} is outside its live limits",
+                index
+            );
+        }
+    }
+    let contributors = (0..mapping.nrows())
+        .map(|row| {
+            (0..mapping.ncols())
+                .filter(|column| mapping[(row, *column)] != 0.0)
+                .count()
+        })
+        .collect::<Vec<_>>();
+    let mut result = Vec::with_capacity(mapping.ncols());
+    for column in 0..mapping.ncols() {
+        let mut minimum_delta = f64::NEG_INFINITY;
+        let mut maximum_delta = f64::INFINITY;
+        for row in 0..mapping.nrows() {
+            let coefficient = mapping[(row, column)];
+            if coefficient == 0.0 {
+                continue;
+            }
+            let share = contributors[row] as f64;
+            let lower_slack = default_coordinates[row] - coordinate_bounds[row].min;
+            let upper_slack = coordinate_bounds[row].max - default_coordinates[row];
+            let (lower, upper) = if coefficient > 0.0 {
+                (
+                    -lower_slack / (share * coefficient),
+                    upper_slack / (share * coefficient),
+                )
+            } else {
+                (
+                    -upper_slack / (share * -coefficient),
+                    lower_slack / (share * -coefficient),
+                )
+            };
+            minimum_delta = minimum_delta.max(lower);
+            maximum_delta = maximum_delta.min(upper);
+        }
+        if !minimum_delta.is_finite() || !maximum_delta.is_finite() || minimum_delta > maximum_delta
+        {
+            anyhow::bail!(
+                "model coordinate {} has no conservative live actuator bounds",
+                column
+            );
+        }
+        result.push(BoundedDefault {
+            min: joint_default[column] + minimum_delta,
+            max: joint_default[column] + maximum_delta,
+            default: joint_default[column],
+        });
+    }
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use crate::config::GroupControlProfile;
+    use tempfile::tempdir;
 
     use super::*;
 
@@ -204,23 +341,31 @@ mod tests {
 
     #[test]
     fn model_edits_convert_through_tendons_without_rewriting_actuator_gains() {
-        let model = Model::from_str(
-            r#"<mujoco>
-                <worldbody><body name="ankle">
-                  <joint name="pitch" range="-100 100"/><joint name="roll" range="-100 100"/>
-                </body></worldbody>
-                <tendon>
-                  <fixed name="motor_1"><joint joint="pitch" coef="-1"/><joint joint="roll" coef="1"/></fixed>
-                  <fixed name="motor_2"><joint joint="pitch" coef="1"/><joint joint="roll" coef="1"/></fixed>
-                </tendon>
-                <actuator>
-                  <position name="motor_1_position" tendon="motor_1" ctrlrange="-100 100" user="0"/>
-                  <position name="motor_2_position" tendon="motor_2" ctrlrange="-100 100" user="0"/>
-                </actuator>
-              </mujoco>"#,
-            "/tmp",
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("ankle.urdf");
+        fs::write(
+            &path,
+            r#"<robot name="ankle">
+              <link name="base"/><link name="pitch_link"/><link name="roll_link"/>
+              <joint name="pitch" type="revolute">
+                <parent link="base"/><child link="pitch_link"/>
+                <limit lower="-100" upper="100" effort="100" velocity="100"/>
+              </joint>
+              <joint name="roll" type="revolute">
+                <parent link="pitch_link"/><child link="roll_link"/>
+                <limit lower="-100" upper="100" effort="100" velocity="100"/>
+              </joint>
+              <transmission name="ankle">
+                <type>transmission_interface/DifferentialTransmission</type>
+                <actuator name="motor_1" role="actuator1"/>
+                <actuator name="motor_2" role="actuator2"/>
+                <joint name="roll" role="joint1"/>
+                <joint name="pitch" role="joint2"><mechanical_reduction>-1</mechanical_reduction></joint>
+              </transmission>
+            </robot>"#,
         )
         .unwrap();
+        let description = RobotDescription::load(&path).unwrap();
         let profile = GroupControlProfile {
             command_rate_hz: 50.0,
             validity_ms: 100,
@@ -239,9 +384,81 @@ mod tests {
                 default: 1.0,
             },
         }
-        .resolve(&model, ["motor_1", "motor_2"])
+        .resolve_limits(
+            &description,
+            [
+                (
+                    "motor_1".into(),
+                    crate::config::CoordinateLimits {
+                        position_min: -100.0,
+                        position_max: 100.0,
+                        velocity_min: -100.0,
+                        velocity_max: 100.0,
+                        torque_min: -100.0,
+                        torque_max: 100.0,
+                        kp_min: 0.0,
+                        kp_max: 100.0,
+                        kd_min: 0.0,
+                        kd_max: 100.0,
+                    },
+                ),
+                (
+                    "motor_2".into(),
+                    crate::config::CoordinateLimits {
+                        position_min: -100.0,
+                        position_max: 100.0,
+                        velocity_min: -100.0,
+                        velocity_max: 100.0,
+                        torque_min: -100.0,
+                        torque_max: 100.0,
+                        kp_min: 0.0,
+                        kp_max: 100.0,
+                        kd_min: 0.0,
+                        kd_max: 100.0,
+                    },
+                ),
+            ],
+        )
         .unwrap();
-        let mut editor = GroupEditor::new(&model, profile).unwrap();
+        let mut editor = GroupEditor::new(&description, profile).unwrap();
+        for first in [
+            editor.joint_velocity_bounds[0].min,
+            editor.joint_velocity_bounds[0].max,
+        ] {
+            for second in [
+                editor.joint_velocity_bounds[1].min,
+                editor.joint_velocity_bounds[1].max,
+            ] {
+                let coordinates = editor
+                    .transmission
+                    .joint_velocity_to_coordinate(&[first, second])
+                    .unwrap();
+                assert!(
+                    coordinates
+                        .iter()
+                        .all(|value| (-100.0..=100.0).contains(value))
+                );
+            }
+        }
+        for first in [
+            editor.joint_effort_bounds[0].min,
+            editor.joint_effort_bounds[0].max,
+        ] {
+            for second in [
+                editor.joint_effort_bounds[1].min,
+                editor.joint_effort_bounds[1].max,
+            ] {
+                let coordinates = editor
+                    .transmission
+                    .joint_effort_to_coordinate(&[first, second])
+                    .unwrap();
+                assert!(
+                    coordinates
+                        .iter()
+                        .all(|value| (-100.0..=100.0).contains(value))
+                );
+            }
+        }
         editor.model_position = vec![2.0, 3.0];
         editor.model_velocity = vec![4.0, 5.0];
         editor.model_effort = vec![6.0, 8.0];
@@ -257,6 +474,14 @@ mod tests {
         editor.sync_model_from_actuator().unwrap();
         assert_eq!(editor.model_position, [2.0, 3.0]);
 
+        editor.model_velocity = vec![f64::NEG_INFINITY, f64::INFINITY];
+        editor.model_effort = vec![f64::NEG_INFINITY, f64::INFINITY];
+        editor.sync_actuator_from_model().unwrap();
+        assert!(editor.actuator.values().all(|target| {
+            (-100.0..=100.0).contains(&target.velocity)
+                && (-100.0..=100.0).contains(&target.torque_feedforward)
+        }));
+
         let feedback = |coordinate: &str, position: f64| crate::runtime::DisplayMotor {
             motor: format!("{coordinate}_motor"),
             coordinate: coordinate.into(),
@@ -265,6 +490,18 @@ mod tests {
             id: 1,
             model: "test".into(),
             direction: 1,
+            limits: crate::config::CoordinateLimits {
+                position_min: -100.0,
+                position_max: 100.0,
+                velocity_min: -100.0,
+                velocity_max: 100.0,
+                torque_min: -100.0,
+                torque_max: 100.0,
+                kp_min: 0.0,
+                kp_max: 100.0,
+                kd_min: 0.0,
+                kd_max: 100.0,
+            },
             status: None,
             feedback_available: true,
             feedback_current_connection: true,

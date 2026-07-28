@@ -9,6 +9,6 @@ pub use codec::{
 };
 pub use frame::{Frame, frame_target};
 pub use model::{
-    CONTROL_POSITION_MAX, CONTROL_POSITION_MIN, CONTROL_POSITION_SPAN, MAX_MOTOR_ID, ModelLimits,
-    MotorParams, model_limits,
+    CONTROL_POSITION_MAX, CONTROL_POSITION_MIN, CONTROL_POSITION_SPAN, MAX_MOTOR_ID, MODEL_NAMES,
+    ModelHardware, ModelLimits, MotorParams, model_limits,
 };

@@ -273,10 +273,13 @@ impl MotorController {
             if request_is_current {
                 return;
             }
-            self.lifecycle.await_feedback(format!(
-                "requesting active feedback on CAN bus {}",
-                self.bus.spec.name
-            ));
+            let operating_feedback_expected = self.feedback_expected_since.read().is_some();
+            if !operating_feedback_expected {
+                self.lifecycle.await_feedback(format!(
+                    "requesting active feedback on CAN bus {}",
+                    self.bus.spec.name
+                ));
+            }
             match self.bus.enqueue_configuration_batch(vec![
                 active_report_frame(self.bus.spec.host_id, self.spec.address.id, true).into(),
             ]) {

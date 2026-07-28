@@ -35,10 +35,7 @@ async fn daemon_accepts_server_authenticated_tls() -> Result<()> {
         paths.server_private_key.display(),
     );
     let config = directory.path().join("hardwared-tls.yaml");
-    fs::write(
-        &config,
-        config::hardwared_with_grpc(UNAVAILABLE_CAN, &grpc, 250.0),
-    )?;
+    config::write_hardwared_with_grpc(&config, UNAVAILABLE_CAN, &grpc, 250.0)?;
     let mut daemon = start_daemon(&config)?;
 
     let options = ConnectOptions::new(format!("https://localhost:{}", address.port()))
@@ -66,10 +63,7 @@ async fn daemon_requires_a_trusted_client_certificate_for_mtls() -> Result<()> {
         paths.ca_certificate.display(),
     );
     let config = directory.path().join("hardwared-mtls.yaml");
-    fs::write(
-        &config,
-        config::hardwared_with_grpc(UNAVAILABLE_CAN, &grpc, 250.0),
-    )?;
+    config::write_hardwared_with_grpc(&config, UNAVAILABLE_CAN, &grpc, 250.0)?;
     let mut daemon = start_daemon(&config)?;
     let endpoint = format!("https://localhost:{}", address.port());
 
@@ -115,10 +109,7 @@ async fn daemon_accepts_unix_connections_and_owns_socket_lifecycle() -> Result<(
         socket.display(),
     );
     let config = directory.path().join("hardwared-unix.yaml");
-    fs::write(
-        &config,
-        config::hardwared_with_grpc(UNAVAILABLE_CAN, &grpc, 250.0),
-    )?;
+    config::write_hardwared_with_grpc(&config, UNAVAILABLE_CAN, &grpc, 250.0)?;
     let mut daemon = start_daemon(&config)?;
     let endpoint = format!("unix://{}", socket.display());
 

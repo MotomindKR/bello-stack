@@ -96,8 +96,10 @@ has completed.
   when the current lease generation has already submitted a complete command
   whose deadline is still in the future. A missing or expired initial command
   from an otherwise valid `Enabled` state faults the group with cause `start`.
-- **Stop** clears the staged command and sends a damping command once. It leaves
-  the motors enabled and returns the group to `Enabled`.
+- **Stop** clears the staged command and sends a mechanically bounded damping
+  command once. It leaves the motors enabled and returns the group to `Enabled`.
+  If fresh finite feedback is unavailable, safe damping cannot be formed: the
+  daemon sends motor stop frames and latches the group in `Fault`.
 - **Disable** sends Robstride stop frames from active states and returns to
   `Idle`. It does not request fault clearing.
 - **Recover** sends stop frames with the Robstride clear-fault flag, waits for
@@ -137,8 +139,11 @@ Command admission on the group thread verifies, in order:
 4. the sequence is newer than the previous retained sequence for the current
    command state;
 5. the batch names every group motor exactly once and no other motor;
-6. every motor command passes numeric, configured-limit, and position-step
-   policy.
+6. every motor command passes numeric, effective-limit, and position-step
+   policy;
+7. direct and differential targets resolve inside the canonical URDF joint
+   position/velocity envelope, and the full requested impedance torque resolves
+   inside both motor and joint effort limits.
 
 Validation is staged before mutating per-motor command state, so a partially
 valid batch never replaces part of the current command. Sequence tracking is
@@ -158,9 +163,11 @@ rate-limited to one every 40 ms and are evaluated on control ticks, so their
 steady-state rate is capped at 25 Hz but quantized to group ticks and can be
 lower even when the control rate is above 25 Hz.
 
-`Enabled` polls each motor's already-classified status but does not send
-periodic control frames. `Running` first performs the same availability poll and
-checks the command watchdog, then submits one control frame per motor.
+`Enabled` polls each motor's already-classified status and the exact coupled
+differential feedback pose, but does not send periodic control frames.
+`Running` first performs the same availability poll, re-evaluates the retained
+command against current feedback and the mechanical envelope, and checks the
+command watchdog before submitting one control frame per motor.
 `ControlBatcher` holds those frames until it has seen every motor in the logical
 group tick, then enqueues one atomic batch on each affected bus. All buses are
 attempted before an enqueue error is returned.
@@ -185,6 +192,21 @@ model is documented in [Configuration](configuration.md#validation-boundaries).
 Runtime command validation remains in the group and motor-policy boundary
 because it depends on current ownership, state, command age, and feedback. See
 [`control/command_policy.rs`](../components/bello-hardwared/src/control/command_policy.rs).
+
+The scalar policy runs before the mechanical-envelope policy. Direct URDF
+limits narrow the scalar ranges. Differential commands are then transformed as
+a complete pair, so individually valid ankle-motor targets cannot violate
+ankle roll/pitch limits. The torque check evaluates feedforward plus the current
+impedance error. A coupled violation is never independently clamped; it is
+rejected unless one of the affected motors configures `fault` behavior. Motor
+feedback position checks allow one protocol quantization interval at a limit,
+and differential feedback propagates that tolerance through its transmission.
+Safety damping uses the same motor and direct/differential torque envelope. Its
+group-wide gain scale covers every velocity representable by each motor model,
+including the worst signed velocity combinations of a differential, so the
+persistent Type-1 command remains bounded after its initial feedback sample.
+Its measured position is only an inert target (`kp = 0`), so an already
+out-of-range pose does not prevent damping.
 
 ## Motor health and hysteresis
 
@@ -301,9 +323,13 @@ Each group has a default fault response and may override it by cause. The same
 response resolver is used for detected faults, lifecycle-operation failures,
 lease loss, worker panic, and process exit.
 
-- **Damping** sends zero velocity/torque/`kp`, the configured damping `kd`, and
-  the latest measured position as target. If no feedback exists, the target
-  falls back to zero.
+- **Damping** sends zero velocity/torque/`kp` and the latest measured position
+  as an inert target. The configured `kd` values are scaled together as needed
+  so motor torque and direct or differential URDF effort remain valid for every
+  model-representable feedback velocity. Fresh finite position and velocity
+  feedback are required. Missing, stale, or non-finite feedback, or a damping
+  transmission failure, falls back to Robstride stop frames rather than an
+  unvalidated damping command.
 - **Disable** sends Robstride stop frames without requesting fault clearing and
   marks operating feedback as no longer expected.
 

@@ -24,9 +24,22 @@ cargo run -p bello-hardwared -- \
   --config components/bello-hardwared/config/bello.yaml
 ```
 
-The default configuration path is this component's `config/bello.yaml`.
-SocketCAN interfaces and serial-device settings must already exist and match
-the YAML. The daemon does not create CAN links or change their bitrate.
+`--config` is required: hardwared never selects a deployment implicitly. The
+maintained physical deployment is this component's `config/bello.yaml`. It
+selects groups from
+[`descriptions/bello/hardware.yaml`](../../descriptions/bello/hardware.yaml)
+and maps that description's logical buses and serial devices to host names.
+Stable bitrate, host ID, sensor rate, and timeout settings remain in the
+description. Its referenced canonical URDF supplies direct and differential
+joint position, velocity, and effort limits enforced by the daemon. The daemon
+does not create CAN links or change their bitrate.
+
+That physical configuration exposes `lower_body` and `upper_body` for normal
+control, plus an independent `wrist_yaw` group containing `left_arm_7` and
+`right_arm_7`. The separate group lets an application opt into holding those
+otherwise-unactuated motors without changing the 12-coordinate `upper_body`
+contract. The sphere-hand vcan configuration intentionally omits it because
+its emulator does not publish those two motor IDs.
 
 Visualization and recording are deliberately outside this process. External
 tools can subscribe to the daemon's read-only gRPC telemetry stream without
@@ -41,7 +54,10 @@ affecting hardware ownership.
 - The maintained physical-hardware example is [`config/bello.yaml`](config/bello.yaml).
 - The full Bello MuJoCo HIL example is
   [`config/bello-vcan.yaml`](config/bello-vcan.yaml).
-- The minimal two-motor emulator example is [`config/vcan.yaml`](config/vcan.yaml).
+- Bello motor identity and group membership live only in
+  [`descriptions/bello/hardware.yaml`](../../descriptions/bello/hardware.yaml).
+- RobStride protocol limits live only in
+  [`descriptions/robstride/models.yaml`](../../descriptions/robstride/models.yaml).
 - The Rust library intentionally exposes only the `run` and `check` entrypoints;
   shared generated protobuf types live in [`bello-hardware-api`](../bello-hardware-api).
 

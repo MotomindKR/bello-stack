@@ -7,9 +7,9 @@ use tracing_subscriber::EnvFilter;
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct Arguments {
-    /// Unified hardware configuration. Defaults to this component's example config.
+    /// Deployment configuration composed with the canonical hardware description.
     #[arg(short, long)]
-    config: Option<PathBuf>,
+    config: PathBuf,
     /// Parse and validate configuration, then exit without touching hardware.
     #[arg(long)]
     check: bool,
@@ -23,12 +23,9 @@ async fn main() -> Result<()> {
         )
         .init();
     let args = Arguments::parse();
-    let config_path = args
-        .config
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config/bello.yaml"));
     if args.check {
-        bello_hardwared::check(config_path)
+        bello_hardwared::check(args.config)
     } else {
-        bello_hardwared::run(config_path).await
+        bello_hardwared::run(args.config).await
     }
 }

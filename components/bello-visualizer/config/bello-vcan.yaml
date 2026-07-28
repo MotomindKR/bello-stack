@@ -1,11 +1,9 @@
-# Full Bello sphere-hand model for the local Robstride-runner vCAN HIL path.
-# Generate the MJCF first with:
-#   cd ~/bello_mujoco && uv run bello-prepare-assets --config-name visualizer
-mjcf: ../../../../bello_mujoco/assets/generated/visualizer/full_body/mjcf/bello_full_body_viewer.xml
+# Canonical Bello description used by the local MuJoCo-backed vCAN emulator.
+urdf: ../../../descriptions/bello/full_body/urdf/bello_full_body.urdf
 hardware:
   endpoint: http://127.0.0.1:50051
 root:
-  # Simulation ground truth served directly by bello-robstride-runner.
+  # Simulation ground truth served directly by bello-run-emulator.
   source: external_pose
   endpoint: http://127.0.0.1:50052
   reference_frame: odom
@@ -13,9 +11,7 @@ root:
   staleness_ms: 200
 refresh_hz: 60
 
-# Position limits and initial values come directly from the matching MJCF
-# position actuators. These are emulator command dynamics, not approved
-# physical-hardware gains.
+# Command limits come from the live hardwared inventory.
 control_profiles:
   lower_body:
     command_rate_hz: 50

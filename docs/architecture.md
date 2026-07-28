@@ -305,10 +305,12 @@ components/bello-hardware-python/
   tests/                   gRPC behavior and vCAN smoke driver
 
 components/bello-visualizer/
-  src/mjcf.rs              strict flattened-MJCF loader
-  src/transmission.rs      fixed-linear forward/inverse mappings
+  src/transmission.rs      URDF-derived forward/inverse mappings
   src/runtime.rs           telemetry, pose, leases, and command sessions
-  src/scene.rs             main-thread Kiss3d hierarchy
+  src/scene.rs             main-thread URDF Kiss3d hierarchy
+
+components/bello-robot-description/
+  src/lib.rs               shared URDF model, visuals, transmissions, kinematics
 
 components/bello-pose-api/
   proto/                   neutral external-pose streaming contract

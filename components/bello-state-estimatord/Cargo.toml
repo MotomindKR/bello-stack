@@ -3,7 +3,7 @@ name = "bello-state-estimatord"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+license-file.workspace = true
 publish.workspace = true
 
 [dependencies]
@@ -11,6 +11,7 @@ anyhow.workspace = true
 async-stream.workspace = true
 bello-hardware-client.workspace = true
 bello-pose-api.workspace = true
+bello-robot-description.workspace = true
 clap = { workspace = true, features = ["derive"] }
 futures-core.workspace = true
 nalgebra.workspace = true

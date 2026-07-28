@@ -189,8 +189,32 @@ class ImuInfo(_message.Message):
     status: DeviceStatus
     def __init__(self, name: _Optional[str] = ..., serial_device: _Optional[str] = ..., status: _Optional[_Union[DeviceStatus, _Mapping]] = ...) -> None: ...
 
+class MotorLimits(_message.Message):
+    __slots__ = ("position_min", "position_max", "velocity_min", "velocity_max", "torque_min", "torque_max", "kp_min", "kp_max", "kd_min", "kd_max")
+    POSITION_MIN_FIELD_NUMBER: _ClassVar[int]
+    POSITION_MAX_FIELD_NUMBER: _ClassVar[int]
+    VELOCITY_MIN_FIELD_NUMBER: _ClassVar[int]
+    VELOCITY_MAX_FIELD_NUMBER: _ClassVar[int]
+    TORQUE_MIN_FIELD_NUMBER: _ClassVar[int]
+    TORQUE_MAX_FIELD_NUMBER: _ClassVar[int]
+    KP_MIN_FIELD_NUMBER: _ClassVar[int]
+    KP_MAX_FIELD_NUMBER: _ClassVar[int]
+    KD_MIN_FIELD_NUMBER: _ClassVar[int]
+    KD_MAX_FIELD_NUMBER: _ClassVar[int]
+    position_min: float
+    position_max: float
+    velocity_min: float
+    velocity_max: float
+    torque_min: float
+    torque_max: float
+    kp_min: float
+    kp_max: float
+    kd_min: float
+    kd_max: float
+    def __init__(self, position_min: _Optional[float] = ..., position_max: _Optional[float] = ..., velocity_min: _Optional[float] = ..., velocity_max: _Optional[float] = ..., torque_min: _Optional[float] = ..., torque_max: _Optional[float] = ..., kp_min: _Optional[float] = ..., kp_max: _Optional[float] = ..., kd_min: _Optional[float] = ..., kd_max: _Optional[float] = ...) -> None: ...
+
 class MotorInfo(_message.Message):
-    __slots__ = ("name", "coordinate", "group", "address", "model", "direction", "status")
+    __slots__ = ("name", "coordinate", "group", "address", "model", "direction", "status", "limits")
     NAME_FIELD_NUMBER: _ClassVar[int]
     COORDINATE_FIELD_NUMBER: _ClassVar[int]
     GROUP_FIELD_NUMBER: _ClassVar[int]
@@ -198,6 +222,7 @@ class MotorInfo(_message.Message):
     MODEL_FIELD_NUMBER: _ClassVar[int]
     DIRECTION_FIELD_NUMBER: _ClassVar[int]
     STATUS_FIELD_NUMBER: _ClassVar[int]
+    LIMITS_FIELD_NUMBER: _ClassVar[int]
     name: str
     coordinate: str
     group: str
@@ -205,7 +230,8 @@ class MotorInfo(_message.Message):
     model: str
     direction: int
     status: DeviceStatus
-    def __init__(self, name: _Optional[str] = ..., coordinate: _Optional[str] = ..., group: _Optional[str] = ..., address: _Optional[_Union[MotorAddress, _Mapping]] = ..., model: _Optional[str] = ..., direction: _Optional[int] = ..., status: _Optional[_Union[DeviceStatus, _Mapping]] = ...) -> None: ...
+    limits: MotorLimits
+    def __init__(self, name: _Optional[str] = ..., coordinate: _Optional[str] = ..., group: _Optional[str] = ..., address: _Optional[_Union[MotorAddress, _Mapping]] = ..., model: _Optional[str] = ..., direction: _Optional[int] = ..., status: _Optional[_Union[DeviceStatus, _Mapping]] = ..., limits: _Optional[_Union[MotorLimits, _Mapping]] = ...) -> None: ...
 
 class GroupInfo(_message.Message):
     __slots__ = ("name", "control_rate_hz", "state", "motors")

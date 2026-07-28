@@ -6,6 +6,7 @@ mod control;
 mod domain;
 mod hardware;
 mod lease;
+mod mechanics;
 mod telemetry;
 
 pub use app::{check, run};

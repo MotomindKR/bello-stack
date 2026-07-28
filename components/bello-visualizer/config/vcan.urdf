@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="bello_vcan_demo">
+  <link name="base">
+    <visual>
+      <geometry><box size="0.1 0.1 0.4"/></geometry>
+      <material name="base-blue"><color rgba="0.25 0.65 0.9 1"/></material>
+    </visual>
+  </link>
+  <link name="first_link">
+    <visual>
+      <origin xyz="0 0 0.2"/>
+      <geometry><box size="0.08 0.08 0.36"/></geometry>
+      <material name="link-orange"><color rgba="0.9 0.55 0.2 1"/></material>
+    </visual>
+  </link>
+  <link name="second_link">
+    <visual>
+      <origin xyz="0 0 0.18"/>
+      <geometry><box size="0.06 0.06 0.32"/></geometry>
+      <material name="tip-green"><color rgba="0.35 0.8 0.45 1"/></material>
+    </visual>
+  </link>
+  <joint name="emulated_joint_1" type="revolute">
+    <parent link="base"/>
+    <child link="first_link"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1" upper="1" effort="60" velocity="20"/>
+  </joint>
+  <joint name="emulated_joint_2" type="revolute">
+    <origin xyz="0 0 0.4"/>
+    <parent link="first_link"/>
+    <child link="second_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1" upper="1" effort="60" velocity="20"/>
+  </joint>
+</robot>

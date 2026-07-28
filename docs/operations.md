@@ -6,7 +6,7 @@ This guide covers deployment and diagnostics. The complete configuration and
 safety behavior are described in [`configuration.md`](configuration.md) and
 [`control-and-safety.md`](control-and-safety.md); the checked examples are
 [`bello.yaml`](../components/bello-hardwared/config/bello.yaml) and
-[`vcan.yaml`](../components/bello-hardwared/config/vcan.yaml).
+[`bello-vcan.yaml`](../components/bello-hardwared/config/bello-vcan.yaml).
 
 > **Warning:** enabling or starting a physical group can move hardware. Verify
 > the emergency stop, mechanical clearance, actuator IDs/directions, limits,
@@ -32,7 +32,8 @@ Validation is strict: unknown YAML fields, duplicate physical interfaces/ports,
 invalid references, unsupported actuator limits, unsafe timing, and excessive
 CAN utilization are rejected. The configured CAN `bitrate` is used for timing
 and utilization calculations and must match the externally configured physical
-link.
+link. The `--config` argument is always required so deployment selection is
+explicit.
 
 ## Physical startup
 
@@ -78,8 +79,7 @@ sudo ip link add dev vcan0 type vcan
 sudo ip link set dev vcan0 up
 ```
 
-In separate shells, start the emulator and daemon with matching host IDs,
-actuator IDs, directions, and interface names:
+The small checked emulator configuration is a protocol fixture:
 
 ```sh
 cargo run -p robstride-emulator -- \
@@ -88,13 +88,13 @@ cargo run -p robstride-emulator -- \
   --config components/robstride-emulator/config/vcan.yaml
 ```
 
-```sh
-cargo run -p bello-hardwared -- \
-  --config components/bello-hardwared/config/vcan.yaml
-```
+The process-level vCAN tests generate a matching strict hardware description
+and deployment for this fixture; there is no second checked-in robot topology.
+Use the full `bello-vcan.yaml` deployment only with the Bello emulator flow
+later in this guide, which supplies both logical buses and the IMU endpoint.
 
-The emulator is intentionally a thin protocol/integration model, not a robot
-dynamics simulator. Its strict `events` list can inject feedback drop/delay/
+The RobStride emulator is intentionally a thin protocol/integration model, not
+a robot dynamics simulator. Its strict `events` list can inject feedback drop/delay/
 jitter, temperature, fault bits, and mode-status changes. Use the ready-made
 [`faults.yaml`](../components/robstride-emulator/config/faults.yaml), or follow
 the action syntax in the
@@ -119,27 +119,11 @@ The Cargo-native end-to-end test owns its phases deterministically and is the
 preferred regression check; see
 [`development.md`](development.md#host-vcan-integration-test).
 
-## Bello vCAN pose and visualization
+## Bello visualization
 
-The maintained vCAN flow uses `bello-robstride-runner` as its pose provider.
-Prepare the HIL interfaces and viewer asset, then start the runner from
-`~/bello_mujoco`:
-
-```sh
-./scripts/setup_hil.sh
-uv run bello-prepare-assets --config-name visualizer
-uv run bello-robstride-runner headless=true
-```
-
-While the runner owns the terminal, press Enter to release the torso guide; the
-next press restores the simulated home pose and re-engages it. This cycle works
-in headless mode.
-
-The runner publishes exact MuJoCo `odom_from_pelvis_link` ground truth at
-200 Hz and binds PoseService to all host interfaces on port 50052. The Bello
-vCAN hardwared configuration likewise binds plaintext gRPC to all interfaces
-on port 50051. Local clients use loopback addresses; inspect the pose stream
-with:
+The maintained visualizer reads the canonical URDF under
+`descriptions/bello/`, hardware inventory from port 50051, and an optional
+neutral `PoseService` on port 50052. Inspect a configured pose provider with:
 
 ```sh
 grpcurl -plaintext \
@@ -149,9 +133,8 @@ grpcurl -plaintext \
   127.0.0.1:50052 bello.pose.v1.PoseService/WatchPose
 ```
 
-In two more terminals under `~/bello_stack`, start local hardwared and the
-visualizer. The Bello vCAN visualizer configuration points hardware to port
-50051 and runner pose to port 50052 on loopback:
+When the configured SocketCAN, IMU, hardware, and pose providers are available,
+start hardwared and the visualizer in separate terminals:
 
 ```sh
 cargo run -p bello-hardwared -- \
@@ -160,8 +143,9 @@ cargo run -p bello-visualizer -- \
   --config components/bello-visualizer/config/bello-vcan.yaml
 ```
 
-Do not run `bello-state-estimatord` in this vCAN flow because the runner owns
-the same pose port. The estimator remains the provider for physical hardware.
+Both visualizer service endpoints default to localhost. When the providers run
+on another host, use TLS and append `--hardware-endpoint https://HOST:50051`
+and `--pose-endpoint https://HOST:50052`.
 
 If hardware or pose telemetry disconnects or becomes stale, the visualizer
 freezes the last root transform and shows the condition; root tracking never

@@ -1,4 +1,4 @@
-mjcf: vcan.xml
+urdf: vcan.urdf
 hardware:
   endpoint: http://127.0.0.1:50051
 root:

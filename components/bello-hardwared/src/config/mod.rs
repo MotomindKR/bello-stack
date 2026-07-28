@@ -2,5 +2,5 @@ mod model;
 mod resolved;
 mod validate;
 
-pub use model::*;
-pub use resolved::ResolvedTopology;
+pub(crate) use model::*;
+pub(crate) use resolved::ResolvedTopology;

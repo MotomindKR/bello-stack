@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use anyhow::{Result, anyhow, bail};
+use bello_robot_description::RobotDescription;
 
 use super::Config;
 use crate::api::grpc::GrpcSpec;
@@ -11,6 +12,7 @@ use crate::hardware::can::BusSpec;
 use crate::hardware::imu::ImuSpec;
 use crate::hardware::robstride::MotorSpec;
 use crate::hardware::serial::SerialSpec;
+use crate::mechanics::{MechanicalEnvelope, apply_coordinate_limits};
 
 #[derive(Clone, Debug)]
 pub(crate) struct ResolvedMotor {
@@ -19,7 +21,7 @@ pub(crate) struct ResolvedMotor {
 }
 
 #[derive(Clone)]
-pub struct ResolvedTopology {
+pub(crate) struct ResolvedTopology {
     telemetry_capacity: usize,
     grpc: GrpcSpec,
     serial_devices: HashMap<SerialDeviceName, SerialSpec>,
@@ -30,15 +32,19 @@ pub struct ResolvedTopology {
 }
 
 impl ResolvedTopology {
-    pub fn load(path: impl AsRef<Path>) -> Result<Self> {
+    pub(crate) fn load(path: impl AsRef<Path>) -> Result<Self> {
         Self::resolve(Config::load_raw(path)?)
     }
 
-    pub fn resolve(config: Config) -> Result<Self> {
+    pub(crate) fn resolve(config: Config) -> Result<Self> {
         validate_root(&config)?;
         if !(64..=1_000_000).contains(&config.runtime.telemetry_capacity) {
             bail!("runtime.telemetry_capacity must be in 64..=1000000");
         }
+        if config.robot_description.as_os_str().is_empty() {
+            bail!("hardware configuration has no canonical robot description");
+        }
+        let robot_description = RobotDescription::load(&config.robot_description)?;
         let grpc = GrpcSpec::try_from(&config.grpc)?;
 
         let mut serial_devices = HashMap::new();
@@ -99,7 +105,8 @@ impl ResolvedTopology {
         let mut motor_specs = HashMap::new();
         let mut addresses = HashSet::<MotorAddress>::new();
         for raw in &config.motors {
-            let spec = MotorSpec::try_from(raw)?;
+            let mut spec = MotorSpec::try_from(raw)?;
+            apply_coordinate_limits(&robot_description, &mut spec)?;
             let bus = buses.get(&spec.address.bus).ok_or_else(|| {
                 anyhow!(
                     "motor {} refers to unknown bus {}",
@@ -132,7 +139,7 @@ impl ResolvedTopology {
         let mut groups = HashMap::new();
         let mut membership = HashMap::<MotorName, GroupName>::new();
         for raw in &config.motor_groups {
-            let spec = GroupSpec::try_from(raw)?;
+            let mut spec = GroupSpec::try_from(raw)?;
             for motor in &spec.motors {
                 if !motor_specs.contains_key(motor) {
                     bail!("group {} refers to unknown motor {motor}", spec.name);
@@ -141,6 +148,8 @@ impl ResolvedTopology {
                     bail!("motor {motor} belongs to both {owner} and {}", spec.name);
                 }
             }
+            spec.mechanical =
+                MechanicalEnvelope::build(&robot_description, &spec.motors, &motor_specs)?;
             if groups.insert(spec.name.clone(), spec).is_some() {
                 bail!("duplicate group name {}", raw.name);
             }
@@ -173,7 +182,7 @@ impl ResolvedTopology {
         self.telemetry_capacity
     }
 
-    pub fn grpc(&self) -> &GrpcSpec {
+    pub(crate) fn grpc(&self) -> &GrpcSpec {
         &self.grpc
     }
 
@@ -258,4 +267,203 @@ fn validate_bus_utilization(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::control::GroupSpec;
+    use crate::domain::{ImpedanceCommand, SafetyViolation};
+    use crate::hardware::robstride::Feedback;
+
+    fn canonical_topology() -> ResolvedTopology {
+        ResolvedTopology::load(concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml")).unwrap()
+    }
+
+    fn neutral_commands(group: &GroupSpec) -> HashMap<MotorName, ImpedanceCommand> {
+        group
+            .motors
+            .iter()
+            .map(|name| (name.clone(), ImpedanceCommand::default()))
+            .collect()
+    }
+
+    fn neutral_feedback(group: &GroupSpec) -> HashMap<MotorName, Feedback> {
+        group
+            .motors
+            .iter()
+            .map(|name| (name.clone(), Feedback::default()))
+            .collect()
+    }
+
+    #[test]
+    fn canonical_multibus_group_uses_urdf_limits_and_differentials() {
+        let topology = canonical_topology();
+        let lower = topology.groups.get(&GroupName::from("lower_body")).unwrap();
+        let group_buses = lower
+            .motors
+            .iter()
+            .map(|name| topology.motors[name].spec.address.bus.clone())
+            .collect::<HashSet<_>>();
+        assert_eq!(group_buses.len(), 2);
+        assert_eq!(lower.mechanical.differential_count(), 2);
+
+        let waist = &topology.motors[&MotorName::from("waist_yaw")].spec;
+        assert_eq!(waist.limits.position_min, -0.5);
+        assert_eq!(waist.limits.position_max, 0.5);
+        assert_eq!(waist.health.safe_position_min, -0.5);
+        assert_eq!(waist.health.safe_position_max, 0.5);
+
+        let ankle = &topology.motors[&MotorName::from("left_ankle_1")].spec;
+        assert!((ankle.limits.position_min + 1.1345).abs() < 1.0e-9);
+        assert!((ankle.limits.position_max - 0.6109).abs() < 1.0e-9);
+        assert_eq!(ankle.limits.torque_min, -36.0);
+        assert_eq!(ankle.limits.torque_max, 36.0);
+    }
+
+    #[test]
+    fn direct_envelope_checks_position_velocity_full_impedance_and_feedback() {
+        let topology = canonical_topology();
+        let lower = topology.groups.get(&GroupName::from("lower_body")).unwrap();
+        let motor = MotorName::from("left_hip_pitch");
+        let feedback = neutral_feedback(lower);
+        let mut commands = neutral_commands(lower);
+
+        commands.get_mut(&motor).unwrap().position = 2.0;
+        let position = lower
+            .mechanical
+            .validate_commands(&commands, &feedback)
+            .unwrap_err();
+        assert_eq!(position.violation, SafetyViolation::PositionLimit);
+        assert!(position.detail.contains("left_hip_pitch_joint"));
+
+        commands.get_mut(&motor).unwrap().position = 0.0;
+        commands.get_mut(&motor).unwrap().velocity = 31.0;
+        let velocity = lower
+            .mechanical
+            .validate_commands(&commands, &feedback)
+            .unwrap_err();
+        assert_eq!(velocity.violation, SafetyViolation::VelocityLimit);
+        assert!(velocity.detail.contains("left_hip_pitch_joint"));
+
+        commands.get_mut(&motor).unwrap().velocity = 0.0;
+        commands.get_mut(&motor).unwrap().position = 1.3;
+        commands.get_mut(&motor).unwrap().kp = 100.0;
+        let torque = lower
+            .mechanical
+            .validate_commands(&commands, &feedback)
+            .unwrap_err();
+        assert_eq!(torque.violation, SafetyViolation::TorqueLimit);
+        assert!(torque.detail.contains("impedance torque request"));
+
+        commands.insert(motor.clone(), ImpedanceCommand::default());
+        let mut incomplete_feedback = feedback;
+        incomplete_feedback.remove(&motor);
+        let missing = lower
+            .mechanical
+            .validate_commands(&commands, &incomplete_feedback)
+            .unwrap_err();
+        assert_eq!(missing.violation, SafetyViolation::TorqueLimit);
+        assert!(missing.detail.contains("without fresh motor feedback"));
+
+        commands.remove(&motor);
+        let incomplete = lower
+            .mechanical
+            .validate_commands(&commands, &incomplete_feedback)
+            .unwrap_err();
+        assert!(incomplete.detail.contains("incomplete mechanical command"));
+    }
+
+    #[test]
+    fn differential_envelope_checks_position_velocity_and_full_impedance() {
+        let topology = canonical_topology();
+        let lower = topology.groups.get(&GroupName::from("lower_body")).unwrap();
+        let feedback = neutral_feedback(lower);
+        let mut commands = neutral_commands(lower);
+        let first = MotorName::from("left_ankle_1");
+        let second = MotorName::from("left_ankle_2");
+
+        commands.get_mut(&first).unwrap().position = 0.2;
+        commands.get_mut(&second).unwrap().position = 0.2;
+        let position = lower
+            .mechanical
+            .validate_commands(&commands, &feedback)
+            .unwrap_err();
+        assert_eq!(position.violation, SafetyViolation::PositionLimit);
+        assert!(position.detail.contains("left_ankle_roll_joint"));
+
+        commands.get_mut(&first).unwrap().position = 0.0;
+        commands.get_mut(&second).unwrap().position = 0.0;
+        commands.get_mut(&first).unwrap().velocity = 31.0;
+        commands.get_mut(&second).unwrap().velocity = 31.0;
+        let velocity = lower
+            .mechanical
+            .validate_commands(&commands, &feedback)
+            .unwrap_err();
+        assert_eq!(velocity.violation, SafetyViolation::VelocityLimit);
+        assert!(velocity.detail.contains("left_ankle_roll_joint"));
+
+        for motor in [&first, &second] {
+            let command = commands.get_mut(motor).unwrap();
+            command.position = 0.08;
+            command.velocity = 0.0;
+            command.kp = 300.0;
+        }
+        let torque = lower
+            .mechanical
+            .validate_commands(&commands, &feedback)
+            .unwrap_err();
+        assert_eq!(torque.violation, SafetyViolation::TorqueLimit);
+        assert!(torque.detail.contains("left_ankle_roll_joint"));
+    }
+
+    #[test]
+    fn damping_is_bounded_for_direct_and_differential_model_velocity_ranges() {
+        let topology = canonical_topology();
+
+        let wrist = topology.groups.get(&GroupName::from("wrist_yaw")).unwrap();
+        let left_wrist = MotorName::from("left_arm_7");
+        let wrist_feedback = neutral_feedback(wrist);
+        let wrist_damping = wrist.mechanical.damping_commands(&wrist_feedback).unwrap();
+        assert!((wrist_damping[&left_wrist].kd - 0.11).abs() < 1.0e-12);
+        let mut maximum_wrist_feedback = wrist_feedback;
+        maximum_wrist_feedback
+            .get_mut(&left_wrist)
+            .unwrap()
+            .velocity = 50.0;
+        wrist
+            .mechanical
+            .validate_commands(&wrist_damping, &maximum_wrist_feedback)
+            .unwrap();
+
+        let lower = topology.groups.get(&GroupName::from("lower_body")).unwrap();
+        let first = MotorName::from("left_ankle_1");
+        let second = MotorName::from("left_ankle_2");
+        let lower_feedback = neutral_feedback(lower);
+        let ankle_damping = lower.mechanical.damping_commands(&lower_feedback).unwrap();
+        assert!((ankle_damping[&first].kd - 0.4).abs() < 1.0e-12);
+        assert!((ankle_damping[&second].kd - 0.4).abs() < 1.0e-12);
+        let mut maximum_ankle_feedback = lower_feedback.clone();
+        maximum_ankle_feedback.get_mut(&first).unwrap().velocity = 50.0;
+        maximum_ankle_feedback.get_mut(&second).unwrap().velocity = 50.0;
+        lower
+            .mechanical
+            .validate_commands(&ankle_damping, &maximum_ankle_feedback)
+            .unwrap();
+
+        let mut missing = lower_feedback.clone();
+        missing.remove(&first);
+        let error = lower.mechanical.damping_commands(&missing).unwrap_err();
+        assert!(error.detail.contains("without fresh motor feedback"));
+
+        let mut nonfinite = lower_feedback;
+        nonfinite.get_mut(&first).unwrap().velocity = f64::NAN;
+        let error = lower.mechanical.damping_commands(&nonfinite).unwrap_err();
+        assert_eq!(
+            error.violation,
+            SafetyViolation::NonFinite {
+                field: "feedback velocity"
+            }
+        );
+    }
 }
