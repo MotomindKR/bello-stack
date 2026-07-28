@@ -39,6 +39,41 @@ control_profiles:
 }
 
 #[test]
+fn normalizes_external_pose_model_root_transform() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("visualizer.yaml");
+    fs::write(
+        &path,
+        r#"
+urdf: model.urdf
+hardware:
+  endpoint: http://127.0.0.1:50051
+root:
+  source: external_pose
+  endpoint: http://127.0.0.1:50052
+  reference_frame: odom
+  tracked_frame: pelvis_link
+  tracked_from_model_root:
+    orientation_xyzw: [0.0, 0.0, 0.0, 2.0]
+"#,
+    )
+    .unwrap();
+
+    let config = VisualizerConfig::load(path).unwrap();
+    let RootConfig::ExternalPose {
+        tracked_from_model_root,
+        ..
+    } = config.root
+    else {
+        panic!("expected external pose root");
+    };
+    assert_eq!(
+        tracked_from_model_root.orientation_xyzw,
+        [0.0, 0.0, 0.0, 1.0]
+    );
+}
+
+#[test]
 fn rejects_partial_tls_identity_and_unsafe_gain_bounds() {
     let directory = tempdir().unwrap();
     let path = directory.path().join("visualizer.yaml");
@@ -77,13 +112,16 @@ control_profiles:
 fn maintained_bello_vcan_configuration_loads_the_canonical_description() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("config/bello-vcan.yaml");
     let config = VisualizerConfig::load(path).unwrap();
+    assert_eq!(config.hardware.endpoint, "http://127.0.0.1:50051");
     match &config.root {
         RootConfig::ExternalPose {
+            endpoint,
             reference_frame,
             tracked_frame,
             staleness_ms,
             ..
         } => {
+            assert_eq!(endpoint, "http://127.0.0.1:50052");
             assert_eq!(reference_frame, "odom");
             assert_eq!(tracked_frame, "pelvis_link");
             assert_eq!(*staleness_ms, 200);

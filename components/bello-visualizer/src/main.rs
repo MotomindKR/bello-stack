@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use bello_hardware_client::GroupState;
+use bello_visualizer::config::RootConfig;
 use bello_visualizer::diagnostics::DiagnosticsUi;
 use bello_visualizer::editor::{EditorMode, GroupEditor};
 use bello_visualizer::runtime::{ControlStatus, DisplaySnapshot, RuntimeHandle};
@@ -23,6 +24,12 @@ enum VisualizerTab {
 struct Arguments {
     #[arg(long, value_name = "YAML")]
     config: PathBuf,
+    /// Override the hardwared endpoint from the YAML.
+    #[arg(long)]
+    hardware_endpoint: Option<String>,
+    /// Override the external PoseService endpoint from the YAML.
+    #[arg(long)]
+    pose_endpoint: Option<String>,
 }
 
 #[kiss3d::main]
@@ -41,7 +48,22 @@ async fn main() {
 
 async fn run() -> anyhow::Result<()> {
     let arguments = Arguments::parse();
-    let config = VisualizerConfig::load(&arguments.config)?;
+    let mut config = VisualizerConfig::load(&arguments.config)?;
+    if let Some(endpoint) = arguments.hardware_endpoint {
+        config.hardware.endpoint = endpoint;
+    }
+    if let Some(endpoint) = arguments.pose_endpoint {
+        match &mut config.root {
+            RootConfig::ExternalPose {
+                endpoint: configured,
+                ..
+            } => *configured = endpoint,
+            RootConfig::Fixed { .. } => {
+                anyhow::bail!("--pose-endpoint requires root.source: external_pose")
+            }
+        }
+    }
+    config.validate()?;
     let description = RobotDescription::load(&config.urdf)?;
     let profile_configs = config.control_profiles.clone();
     let runtime = RuntimeHandle::spawn(config, description.clone())?;
@@ -553,7 +575,8 @@ fn editor_ui(
                             editable,
                             kiss3d::egui::Slider::new(
                                 &mut editor.model_velocity[index],
-                                editor.profile.velocity.min..=editor.profile.velocity.max,
+                                editor.joint_velocity_bounds[index].min
+                                    ..=editor.joint_velocity_bounds[index].max,
                             )
                             .text("velocity"),
                         )
@@ -563,8 +586,8 @@ fn editor_ui(
                             editable,
                             kiss3d::egui::Slider::new(
                                 &mut editor.model_effort[index],
-                                editor.profile.torque_feedforward.min
-                                    ..=editor.profile.torque_feedforward.max,
+                                editor.joint_effort_bounds[index].min
+                                    ..=editor.joint_effort_bounds[index].max,
                             )
                             .text("effort ff"),
                         )

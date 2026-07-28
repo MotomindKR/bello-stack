@@ -32,7 +32,8 @@ Validation is strict: unknown YAML fields, duplicate physical interfaces/ports,
 invalid references, unsupported actuator limits, unsafe timing, and excessive
 CAN utilization are rejected. The configured CAN `bitrate` is used for timing
 and utilization calculations and must match the externally configured physical
-link.
+link. The `--config` argument is always required so deployment selection is
+explicit.
 
 ## Physical startup
 
@@ -141,6 +142,10 @@ cargo run -p bello-hardwared -- \
 cargo run -p bello-visualizer -- \
   --config components/bello-visualizer/config/bello-vcan.yaml
 ```
+
+Both visualizer service endpoints default to localhost. When the providers run
+on another host, append `--hardware-endpoint http://HOST:50051` and
+`--pose-endpoint http://HOST:50052`.
 
 If hardware or pose telemetry disconnects or becomes stale, the visualizer
 freezes the last root transform and shows the condition; root tracking never

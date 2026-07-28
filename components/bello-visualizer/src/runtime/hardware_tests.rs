@@ -760,10 +760,6 @@ fn profile() -> ResolvedGroupControlProfile {
         validity_ms: 90,
         telemetry_staleness_ms: 200,
         position_slew_rate: 0.5,
-        velocity: bounds(-5.0, 5.0, 0.125),
-        torque_feedforward: bounds(-8.0, 8.0, 0.25),
-        kp: bounds(0.0, 100.0, 20.0),
-        kd: bounds(0.0, 10.0, 1.5),
         coordinates: BTreeMap::from([
             (COORDINATE_A.into(), coordinate_profile()),
             (COORDINATE_B.into(), coordinate_profile()),

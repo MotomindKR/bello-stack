@@ -12,11 +12,23 @@ cargo run -p bello-visualizer -- \
   --config components/bello-visualizer/config/bello-vcan.yaml
 ```
 
-The configured hardware and pose services must already be reachable. The
-application starts monitor-only. Select groups and enable **Commanding** to
-acquire their leases, enable them, and start control. Disabling the toggle
-stops, disables, and releases every owned group while monitoring continues.
-Fault recovery is always an explicit per-group action.
+The maintained configuration uses localhost for both services. Override them
+without editing the YAML when they run on another host:
+
+```sh
+cargo run -p bello-visualizer -- \
+  --config components/bello-visualizer/config/bello-vcan.yaml \
+  --hardware-endpoint http://robot.local:50051 \
+  --pose-endpoint http://robot.local:50052
+```
+
+`--pose-endpoint` requires `root.source: external_pose`. The configured
+TLS material, pose frame names, and staleness remain YAML-owned when an
+endpoint is overridden. The configured hardware and pose services must already
+be reachable. The application starts monitor-only. Select groups and enable
+**Commanding** to acquire their leases, enable them, and start control.
+Disabling the toggle stops, disables, and releases every owned group while
+monitoring continues. Fault recovery is always an explicit per-group action.
 
 ## Configuration
 
@@ -42,14 +54,17 @@ Unknown, duplicate, or underdetermined mappings are rejected.
 Each command session seeds position from fresh feedback and restores the
 profile defaults for velocity, feed-forward torque, and gains. When a group is
 not commanded, both editor views remain read-only and follow fresh feedback.
+The model-space velocity and effort sliders use conservative transmission-aware
+bounds, so every slider combination remains inside all actuator limits.
 Position is slew-limited in the background command loop.
 
 ## Root pose and diagnostics
 
 With `root.source: external_pose`, samples are
 `reference_from_tracked`; `tracked_from_model_root` is composed only for
-display. A stale or disconnected pose stream freezes the last root transform
-and never changes command or safety behavior.
+display. Configured quaternions are normalized when the YAML is loaded. A stale
+or disconnected pose stream freezes the last root transform and never changes
+command or safety behavior.
 
 The diagnostics window shows transport lifecycle, motor inventory and limits,
 motor/group/IMU telemetry, command state, faults, sample ages, and a bounded

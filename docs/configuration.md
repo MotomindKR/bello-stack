@@ -5,9 +5,9 @@
 `bello-hardwared` reads a deployment YAML and the hardware description it
 references, validates both without opening hardware, and resolves them into the
 topology used for the lifetime of the process. The description owns stable
-logical buses, motor identity, and group membership. The deployment selects
-groups and binds transports. Neither document nor TLS certificates are
-hot-reloaded.
+logical buses, motor identity, group membership, and a reference to the
+canonical URDF. The deployment selects groups and binds transports. Neither
+document nor TLS certificates are hot-reloaded.
 
 Validate a file before deployment with:
 
@@ -20,6 +20,8 @@ cargo run -p bello-hardwared -- \
 does not prove that an interface or device is present, accessible, or configured
 to match the host. CAN and serial connectivity is opened asynchronously; an
 unavailable transport normally appears as reconnecting after process startup.
+`--config` is required for both paths; the daemon never selects a deployment
+file implicitly.
 
 The maintained examples are:
 
@@ -51,6 +53,16 @@ Unknown fields are rejected at every YAML object boundary. This catches
 misspelled keys instead of silently applying a default. Relative description
 paths resolve from the deployment file. Unknown or duplicate groups, missing or
 unused bus mappings, and incomplete description ownership are rejected.
+
+The hardware description must name its robot description:
+
+```yaml
+robot_description: full_body/urdf/bello_full_body.urdf
+```
+
+That path resolves from the hardware-description file. Every controlled
+coordinate must resolve to either a movable URDF joint or one actuator
+coordinate of a complete differential transmission.
 
 ### `runtime`
 
@@ -229,7 +241,7 @@ motors:
       temperature_recovery_c: 75.0
       temperature_recovery_duration_ms: 2000
     command_policy:
-      maximum_position_step: 0.5
+      maximum_position_step: 0.05
       limit: clamp
       position_step: fault
     fault_damping_kd: 2.0
@@ -239,10 +251,19 @@ motors:
 `bus` must name a declared logical bus. The `(bus, id)` address is unique, and a motor
 ID cannot equal that bus's `host_id`. `direction` is `1` or `-1`.
 
-The selected Robstride `model` supplies physical velocity, torque, and gain
-caps. Optional `limits` may only narrow those caps. Position command limits
-must be ordered and remain within the Type-1 protocol position span. The
-configured safe feedback range must contain the command position range.
+The selected Robstride `model` supplies protocol velocity, torque, and gain
+caps. The URDF supplies the robot-coordinate position, velocity, and effort
+envelope. The daemon intersects those sources, and optional `limits` may only
+narrow the result. Position command limits must be ordered and remain within
+the Type-1 protocol position span. The configured safe feedback range must
+contain the command position range; its effective range is also narrowed to
+the URDF coordinate envelope. Inventory reports these effective command
+limits, not the raw protocol span.
+
+For an asymmetric model range, `direction: -1` reverses and negates the range
+before it is exposed in robot coordinates. `velocity_abs` and `torque_abs`
+then intersect each side independently, so an absolute cap may narrow only the
+larger side.
 
 Supported model names are `ROBSTRIDE_00` through `ROBSTRIDE_06`. Their
 different velocity, torque, `kp`, and `kd` capabilities are defined centrally
@@ -257,11 +278,24 @@ fault remains latched until explicit recovery.
 
 Command policy behavior values are `clamp`, `reject`, and `fault`. The fault
 damping gain must be positive and no greater than the effective motor `kd`
-limit. `maximum_position_step` compares the first target of a lease generation
+limit. At runtime, all gains in a group are scaled down together when needed to
+keep persistent damping torque within the motor and URDF mechanical envelope
+over the full model feedback-velocity range. `maximum_position_step` compares
+the first target of a lease generation
 with fresh measured feedback and subsequent targets with the previously
 accepted target. Model-dependent bounds are intentionally documented in
 [`hardware/robstride/spec.rs`](../components/bello-hardwared/src/hardware/robstride/spec.rs)
 rather than duplicated here.
+
+Direct joints use their URDF limits directly. Differential actuator
+coordinates receive conservative independent ranges for inventory and scalar
+admission, then every complete group command is transformed into joint space
+and checked against the exact coupled position, velocity, and effort limits.
+The effort check includes the requested impedance torque
+`tau_ff + kp * position_error + kd * velocity_error`. Coupled or
+impedance-derived violations are rejected rather than component-wise clamped,
+because independent clamping does not preserve a differential request. The
+same check runs before every retained command is transmitted.
 
 ### Hardware-description `motor_groups`
 
@@ -385,8 +419,13 @@ the wrist-yaw group because the sphere-hand emulator does not expose IDs 37 and
 The visualizer accepts one independent YAML file containing a local URDF path,
 hardware endpoint/TLS settings, fixed or externally tracked root configuration,
 refresh rate, and optional group control profiles. Relative URDF and certificate
-paths resolve from the YAML directory. The maintained
-example is [`config/vcan.yaml`](../components/bello-visualizer/config/vcan.yaml).
+paths resolve from the YAML directory. The maintained full-Bello example is
+[`config/bello-vcan.yaml`](../components/bello-visualizer/config/bello-vcan.yaml);
+its hardware and pose endpoints default to localhost. Use
+`--hardware-endpoint` and `--pose-endpoint` to redirect those services without
+editing the YAML. The latter is valid only with `root.source: external_pose`.
+The adjacent [`config/vcan.yaml`](../components/bello-visualizer/config/vcan.yaml)
+and `vcan.urdf` are a minimal two-joint UI fixture.
 
 Control is unavailable unless a selected group has an explicit profile.
 Hardwared inventory supplies group membership, coordinate names, and hard

@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use nalgebra::{DMatrix, DVector};
+
 use crate::config::{BoundedDefault, ResolvedGroupControlProfile};
 use crate::runtime::{CoordinateCommand, DisplaySnapshot};
 use crate::{RobotDescription, Transmission};
@@ -16,6 +18,8 @@ pub struct GroupEditor {
     pub profile: ResolvedGroupControlProfile,
     pub transmission: Transmission,
     pub joint_position_bounds: Vec<BoundedDefault>,
+    pub joint_velocity_bounds: Vec<BoundedDefault>,
+    pub joint_effort_bounds: Vec<BoundedDefault>,
     pub actuator: BTreeMap<String, CoordinateCommand>,
     pub model_position: Vec<f64>,
     pub model_velocity: Vec<f64>,
@@ -46,6 +50,38 @@ impl GroupEditor {
                 })
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
+        let coordinate_velocity_bounds = transmission
+            .coordinate_names()
+            .iter()
+            .map(|name| profile.coordinates[name].velocity)
+            .collect::<Vec<_>>();
+        let coordinate_velocity_default = coordinate_velocity_bounds
+            .iter()
+            .map(|bounds| bounds.default)
+            .collect::<Vec<_>>();
+        let joint_velocity_default =
+            transmission.coordinate_velocity_to_joint(&coordinate_velocity_default)?;
+        let joint_velocity_bounds = conservative_joint_bounds(
+            transmission.forward_matrix(),
+            &joint_velocity_default,
+            &coordinate_velocity_bounds,
+        )?;
+        let coordinate_effort_bounds = transmission
+            .coordinate_names()
+            .iter()
+            .map(|name| profile.coordinates[name].torque_feedforward)
+            .collect::<Vec<_>>();
+        let coordinate_effort_default = coordinate_effort_bounds
+            .iter()
+            .map(|bounds| bounds.default)
+            .collect::<Vec<_>>();
+        let joint_effort_default =
+            transmission.coordinate_effort_to_joint(&coordinate_effort_default)?;
+        let joint_effort_bounds = conservative_joint_bounds(
+            transmission.model_effort_to_coordinate_matrix(),
+            &joint_effort_default,
+            &coordinate_effort_bounds,
+        )?;
         let actuator = profile
             .coordinates
             .iter()
@@ -66,6 +102,8 @@ impl GroupEditor {
             profile,
             transmission,
             joint_position_bounds,
+            joint_velocity_bounds,
+            joint_effort_bounds,
             actuator,
             model_position: Vec::new(),
             model_velocity: Vec::new(),
@@ -176,6 +214,8 @@ impl GroupEditor {
     }
 
     pub fn sync_actuator_from_model(&mut self) -> anyhow::Result<()> {
+        clamp_values(&mut self.model_velocity, &self.joint_velocity_bounds);
+        clamp_values(&mut self.model_effort, &self.joint_effort_bounds);
         let position = self
             .transmission
             .joint_to_coordinate(&self.model_position)?;
@@ -204,6 +244,82 @@ impl GroupEditor {
         }
         Ok(())
     }
+}
+
+fn clamp_values(values: &mut [f64], bounds: &[BoundedDefault]) {
+    for (value, bounds) in values.iter_mut().zip(bounds) {
+        *value = value.clamp(bounds.min, bounds.max);
+    }
+}
+
+fn conservative_joint_bounds(
+    mapping: &DMatrix<f64>,
+    joint_default: &[f64],
+    coordinate_bounds: &[BoundedDefault],
+) -> anyhow::Result<Vec<BoundedDefault>> {
+    if mapping.ncols() != joint_default.len() || mapping.nrows() != coordinate_bounds.len() {
+        anyhow::bail!("transmission bounds do not match the mapping dimensions");
+    }
+    let default_coordinates = mapping * DVector::from_column_slice(joint_default);
+    for (index, (value, bounds)) in default_coordinates
+        .iter()
+        .zip(coordinate_bounds)
+        .enumerate()
+    {
+        if *value < bounds.min || *value > bounds.max {
+            anyhow::bail!(
+                "transmission default for coordinate {} is outside its live limits",
+                index
+            );
+        }
+    }
+    let contributors = (0..mapping.nrows())
+        .map(|row| {
+            (0..mapping.ncols())
+                .filter(|column| mapping[(row, *column)] != 0.0)
+                .count()
+        })
+        .collect::<Vec<_>>();
+    let mut result = Vec::with_capacity(mapping.ncols());
+    for column in 0..mapping.ncols() {
+        let mut minimum_delta = f64::NEG_INFINITY;
+        let mut maximum_delta = f64::INFINITY;
+        for row in 0..mapping.nrows() {
+            let coefficient = mapping[(row, column)];
+            if coefficient == 0.0 {
+                continue;
+            }
+            let share = contributors[row] as f64;
+            let lower_slack = default_coordinates[row] - coordinate_bounds[row].min;
+            let upper_slack = coordinate_bounds[row].max - default_coordinates[row];
+            let (lower, upper) = if coefficient > 0.0 {
+                (
+                    -lower_slack / (share * coefficient),
+                    upper_slack / (share * coefficient),
+                )
+            } else {
+                (
+                    -upper_slack / (share * -coefficient),
+                    lower_slack / (share * -coefficient),
+                )
+            };
+            minimum_delta = minimum_delta.max(lower);
+            maximum_delta = maximum_delta.min(upper);
+        }
+        if !minimum_delta.is_finite() || !maximum_delta.is_finite() || minimum_delta > maximum_delta
+        {
+            anyhow::bail!(
+                "model coordinate {} has no conservative live actuator bounds",
+                column
+            );
+        }
+        result.push(BoundedDefault {
+            min: joint_default[column] + minimum_delta,
+            max: joint_default[column] + maximum_delta,
+            default: joint_default[column],
+        });
+    }
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -305,6 +421,44 @@ mod tests {
         )
         .unwrap();
         let mut editor = GroupEditor::new(&description, profile).unwrap();
+        for first in [
+            editor.joint_velocity_bounds[0].min,
+            editor.joint_velocity_bounds[0].max,
+        ] {
+            for second in [
+                editor.joint_velocity_bounds[1].min,
+                editor.joint_velocity_bounds[1].max,
+            ] {
+                let coordinates = editor
+                    .transmission
+                    .joint_velocity_to_coordinate(&[first, second])
+                    .unwrap();
+                assert!(
+                    coordinates
+                        .iter()
+                        .all(|value| (-100.0..=100.0).contains(value))
+                );
+            }
+        }
+        for first in [
+            editor.joint_effort_bounds[0].min,
+            editor.joint_effort_bounds[0].max,
+        ] {
+            for second in [
+                editor.joint_effort_bounds[1].min,
+                editor.joint_effort_bounds[1].max,
+            ] {
+                let coordinates = editor
+                    .transmission
+                    .joint_effort_to_coordinate(&[first, second])
+                    .unwrap();
+                assert!(
+                    coordinates
+                        .iter()
+                        .all(|value| (-100.0..=100.0).contains(value))
+                );
+            }
+        }
         editor.model_position = vec![2.0, 3.0];
         editor.model_velocity = vec![4.0, 5.0];
         editor.model_effort = vec![6.0, 8.0];
@@ -319,6 +473,14 @@ mod tests {
         assert_eq!(editor.actuator["motor_2"].kd, 1.0);
         editor.sync_model_from_actuator().unwrap();
         assert_eq!(editor.model_position, [2.0, 3.0]);
+
+        editor.model_velocity = vec![f64::NEG_INFINITY, f64::INFINITY];
+        editor.model_effort = vec![f64::NEG_INFINITY, f64::INFINITY];
+        editor.sync_actuator_from_model().unwrap();
+        assert!(editor.actuator.values().all(|target| {
+            (-100.0..=100.0).contains(&target.velocity)
+                && (-100.0..=100.0).contains(&target.torque_feedforward)
+        }));
 
         let feedback = |coordinate: &str, position: f64| crate::runtime::DisplayMotor {
             motor: format!("{coordinate}_motor"),

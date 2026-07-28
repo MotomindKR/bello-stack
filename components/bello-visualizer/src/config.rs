@@ -148,10 +148,6 @@ pub struct ResolvedGroupControlProfile {
     pub validity_ms: u64,
     pub telemetry_staleness_ms: u64,
     pub position_slew_rate: f64,
-    pub velocity: BoundedDefault,
-    pub torque_feedforward: BoundedDefault,
-    pub kp: BoundedDefault,
-    pub kd: BoundedDefault,
     pub coordinates: BTreeMap<String, CoordinateControlProfile>,
 }
 
@@ -218,8 +214,23 @@ impl VisualizerConfig {
         if let RootConfig::ExternalPose { tls, .. } = &mut config.root {
             resolve_tls(tls, base);
         }
+        config.normalize_transforms()?;
         config.validate()?;
         Ok(config)
+    }
+
+    fn normalize_transforms(&mut self) -> Result<(), ConfigError> {
+        let (transform, context) = match &mut self.root {
+            RootConfig::Fixed { transform } => (transform, "fixed root transform"),
+            RootConfig::ExternalPose {
+                tracked_from_model_root,
+                ..
+            } => (tracked_from_model_root, "tracked_from_model_root"),
+        };
+        *transform = transform
+            .checked(context)
+            .map_err(|error| ConfigError::Invalid(error.to_string()))?;
+        Ok(())
     }
 
     pub fn validate(&self) -> Result<(), ConfigError> {
@@ -398,46 +409,11 @@ impl GroupControlProfile {
                 "cannot resolve a control profile without hardware coordinates".into(),
             ));
         }
-        let common =
-            |field: fn(&CoordinateControlProfile) -> BoundedDefault, default: f64, name: &str| {
-                let min = resolved
-                    .values()
-                    .map(field)
-                    .map(|value| value.min)
-                    .fold(f64::NEG_INFINITY, f64::max);
-                let max = resolved
-                    .values()
-                    .map(field)
-                    .map(|value| value.max)
-                    .fold(f64::INFINITY, f64::min);
-                if min > max || default < min || default > max {
-                    return Err(ConfigError::Invalid(format!(
-                        "group has no common live {name} range containing default {default}"
-                    )));
-                }
-                Ok(BoundedDefault { min, max, default })
-            };
-        let velocity = common(
-            |profile| profile.velocity,
-            self.velocity.default,
-            "velocity",
-        )?;
-        let torque_feedforward = common(
-            |profile| profile.torque_feedforward,
-            self.torque_feedforward.default,
-            "torque_feedforward",
-        )?;
-        let kp = common(|profile| profile.kp, self.kp.default, "kp")?;
-        let kd = common(|profile| profile.kd, self.kd.default, "kd")?;
         Ok(ResolvedGroupControlProfile {
             command_rate_hz: self.command_rate_hz,
             validity_ms: self.validity_ms,
             telemetry_staleness_ms: self.telemetry_staleness_ms,
             position_slew_rate: self.position_slew_rate,
-            velocity,
-            torque_feedforward,
-            kp,
-            kd,
             coordinates: resolved,
         })
     }

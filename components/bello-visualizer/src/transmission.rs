@@ -152,6 +152,10 @@ impl Transmission {
         &self.forward
     }
 
+    pub(crate) fn model_effort_to_coordinate_matrix(&self) -> &DMatrix<f64> {
+        &self.model_effort_to_coordinate
+    }
+
     pub fn joint_to_coordinate(&self, values: &[f64]) -> Result<Vec<f64>, TransmissionError> {
         let values = self.multiply_vector(&self.forward, values)?;
         Ok((values + &self.coordinate_offset).iter().copied().collect())

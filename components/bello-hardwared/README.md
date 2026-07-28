@@ -24,11 +24,15 @@ cargo run -p bello-hardwared -- \
   --config components/bello-hardwared/config/bello.yaml
 ```
 
-The default deployment path is this component's `config/bello.yaml`. It selects
-groups from [`descriptions/bello/hardware.yaml`](../../descriptions/bello/hardware.yaml)
+`--config` is required: hardwared never selects a deployment implicitly. The
+maintained physical deployment is this component's `config/bello.yaml`. It
+selects groups from
+[`descriptions/bello/hardware.yaml`](../../descriptions/bello/hardware.yaml)
 and maps that description's logical buses and serial devices to host names.
 Stable bitrate, host ID, sensor rate, and timeout settings remain in the
-description. The daemon does not create CAN links or change their bitrate.
+description. Its referenced canonical URDF supplies direct and differential
+joint position, velocity, and effort limits enforced by the daemon. The daemon
+does not create CAN links or change their bitrate.
 
 That physical configuration exposes `lower_body` and `upper_body` for normal
 control, plus an independent `wrist_yaw` group containing `left_arm_7` and
