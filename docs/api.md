@@ -16,7 +16,9 @@ same robot, group, complete-frame, renewed-session, and latest-state concepts
 over generated blocking gRPC bindings.
 
 The Rust client's `Robot` inventory exposes buses, serial devices, motors,
-groups, and IMUs with their initial status. `RobotStates` aggregates live motor,
+groups, and IMUs with their initial status. Each motor also carries the daemon's
+resolved coordinate-space position, velocity, torque, `kp`, and `kd` command
+limits. `RobotStates` aggregates live motor,
 group, IMU, component-health, and command-policy telemetry; the visualizer uses
 these high-level interfaces rather than matching protobuf payloads itself.
 `RobotState::last_change()` identifies the exact aggregate entry changed by an

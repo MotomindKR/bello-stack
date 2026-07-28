@@ -133,6 +133,18 @@ impl HardwareService for FakeHardware {
                     detail: "motor online".into(),
                     transition_count: 1,
                 }),
+                limits: Some(bello_hardware_api::MotorLimits {
+                    position_min: -1.0,
+                    position_max: 1.0,
+                    velocity_min: -2.0,
+                    velocity_max: 2.0,
+                    torque_min: -3.0,
+                    torque_max: 3.0,
+                    kp_min: 0.0,
+                    kp_max: 100.0,
+                    kd_min: 0.0,
+                    kd_max: 10.0,
+                }),
             }],
             serial_devices: vec![SerialDeviceInfo {
                 name: "test_serial".into(),

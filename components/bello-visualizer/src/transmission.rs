@@ -1,15 +1,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
-use mjcf_rs::body::JointType;
 use nalgebra::{DMatrix, DVector};
 use thiserror::Error;
 
-use crate::Model;
+use crate::RobotDescription;
 
 #[derive(Debug, Error, PartialEq)]
 pub enum TransmissionError {
-    #[error("coordinate {0:?} is not an MJCF scalar joint or fixed tendon")]
+    #[error("coordinate {0:?} is not a URDF scalar joint or differential actuator")]
     UnknownCoordinate(String),
     #[error("coordinate {0:?} appears more than once")]
     DuplicateCoordinate(String),
@@ -34,11 +33,12 @@ pub struct Transmission {
     forward: DMatrix<f64>,
     inverse: DMatrix<f64>,
     model_effort_to_coordinate: DMatrix<f64>,
+    coordinate_offset: DVector<f64>,
 }
 
 impl Transmission {
-    pub fn from_model(
-        model: &Model,
+    pub fn from_description(
+        description: &RobotDescription,
         coordinates: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> Result<Self, TransmissionError> {
         let coordinate_names = coordinates
@@ -53,29 +53,45 @@ impl Transmission {
         }
 
         let mut rows = Vec::<BTreeMap<String, f64>>::new();
+        let mut offsets = Vec::new();
         let mut affected = BTreeSet::new();
         for coordinate in &coordinate_names {
-            let row = if let Some((body, index)) = model.joint_by_name(coordinate) {
-                let joint = &model.bodies[body].body.joints[index];
-                if !matches!(joint.type_, JointType::Hinge | JointType::Slide) {
+            let (row, offset) = if let Some(joint) = description.joint(coordinate) {
+                if joint.kind == bello_robot_description::JointKind::Fixed {
                     return Err(TransmissionError::UnknownCoordinate(coordinate.clone()));
                 }
-                BTreeMap::from([(coordinate.clone(), 1.0)])
-            } else if let Some(tendon) = model
-                .tendons
-                .iter()
-                .find(|tendon| tendon.name.as_deref() == Some(coordinate))
-            {
-                tendon
-                    .joints
+                (BTreeMap::from([(coordinate.clone(), 1.0)]), 0.0)
+            } else if let Some(transmission) = description.transmission_for_coordinate(coordinate) {
+                let coordinate_index = transmission
+                    .coordinates
                     .iter()
-                    .map(|term| (term.joint.clone(), term.coef))
-                    .collect()
+                    .position(|name| name == coordinate)
+                    .expect("matching transmission contains coordinate");
+                let sign = if coordinate_index == 0 { 1.0 } else { -1.0 };
+                let coordinate_reduction = transmission.coordinate_reduction[coordinate_index];
+                (
+                    BTreeMap::from([
+                        (
+                            transmission.joints[0].clone(),
+                            coordinate_reduction * transmission.joint_reduction[0],
+                        ),
+                        (
+                            transmission.joints[1].clone(),
+                            sign * coordinate_reduction * transmission.joint_reduction[1],
+                        ),
+                    ]),
+                    -coordinate_reduction
+                        * (transmission.joint_reduction[0] * transmission.joint_offset[0]
+                            + sign
+                                * transmission.joint_reduction[1]
+                                * transmission.joint_offset[1]),
+                )
             } else {
                 return Err(TransmissionError::UnknownCoordinate(coordinate.clone()));
             };
             affected.extend(row.keys().cloned());
             rows.push(row);
+            offsets.push(offset);
         }
         let joint_names = affected.into_iter().collect::<Vec<_>>();
         let joint_indices = joint_names
@@ -120,6 +136,7 @@ impl Transmission {
             forward,
             inverse,
             model_effort_to_coordinate,
+            coordinate_offset: DVector::from_vec(offsets),
         })
     }
 
@@ -136,10 +153,32 @@ impl Transmission {
     }
 
     pub fn joint_to_coordinate(&self, values: &[f64]) -> Result<Vec<f64>, TransmissionError> {
-        self.multiply(&self.forward, values)
+        let values = self.multiply_vector(&self.forward, values)?;
+        Ok((values + &self.coordinate_offset).iter().copied().collect())
     }
 
     pub fn coordinate_to_joint(&self, values: &[f64]) -> Result<Vec<f64>, TransmissionError> {
+        if values.len() != self.coordinate_offset.len() {
+            return Err(TransmissionError::Dimension {
+                expected: self.coordinate_offset.len(),
+                actual: values.len(),
+            });
+        }
+        let centered = DVector::from_column_slice(values) - &self.coordinate_offset;
+        Ok((&self.inverse * centered).iter().copied().collect())
+    }
+
+    pub fn joint_velocity_to_coordinate(
+        &self,
+        values: &[f64],
+    ) -> Result<Vec<f64>, TransmissionError> {
+        self.multiply(&self.forward, values)
+    }
+
+    pub fn coordinate_velocity_to_joint(
+        &self,
+        values: &[f64],
+    ) -> Result<Vec<f64>, TransmissionError> {
         self.multiply(&self.inverse, values)
     }
 
@@ -164,16 +203,25 @@ impl Transmission {
         matrix: &DMatrix<f64>,
         values: &[f64],
     ) -> Result<Vec<f64>, TransmissionError> {
+        Ok(self
+            .multiply_vector(matrix, values)?
+            .iter()
+            .copied()
+            .collect())
+    }
+
+    fn multiply_vector(
+        &self,
+        matrix: &DMatrix<f64>,
+        values: &[f64],
+    ) -> Result<DVector<f64>, TransmissionError> {
         if matrix.ncols() != values.len() {
             return Err(TransmissionError::Dimension {
                 expected: matrix.ncols(),
                 actual: values.len(),
             });
         }
-        Ok((matrix * DVector::from_column_slice(values))
-            .iter()
-            .copied()
-            .collect())
+        Ok(matrix * DVector::from_column_slice(values))
     }
 }
 
@@ -253,7 +301,7 @@ impl FeedbackReconstructor {
             .expect("complete position vector has the precomputed dimension");
         self.last.velocity = self
             .transmission
-            .coordinate_to_joint(&velocity)
+            .coordinate_velocity_to_joint(&velocity)
             .expect("complete velocity vector has the precomputed dimension");
         self.last.effort = self
             .transmission

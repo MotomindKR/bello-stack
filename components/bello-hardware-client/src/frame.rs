@@ -238,7 +238,22 @@ mod tests {
 
     use super::*;
     use crate::GroupState;
-    use crate::inventory::Motor;
+    use crate::inventory::{Motor, MotorLimits};
+
+    fn limits() -> MotorLimits {
+        MotorLimits {
+            position_min: -1.0,
+            position_max: 1.0,
+            velocity_min: -2.0,
+            velocity_max: 2.0,
+            torque_min: -3.0,
+            torque_max: 3.0,
+            kp_min: 0.0,
+            kp_max: 100.0,
+            kd_min: 0.0,
+            kd_max: 10.0,
+        }
+    }
 
     fn group() -> Arc<GroupDefinition> {
         let motors: Arc<[Motor]> = vec![
@@ -250,6 +265,7 @@ mod tests {
                 id: 1,
                 model: "test".into(),
                 direction: 1,
+                limits: limits(),
                 initial_status: None,
             },
             Motor {
@@ -260,6 +276,7 @@ mod tests {
                 id: 2,
                 model: "test".into(),
                 direction: 1,
+                limits: limits(),
                 initial_status: None,
             },
         ]

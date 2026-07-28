@@ -15,11 +15,12 @@ use parking_lot::RwLock;
 use tokio::sync::watch;
 use tonic::transport::{Certificate, Channel, ClientTlsConfig, Endpoint, Identity};
 
+use crate::RobotDescription;
+use crate::Transform;
 use crate::config::{
-    EndpointConfig, GroupControlProfile, ResolvedGroupControlProfile, RootConfig, TlsConfig,
-    VisualizerConfig,
+    CoordinateLimits, EndpointConfig, GroupControlProfile, ResolvedGroupControlProfile, RootConfig,
+    TlsConfig, VisualizerConfig,
 };
-use crate::{Model, Transform};
 
 const DIAGNOSTIC_EVENT_CAPACITY: usize = 512;
 const DEFAULT_DISPLAY_STALE_AFTER: Duration = Duration::from_millis(200);
@@ -56,6 +57,7 @@ pub struct DisplayMotor {
     pub id: u32,
     pub model: String,
     pub direction: i32,
+    pub limits: CoordinateLimits,
     pub status: Option<DisplayDeviceStatus>,
     pub feedback_available: bool,
     pub feedback_current_connection: bool,
@@ -224,7 +226,7 @@ pub struct RuntimeHandle {
 }
 
 impl RuntimeHandle {
-    pub fn spawn(config: VisualizerConfig, model: Model) -> anyhow::Result<Self> {
+    pub fn spawn(config: VisualizerConfig, description: RobotDescription) -> anyhow::Result<Self> {
         let latest = Arc::new(RwLock::new(DisplaySnapshot::default()));
         if let RootConfig::Fixed { transform } = &config.root {
             let snapshot = &mut *latest.write();
@@ -272,7 +274,7 @@ impl RuntimeHandle {
                     let controls = tokio::spawn(control_supervisor(
                         config.hardware,
                         config.control_profiles,
-                        model,
+                        description,
                         control_receiver,
                         Arc::clone(&thread_latest),
                         shutdown_receiver.clone(),
@@ -362,7 +364,7 @@ impl Drop for RuntimeHandle {
 async fn control_supervisor(
     endpoint: EndpointConfig,
     profiles: BTreeMap<String, GroupControlProfile>,
-    model: Model,
+    description: RobotDescription,
     commands: crossbeam_channel::Receiver<ControlCommand>,
     latest: Arc<RwLock<DisplaySnapshot>>,
     mut shutdown: watch::Receiver<bool>,
@@ -416,7 +418,7 @@ async fn control_supervisor(
                                         continue;
                                     }
                                 };
-                                let profile = match profile_config.resolve(&model, group.coordinate_names()) {
+                                let profile = match profile_config.resolve(&description, group.motors()) {
                                     Ok(profile) => profile,
                                     Err(error) => {
                                         latest.write().control.insert(group_name, ControlStatus::Failed(error.to_string()));
@@ -479,9 +481,9 @@ async fn control_supervisor(
                                 let (sender, _receiver) = watch::channel(None);
                                 let profile = profiles
                                     .get(&group_name)
-                                    .and_then(|profile| profile.resolve(&model, group.coordinate_names()).ok());
+                                    .and_then(|profile| profile.resolve(&description, group.motors()).ok());
                                 let Some(profile) = profile else {
-                                    latest.write().control.insert(group_name, ControlStatus::Failed("could not resolve MJCF coordinates for recovery group".into()));
+                                    latest.write().control.insert(group_name, ControlStatus::Failed("could not resolve live hardware coordinate limits for recovery group".into()));
                                     continue;
                                 };
                                 workers.insert(group_name.clone(), ControlWorker { targets: sender, profile });
@@ -1054,6 +1056,7 @@ fn apply_robot_inventory(
                     && value.id == motor.id()
                     && value.model == motor.model()
                     && value.direction == motor.direction()
+                    && value.limits == CoordinateLimits::from(motor)
             });
             let (
                 feedback_available,
@@ -1095,6 +1098,7 @@ fn apply_robot_inventory(
                         id: motor.id(),
                         model: motor.model().to_owned(),
                         direction: motor.direction(),
+                        limits: CoordinateLimits::from(motor),
                         status: motor.initial_status().map(display_device_status),
                         feedback_available,
                         feedback_current_connection: false,

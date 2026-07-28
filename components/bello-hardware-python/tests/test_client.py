@@ -37,6 +37,7 @@ def test_blocking_control_lifecycle_is_small(hardware_server: RunningServer) -> 
         assert robot.group_names == ("leg",)
         group = robot.group("leg")
         assert group.coordinates == ("hip", "knee")
+        assert group.motors[0].limits.torque_max == 60.0
 
         with group.control("pytest") as control:
             control.start(frame())

@@ -2,10 +2,12 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use bello_hardware_client::Motor;
+use bello_robot_description::RobotDescription;
 use serde::Deserialize;
 use thiserror::Error;
 
-use crate::{Model, Transform};
+use crate::Transform;
 
 const fn default_refresh_hz() -> f64 {
     60.0
@@ -67,7 +69,7 @@ pub enum ConfigError {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct VisualizerConfig {
-    pub mjcf: PathBuf,
+    pub urdf: PathBuf,
     pub hardware: EndpointConfig,
     #[serde(default)]
     pub root: RootConfig,
@@ -162,6 +164,38 @@ pub struct CoordinateControlProfile {
     pub kd: BoundedDefault,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CoordinateLimits {
+    pub position_min: f64,
+    pub position_max: f64,
+    pub velocity_min: f64,
+    pub velocity_max: f64,
+    pub torque_min: f64,
+    pub torque_max: f64,
+    pub kp_min: f64,
+    pub kp_max: f64,
+    pub kd_min: f64,
+    pub kd_max: f64,
+}
+
+impl From<&Motor> for CoordinateLimits {
+    fn from(motor: &Motor) -> Self {
+        let limits = motor.limits();
+        Self {
+            position_min: limits.position_min(),
+            position_max: limits.position_max(),
+            velocity_min: limits.velocity_min(),
+            velocity_max: limits.velocity_max(),
+            torque_min: limits.torque_min(),
+            torque_max: limits.torque_max(),
+            kp_min: limits.kp_min(),
+            kp_max: limits.kp_max(),
+            kd_min: limits.kd_min(),
+            kd_max: limits.kd_max(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct BoundedDefault {
@@ -179,7 +213,7 @@ impl VisualizerConfig {
         })?;
         let mut config: Self = serde_yaml::from_str(&yaml)?;
         let base = path.parent().unwrap_or_else(|| Path::new("."));
-        make_absolute(&mut config.mjcf, base);
+        make_absolute(&mut config.urdf, base);
         resolve_tls(&mut config.hardware.tls, base);
         if let RootConfig::ExternalPose { tls, .. } = &mut config.root {
             resolve_tls(tls, base);
@@ -271,47 +305,91 @@ impl VisualizerConfig {
 }
 
 impl GroupControlProfile {
-    pub fn resolve(
+    pub fn resolve<'a>(
         &self,
-        model: &Model,
-        coordinates: impl IntoIterator<Item = impl AsRef<str>>,
+        description: &RobotDescription,
+        motors: impl IntoIterator<Item = &'a Motor>,
+    ) -> Result<ResolvedGroupControlProfile, ConfigError> {
+        self.resolve_limits(
+            description,
+            motors
+                .into_iter()
+                .map(|motor| (motor.coordinate().to_owned(), CoordinateLimits::from(motor))),
+        )
+    }
+
+    pub fn resolve_limits(
+        &self,
+        description: &RobotDescription,
+        coordinates: impl IntoIterator<Item = (String, CoordinateLimits)>,
     ) -> Result<ResolvedGroupControlProfile, ConfigError> {
         let mut resolved = BTreeMap::new();
-        for coordinate in coordinates {
-            let coordinate = coordinate.as_ref();
-            let actuator = model
-                .actuators
-                .iter()
-                .find(|actuator| {
-                    actuator.kind == mjcf_rs::extras::ActuatorKind::Position
-                        && actuator
-                            .joint
-                            .as_deref()
-                            .or(actuator.tendon.as_deref())
-                            == Some(coordinate)
-                })
+        for (coordinate, limits) in coordinates {
+            let hardware = [
+                limits.position_min,
+                limits.position_max,
+                limits.velocity_min,
+                limits.velocity_max,
+                limits.torque_min,
+                limits.torque_max,
+                limits.kp_min,
+                limits.kp_max,
+                limits.kd_min,
+                limits.kd_max,
+            ];
+            if hardware.iter().any(|value| !value.is_finite())
+                || limits.position_min > limits.position_max
+                || limits.velocity_min > limits.velocity_max
+                || limits.torque_min > limits.torque_max
+                || limits.kp_min < 0.0
+                || limits.kp_min > limits.kp_max
+                || limits.kd_min < 0.0
+                || limits.kd_min > limits.kd_max
+            {
+                return Err(ConfigError::Invalid(format!(
+                    "hardware coordinate {coordinate:?} has invalid live command limits"
+                )));
+            }
+            let (model_position_min, model_position_max) = description
+                .coordinate_position_limits(&coordinate)
                 .ok_or_else(|| {
                     ConfigError::Invalid(format!(
-                        "hardware coordinate {coordinate:?} has no matching MJCF position actuator with ctrlrange"
+                        "hardware coordinate {coordinate:?} has no URDF joint or differential actuator with finite limits"
                     ))
                 })?;
-            let range = actuator.ctrl_range.ok_or_else(|| {
-                ConfigError::Invalid(format!(
-                    "hardware coordinate {coordinate:?} has no matching MJCF position actuator with ctrlrange"
-                ))
-            })?;
+            let position_min = limits.position_min.max(model_position_min);
+            let position_max = limits.position_max.min(model_position_max);
+            if position_min > position_max {
+                return Err(ConfigError::Invalid(format!(
+                    "hardware and URDF position limits for {coordinate:?} do not overlap"
+                )));
+            }
             resolved.insert(
-                coordinate.to_owned(),
+                coordinate.clone(),
                 CoordinateControlProfile {
                     position: BoundedDefault {
-                        min: range[0],
-                        max: range[1],
-                        default: 0.0_f64.clamp(range[0], range[1]),
+                        min: position_min,
+                        max: position_max,
+                        default: 0.0_f64.clamp(position_min, position_max),
                     },
-                    velocity: self.velocity,
-                    torque_feedforward: self.torque_feedforward,
-                    kp: self.kp,
-                    kd: self.kd,
+                    velocity: self.velocity.intersect(
+                        limits.velocity_min,
+                        limits.velocity_max,
+                        &coordinate,
+                        "velocity",
+                    )?,
+                    torque_feedforward: self.torque_feedforward.intersect(
+                        limits.torque_min,
+                        limits.torque_max,
+                        &coordinate,
+                        "torque_feedforward",
+                    )?,
+                    kp: self
+                        .kp
+                        .intersect(limits.kp_min, limits.kp_max, &coordinate, "kp")?,
+                    kd: self
+                        .kd
+                        .intersect(limits.kd_min, limits.kd_max, &coordinate, "kd")?,
                 },
             );
         }
@@ -320,15 +398,46 @@ impl GroupControlProfile {
                 "cannot resolve a control profile without hardware coordinates".into(),
             ));
         }
+        let common =
+            |field: fn(&CoordinateControlProfile) -> BoundedDefault, default: f64, name: &str| {
+                let min = resolved
+                    .values()
+                    .map(field)
+                    .map(|value| value.min)
+                    .fold(f64::NEG_INFINITY, f64::max);
+                let max = resolved
+                    .values()
+                    .map(field)
+                    .map(|value| value.max)
+                    .fold(f64::INFINITY, f64::min);
+                if min > max || default < min || default > max {
+                    return Err(ConfigError::Invalid(format!(
+                        "group has no common live {name} range containing default {default}"
+                    )));
+                }
+                Ok(BoundedDefault { min, max, default })
+            };
+        let velocity = common(
+            |profile| profile.velocity,
+            self.velocity.default,
+            "velocity",
+        )?;
+        let torque_feedforward = common(
+            |profile| profile.torque_feedforward,
+            self.torque_feedforward.default,
+            "torque_feedforward",
+        )?;
+        let kp = common(|profile| profile.kp, self.kp.default, "kp")?;
+        let kd = common(|profile| profile.kd, self.kd.default, "kd")?;
         Ok(ResolvedGroupControlProfile {
             command_rate_hz: self.command_rate_hz,
             validity_ms: self.validity_ms,
             telemetry_staleness_ms: self.telemetry_staleness_ms,
             position_slew_rate: self.position_slew_rate,
-            velocity: self.velocity,
-            torque_feedforward: self.torque_feedforward,
-            kp: self.kp,
-            kd: self.kd,
+            velocity,
+            torque_feedforward,
+            kp,
+            kd,
             coordinates: resolved,
         })
     }
@@ -355,6 +464,27 @@ impl BoundedDefault {
             )));
         }
         Ok(())
+    }
+
+    fn intersect(
+        self,
+        hardware_min: f64,
+        hardware_max: f64,
+        coordinate: &str,
+        field: &str,
+    ) -> Result<Self, ConfigError> {
+        let min = self.min.max(hardware_min);
+        let max = self.max.min(hardware_max);
+        if min > max || self.default < min || self.default > max {
+            return Err(ConfigError::Invalid(format!(
+                "control profile default/range for {coordinate:?} {field} is incompatible with live hardware [{hardware_min}, {hardware_max}]"
+            )));
+        }
+        Ok(Self {
+            min,
+            max,
+            default: self.default,
+        })
     }
 }
 

@@ -1,0 +1,26 @@
+<robot name="bello_vcan_fixture">
+  <link name="base">
+    <visual>
+      <geometry><box size="0.1 0.1 0.4"/></geometry>
+    </visual>
+  </link>
+  <link name="second">
+    <visual>
+      <geometry><box size="0.08 0.08 0.36"/></geometry>
+    </visual>
+  </link>
+  <link name="tip"/>
+  <joint name="e2e_joint_1" type="revolute">
+    <parent link="base"/>
+    <child link="second"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1" upper="1" effort="2" velocity="2"/>
+  </joint>
+  <joint name="e2e_joint_2" type="revolute">
+    <parent link="second"/>
+    <child link="tip"/>
+    <origin xyz="0 0 0.4"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1" upper="1" effort="2" velocity="2"/>
+  </joint>
+</robot>

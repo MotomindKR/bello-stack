@@ -69,20 +69,20 @@ impl TryFrom<&MotorConfig> for MotorSpec {
 }
 
 fn params_for_config(config: &MotorConfig, model: ModelLimits) -> MotorParams {
-    let velocity = config.limits.velocity_abs.unwrap_or(model.velocity_abs);
-    let torque = config.limits.torque_abs.unwrap_or(model.torque_abs);
+    let velocity = config.limits.velocity_abs;
+    let torque = config.limits.torque_abs;
     MotorParams {
         // The Type-1 MIT position field always uses the protocol span. Robot/coordinate
         // limits are enforced separately by the command policy before encoding.
         position_min: CONTROL_POSITION_MIN,
         position_max: CONTROL_POSITION_MAX,
-        velocity_min: -velocity,
-        velocity_max: velocity,
-        torque_min: -torque,
-        torque_max: torque,
-        kp_min: 0.0,
+        velocity_min: velocity.map_or(model.velocity_min, |value| -value),
+        velocity_max: velocity.unwrap_or(model.velocity_max),
+        torque_min: torque.map_or(model.torque_min, |value| -value),
+        torque_max: torque.unwrap_or(model.torque_max),
+        kp_min: model.kp_min,
         kp_max: config.limits.kp_max.unwrap_or(model.kp_max),
-        kd_min: 0.0,
+        kd_min: model.kd_min,
         kd_max: config.limits.kd_max.unwrap_or(model.kd_max),
         direction: config.direction,
     }
@@ -111,8 +111,8 @@ fn validate_limits(config: &MotorConfig, model: ModelLimits) -> Result<()> {
         }
     }
     for (field, configured, maximum) in [
-        ("velocity_abs", limits.velocity_abs, model.velocity_abs),
-        ("torque_abs", limits.torque_abs, model.torque_abs),
+        ("velocity_abs", limits.velocity_abs, model.velocity_max),
+        ("torque_abs", limits.torque_abs, model.torque_max),
         ("kp_max", limits.kp_max, model.kp_max),
         ("kd_max", limits.kd_max, model.kd_max),
     ] {

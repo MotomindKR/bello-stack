@@ -18,7 +18,7 @@ use bello_hardware_api::{
     WatchTelemetryRequest,
 };
 use bello_visualizer::runtime::{ControlStatus, DisplaySnapshot, RuntimeHandle};
-use bello_visualizer::{Model, Transmission, VisualizerConfig};
+use bello_visualizer::{RobotDescription, Transmission, VisualizerConfig};
 use robstride_protocol::{
     ControlCommand, Feedback, Frame, MotorParams, control_frame, feedback_frame, parse_feedback,
 };
@@ -33,18 +33,16 @@ fn generated_runtime_configs_are_valid() -> Result<()> {
     let directory = tempfile::tempdir()?;
     let hardwared_config = directory.path().join("hardwared.yaml");
     let emulator_config = directory.path().join("emulator.yaml");
-    fs::write(
-        &hardwared_config,
-        support::config::hardwared("vcan_test", "127.0.0.1:50052".parse()?),
-    )?;
+    support::config::write_hardwared(&hardwared_config, "vcan_test", "127.0.0.1:50052".parse()?)?;
     fs::write(&emulator_config, support::config::emulator("vcan_test"))?;
 
     bello_hardwared::check(&hardwared_config)?;
     robstride_emulator::config::Config::load(&emulator_config)?;
 
-    let model =
-        Model::from_file(Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vcan.xml"))?;
-    let mapping = Transmission::from_model(&model, ["e2e_joint_1", "e2e_joint_2"])?;
+    let description = RobotDescription::load(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vcan.urdf"),
+    )?;
+    let mapping = Transmission::from_description(&description, ["e2e_joint_1", "e2e_joint_2"])?;
     assert_eq!(mapping.joint_to_coordinate(&[0.1, -0.2])?, [0.1, -0.2]);
     Ok(())
 }
@@ -58,10 +56,7 @@ async fn control_fault_and_recovery_over_vcan() -> Result<()> {
     let directory = tempfile::tempdir().context("creating e2e configuration directory")?;
     let hardwared_config = directory.path().join("hardwared.yaml");
     let emulator_config = directory.path().join("emulator.yaml");
-    fs::write(
-        &hardwared_config,
-        support::config::hardwared(&interface, listen),
-    )?;
+    support::config::write_hardwared(&hardwared_config, &interface, listen)?;
     fs::write(&emulator_config, support::config::emulator(&interface))?;
 
     let mut emulator = ManagedProcess::spawn(
@@ -106,20 +101,17 @@ async fn visualizer_runtime_commands_at_profile_rate_without_rendering() -> Resu
     let hardwared_config = directory.path().join("hardwared.yaml");
     let emulator_config = directory.path().join("emulator.yaml");
     let visualizer_config = directory.path().join("visualizer.yaml");
-    let mjcf = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vcan.xml");
-    fs::write(
-        &hardwared_config,
-        support::config::hardwared(&interface, listen),
-    )?;
+    let urdf = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vcan.urdf");
+    support::config::write_hardwared(&hardwared_config, &interface, listen)?;
     fs::write(&emulator_config, support::config::emulator(&interface))?;
     fs::write(
         &visualizer_config,
-        visualizer_yaml(&mjcf, &format!("http://{listen}"), COMMAND_RATE_HZ),
+        visualizer_yaml(&urdf, &format!("http://{listen}"), COMMAND_RATE_HZ),
     )?;
 
     let config = VisualizerConfig::load(&visualizer_config)?;
-    let model = Model::from_file(&config.mjcf)?;
-    let mapping = Transmission::from_model(&model, ["e2e_joint_1", "e2e_joint_2"])?;
+    let description = RobotDescription::load(&config.urdf)?;
+    let mapping = Transmission::from_description(&description, ["e2e_joint_1", "e2e_joint_2"])?;
     assert_eq!(mapping.coordinate_names(), ["e2e_joint_1", "e2e_joint_2"]);
 
     let mut emulator = ManagedProcess::spawn(
@@ -144,7 +136,7 @@ async fn visualizer_runtime_commands_at_profile_rate_without_rendering() -> Resu
     // RuntimeHandle is the complete headless I/O/control half of the visualizer. No
     // Kiss3d window, egui context, render callback, or calls to `latest` are needed
     // while its command loop runs on the background Tokio runtime.
-    let runtime = RuntimeHandle::spawn(config, model)?;
+    let runtime = RuntimeHandle::spawn(config, description)?;
     // Hardwared requests active reports at monitor-only startup; no lease,
     // enable, or command is needed to make feedback available to the visualizer.
     drop(readiness_client);
@@ -245,9 +237,9 @@ async fn visualizer_runtime_commands_at_profile_rate_without_rendering() -> Resu
     Ok(())
 }
 
-fn visualizer_yaml(mjcf: &Path, endpoint: &str, command_rate_hz: f64) -> String {
+fn visualizer_yaml(urdf: &Path, endpoint: &str, command_rate_hz: f64) -> String {
     format!(
-        r#"mjcf: {mjcf:?}
+        r#"urdf: {urdf:?}
 hardware:
   endpoint: {endpoint}
 root:
@@ -258,16 +250,8 @@ control_profiles:
     command_rate_hz: {command_rate_hz}
     validity_ms: 200
     telemetry_staleness_ms: 500
-    coordinates:
-      e2e_joint_1: &coordinate
-        position: {{ min: -1.0, max: 1.0, default: 0.0 }}
-        velocity: {{ min: -2.0, max: 2.0, default: 0.0 }}
-        torque_feedforward: {{ min: -2.0, max: 2.0, default: 0.0 }}
-        kp: {{ min: 0.0, max: 40.0, default: 20.0 }}
-        kd: {{ min: 0.0, max: 5.0, default: 1.0 }}
-      e2e_joint_2: *coordinate
 "#,
-        mjcf = mjcf.display(),
+        urdf = urdf.display(),
     )
 }
 
@@ -319,9 +303,11 @@ async fn grpc_can_latency_distribution() -> Result<()> {
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(250.0);
-    fs::write(
+    support::config::write_hardwared_with_control_rate(
         &hardwared_config,
-        support::config::hardwared_with_control_rate(&interface, listen, control_rate_hz),
+        &interface,
+        listen,
+        control_rate_hz,
     )?;
     fs::write(&emulator_config, support::config::emulator(&interface))?;
 

@@ -119,7 +119,7 @@ hardware:
 cargo run -p bello-hardwared -- \
   --check --config components/bello-hardwared/config/bello.yaml
 cargo run -p bello-hardwared -- \
-  --check --config components/bello-hardwared/config/vcan.yaml
+  --check --config components/bello-hardwared/config/bello-vcan.yaml
 cargo run -p robstride-emulator -- \
   --check --config components/robstride-emulator/config/vcan.yaml
 ```
@@ -156,7 +156,7 @@ Visualizer model, transform, transmission, stale-input, and strict-rejection
 tests run without a GPU as part of the normal workspace suite. A fake hardware
 server additionally checks complete diagnostic telemetry, disconnect freezing,
 fresh immutable control seeding, complete command frames, configured cadence,
-and lease cleanup. The vCAN fixture verifies both its matching MJCF transmission
+and lease cleanup. The vCAN fixture verifies both its matching URDF transmission
 and that the headless visualizer controller keeps its configured send rate
 without renderer calls. Native window interaction remains a documented manual
 smoke test in the

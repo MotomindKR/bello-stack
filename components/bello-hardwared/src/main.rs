@@ -7,7 +7,7 @@ use tracing_subscriber::EnvFilter;
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct Arguments {
-    /// Unified hardware configuration. Defaults to this component's example config.
+    /// Deployment configuration composed with the canonical hardware description.
     #[arg(short, long)]
     config: Option<PathBuf>,
     /// Parse and validate configuration, then exit without touching hardware.

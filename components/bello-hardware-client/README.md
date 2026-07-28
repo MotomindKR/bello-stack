@@ -129,6 +129,14 @@ for serial in robot.serial_devices() {
 for imu in robot.imus() {
     println!("{} uses {}", imu.name(), imu.serial_device());
 }
+for motor in robot.motors() {
+    println!(
+        "{} torque range: {}..={} Nm",
+        motor.name(),
+        motor.limits().torque_min(),
+        motor.limits().torque_max(),
+    );
+}
 # Ok(())
 # }
 ```

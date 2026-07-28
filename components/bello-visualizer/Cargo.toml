@@ -10,10 +10,10 @@ publish.workspace = true
 anyhow.workspace = true
 bello-hardware-client.workspace = true
 bello-pose-api.workspace = true
+bello-robot-description.workspace = true
 clap = { workspace = true, features = ["derive"] }
 crossbeam-channel.workspace = true
 kiss3d = { version = "0.45", features = ["egui"] }
-mjcf-rs.workspace = true
 nalgebra.workspace = true
 parking_lot.workspace = true
 rfd = "0.15"

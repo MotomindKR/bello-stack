@@ -17,6 +17,7 @@ from .types import (
     GroupState,
     Imu,
     Motor,
+    MotorLimits,
     SerialDevice,
 )
 
@@ -103,6 +104,23 @@ class Inventory:
                 raise InventoryError(f"motor {item.name!r} references unknown group {item.group!r}")
             if not item.HasField("address") or not item.address.bus.strip():
                 raise InventoryError(f"motor {item.name!r} has no valid bus address")
+            if not item.HasField("limits"):
+                raise InventoryError(f"motor {item.name!r} has no resolved command limits")
+            try:
+                limits = MotorLimits(
+                    item.limits.position_min,
+                    item.limits.position_max,
+                    item.limits.velocity_min,
+                    item.limits.velocity_max,
+                    item.limits.torque_min,
+                    item.limits.torque_max,
+                    item.limits.kp_min,
+                    item.limits.kp_max,
+                    item.limits.kd_min,
+                    item.limits.kd_max,
+                )
+            except ValueError as error:
+                raise InventoryError(f"motor {item.name!r} has invalid command limits") from error
             motor = Motor(
                 item.name,
                 item.coordinate,
@@ -111,6 +129,7 @@ class Inventory:
                 item.address.id,
                 item.model,
                 item.direction,
+                limits,
                 _optional_status(item, "status"),
             )
             motors[motor.name] = motor

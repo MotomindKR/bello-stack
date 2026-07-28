@@ -8,7 +8,7 @@ use bello_visualizer::editor::{EditorMode, GroupEditor};
 use bello_visualizer::runtime::{ControlStatus, DisplaySnapshot, RuntimeHandle};
 use bello_visualizer::scene::ModelScene;
 use bello_visualizer::transmission::{CoordinateFeedback, FeedbackReconstructor, Transmission};
-use bello_visualizer::{Model, VisualizerConfig};
+use bello_visualizer::{RobotDescription, VisualizerConfig};
 use clap::Parser;
 use kiss3d::prelude::*;
 
@@ -19,7 +19,7 @@ enum VisualizerTab {
 }
 
 #[derive(Parser)]
-#[command(about = "Monitor and safely command Bello hardware against a flattened MJCF")]
+#[command(about = "Monitor and safely command Bello hardware against its URDF description")]
 struct Arguments {
     #[arg(long, value_name = "YAML")]
     config: PathBuf,
@@ -42,23 +42,17 @@ async fn main() {
 async fn run() -> anyhow::Result<()> {
     let arguments = Arguments::parse();
     let config = VisualizerConfig::load(&arguments.config)?;
-    let mjcf_path = config.mjcf.clone();
-    let model = Model::from_file(&mjcf_path)?;
+    let description = RobotDescription::load(&config.urdf)?;
     let profile_configs = config.control_profiles.clone();
-    let runtime = RuntimeHandle::spawn(config, model.clone())?;
+    let runtime = RuntimeHandle::spawn(config, description.clone())?;
     let mut editors = BTreeMap::<String, GroupEditor>::new();
 
-    let mut window = Window::new(&format!(
-        "Bello visualizer — {}",
-        model.name.as_deref().unwrap_or("unnamed")
-    ))
-    .await;
+    let mut window = Window::new(&format!("Bello visualizer — {}", description.name())).await;
     window.set_background_color(Color::new(0.035, 0.045, 0.06, 1.0));
     window.set_ambient(0.4);
     window.set_ambient_color(Color::new(0.85, 0.9, 1.0, 1.0));
     let mut camera = OrbitCamera3d::new(Vec3::new(1.7, -1.7, 1.2), Vec3::new(0.0, 0.0, 0.65));
-    // MuJoCo models are Z-up. Kiss3d's orbit camera defaults to Y-up, which
-    // makes a correctly oriented MJCF robot appear to lie on its side.
+    // URDF models are Z-up. Kiss3d's orbit camera defaults to Y-up.
     camera.set_up_axis_dir(Vec3::Z);
     let mut scene = SceneNode3d::empty();
     scene
@@ -84,7 +78,7 @@ async fn run() -> anyhow::Result<()> {
         .set_color(Color::new(0.28, 0.30, 0.34, 1.0))
         .set_metallic(0.0)
         .set_roughness(0.9);
-    let mut model_scene = ModelScene::build(&mut scene, &model, &mjcf_path)?;
+    let mut model_scene = ModelScene::build(&mut scene, &description)?;
 
     let mut selected = BTreeSet::<String>::new();
     let mut diagnostics = DiagnosticsUi::new();
@@ -110,24 +104,26 @@ async fn run() -> anyhow::Result<()> {
                 .motors
                 .values()
                 .filter(|motor| motor.group == *group)
-                .map(|motor| motor.coordinate.as_str())
-                .collect::<BTreeSet<_>>();
+                .map(|motor| (motor.coordinate.clone(), motor.limits))
+                .collect::<Vec<_>>();
             if coordinates.is_empty() {
                 continue;
             }
-            let resolved = profile.resolve(&model, coordinates).map_err(|error| {
-                anyhow::anyhow!("control profile {group:?} cannot use the MJCF: {error}")
-            })?;
+            let resolved = profile
+                .resolve_limits(&description, coordinates)
+                .map_err(|error| {
+                    anyhow::anyhow!("control profile {group:?} cannot use hardware limits: {error}")
+                })?;
             editors.insert(
                 group.clone(),
-                GroupEditor::new(&model, resolved).map_err(|error| {
+                GroupEditor::new(&description, resolved).map_err(|error| {
                     anyhow::anyhow!("control profile {group:?} has invalid transmission: {error}")
                 })?,
             );
         }
         model_scene.set_root_transform(snapshot.root_transform);
         update_model_pose(
-            &model,
+            &description,
             &snapshot,
             &mut reconstructors,
             &mut mapping_warnings,
@@ -641,7 +637,7 @@ fn readonly_model(ui: &mut kiss3d::egui::Ui, editor: &GroupEditor) {
 }
 
 fn update_model_pose(
-    model: &Model,
+    description: &RobotDescription,
     snapshot: &DisplaySnapshot,
     reconstructors: &mut BTreeMap<String, FeedbackReconstructor>,
     warnings: &mut BTreeMap<String, String>,
@@ -675,7 +671,7 @@ fn update_model_pose(
             })
             .collect::<BTreeMap<_, _>>();
         if !reconstructors.contains_key(&group) {
-            match Transmission::from_model(model, group_feedback.keys()) {
+            match Transmission::from_description(description, group_feedback.keys()) {
                 Ok(transmission) => {
                     reconstructors.insert(
                         group.clone(),

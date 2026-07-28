@@ -26,7 +26,7 @@ pub use endpoint::{ConnectOptions, TlsOptions};
 pub(crate) use enum_value::EnumValue;
 pub use error::Error;
 pub use frame::{CommandFrame, CommandFrameBuilder, CoordinateTarget};
-pub use inventory::{Bus, DeviceStatus, Imu, Motor, SerialDevice};
+pub use inventory::{Bus, DeviceStatus, Imu, Motor, MotorLimits, SerialDevice};
 pub(crate) use lease::{GroupLease, LeaseDuration};
 pub use robot::{MotorGroup, Robot};
 pub use state::{

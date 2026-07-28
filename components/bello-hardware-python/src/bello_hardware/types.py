@@ -79,6 +79,33 @@ class DeviceStatus:
 
 
 @dataclass(frozen=True, slots=True)
+class MotorLimits:
+    position_min: float
+    position_max: float
+    velocity_min: float
+    velocity_max: float
+    torque_min: float
+    torque_max: float
+    kp_min: float
+    kp_max: float
+    kd_min: float
+    kd_max: float
+
+    def __post_init__(self) -> None:
+        for name, minimum, maximum in (
+            ("position", self.position_min, self.position_max),
+            ("velocity", self.velocity_min, self.velocity_max),
+            ("torque", self.torque_min, self.torque_max),
+            ("kp", self.kp_min, self.kp_max),
+            ("kd", self.kd_min, self.kd_max),
+        ):
+            if not math.isfinite(minimum) or not math.isfinite(maximum) or minimum >= maximum:
+                raise ValueError(f"{name} limits must be a finite increasing range")
+        if self.kp_min < 0.0 or self.kd_min < 0.0:
+            raise ValueError("gain limits must be non-negative")
+
+
+@dataclass(frozen=True, slots=True)
 class Motor:
     name: str
     coordinate: str
@@ -87,6 +114,7 @@ class Motor:
     id: int
     model: str
     direction: int
+    limits: MotorLimits
     status: DeviceStatus | None
 
 

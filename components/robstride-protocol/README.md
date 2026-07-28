@@ -13,7 +13,7 @@ It provides:
 
 ```text
 src/
-  model.rs   model capabilities and command conversion parameters
+  model.rs   generated-catalog interface and command conversion parameters
   frame.rs   raw extended-CAN frame representation and address helpers
   codec.rs   semantic request, feedback, and command codecs
   lib.rs     intentionally small public surface
@@ -22,6 +22,10 @@ src/
 The crate does not open SocketCAN, own devices, implement safety policy, or
 schedule control. Those responsibilities belong to
 [`bello-hardwared`](../bello-hardwared).
+
+[`descriptions/robstride/models.yaml`](../../descriptions/robstride/models.yaml)
+is the sole handwritten model catalog. The build script validates it and
+generates the protocol lookup table and shared Type-1 position constants.
 
 Run its focused tests with:
 

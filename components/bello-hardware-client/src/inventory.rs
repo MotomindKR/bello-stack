@@ -36,8 +36,101 @@ impl From<proto::DeviceStatus> for DeviceStatus {
     }
 }
 
+/// Resolved command bounds for one motor, expressed in coordinate-space SI units.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MotorLimits {
+    pub(crate) position_min: f64,
+    pub(crate) position_max: f64,
+    pub(crate) velocity_min: f64,
+    pub(crate) velocity_max: f64,
+    pub(crate) torque_min: f64,
+    pub(crate) torque_max: f64,
+    pub(crate) kp_min: f64,
+    pub(crate) kp_max: f64,
+    pub(crate) kd_min: f64,
+    pub(crate) kd_max: f64,
+}
+
+impl MotorLimits {
+    pub fn position_min(&self) -> f64 {
+        self.position_min
+    }
+
+    pub fn position_max(&self) -> f64 {
+        self.position_max
+    }
+
+    pub fn velocity_min(&self) -> f64 {
+        self.velocity_min
+    }
+
+    pub fn velocity_max(&self) -> f64 {
+        self.velocity_max
+    }
+
+    pub fn torque_min(&self) -> f64 {
+        self.torque_min
+    }
+
+    pub fn torque_max(&self) -> f64 {
+        self.torque_max
+    }
+
+    pub fn kp_min(&self) -> f64 {
+        self.kp_min
+    }
+
+    pub fn kp_max(&self) -> f64 {
+        self.kp_max
+    }
+
+    pub fn kd_min(&self) -> f64 {
+        self.kd_min
+    }
+
+    pub fn kd_max(&self) -> f64 {
+        self.kd_max
+    }
+
+    fn from_proto(limits: proto::MotorLimits) -> Result<Self, &'static str> {
+        let resolved = Self {
+            position_min: limits.position_min,
+            position_max: limits.position_max,
+            velocity_min: limits.velocity_min,
+            velocity_max: limits.velocity_max,
+            torque_min: limits.torque_min,
+            torque_max: limits.torque_max,
+            kp_min: limits.kp_min,
+            kp_max: limits.kp_max,
+            kd_min: limits.kd_min,
+            kd_max: limits.kd_max,
+        };
+        for (name, minimum, maximum) in [
+            ("position", resolved.position_min, resolved.position_max),
+            ("velocity", resolved.velocity_min, resolved.velocity_max),
+            ("torque", resolved.torque_min, resolved.torque_max),
+            ("kp", resolved.kp_min, resolved.kp_max),
+            ("kd", resolved.kd_min, resolved.kd_max),
+        ] {
+            if !minimum.is_finite() || !maximum.is_finite() || minimum >= maximum {
+                return Err(match name {
+                    "position" => "invalid position limits",
+                    "velocity" => "invalid velocity limits",
+                    "torque" => "invalid torque limits",
+                    "kp" => "invalid kp limits",
+                    _ => "invalid kd limits",
+                });
+            }
+        }
+        if resolved.kp_min < 0.0 || resolved.kd_min < 0.0 {
+            return Err("gain limits must be non-negative");
+        }
+        Ok(resolved)
+    }
+}
+
 /// Configured actuator metadata resolved from daemon inventory.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Motor {
     pub(crate) name: String,
     pub(crate) coordinate: String,
@@ -46,6 +139,7 @@ pub struct Motor {
     pub(crate) id: u32,
     pub(crate) model: String,
     pub(crate) direction: i32,
+    pub(crate) limits: MotorLimits,
     pub(crate) initial_status: Option<DeviceStatus>,
 }
 
@@ -76,6 +170,10 @@ impl Motor {
 
     pub fn direction(&self) -> i32 {
         self.direction
+    }
+
+    pub fn limits(&self) -> &MotorLimits {
+        &self.limits
     }
 
     pub fn initial_status(&self) -> Option<&DeviceStatus> {
@@ -276,6 +374,15 @@ impl Inventory {
                     motor.name, address.bus
                 )));
             }
+            let raw_limits = motor.limits.ok_or_else(|| {
+                Error::InvalidInventory(format!(
+                    "motor {:?} has no resolved command limits",
+                    motor.name
+                ))
+            })?;
+            let limits = MotorLimits::from_proto(raw_limits).map_err(|detail| {
+                Error::InvalidInventory(format!("motor {:?} has {detail}", motor.name))
+            })?;
             if coordinates
                 .insert(motor.coordinate.clone(), motor.name.clone())
                 .is_some()
@@ -293,6 +400,7 @@ impl Inventory {
                 id: address.id,
                 model: motor.model,
                 direction: motor.direction,
+                limits,
                 initial_status: motor.status.map(Into::into),
             };
             if motors
@@ -428,6 +536,18 @@ mod tests {
                 model: "ROBSTRIDE_03".into(),
                 direction: 1,
                 status: None,
+                limits: Some(proto::MotorLimits {
+                    position_min: -1.0,
+                    position_max: 1.0,
+                    velocity_min: -2.0,
+                    velocity_max: 2.0,
+                    torque_min: -3.0,
+                    torque_max: 3.0,
+                    kp_min: 0.0,
+                    kp_max: 100.0,
+                    kd_min: 0.0,
+                    kd_max: 10.0,
+                }),
             }],
             serial_devices: vec![proto::SerialDeviceInfo {
                 name: "imu_serial".into(),
@@ -449,6 +569,7 @@ mod tests {
         let group = inventory.groups.get("arms").unwrap();
         assert_eq!(group.motors[0].coordinate(), "shoulder");
         assert_eq!(group.coordinate_indices["shoulder"], 0);
+        assert_eq!(group.motors[0].limits().torque_max(), 3.0);
         let bus = &inventory.buses["can0"];
         assert_eq!(bus.interface(), "vcan0");
         assert_eq!(bus.host_id(), 127);
@@ -484,6 +605,23 @@ mod tests {
         assert!(matches!(
             Inventory::from_proto(unknown_serial),
             Err(Error::InvalidInventory(detail)) if detail.contains("unknown serial device")
+        ));
+    }
+
+    #[test]
+    fn rejects_missing_or_invalid_motor_limits() {
+        let mut missing = inventory();
+        missing.motors[0].limits = None;
+        assert!(matches!(
+            Inventory::from_proto(missing),
+            Err(Error::InvalidInventory(detail)) if detail.contains("no resolved command limits")
+        ));
+
+        let mut invalid = inventory();
+        invalid.motors[0].limits.as_mut().unwrap().kp_max = 0.0;
+        assert!(matches!(
+            Inventory::from_proto(invalid),
+            Err(Error::InvalidInventory(detail)) if detail.contains("invalid kp limits")
         ));
     }
 }

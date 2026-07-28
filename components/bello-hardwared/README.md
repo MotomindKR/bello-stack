@@ -24,9 +24,11 @@ cargo run -p bello-hardwared -- \
   --config components/bello-hardwared/config/bello.yaml
 ```
 
-The default configuration path is this component's `config/bello.yaml`.
-SocketCAN interfaces and serial-device settings must already exist and match
-the YAML. The daemon does not create CAN links or change their bitrate.
+The default deployment path is this component's `config/bello.yaml`. It selects
+groups from [`descriptions/bello/hardware.yaml`](../../descriptions/bello/hardware.yaml)
+and maps that description's logical buses and serial devices to host names.
+Stable bitrate, host ID, sensor rate, and timeout settings remain in the
+description. The daemon does not create CAN links or change their bitrate.
 
 That physical configuration exposes `lower_body` and `upper_body` for normal
 control, plus an independent `wrist_yaw` group containing `left_arm_7` and
@@ -48,7 +50,10 @@ affecting hardware ownership.
 - The maintained physical-hardware example is [`config/bello.yaml`](config/bello.yaml).
 - The full Bello MuJoCo HIL example is
   [`config/bello-vcan.yaml`](config/bello-vcan.yaml).
-- The minimal two-motor emulator example is [`config/vcan.yaml`](config/vcan.yaml).
+- Bello motor identity and group membership live only in
+  [`descriptions/bello/hardware.yaml`](../../descriptions/bello/hardware.yaml).
+- RobStride protocol limits live only in
+  [`descriptions/robstride/models.yaml`](../../descriptions/robstride/models.yaml).
 - The Rust library intentionally exposes only the `run` and `check` entrypoints;
   shared generated protobuf types live in [`bello-hardware-api`](../bello-hardware-api).
 

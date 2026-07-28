@@ -1,26 +1,55 @@
 use std::collections::BTreeMap;
+use std::fs;
 use std::time::Duration;
 
-use bello_visualizer::Model;
+use bello_visualizer::RobotDescription;
 use bello_visualizer::transmission::{
     CoordinateFeedback, FeedbackReconstructor, Transmission, TransmissionError,
 };
+use tempfile::TempDir;
 
-fn model(tendon: &str) -> Model {
-    Model::from_str(
-        &format!(
-            r#"<mujoco><worldbody><body name="b">
-              <joint name="pitch" type="hinge"/><joint name="roll" type="hinge"/>
-            </body></worldbody><tendon>{tendon}</tendon></mujoco>"#
+fn description(with_differential: bool) -> (TempDir, RobotDescription) {
+    let directory = tempfile::tempdir().unwrap();
+    let transmission = if with_differential {
+        r#"
+          <transmission name="ankle">
+            <type>transmission_interface/DifferentialTransmission</type>
+            <actuator name="motor_1" role="actuator1"/>
+            <actuator name="motor_2" role="actuator2"/>
+            <joint name="roll" role="joint1"/>
+            <joint name="pitch" role="joint2"><mechanical_reduction>-1</mechanical_reduction></joint>
+          </transmission>
+        "#
+    } else {
+        ""
+    };
+    let path = directory.path().join("robot.urdf");
+    fs::write(
+        &path,
+        format!(
+            r#"<robot name="fixture">
+              <link name="base"/><link name="pitch_link"/><link name="roll_link"/>
+              <joint name="pitch" type="revolute">
+                <parent link="base"/><child link="pitch_link"/>
+                <limit lower="-10" upper="10" effort="10" velocity="10"/>
+              </joint>
+              <joint name="roll" type="revolute">
+                <parent link="pitch_link"/><child link="roll_link"/>
+                <limit lower="-10" upper="10" effort="10" velocity="10"/>
+              </joint>
+              {transmission}
+            </robot>"#
         ),
-        "/tmp",
     )
-    .unwrap()
+    .unwrap();
+    let description = RobotDescription::load(&path).unwrap();
+    (directory, description)
 }
 
 #[test]
 fn maps_direct_coordinates_forward_and_reverse() {
-    let transmission = Transmission::from_model(&model(""), ["pitch", "roll"]).unwrap();
+    let (_directory, description) = description(false);
+    let transmission = Transmission::from_description(&description, ["pitch", "roll"]).unwrap();
     assert_eq!(
         transmission.joint_to_coordinate(&[1.0, -2.0]).unwrap(),
         [1.0, -2.0]
@@ -38,12 +67,10 @@ fn maps_direct_coordinates_forward_and_reverse() {
 }
 
 #[test]
-fn reconstructs_ankle_fixed_tendon() {
-    let model = model(
-        r#"<fixed name="motor_1"><joint joint="pitch" coef="-1"/><joint joint="roll" coef="1"/></fixed>
-           <fixed name="motor_2"><joint joint="pitch" coef="1"/><joint joint="roll" coef="1"/></fixed>"#,
-    );
-    let transmission = Transmission::from_model(&model, ["motor_1", "motor_2"]).unwrap();
+fn reconstructs_ankle_differential() {
+    let (_directory, description) = description(true);
+    let transmission =
+        Transmission::from_description(&description, ["motor_1", "motor_2"]).unwrap();
     assert_eq!(
         transmission.joint_to_coordinate(&[2.0, 3.0]).unwrap(),
         [1.0, 5.0]
@@ -60,31 +87,18 @@ fn reconstructs_ankle_fixed_tendon() {
 }
 
 #[test]
-fn accepts_overdetermined_full_rank_mapping() {
-    let model = model(
-        r#"<fixed name="sum"><joint joint="pitch" coef="1"/><joint joint="roll" coef="1"/></fixed>"#,
-    );
-    let transmission = Transmission::from_model(&model, ["pitch", "roll", "sum"]).unwrap();
-    let reconstructed = transmission.coordinate_to_joint(&[2.0, 3.0, 5.0]).unwrap();
-    assert!((reconstructed[0] - 2.0).abs() < 1.0e-12);
-    assert!((reconstructed[1] - 3.0).abs() < 1.0e-12);
-}
-
-#[test]
-fn rejects_rank_deficient_mapping() {
-    let model = model(
-        r#"<fixed name="same_1"><joint joint="pitch" coef="1"/><joint joint="roll" coef="1"/></fixed>
-           <fixed name="same_2"><joint joint="pitch" coef="2"/><joint joint="roll" coef="2"/></fixed>"#,
-    );
+fn rejects_an_unknown_coordinate() {
+    let (_directory, description) = description(false);
     assert!(matches!(
-        Transmission::from_model(&model, ["same_1", "same_2"]),
-        Err(TransmissionError::Underdetermined { .. })
+        Transmission::from_description(&description, ["missing"]),
+        Err(TransmissionError::UnknownCoordinate(_))
     ));
 }
 
 #[test]
 fn stale_or_missing_input_holds_last_valid_pose() {
-    let transmission = Transmission::from_model(&model(""), ["pitch", "roll"]).unwrap();
+    let (_directory, description) = description(false);
+    let transmission = Transmission::from_description(&description, ["pitch", "roll"]).unwrap();
     let mut reconstructor = FeedbackReconstructor::new(transmission, Duration::from_millis(200));
     let sample = |position, age| CoordinateFeedback {
         position,

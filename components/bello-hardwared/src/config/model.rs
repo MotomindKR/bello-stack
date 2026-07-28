@@ -22,6 +22,58 @@ pub struct Config {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DeploymentConfig {
+    pub description: PathBuf,
+    #[serde(default)]
+    pub runtime: RuntimeConfig,
+    #[serde(default)]
+    pub grpc: GrpcConfig,
+    #[serde(default)]
+    pub bus_interfaces: HashMap<String, String>,
+    #[serde(default)]
+    pub serial_ports: HashMap<String, String>,
+    pub enabled_groups: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HardwareDescription {
+    pub logical_buses: Vec<LogicalBusConfig>,
+    #[serde(default)]
+    pub serial_devices: Vec<LogicalSerialDeviceConfig>,
+    #[serde(default)]
+    pub imus: Vec<ImuConfig>,
+    pub motors: Vec<MotorConfig>,
+    pub motor_groups: Vec<GroupConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct LogicalBusConfig {
+    pub name: String,
+    #[serde(default = "default_host_id")]
+    pub host_id: u8,
+    #[serde(default = "default_bitrate")]
+    pub bitrate: u32,
+    #[serde(default = "default_bus_utilization")]
+    pub maximum_utilization: f64,
+    #[serde(default)]
+    pub reconnect: ReconnectConfig,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct LogicalSerialDeviceConfig {
+    pub name: String,
+    pub baud_rate: u32,
+    #[serde(default = "default_serial_timeout")]
+    pub timeout_ms: u64,
+    #[serde(default)]
+    pub reconnect: ReconnectConfig,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RuntimeConfig {
     pub telemetry_capacity: usize,

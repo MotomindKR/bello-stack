@@ -76,7 +76,7 @@ with Robot.connect("http://127.0.0.1:50051") as robot:
     print("groups:", robot.group_names)
 
     for motor in robot.motors:
-        print(motor.name, "coordinate=", motor.coordinate, "group=", motor.group)
+        print(motor.name, "coordinate=", motor.coordinate, "torque=", motor.limits.torque_max)
 
     for imu in robot.inventory.imus:
         print("IMU:", imu.name)
