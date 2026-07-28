@@ -284,9 +284,15 @@ async fn wait_for_fault(
                 if let Payload::Group(group) = event.payload
                     && group.group == GROUP
                     && group.state == GroupState::Fault as i32
-                    && group.fault_cause == expected as i32
                 {
-                    return Ok(group.fault_detail);
+                    if group.fault_cause == expected as i32 {
+                        return Ok(group.fault_detail);
+                    }
+                    bail!(
+                        "expected {expected:?} group fault, observed cause {}: {}",
+                        group.fault_cause,
+                        group.fault_detail
+                    );
                 }
             }
             Err(_) => {
