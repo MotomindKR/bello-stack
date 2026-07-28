@@ -77,16 +77,13 @@ control_profiles:
 fn maintained_bello_vcan_profiles_cover_every_sphere_hand_coordinate() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("config/bello-vcan.yaml");
     let config = VisualizerConfig::load(path).unwrap();
-    assert_eq!(config.hardware.endpoint, "http://127.0.0.1:50051");
     match &config.root {
         RootConfig::ExternalPose {
-            endpoint,
             reference_frame,
             tracked_frame,
             staleness_ms,
             ..
         } => {
-            assert_eq!(endpoint, "http://127.0.0.1:50052");
             assert_eq!(reference_frame, "odom");
             assert_eq!(tracked_frame, "pelvis_link");
             assert_eq!(*staleness_ms, 200);

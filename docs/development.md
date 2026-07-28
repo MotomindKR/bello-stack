@@ -74,7 +74,10 @@ The Cargo workspace contains six components:
 The adjacent
 [`bello-hardware-python`](../components/bello-hardware-python) component is a
 pure-Python package rather than a Cargo workspace member. It uses generated
-blocking gRPC bindings behind a small robot/group API.
+blocking gRPC bindings behind a small robot/group API. The
+[`bello-upper-body-teleop`](../components/bello-upper-body-teleop) application
+owns the Dynamixel teaching-arm port and consumes that API; it never opens CAN
+or bypasses daemon group leases.
 
 Conceptually, configuration assembles transport and device workers, group
 control consumes narrow hardware handles, and the API presents daemon
@@ -98,6 +101,12 @@ cd components/bello-hardware-python
 ruff format --check .
 ruff check .
 mypy src/bello_hardware tests
+pytest
+python -m hatchling build
+cd ../bello-upper-body-teleop
+ruff format --check .
+ruff check .
+mypy src/bello_upper_body_teleop tests
 pytest
 python -m hatchling build
 ```

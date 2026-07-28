@@ -18,6 +18,7 @@ in hardware command safety.
 | [`bello-hardware-api`](components/bello-hardware-api) | Shared protobuf contract and generated tonic types | Rust library |
 | [`bello-hardware-client`](components/bello-hardware-client) | Robot/group/coordinate control and aggregated state; raw gRPC access is an explicit escape hatch | Rust library |
 | [`bello-hardware-python`](components/bello-hardware-python) | Thin blocking robot/group/coordinate client with background lease and telemetry I/O | Pure-Python package |
+| [`bello-upper-body-teleop`](components/bello-upper-body-teleop) | Dynamixel teaching-arm input mapped to the daemon's leased upper-body group | Python application |
 | [`bello-pose-api`](components/bello-pose-api) | Neutral streaming contract for external root-pose providers | Rust library and protobuf descriptor |
 | [`bello-state-estimatord`](components/bello-state-estimatord) | URDF/IMU/encoder contact-aided local pose provider | `bello-state-estimatord` binary |
 | [`bello-visualizer`](components/bello-visualizer) | Native MJCF monitor and toggle-controlled multi-group command UI | `bello-visualizer` binary |
@@ -86,6 +87,11 @@ cd components/bello-hardware-python
 ruff format --check .
 ruff check .
 mypy src/bello_hardware tests
+pytest
+cd ../bello-upper-body-teleop
+ruff format --check .
+ruff check .
+mypy src/bello_upper_body_teleop tests
 pytest
 ```
 

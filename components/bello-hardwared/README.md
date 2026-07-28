@@ -28,6 +28,13 @@ The default configuration path is this component's `config/bello.yaml`.
 SocketCAN interfaces and serial-device settings must already exist and match
 the YAML. The daemon does not create CAN links or change their bitrate.
 
+That physical configuration exposes `lower_body` and `upper_body` for normal
+control, plus an independent `wrist_yaw` group containing `left_arm_7` and
+`right_arm_7`. The separate group lets an application opt into holding those
+otherwise-unactuated motors without changing the 12-coordinate `upper_body`
+contract. The sphere-hand vcan configuration intentionally omits it because
+its emulator does not publish those two motor IDs.
+
 Visualization and recording are deliberately outside this process. External
 tools can subscribe to the daemon's read-only gRPC telemetry stream without
 affecting hardware ownership.

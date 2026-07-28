@@ -14,6 +14,7 @@ serial_devices:
   - name: imu_serial
     # setup_hil.sh connects this host endpoint to the runner's /dev/ttyIMU-mujoco.
     port: /dev/ttyIMU
+    # port: /dev/ttyACM0
     baud_rate: 460800
     timeout_ms: 100
     reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
@@ -21,8 +22,8 @@ serial_devices:
 imus:
   - name: imu
     serial_device: imu_serial
-    stale_timeout_ms: 500
-    output_rate_hz: 250
+    stale_timeout_ms: 1000
+    output_rate_hz: 500
 
 buses:
   - name: can0

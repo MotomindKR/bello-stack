@@ -145,6 +145,33 @@ Useful accessors include:
 - `states.health("can0")`; and
 - the `states.motors`, `states.groups`, and `states.imus` snapshots.
 
+For temporary debugging, `examples/log_hardware.py` records the complete latest
+state as newline-delimited JSON whenever telemetry changes (capped at 50 Hz by
+default):
+
+```sh
+PYTHONPATH=components/bello-hardware-python/src \
+  python3 components/bello-hardware-python/examples/log_hardware.py \
+  --endpoint http://127.0.0.1:50051
+```
+
+It creates `hardware-<UTC timestamp>.jsonl` in the current directory. Use
+`--output -` for stdout, `--rate 100` to change the cap, or `--duration 30` for
+a bounded capture. The first line contains inventory; later lines contain all
+currently available motor, group, IMU, and component-health values.
+
+Turn a capture into a self-contained interactive browser dashboard with no
+additional Python dependencies:
+
+```sh
+python3 components/bello-hardware-python/examples/view_hardware_log.py \
+  hardware-20260722T120000Z.jsonl
+```
+
+The dashboard plots selectable motor and IMU channels and summarizes group,
+fault, and component-health transitions. It writes `LOG.jsonl.html` and opens
+it in the default browser; pass `--no-open` when running headless.
+
 Telemetry reconnects after transient gRPC failures by default. Reconnection
 clears the cache and increments `states.generation`, preventing stale values
 from looking current after a daemon or connection restart. Each thread calling

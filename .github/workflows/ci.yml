@@ -35,6 +35,14 @@ jobs:
           nix develop --command mypy src/bello_hardware tests
           nix develop --command pytest
           nix develop --command python -m hatchling build
+      - name: Upper-body teleop
+        working-directory: components/bello-upper-body-teleop
+        run: |
+          nix develop --command ruff format --check .
+          nix develop --command ruff check .
+          nix develop --command mypy src/bello_upper_body_teleop tests
+          nix develop --command pytest
+          nix develop --command python -m hatchling build
 
   vcan-integration:
     needs: checks

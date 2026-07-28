@@ -3,11 +3,13 @@
 #   cd ~/bello_mujoco && uv run bello-prepare-assets --config-name visualizer
 mjcf: ../../../../bello_mujoco/assets/generated/visualizer/full_body/mjcf/bello_full_body_viewer.xml
 hardware:
-  endpoint: http://127.0.0.1:50051
+  endpoint: http://192.168.0.8:50051
+  # endpoint: http://127.0.0.1:50051
 root:
   # Simulation ground truth served directly by bello-robstride-runner.
   source: external_pose
-  endpoint: http://127.0.0.1:50052
+  endpoint: http://192.168.0.8:50052
+  # endpoint: http://127.0.0.1:50052
   reference_frame: odom
   tracked_frame: pelvis_link
   staleness_ms: 200

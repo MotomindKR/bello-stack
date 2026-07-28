@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling>=1.30,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bello-upper-body-teleop"
+version = "0.1.0"
+description = "Dynamixel teaching-arm teleoperation for Bello's upper-body motor group"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "LicenseRef-Proprietary"
+dependencies = [
+  "bello-hardware>=0.1,<0.2",
+  "dynamixel-sdk>=3.7,<4",
+]
+
+[project.scripts]
+bello-upper-body-teleop = "bello_upper_body_teleop.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bello_upper_body_teleop"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+pythonpath = ["src", "../bello-hardware-python/src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src/bello_upper_body_teleop", "tests"]
+mypy_path = "../bello-hardware-python/src"

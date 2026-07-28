@@ -2,8 +2,9 @@
 # Motor identities, CAN assignments, models, directions, and coordinates mirror:
 #   ~/bello_mujoco/configs/robstride/{lower_body,upper_body}.yaml
 # Group cadence mirrors configs/robstride_runner/default.yaml. Hardwared-only
-# transport and safety policy remains local to this file. Sphere replacement
-# removes wrist-yaw joints, so arm motors 7 (CAN IDs 37 and 47) are omitted.
+# transport and safety policy remains local to this file. Arm motors 7 (CAN IDs
+# 37 and 47) are isolated in an optional wrist_yaw hold group because the sphere
+# upper_body command morphology does not otherwise use wrist yaw.
 runtime:
   telemetry_capacity: 4096
 
@@ -224,6 +225,24 @@ motors:
     health: *motor_health
     command_policy: *command_policy
     fault_damping_kd: 2.0
+  - name: left_arm_7
+    coordinate: left_wrist_yaw_joint
+    bus: can1
+    id: 37
+    model: ROBSTRIDE_05
+    direction: -1
+    limits: &wrist_yaw_limits
+      position_min: -1.57
+      position_max: 1.57
+    health: &wrist_yaw_health
+      safe_position_min: -1.67
+      safe_position_max: 1.67
+      temperature_warning_c: 60.0
+      maximum_temperature_c: 80.0
+      temperature_recovery_c: 75.0
+      temperature_recovery_duration_ms: 2000
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
   - name: right_arm_1
     coordinate: right_shoulder_pitch_joint
     bus: can1
@@ -278,6 +297,16 @@ motors:
     health: *motor_health
     command_policy: *command_policy
     fault_damping_kd: 2.0
+  - name: right_arm_7
+    coordinate: right_wrist_yaw_joint
+    bus: can1
+    id: 47
+    model: ROBSTRIDE_05
+    direction: -1
+    limits: *wrist_yaw_limits
+    health: *wrist_yaw_health
+    command_policy: *command_policy
+    fault_damping_kd: 2.0
 
 # The source configuration is split into lower- and upper-body files, so those
 # files define hardwared's synchronized ownership and fault-containment groups.
@@ -321,6 +350,16 @@ motor_groups:
       - right_arm_4
       - right_arm_5
       - right_arm_6
+    control_rate_hz: 100.0
+    command_timeout_ms: 100
+    feedback_timeout_ms: 100
+    enable_timeout_ms: 500
+    enable_retries: 3
+    fault_policy: *fault_policy
+  - name: wrist_yaw
+    motors:
+      - left_arm_7
+      - right_arm_7
     control_rate_hz: 100.0
     command_timeout_ms: 100
     feedback_timeout_ms: 100
