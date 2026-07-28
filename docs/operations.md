@@ -144,8 +144,8 @@ cargo run -p bello-visualizer -- \
 ```
 
 Both visualizer service endpoints default to localhost. When the providers run
-on another host, append `--hardware-endpoint http://HOST:50051` and
-`--pose-endpoint http://HOST:50052`.
+on another host, use TLS and append `--hardware-endpoint https://HOST:50051`
+and `--pose-endpoint https://HOST:50052`.
 
 If hardware or pose telemetry disconnects or becomes stale, the visualizer
 freezes the last root transform and shows the condition; root tracking never
