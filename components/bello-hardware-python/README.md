@@ -84,7 +84,10 @@ with Robot.connect("http://127.0.0.1:50051") as robot:
 
 The inventory is fetched and validated when `Robot.connect` returns. This
 makes the daemon configuration the source of truth instead of duplicating the
-robot topology in the Python application.
+robot topology in the Python application. Inconsistent bus or serial
+references, unused transports, duplicate physical addresses, invalid CAN IDs,
+unsupported Robstride models, and invalid device metadata fail the connection
+instead of producing a partially usable client.
 
 The default endpoint is `http://127.0.0.1:50051`, so this is also valid:
 

@@ -17,6 +17,80 @@ from bello_hardware._generated import hardware_pb2 as proto
 from bello_hardware._generated import hardware_pb2_grpc
 
 
+def valid_inventory_response() -> proto.ListHardwareResponse:
+    """Return one internally consistent daemon inventory for client tests."""
+
+    return proto.ListHardwareResponse(
+        buses=[proto.BusInfo(name="main", interface="vcan0", host_id=0xFD)],
+        motors=[
+            proto.MotorInfo(
+                name="hip_motor",
+                coordinate="hip",
+                group="leg",
+                address=proto.MotorAddress(bus="main", id=1),
+                model="ROBSTRIDE_03",
+                direction=1,
+                limits=proto.MotorLimits(
+                    position_min=-12.57,
+                    position_max=12.57,
+                    velocity_min=-20.0,
+                    velocity_max=20.0,
+                    torque_min=-60.0,
+                    torque_max=60.0,
+                    kp_min=0.0,
+                    kp_max=5000.0,
+                    kd_min=0.0,
+                    kd_max=100.0,
+                ),
+            ),
+            proto.MotorInfo(
+                name="knee_motor",
+                coordinate="knee",
+                group="leg",
+                address=proto.MotorAddress(bus="main", id=2),
+                model="ROBSTRIDE_03",
+                direction=1,
+                limits=proto.MotorLimits(
+                    position_min=-12.57,
+                    position_max=12.57,
+                    velocity_min=-20.0,
+                    velocity_max=20.0,
+                    torque_min=-60.0,
+                    torque_max=60.0,
+                    kp_min=0.0,
+                    kp_max=5000.0,
+                    kd_min=0.0,
+                    kd_max=100.0,
+                ),
+            ),
+        ],
+        groups=[
+            proto.GroupInfo(
+                name="leg",
+                control_rate_hz=500.0,
+                state=proto.GROUP_STATE_IDLE,
+                motors=[
+                    proto.MotorAddress(bus="main", id=1),
+                    proto.MotorAddress(bus="main", id=2),
+                ],
+            )
+        ],
+        serial_devices=[
+            proto.SerialDeviceInfo(
+                name="body_serial",
+                port="/dev/ttyUSB0",
+                baud_rate=921_600,
+            )
+        ],
+        imus=[proto.ImuInfo(name="body", serial_device="body_serial")],
+    )
+
+
+@pytest.fixture
+def inventory_response() -> proto.ListHardwareResponse:
+    return valid_inventory_response()
+
+
 class FakeHardware:
     def __init__(self) -> None:
         self.lock = threading.Lock()
@@ -39,63 +113,7 @@ class FakeHardware:
 
     def ListHardware(self, request: Any, context: Any) -> proto.ListHardwareResponse:
         del request, context
-        return proto.ListHardwareResponse(
-            buses=[proto.BusInfo(name="main", interface="vcan0", host_id=0xFD)],
-            motors=[
-                proto.MotorInfo(
-                    name="hip_motor",
-                    coordinate="hip",
-                    group="leg",
-                    address=proto.MotorAddress(bus="main", id=1),
-                    model="ROBSTRIDE_03",
-                    direction=1,
-                    limits=proto.MotorLimits(
-                        position_min=-12.57,
-                        position_max=12.57,
-                        velocity_min=-20.0,
-                        velocity_max=20.0,
-                        torque_min=-60.0,
-                        torque_max=60.0,
-                        kp_min=0.0,
-                        kp_max=5000.0,
-                        kd_min=0.0,
-                        kd_max=100.0,
-                    ),
-                ),
-                proto.MotorInfo(
-                    name="knee_motor",
-                    coordinate="knee",
-                    group="leg",
-                    address=proto.MotorAddress(bus="main", id=2),
-                    model="ROBSTRIDE_03",
-                    direction=1,
-                    limits=proto.MotorLimits(
-                        position_min=-12.57,
-                        position_max=12.57,
-                        velocity_min=-20.0,
-                        velocity_max=20.0,
-                        torque_min=-60.0,
-                        torque_max=60.0,
-                        kp_min=0.0,
-                        kp_max=5000.0,
-                        kd_min=0.0,
-                        kd_max=100.0,
-                    ),
-                ),
-            ],
-            groups=[
-                proto.GroupInfo(
-                    name="leg",
-                    control_rate_hz=500.0,
-                    state=proto.GROUP_STATE_IDLE,
-                    motors=[
-                        proto.MotorAddress(bus="main", id=1),
-                        proto.MotorAddress(bus="main", id=2),
-                    ],
-                )
-            ],
-            imus=[proto.ImuInfo(name="body", serial_device="body_serial")],
-        )
+        return valid_inventory_response()
 
     def AcquireLease(self, request: Any, context: Any) -> proto.AcquireLeaseResponse:
         del context

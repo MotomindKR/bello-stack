@@ -3,10 +3,86 @@
 from __future__ import annotations
 
 import math
+import xml.etree.ElementTree as ET
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from importlib.resources import files
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from importlib.abc import Traversable
 
 _POSITION_SCALE_RADIANS = math.pi / 2048.0
+
+
+def _canonical_full_body_urdf() -> Traversable:
+    component_root = Path(__file__).resolve().parents[2]
+    stack_root = component_root.parents[1]
+    if (stack_root / "Cargo.toml").is_file():
+        checkout_path = (
+            stack_root / "descriptions" / "bello" / "full_body" / "urdf" / "bello_full_body.urdf"
+        )
+        if not checkout_path.is_file():
+            raise RuntimeError(f"canonical Bello URDF is missing from checkout: {checkout_path}")
+        return checkout_path
+
+    resource = files("bello_upper_body_teleop").joinpath("_assets/bello_full_body.urdf")
+    if not resource.is_file():
+        raise RuntimeError("installed teleop package does not contain the canonical Bello URDF")
+    return resource
+
+
+_CANONICAL_FULL_BODY_URDF = _canonical_full_body_urdf()
+
+
+def _load_revolute_joint_limits(urdf_path: Traversable) -> dict[str, tuple[float, float]]:
+    """Load every finite revolute-joint position range from one canonical URDF."""
+
+    try:
+        with urdf_path.open("rb") as stream:
+            root = ET.parse(stream).getroot()
+    except (OSError, ET.ParseError) as error:
+        raise RuntimeError(f"failed to read canonical Bello URDF {urdf_path}: {error}") from error
+    if root.tag != "robot":
+        raise ValueError(f"canonical Bello URDF root must be <robot>, got <{root.tag}>")
+
+    limits: dict[str, tuple[float, float]] = {}
+    for joint in root.findall("joint"):
+        if joint.get("type") != "revolute":
+            continue
+        coordinate = joint.get("name")
+        if not coordinate:
+            raise ValueError("canonical Bello URDF contains an unnamed revolute joint")
+        if coordinate in limits:
+            raise ValueError(
+                f"canonical Bello URDF contains duplicate revolute joint {coordinate!r}"
+            )
+        limit = joint.find("limit")
+        if limit is None:
+            raise ValueError(f"canonical Bello URDF revolute joint {coordinate!r} has no <limit>")
+        lower_text = limit.get("lower")
+        upper_text = limit.get("upper")
+        if lower_text is None or upper_text is None:
+            raise ValueError(
+                f"canonical Bello URDF joint {coordinate!r} lacks lower or upper limit"
+            )
+        try:
+            lower = float(lower_text)
+            upper = float(upper_text)
+        except ValueError as error:
+            raise ValueError(
+                f"canonical Bello URDF joint {coordinate!r} has a non-numeric limit"
+            ) from error
+        if not math.isfinite(lower) or not math.isfinite(upper) or lower >= upper:
+            raise ValueError(
+                f"canonical Bello URDF joint {coordinate!r} has invalid limits [{lower}, {upper}]"
+            )
+        limits[coordinate] = (lower, upper)
+    return limits
+
+
+_CANONICAL_REVOLUTE_JOINT_LIMITS = _load_revolute_joint_limits(_CANONICAL_FULL_BODY_URDF)
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,13 +174,21 @@ def _joint(
     kd: float,
     default_position_radians: float = 0.0,
 ) -> JointMapping:
+    try:
+        physical_minimum, physical_maximum = _CANONICAL_REVOLUTE_JOINT_LIMITS[coordinate]
+    except KeyError as error:
+        raise ValueError(
+            f"canonical Bello URDF does not define revolute joint {coordinate!r}"
+        ) from error
+    teaching_minimum = math.radians(limits_degrees[0])
+    teaching_maximum = math.radians(limits_degrees[1])
     return JointMapping(
         dxl_id=dxl_id,
         coordinate=coordinate,
         position_offset_radians=offset_turns * math.pi,
         action_gain=gain,
-        minimum_radians=math.radians(limits_degrees[0]),
-        maximum_radians=math.radians(limits_degrees[1]),
+        minimum_radians=max(teaching_minimum, physical_minimum),
+        maximum_radians=min(teaching_maximum, physical_maximum),
         kp=kp,
         kd=kd,
         default_position_radians=default_position_radians,

@@ -60,9 +60,23 @@ are the same physical wrist target, so the controller avoids commanding an
 unnecessary full turn from a nearby multi-turn reading.
 
 Offsets, directions, and action limits come from the previous
-`BelloJointTeleopControllerConfig`. The application intersects those limits with
-the physical upper-body actuator limits and clamps every sample before it can
-become a robot command.
+`BelloJointTeleopControllerConfig`. At startup, an editable checkout parses the
+repository's single canonical robot description,
+`descriptions/bello/full_body/urdf/bello_full_body.urdf`, and intersects each
+teaching limit with that joint's URDF position range. It fails startup if that
+file is missing, malformed, or does not define a mapped revolute joint. Every
+sample is clamped to the resulting range, and target-frame construction rejects
+positions outside it before they can become robot commands.
+Standalone distributions embed that same canonical URDF at build time and
+parse the packaged snapshot together with its package-specific provenance
+notice. The notice records the exact `bello-stack` commit and URDF digest, and
+the distribution contains no adjacent mesh files. Building fails if the
+checked-out URDF differs from the recorded commit. Wheels rebuilt from a source
+distribution preserve its original snapshot and provenance rather than
+searching for an external asset checkout.
+Before reading the teaching arms or acquiring a lease, startup also requires
+each effective range to fit within the matching motor position range reported
+by the live daemon inventory.
 
 The robot impedance gains match MotoMind's deployed upper-body hold tuning:
 shoulder pitch/roll use `kp=70, kd=2`, shoulder yaw `20/1`, elbow pitch `40/2`,
@@ -93,6 +107,10 @@ python -m pip install \
   -e components/bello-hardware-python \
   -e components/bello-upper-body-teleop
 ```
+
+Editable installations read the canonical URDF directly from the complete
+`bello_stack` checkout. A built wheel is self-contained and carries the exact
+URDF snapshot present when the wheel was built.
 
 This installs the Robotis `dynamixel-sdk` dependency. The default teaching-arm
 connection is `/dev/ttyUSB0` at 1,000,000 baud.

@@ -21,6 +21,20 @@ from .types import (
     SerialDevice,
 )
 
+_MAX_CAN_ID = 0xFF
+_MAX_ROBSTRIDE_MOTOR_ID = 127
+_SUPPORTED_ROBSTRIDE_MODELS = frozenset(
+    {
+        "ROBSTRIDE_00",
+        "ROBSTRIDE_01",
+        "ROBSTRIDE_02",
+        "ROBSTRIDE_03",
+        "ROBSTRIDE_04",
+        "ROBSTRIDE_05",
+        "ROBSTRIDE_06",
+    }
+)
+
 if TYPE_CHECKING:
     from .control import ControlSession
     from .robot import Robot
@@ -40,13 +54,14 @@ def _optional_status(message: object, field: str) -> DeviceStatus | None:
     return _status(getattr(message, field))
 
 
-def _require_unique_names(messages: Iterable[Any], kind: str) -> None:
-    names: set[str] = set()
+def _index_unique_names(messages: Iterable[Any], kind: str) -> dict[str, Any]:
+    indexed: dict[str, Any] = {}
     for message in messages:
         name = message.name
-        if not name.strip() or name in names:
+        if not name.strip() or name in indexed:
             raise InventoryError(f"invalid or duplicate {kind} {name!r}")
-        names.add(name)
+        indexed[name] = message
+    return indexed
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,9 +76,47 @@ class Inventory:
     """Validated hardware metadata returned at connection time."""
 
     def __init__(self, response: proto.ListHardwareResponse) -> None:
-        _require_unique_names(response.buses, "bus")
-        _require_unique_names(response.serial_devices, "serial device")
-        _require_unique_names(response.imus, "IMU")
+        buses = _index_unique_names(response.buses, "bus")
+        serial_devices = _index_unique_names(response.serial_devices, "serial device")
+        _index_unique_names(response.imus, "IMU")
+
+        interfaces: set[str] = set()
+        for item in response.buses:
+            if not item.interface.strip():
+                raise InventoryError(f"bus {item.name!r} has no interface")
+            if item.host_id > _MAX_CAN_ID:
+                raise InventoryError(f"bus {item.name!r} host ID must be in 0..={_MAX_CAN_ID}")
+            if item.interface in interfaces:
+                raise InventoryError(f"CAN interface {item.interface!r} is assigned more than once")
+            interfaces.add(item.interface)
+
+        ports: set[str] = set()
+        for item in response.serial_devices:
+            if not item.port.strip():
+                raise InventoryError(f"serial device {item.name!r} has no port")
+            if item.baud_rate <= 0:
+                raise InventoryError(f"serial device {item.name!r} has an invalid baud rate")
+            if item.port in ports:
+                raise InventoryError(f"serial port {item.port!r} is assigned more than once")
+            ports.add(item.port)
+
+        claimed_serial_devices: set[str] = set()
+        for item in response.imus:
+            if item.serial_device not in serial_devices:
+                raise InventoryError(
+                    f"IMU {item.name!r} references unknown serial device {item.serial_device!r}"
+                )
+            if item.serial_device in claimed_serial_devices:
+                raise InventoryError(
+                    f"serial device {item.serial_device!r} is assigned to more than one IMU"
+                )
+            claimed_serial_devices.add(item.serial_device)
+        unused_serial_devices = sorted(set(serial_devices) - claimed_serial_devices)
+        if unused_serial_devices:
+            raise InventoryError(
+                f"serial devices are not assigned to an IMU: {unused_serial_devices}"
+            )
+
         self.buses = tuple(
             Bus(item.name, item.interface, item.host_id, _optional_status(item, "status"))
             for item in response.buses
@@ -92,6 +145,7 @@ class Inventory:
 
         motors: dict[str, Motor] = {}
         coordinates: dict[str, str] = {}
+        addresses: set[tuple[str, int]] = set()
         grouped: dict[str, list[Motor]] = {name: [] for name in group_messages}
         for item in response.motors:
             if not item.name.strip() or not item.coordinate.strip() or not item.group.strip():
@@ -104,6 +158,32 @@ class Inventory:
                 raise InventoryError(f"motor {item.name!r} references unknown group {item.group!r}")
             if not item.HasField("address") or not item.address.bus.strip():
                 raise InventoryError(f"motor {item.name!r} has no valid bus address")
+            if item.address.bus not in buses:
+                raise InventoryError(
+                    f"motor {item.name!r} references unknown bus {item.address.bus!r}"
+                )
+            if item.address.id > _MAX_ROBSTRIDE_MOTOR_ID:
+                raise InventoryError(
+                    f"motor {item.name!r} ID must be in 0..={_MAX_ROBSTRIDE_MOTOR_ID}"
+                )
+            if item.address.id == buses[item.address.bus].host_id:
+                raise InventoryError(f"motor {item.name!r} ID conflicts with bus host ID")
+            address = (item.address.bus, item.address.id)
+            if address in addresses:
+                raise InventoryError(
+                    f"motor address {item.address.bus}:{item.address.id} is assigned more than once"
+                )
+            addresses.add(address)
+            if not item.model.strip():
+                raise InventoryError(f"motor {item.name!r} has no model")
+            if item.model not in _SUPPORTED_ROBSTRIDE_MODELS:
+                raise InventoryError(
+                    f"motor {item.name!r} has unsupported Robstride model {item.model!r}"
+                )
+            if item.direction not in (-1, 1):
+                raise InventoryError(
+                    f"motor {item.name!r} direction must be -1 or 1, got {item.direction}"
+                )
             if not item.HasField("limits"):
                 raise InventoryError(f"motor {item.name!r} has no resolved command limits")
             try:
@@ -135,6 +215,10 @@ class Inventory:
             motors[motor.name] = motor
             coordinates[motor.coordinate] = motor.name
             grouped[motor.group].append(motor)
+
+        unused_buses = sorted(set(buses) - {bus for bus, _motor_id in addresses})
+        if unused_buses:
+            raise InventoryError(f"CAN buses have no motors: {unused_buses}")
 
         definitions: dict[str, _GroupDefinition] = {}
         for name, message in group_messages.items():

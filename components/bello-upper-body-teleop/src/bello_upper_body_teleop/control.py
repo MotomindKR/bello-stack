@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from dataclasses import dataclass
@@ -13,6 +13,7 @@ from typing import Protocol
 from bello_hardware import (
     CommandPipeline,
     CoordinateTarget,
+    Motor,
     Robot,
     RobotStates,
     StateUnavailableError,
@@ -29,6 +30,7 @@ WRIST_YAW_COORDINATES = (
     "left_wrist_yaw_joint",
     "right_wrist_yaw_joint",
 )
+_POSITION_LIMIT_TOLERANCE_RADIANS = 1e-9
 
 
 class PositionSource(Protocol):
@@ -122,12 +124,53 @@ def build_target_frame(
         position = float(positions[joint.coordinate])
         if not math.isfinite(position):
             raise ValueError(f"position for {joint.coordinate!r} must be finite")
+        if not joint.minimum_radians <= position <= joint.maximum_radians:
+            raise ValueError(
+                f"position for {joint.coordinate!r} is outside its effective "
+                f"[{joint.minimum_radians}, {joint.maximum_radians}] rad limits"
+            )
         frame[joint.coordinate] = CoordinateTarget.position(
             position,
             kp=joint.kp * gain_scale,
             kd=joint.kd,
         )
     return frame
+
+
+def _validate_live_joint_limits(
+    motors: Sequence[Motor],
+    joints: Sequence[JointMapping] = UPPER_BODY_JOINTS,
+) -> None:
+    expected = {joint.coordinate for joint in joints}
+    live_by_coordinate: dict[str, Motor] = {}
+    for motor in motors:
+        if motor.coordinate in live_by_coordinate:
+            raise ValueError(
+                f"live upper-body inventory assigns coordinate {motor.coordinate!r} more than once"
+            )
+        live_by_coordinate[motor.coordinate] = motor
+
+    missing = sorted(expected - set(live_by_coordinate))
+    unexpected = sorted(set(live_by_coordinate) - expected)
+    if missing or unexpected:
+        raise ValueError(
+            f"live upper-body motor mapping mismatch: missing={missing}, unexpected={unexpected}"
+        )
+
+    for joint in joints:
+        motor = live_by_coordinate[joint.coordinate]
+        live_minimum = motor.limits.position_min
+        live_maximum = motor.limits.position_max
+        if (
+            joint.minimum_radians < live_minimum - _POSITION_LIMIT_TOLERANCE_RADIANS
+            or joint.maximum_radians > live_maximum + _POSITION_LIMIT_TOLERANCE_RADIANS
+        ):
+            raise ValueError(
+                f"live motor {motor.name!r} position range "
+                f"[{live_minimum}, {live_maximum}] does not contain the effective "
+                f"teleop range [{joint.minimum_radians}, {joint.maximum_radians}] "
+                f"for {joint.coordinate!r}"
+            )
 
 
 def build_wrist_yaw_hold_frame(
@@ -303,6 +346,7 @@ def run_teleoperation(
     report = status if status is not None else lambda _message: None
     group = robot.group(settings.group)
     validate_group_coordinates(group.coordinates)
+    _validate_live_joint_limits(group.motors)
     wrist_yaw_group = (
         robot.group(settings.wrist_yaw_group) if settings.wrist_yaw_group is not None else None
     )

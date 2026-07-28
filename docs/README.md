@@ -67,6 +67,8 @@ remain:
 - [`config/bello.yaml`](../components/bello-hardwared/config/bello.yaml) and
   [`config/bello-vcan.yaml`](../components/bello-hardwared/config/bello-vcan.yaml) for
   maintained example configurations.
+- [`descriptions/bello`](../descriptions/bello) for the canonical robot
+  description, meshes, hardware topology, and their provenance boundary.
 
 The project is greenfield. Documentation describes the current interface only;
 it does not preserve historical aliases or compatibility behavior.

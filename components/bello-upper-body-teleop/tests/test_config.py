@@ -1,8 +1,10 @@
 import math
+import xml.etree.ElementTree as ET
 
 import pytest
 
 from bello_upper_body_teleop.config import (
+    _CANONICAL_FULL_BODY_URDF,
     UPPER_BODY_COORDINATES,
     UPPER_BODY_JOINTS,
     map_raw_positions,
@@ -58,15 +60,33 @@ def test_mapping_clamps_to_tighter_physical_limits() -> None:
     raw = {
         joint.dxl_id: _raw_position(joint.position_offset_radians) for joint in UPPER_BODY_JOINTS
     }
-    left_elbow = next(
-        joint for joint in UPPER_BODY_JOINTS if joint.coordinate == "left_elbow_pitch_joint"
+    right_elbow = next(
+        joint for joint in UPPER_BODY_JOINTS if joint.coordinate == "right_elbow_pitch_joint"
     )
-    raw[left_elbow.dxl_id] = _raw_position(left_elbow.position_offset_radians + math.pi)
+    raw[right_elbow.dxl_id] = _raw_position(right_elbow.position_offset_radians - math.pi)
 
     sample = map_raw_positions(raw)
 
-    assert sample.positions[left_elbow.coordinate] == pytest.approx(2.4)
-    assert sample.clipped_coordinates == (left_elbow.coordinate,)
+    assert sample.positions[right_elbow.coordinate] == pytest.approx(1.57)
+    assert sample.clipped_coordinates == (right_elbow.coordinate,)
+
+
+def test_effective_limits_never_exceed_canonical_urdf_limits() -> None:
+    with _CANONICAL_FULL_BODY_URDF.open("rb") as stream:
+        root = ET.parse(stream).getroot()
+    urdf_limits = {
+        joint.attrib["name"]: (
+            float(limit.attrib["lower"]),
+            float(limit.attrib["upper"]),
+        )
+        for joint in root.findall("joint")
+        if joint.get("type") == "revolute" and (limit := joint.find("limit")) is not None
+    }
+
+    for joint in UPPER_BODY_JOINTS:
+        urdf_minimum, urdf_maximum = urdf_limits[joint.coordinate]
+        assert joint.minimum_radians >= urdf_minimum
+        assert joint.maximum_radians <= urdf_maximum
 
 
 def test_robot_position_converts_back_to_master_encoder_target() -> None:

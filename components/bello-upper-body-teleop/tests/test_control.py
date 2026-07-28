@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from itertools import pairwise
+from types import SimpleNamespace
 from typing import Literal, cast
 
 import pytest
@@ -12,6 +13,7 @@ from bello_upper_body_teleop.config import (
     UPPER_BODY_COORDINATES,
     UPPER_BODY_JOINTS,
     TeachingArmSample,
+    map_raw_positions,
 )
 from bello_upper_body_teleop.control import (
     WRIST_YAW_COORDINATES,
@@ -42,6 +44,25 @@ def test_target_frame_is_complete_and_scales_only_kp() -> None:
 def test_target_frame_rejects_partial_input() -> None:
     with pytest.raises(ValueError, match="incomplete target positions"):
         build_target_frame({}, gain_scale=1.0)
+
+
+def test_extreme_teaching_arm_samples_cannot_build_out_of_range_targets() -> None:
+    for raw_position in (-1_000_000, 1_000_000):
+        sample = map_raw_positions({joint.dxl_id: raw_position for joint in UPPER_BODY_JOINTS})
+        frame = build_target_frame(sample.positions, gain_scale=1.0)
+
+        for joint in UPPER_BODY_JOINTS:
+            position = frame[joint.coordinate].position_radians
+            assert joint.minimum_radians <= position <= joint.maximum_radians
+
+
+def test_target_frame_rejects_a_position_outside_the_effective_limits() -> None:
+    positions = {joint.coordinate: joint.default_position_radians for joint in UPPER_BODY_JOINTS}
+    joint = UPPER_BODY_JOINTS[0]
+    positions[joint.coordinate] = joint.maximum_radians + 0.01
+
+    with pytest.raises(ValueError, match="outside its effective"):
+        build_target_frame(positions, gain_scale=1.0)
 
 
 def test_wrist_yaw_hold_frame_is_complete_and_scales_only_kp() -> None:
@@ -179,6 +200,14 @@ class _FakeGroup:
     ) -> None:
         self.name = name
         self.coordinates = coordinates
+        self.motors = tuple(
+            SimpleNamespace(
+                name=f"{coordinate}_motor",
+                coordinate=coordinate,
+                limits=SimpleNamespace(position_min=-100.0, position_max=100.0),
+            )
+            for coordinate in coordinates
+        )
         self.session = _FakeControl()
         self.control_calls = 0
 
@@ -393,6 +422,40 @@ def test_optional_wrist_yaw_group_rejects_coordinate_mismatch_before_control() -
     assert source.read_count == 0
     assert robot.group_instance.control_calls == 0
     assert robot.wrist_group_instance.control_calls == 0
+
+
+@pytest.mark.parametrize(
+    ("case", "message"),
+    [
+        ("missing", "motor mapping mismatch"),
+        ("duplicate", "assigns coordinate .* more than once"),
+        ("narrow", "does not contain the effective teleop range"),
+    ],
+)
+def test_live_motor_envelope_is_validated_before_input_or_control(
+    case: str,
+    message: str,
+) -> None:
+    robot = _FakeRobot()
+    source = _FakeSource()
+    if case == "missing":
+        robot.group_instance.motors = robot.group_instance.motors[:-1]
+    elif case == "duplicate":
+        robot.group_instance.motors[1].coordinate = robot.group_instance.motors[0].coordinate
+    else:
+        joint = UPPER_BODY_JOINTS[0]
+        robot.group_instance.motors[0].limits.position_max = joint.maximum_radians - 0.01
+
+    with pytest.raises(ValueError, match=message):
+        run_teleoperation(
+            cast(Robot, robot),
+            source,
+            TeleopSettings(),
+            confirmation=_FakeConfirmationGate(robot, (True, True)),
+        )
+
+    assert source.read_count == 0
+    assert robot.group_instance.control_calls == 0
 
 
 def test_declining_hold_never_acquires_control() -> None:
