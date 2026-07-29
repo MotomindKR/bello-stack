@@ -662,8 +662,11 @@ class ControlSession:
 
     @staticmethod
     def _state_after_command_error(error: BaseException) -> ControlState:
-        if isinstance(error, CommandRejectedError) and error.state == GroupState.DAMPED:
-            return ControlState.DAMPED
+        if isinstance(error, CommandRejectedError):
+            if error.state == GroupState.RUNNING:
+                return ControlState.RUNNING
+            if error.state == GroupState.DAMPED:
+                return ControlState.DAMPED
         return ControlState.UNCERTAIN
 
     def _close_stream(self) -> None:

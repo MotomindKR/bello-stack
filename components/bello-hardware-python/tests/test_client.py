@@ -114,7 +114,7 @@ def test_command_pipeline_rejects_invalid_pending_bound(
             CommandPipeline(control, max_pending=True)
 
 
-def test_async_rejection_makes_session_uncertain(
+def test_async_rejection_preserves_running_session_state(
     hardware_server: RunningServer,
 ) -> None:
     with (
@@ -126,7 +126,7 @@ def test_async_rejection_makes_session_uncertain(
         receipt = control.send_async(frame(0.1))
         with pytest.raises(CommandRejectedError):
             receipt.result()
-        assert control.state is ControlState.UNCERTAIN
+        assert control.state is ControlState.RUNNING
 
 
 def test_lease_is_renewed_in_the_background(hardware_server: RunningServer) -> None:
@@ -138,7 +138,9 @@ def test_lease_is_renewed_in_the_background(hardware_server: RunningServer) -> N
     assert hardware_server.service.renew_count >= 1
 
 
-def test_rejected_command_makes_session_uncertain(hardware_server: RunningServer) -> None:
+def test_rejected_command_preserves_running_session_state(
+    hardware_server: RunningServer,
+) -> None:
     with (
         Robot.connect(hardware_server.endpoint) as robot,
         robot.group("leg").control("pytest") as control,
@@ -147,7 +149,7 @@ def test_rejected_command_makes_session_uncertain(hardware_server: RunningServer
         hardware_server.service.reject_next = True
         with pytest.raises(CommandRejectedError):
             control.send(frame(0.1))
-        assert control.state is ControlState.UNCERTAIN
+        assert control.state is ControlState.RUNNING
 
 
 def test_incomplete_frames_fail_before_transmission(hardware_server: RunningServer) -> None:
