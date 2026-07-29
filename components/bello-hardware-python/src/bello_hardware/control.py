@@ -464,7 +464,7 @@ class ControlSession:
             self._expect("recover", GroupState.IDLE, response.state)
             self._set_state(ControlState.READY)
 
-    def close(self) -> None:
+    def close(self, *, preserve_damping: bool = False) -> None:
         with self._operation_lock:
             if self.state == ControlState.CLOSED:
                 return
@@ -481,15 +481,18 @@ class ControlSession:
                     self._expect("stop", GroupState.DAMPED, response.state)
                 except BaseException as error:
                     errors.append(error)
-            try:
-                response = self._unary(
-                    "disable group",
-                    self._group._robot._stub.DisableGroup,
-                    proto.DisableGroupRequest(group=self._group.name, lease_token=self._token),
-                )
-                self._expect("disable", GroupState.IDLE, response.state)
-            except BaseException as error:
-                errors.append(error)
+            if not preserve_damping:
+                try:
+                    response = self._unary(
+                        "disable group",
+                        self._group._robot._stub.DisableGroup,
+                        proto.DisableGroupRequest(
+                            group=self._group.name, lease_token=self._token
+                        ),
+                    )
+                    self._expect("disable", GroupState.IDLE, response.state)
+                except BaseException as error:
+                    errors.append(error)
 
             self._renewal_stop.set()
             if self._renewal is not threading.current_thread():
@@ -501,7 +504,12 @@ class ControlSession:
                         self._group._robot._stub.ReleaseLease,
                         proto.ReleaseLeaseRequest(token=self._token),
                     )
-                self._expect("release", GroupState.IDLE, response.state)
+                expected = (
+                    (GroupState.IDLE, GroupState.DAMPED, GroupState.FAULT)
+                    if preserve_damping
+                    else (GroupState.IDLE,)
+                )
+                self._expect_any("release", expected, response.state)
             except BaseException as error:
                 errors.append(error)
             self._set_state(ControlState.CLOSED)
@@ -635,16 +643,25 @@ class ControlSession:
             raise control_rpc_error(operation, error) from error
 
     def _expect(self, operation: str, expected: GroupState, actual_value: int) -> None:
+        self._expect_any(operation, (expected,), actual_value)
+
+    def _expect_any(
+        self,
+        operation: str,
+        expected: tuple[GroupState, ...],
+        actual_value: int,
+    ) -> None:
         try:
             actual = GroupState(actual_value)
         except ValueError as error:
             raise ProtocolError(
                 f"{operation} returned unknown group state {actual_value}"
             ) from error
-        if actual != expected:
+        if actual not in expected:
+            names = ", ".join(state.name for state in expected)
             raise ControlError(
                 f"{operation} for {self._group.name!r} returned {actual.name}, "
-                f"expected {expected.name}"
+                f"expected one of {names}"
             )
 
     def _require(self, expected: ControlState, operation: str) -> None:

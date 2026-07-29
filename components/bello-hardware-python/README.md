@@ -221,6 +221,12 @@ the motors damped under the current lease; restart with
 Leaving the control context performs stop if needed, disables the group, stops
 automatic lease renewal, and releases the lease.
 
+Safety-critical applications that require an operator-confirmed transition to
+`IDLE` can call `control.close(preserve_damping=True)`. This stops a running
+group when possible and releases the lease without sending `DisableGroup`;
+daemon lease-loss handling retains damping. Call `control.disable()` explicitly
+only after the operator has confirmed that disabling the group is safe.
+
 Latency-sensitive fixed-rate loops can use a bounded pipeline so delayed
 acknowledgements do not directly schedule the next command:
 

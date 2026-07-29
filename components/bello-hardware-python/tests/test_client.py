@@ -52,6 +52,19 @@ def test_blocking_control_lifecycle_is_small(hardware_server: RunningServer) -> 
     assert hardware_server.service.release_count == 1
 
 
+def test_close_can_preserve_damping(hardware_server: RunningServer) -> None:
+    with Robot.connect(hardware_server.endpoint) as robot:
+        control = robot.group("leg").control("pytest")
+        control.start(frame())
+        control.close(preserve_damping=True)
+
+        assert control.state is ControlState.CLOSED
+
+    assert hardware_server.service.state == proto.GROUP_STATE_DAMPED
+    assert hardware_server.service.disable_count == 0
+    assert hardware_server.service.release_count == 1
+
+
 def test_async_commands_pipeline_before_acknowledgements(
     hardware_server: RunningServer,
 ) -> None:
