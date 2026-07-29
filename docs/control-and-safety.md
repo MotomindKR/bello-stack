@@ -153,8 +153,9 @@ Command admission on the group thread verifies, in order:
 6. every motor command passes numeric, effective-limit, and position-step
    policy;
 7. direct and differential targets resolve inside the canonical URDF joint
-   position/velocity envelope, and the full requested impedance torque resolves
-   inside both motor and joint effort limits.
+   position/velocity envelope, and the configured computed-torque policy is
+   applied to the full requested impedance torque against both motor and joint
+   effort limits.
 
 Validation is staged before mutating per-motor command state, so a partially
 valid batch never replaces part of the current command. Sequence tracking is
@@ -208,11 +209,14 @@ The scalar policy runs before the mechanical-envelope policy. Direct URDF
 limits narrow the scalar ranges. Differential commands are then transformed as
 a complete pair, so individually valid ankle-motor targets cannot violate
 ankle roll/pitch limits. The torque check evaluates feedforward plus the current
-impedance error. A coupled violation is never independently clamped; it is
-rejected unless one of the affected motors configures `fault` behavior. Motor
-feedback position checks allow the configured feedback-position tolerance at a
-limit; it defaults to two protocol quantization intervals, and differential
-feedback propagates that tolerance through its transmission.
+impedance error. A coupled violation is never independently clamped. It follows
+the affected motors' `computed_torque` behavior: `reject`, `fault`, or
+warning-only transmission when every affected motor selects `warn`. The
+warning-only path requires complete finite feedback and leaves all position and
+velocity checks enforced. Motor feedback position checks allow the configured
+feedback-position tolerance at a limit; it defaults to two protocol
+quantization intervals, and differential feedback propagates that tolerance
+through its transmission.
 Safety damping uses the same motor and direct/differential torque envelope. Its
 group-wide gain scale covers every velocity representable by each motor model,
 including the worst signed velocity combinations of a differential, so the
@@ -261,8 +265,8 @@ measured temperature. The group has no warning or degraded state of its own.
 ## Command safety policy
 
 Every impedance field must be finite. Non-finite input always uses fault
-behavior. Configured command limits and maximum position-target step each
-select one of three behaviors:
+behavior. Configured scalar command limits and maximum position-target step
+each select one of three behaviors:
 
 - `clamp` modifies the offending value, publishes a command-policy event, and
   continues validation; the batch is admitted if no other issue rejects or
@@ -270,6 +274,14 @@ select one of three behaviors:
 - `reject` publishes an event and rejects the batch without faulting the group;
 - `fault` publishes an event, latches the corresponding group fault, applies
   its configured response, and rejects the batch.
+
+Computed impedance torque has a separate policy because coupled motor/joint
+effort violations cannot be safely clamped component by component. Its
+`computed_torque` setting accepts `reject`, `fault`, or `warn`. `warn` admits
+and transmits the unmodified command, keeps rechecking it against current
+feedback, and emits a warning log and command-policy telemetry at most once per
+second while violations persist. Missing or non-finite feedback is never
+warning-eligible.
 
 The first position target in a new lease generation is measured from fresh
 motor feedback, preventing an initial jump. Every later position step in that

@@ -116,6 +116,7 @@ fn command_behavior(value: CommandBehavior) -> i32 {
         CommandBehavior::Clamp => proto::CommandBehavior::Clamp,
         CommandBehavior::Reject => proto::CommandBehavior::Reject,
         CommandBehavior::Fault => proto::CommandBehavior::Fault,
+        CommandBehavior::Warn => proto::CommandBehavior::Warn,
     }) as i32
 }
 

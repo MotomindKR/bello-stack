@@ -276,6 +276,7 @@ pub struct MotorCommandPolicy {
     pub maximum_position_step: f64,
     pub limit: CommandBehavior,
     pub position_step: CommandBehavior,
+    pub computed_torque: CommandBehavior,
 }
 
 impl Default for MotorCommandPolicy {
@@ -284,6 +285,7 @@ impl Default for MotorCommandPolicy {
             maximum_position_step: 0.5,
             limit: CommandBehavior::Reject,
             position_step: CommandBehavior::Fault,
+            computed_torque: CommandBehavior::Reject,
         }
     }
 }
@@ -298,6 +300,7 @@ pub enum CommandBehavior {
     Clamp,
     Reject,
     Fault,
+    Warn,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]

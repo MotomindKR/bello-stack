@@ -1,4 +1,4 @@
-use crate::config::CommandBehavior;
+use crate::config::{CommandBehavior, MotorCommandPolicy};
 use crate::domain::{ImpedanceCommand, SafetyViolation};
 use crate::hardware::robstride::MotorSpec;
 
@@ -63,6 +63,33 @@ pub(crate) fn select_position_reference(
         previous_target.map(PositionReference::PreviousTarget)
     } else {
         measured_position.map(PositionReference::Measured)
+    }
+}
+
+pub(crate) fn mechanical_violation_behavior<'a>(
+    computed_torque_warning_allowed: bool,
+    policies: impl IntoIterator<Item = &'a MotorCommandPolicy>,
+) -> CommandBehavior {
+    let mut found = false;
+    let mut selected = CommandBehavior::Warn;
+    for policy in policies {
+        found = true;
+        let behavior = if computed_torque_warning_allowed {
+            policy.computed_torque
+        } else {
+            policy.limit
+        };
+        if behavior == CommandBehavior::Fault {
+            return CommandBehavior::Fault;
+        }
+        if behavior != CommandBehavior::Warn {
+            selected = CommandBehavior::Reject;
+        }
+    }
+    if found {
+        selected
+    } else {
+        CommandBehavior::Reject
     }
 }
 
@@ -207,6 +234,35 @@ mod tests {
         assert_eq!(report.command.position, motor.limits.position_max);
         assert!(report.issues[0].command_modified);
         assert!(!report.issues[0].command_rejected);
+    }
+
+    #[test]
+    fn computed_torque_warning_requires_every_affected_motor_to_allow_it() {
+        let mut first = MotorCommandPolicy {
+            computed_torque: CommandBehavior::Warn,
+            ..MotorCommandPolicy::default()
+        };
+        let mut second = first.clone();
+        assert_eq!(
+            mechanical_violation_behavior(true, [&first, &second]),
+            CommandBehavior::Warn
+        );
+
+        second.computed_torque = CommandBehavior::Reject;
+        assert_eq!(
+            mechanical_violation_behavior(true, [&first, &second]),
+            CommandBehavior::Reject
+        );
+
+        first.computed_torque = CommandBehavior::Fault;
+        assert_eq!(
+            mechanical_violation_behavior(true, [&first, &second]),
+            CommandBehavior::Fault
+        );
+        assert_eq!(
+            mechanical_violation_behavior(false, [&second]),
+            CommandBehavior::Reject
+        );
     }
 
     #[test]

@@ -45,6 +45,7 @@ motors:
       maximum_position_step: 1.0
       limit: clamp
       position_step: reject
+      computed_torque: warn
     fault_damping_kd: 8.0
   - { name: left_hip_pitch, coordinate: left_hip_pitch_joint, bus: can0, id: 61, model: ROBSTRIDE_04, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 8.0 }
   - { name: left_hip_roll, coordinate: left_hip_roll_joint, bus: can0, id: 62, model: ROBSTRIDE_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 3.0 }

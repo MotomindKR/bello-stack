@@ -355,6 +355,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(torque.violation, SafetyViolation::TorqueLimit);
         assert!(torque.detail.contains("impedance torque request"));
+        assert!(torque.computed_torque_warning_allowed());
 
         commands.insert(motor.clone(), ImpedanceCommand::default());
         let mut incomplete_feedback = feedback;
@@ -365,6 +366,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(missing.violation, SafetyViolation::TorqueLimit);
         assert!(missing.detail.contains("without fresh motor feedback"));
+        assert!(!missing.computed_torque_warning_allowed());
 
         commands.remove(&motor);
         let incomplete = lower
@@ -435,6 +437,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(torque.violation, SafetyViolation::TorqueLimit);
         assert!(torque.detail.contains("left_ankle_roll_joint"));
+        assert!(torque.computed_torque_warning_allowed());
     }
 
     #[test]
@@ -464,7 +467,7 @@ mod tests {
         let ankle_damping = lower.mechanical.damping_commands(&lower_feedback).unwrap();
         assert!((ankle_damping[&first].kd - 0.4).abs() < 1.0e-12);
         assert!((ankle_damping[&second].kd - 0.4).abs() < 1.0e-12);
-        assert!((ankle_damping[&hip].kd - 2.0).abs() < 1.0e-12);
+        assert!((ankle_damping[&hip].kd - 8.0).abs() < 1.0e-12);
         let mut maximum_ankle_feedback = lower_feedback.clone();
         maximum_ankle_feedback.get_mut(&first).unwrap().velocity = 50.0;
         maximum_ankle_feedback.get_mut(&second).unwrap().velocity = 50.0;

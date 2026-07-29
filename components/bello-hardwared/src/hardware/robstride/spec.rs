@@ -4,7 +4,7 @@ use robstride_protocol::{
     MotorParams, model_limits,
 };
 
-use crate::config::{MotorCommandPolicy, MotorConfig, MotorHealth};
+use crate::config::{CommandBehavior, MotorCommandPolicy, MotorConfig, MotorHealth};
 use crate::domain::{BusName, MotorAddress, MotorName};
 
 #[derive(Clone, Debug)]
@@ -231,6 +231,15 @@ fn validate_command_policy(config: &MotorConfig) -> Result<()> {
             config.name,
         );
     }
+    if policy.limit == CommandBehavior::Warn
+        || policy.position_step == CommandBehavior::Warn
+        || policy.computed_torque == CommandBehavior::Clamp
+    {
+        bail!(
+            "motors.{}.command_policy uses a behavior unsupported by that check",
+            config.name,
+        );
+    }
     Ok(())
 }
 
@@ -333,6 +342,31 @@ mod tests {
         )
         .unwrap();
         assert!(MotorSpec::try_from(&config).is_err());
+    }
+
+    #[test]
+    fn accepts_warning_only_computed_torque_policy() {
+        let config: MotorConfig = serde_yaml::from_str(
+            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\ncommand_policy: { computed_torque: warn }",
+        )
+        .unwrap();
+        let spec = MotorSpec::try_from(&config).unwrap();
+        assert_eq!(spec.command_policy.computed_torque, CommandBehavior::Warn);
+    }
+
+    #[test]
+    fn rejects_unsupported_warning_and_clamp_policy_combinations() {
+        for policy in [
+            "limit: warn",
+            "position_step: warn",
+            "computed_torque: clamp",
+        ] {
+            let yaml = format!(
+                "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\ncommand_policy: {{ {policy} }}"
+            );
+            let config: MotorConfig = serde_yaml::from_str(&yaml).unwrap();
+            assert!(MotorSpec::try_from(&config).is_err());
+        }
     }
 
     #[test]
