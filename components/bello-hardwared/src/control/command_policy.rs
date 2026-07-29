@@ -293,15 +293,15 @@ mod tests {
     }
 
     #[test]
-    fn canonical_target_step_rejects_more_than_half_a_radian() {
+    fn canonical_target_step_rejects_more_than_two_radians() {
         let motor = motor();
-        assert_eq!(motor.command_policy.maximum_position_step, 0.5);
+        assert_eq!(motor.command_policy.maximum_position_step, 2.0);
         let report = check_command(
             ImpedanceCommand {
-                position: 0.501,
+                position: 1.0,
                 ..Default::default()
             },
-            Some(PositionReference::Measured(0.0)),
+            Some(PositionReference::Measured(-1.001)),
             &motor,
         );
         assert_eq!(report.issues.len(), 1);
