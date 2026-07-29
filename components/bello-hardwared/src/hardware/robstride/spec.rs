@@ -79,7 +79,7 @@ impl TryFrom<&MotorConfig> for MotorSpec {
             health: config.health.clone(),
             command_policy: config.command_policy.clone(),
             fault_damping_kd: config.fault_damping_kd,
-            feedback_position_tolerance: CONTROL_POSITION_SPAN / u16::MAX as f64,
+            feedback_position_tolerance: 2.0 * CONTROL_POSITION_SPAN / u16::MAX as f64,
             params,
         })
     }
