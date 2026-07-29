@@ -393,8 +393,7 @@ class ControlSession:
                 self._check_renewal()
                 self._send_and_confirm(commands)
             except BaseException as error:
-                self._close_stream()
-                self._set_state(self._state_after_command_error(error))
+                self._handle_command_error(error)
                 raise
 
     def send_async(self, targets: Mapping[str, CoordinateTarget]) -> CommandReceipt:
@@ -486,9 +485,7 @@ class ControlSession:
                     response = self._unary(
                         "disable group",
                         self._group._robot._stub.DisableGroup,
-                        proto.DisableGroupRequest(
-                            group=self._group.name, lease_token=self._token
-                        ),
+                        proto.DisableGroupRequest(group=self._group.name, lease_token=self._token),
                     )
                     self._expect("disable", GroupState.IDLE, response.state)
                 except BaseException as error:
@@ -567,8 +564,7 @@ class ControlSession:
             self._validate_response(receipt._sequence, response)
             self._check_renewal()
         except BaseException as error:
-            self._close_stream()
-            self._set_state(self._state_after_command_error(error))
+            self._handle_command_error(error)
             raise
 
     def _validate_response(self, sequence: int, response: Any) -> None:
@@ -676,6 +672,12 @@ class ControlSession:
     def _set_state(self, state: ControlState) -> None:
         with self._state_lock:
             self._state = state
+
+    def _handle_command_error(self, error: BaseException) -> None:
+        state = self._state_after_command_error(error)
+        if state != ControlState.RUNNING:
+            self._close_stream()
+        self._set_state(state)
 
     @staticmethod
     def _state_after_command_error(error: BaseException) -> ControlState:

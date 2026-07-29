@@ -140,6 +140,7 @@ def test_async_rejection_preserves_running_session_state(
         with pytest.raises(CommandRejectedError):
             receipt.result()
         assert control.state is ControlState.RUNNING
+        control.send(frame(0.2))
 
 
 def test_lease_is_renewed_in_the_background(hardware_server: RunningServer) -> None:
@@ -163,6 +164,7 @@ def test_rejected_command_preserves_running_session_state(
         with pytest.raises(CommandRejectedError):
             control.send(frame(0.1))
         assert control.state is ControlState.RUNNING
+        control.send(frame(0.2))
 
 
 def test_incomplete_frames_fail_before_transmission(hardware_server: RunningServer) -> None:
