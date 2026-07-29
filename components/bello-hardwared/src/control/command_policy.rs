@@ -237,12 +237,12 @@ mod tests {
     }
 
     #[test]
-    fn canonical_target_step_rejects_more_than_five_hundredths() {
+    fn canonical_target_step_rejects_more_than_half_a_radian() {
         let motor = motor();
-        assert_eq!(motor.command_policy.maximum_position_step, 0.05);
+        assert_eq!(motor.command_policy.maximum_position_step, 0.5);
         let report = check_command(
             ImpedanceCommand {
-                position: 0.051,
+                position: 0.501,
                 ..Default::default()
             },
             Some(PositionReference::Measured(0.0)),

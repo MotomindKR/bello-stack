@@ -241,7 +241,7 @@ motors:
       temperature_recovery_c: 75.0
       temperature_recovery_duration_ms: 2000
     command_policy:
-      maximum_position_step: 0.05
+      maximum_position_step: 0.5
       limit: clamp
       position_step: fault
     fault_damping_kd: 2.0
@@ -283,7 +283,8 @@ keep persistent damping torque within the motor and URDF mechanical envelope
 over the full model feedback-velocity range. `maximum_position_step` compares
 the first target of a lease generation
 with fresh measured feedback and subsequent targets with the previously
-accepted target. Model-dependent bounds are intentionally documented in
+accepted target. Bello's maintained hardware description sets this guard to
+0.5 rad. Model-dependent bounds are intentionally documented in
 [`hardware/robstride/spec.rs`](../components/bello-hardwared/src/hardware/robstride/spec.rs)
 rather than duplicated here.
 

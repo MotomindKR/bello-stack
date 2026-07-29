@@ -275,7 +275,7 @@ pub struct MotorCommandPolicy {
 impl Default for MotorCommandPolicy {
     fn default() -> Self {
         Self {
-            maximum_position_step: 0.05,
+            maximum_position_step: 0.5,
             limit: CommandBehavior::Reject,
             position_step: CommandBehavior::Fault,
         }
