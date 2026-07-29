@@ -306,7 +306,6 @@ pub enum FaultResponse {
 pub enum FaultCause {
     CommandLimit,
     CommandPositionStep,
-    CommandTimeout,
     SafePosition,
     StaleFeedback,
     Temperature,
@@ -314,10 +313,7 @@ pub enum FaultCause {
     ModeStatus,
     Communication,
     Enable,
-    Start,
-    Stop,
     Transmission,
-    LeaseLoss,
     Disable,
     Recover,
     Exit,

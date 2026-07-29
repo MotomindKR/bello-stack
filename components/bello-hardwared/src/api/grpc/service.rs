@@ -128,10 +128,15 @@ impl HardwareService for HardwareGrpc {
         &self,
         request: Request<StartControlRequest>,
     ) -> Result<Response<StartControlResponse>, Status> {
-        let request = request.into_inner();
+        let batch = conversion::start_command_batch(request.into_inner())?;
         let transition = self
-            .group_operation(&request.group, &request.lease_token, LifecycleAction::Start)
-            .await?;
+            .daemon
+            .start_control(batch)
+            .await
+            .map_err(operation_status)?;
+        if !transition.ok {
+            return Err(Status::failed_precondition(transition.message));
+        }
         Ok(Response::new(StartControlResponse::from(transition)))
     }
 

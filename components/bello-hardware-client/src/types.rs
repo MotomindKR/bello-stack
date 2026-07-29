@@ -8,7 +8,7 @@ use crate::EnumValue;
 pub enum GroupState {
     Unspecified,
     Idle,
-    Enabled,
+    Damped,
     Running,
     Fault,
     Shutdown,
@@ -20,7 +20,7 @@ impl GroupState {
         match proto::GroupState::try_from(raw) {
             Ok(proto::GroupState::Unspecified) => Self::Unspecified,
             Ok(proto::GroupState::Idle) => Self::Idle,
-            Ok(proto::GroupState::Enabled) => Self::Enabled,
+            Ok(proto::GroupState::Damped) => Self::Damped,
             Ok(proto::GroupState::Running) => Self::Running,
             Ok(proto::GroupState::Fault) => Self::Fault,
             Ok(proto::GroupState::Shutdown) => Self::Shutdown,
@@ -67,54 +67,54 @@ impl DeviceState {
     }
 }
 
-/// Cause attached to the latest motor-group fault telemetry.
+/// Cause attached to the latest motor-group state telemetry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum FaultCause {
+pub enum GroupCause {
     Unspecified,
+    Enable,
+    Start,
+    Stop,
+    CommandTimeout,
+    Disable,
+    Recover,
     CommandLimit,
     CommandPositionStep,
-    CommandTimeout,
     SafePosition,
     StaleFeedback,
     Temperature,
     ReportedMotorFault,
     ModeStatus,
     Communication,
-    Enable,
-    Start,
-    Stop,
     Transmission,
     LeaseLoss,
-    Disable,
-    Recover,
     Exit,
     Internal,
     Unknown(i32),
 }
 
-impl FaultCause {
+impl GroupCause {
     pub(crate) fn from_raw(raw: i32) -> Self {
-        match proto::FaultCause::try_from(raw) {
-            Ok(proto::FaultCause::Unspecified) => Self::Unspecified,
-            Ok(proto::FaultCause::CommandLimit) => Self::CommandLimit,
-            Ok(proto::FaultCause::CommandPositionStep) => Self::CommandPositionStep,
-            Ok(proto::FaultCause::CommandTimeout) => Self::CommandTimeout,
-            Ok(proto::FaultCause::SafePosition) => Self::SafePosition,
-            Ok(proto::FaultCause::StaleFeedback) => Self::StaleFeedback,
-            Ok(proto::FaultCause::Temperature) => Self::Temperature,
-            Ok(proto::FaultCause::ReportedMotorFault) => Self::ReportedMotorFault,
-            Ok(proto::FaultCause::ModeStatus) => Self::ModeStatus,
-            Ok(proto::FaultCause::Communication) => Self::Communication,
-            Ok(proto::FaultCause::Enable) => Self::Enable,
-            Ok(proto::FaultCause::Start) => Self::Start,
-            Ok(proto::FaultCause::Stop) => Self::Stop,
-            Ok(proto::FaultCause::Transmission) => Self::Transmission,
-            Ok(proto::FaultCause::LeaseLoss) => Self::LeaseLoss,
-            Ok(proto::FaultCause::Disable) => Self::Disable,
-            Ok(proto::FaultCause::Recover) => Self::Recover,
-            Ok(proto::FaultCause::Exit) => Self::Exit,
-            Ok(proto::FaultCause::Internal) => Self::Internal,
+        match proto::GroupCause::try_from(raw) {
+            Ok(proto::GroupCause::Unspecified) => Self::Unspecified,
+            Ok(proto::GroupCause::Enable) => Self::Enable,
+            Ok(proto::GroupCause::Start) => Self::Start,
+            Ok(proto::GroupCause::Stop) => Self::Stop,
+            Ok(proto::GroupCause::CommandTimeout) => Self::CommandTimeout,
+            Ok(proto::GroupCause::Disable) => Self::Disable,
+            Ok(proto::GroupCause::Recover) => Self::Recover,
+            Ok(proto::GroupCause::CommandLimit) => Self::CommandLimit,
+            Ok(proto::GroupCause::CommandPositionStep) => Self::CommandPositionStep,
+            Ok(proto::GroupCause::SafePosition) => Self::SafePosition,
+            Ok(proto::GroupCause::StaleFeedback) => Self::StaleFeedback,
+            Ok(proto::GroupCause::Temperature) => Self::Temperature,
+            Ok(proto::GroupCause::ReportedMotorFault) => Self::ReportedMotorFault,
+            Ok(proto::GroupCause::ModeStatus) => Self::ModeStatus,
+            Ok(proto::GroupCause::Communication) => Self::Communication,
+            Ok(proto::GroupCause::Transmission) => Self::Transmission,
+            Ok(proto::GroupCause::LeaseLoss) => Self::LeaseLoss,
+            Ok(proto::GroupCause::Exit) => Self::Exit,
+            Ok(proto::GroupCause::Internal) => Self::Internal,
             Err(_) => Self::Unknown(raw),
         }
     }

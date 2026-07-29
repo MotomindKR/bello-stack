@@ -1,7 +1,7 @@
 use super::{DeviceStatus, GroupName, ImuName, MotorName};
-use crate::config::{CommandBehavior, FaultCause, FaultResponse};
+use crate::config::{CommandBehavior, FaultResponse};
 use crate::control::CommandPolicyCheck;
-use crate::control::GroupState;
+use crate::control::{GroupCause, GroupState};
 
 #[derive(Clone, Debug)]
 pub struct MotorTelemetry {
@@ -30,8 +30,8 @@ pub struct ImuTelemetry {
 pub struct GroupTelemetry {
     pub group: GroupName,
     pub state: GroupState,
-    pub fault_cause: Option<FaultCause>,
-    pub fault_detail: String,
+    pub cause: GroupCause,
+    pub detail: String,
     pub command_count: u64,
     pub control_tick: u64,
     pub jitter_us: i64,

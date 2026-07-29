@@ -32,6 +32,10 @@ def frame(position: float = 0.0) -> dict[str, CoordinateTarget]:
     }
 
 
+def assert_control_state(actual: ControlState, expected: ControlState) -> None:
+    assert actual is expected
+
+
 def test_blocking_control_lifecycle_is_small(hardware_server: RunningServer) -> None:
     with Robot.connect(hardware_server.endpoint) as robot:
         assert robot.group_names == ("leg",)
@@ -288,15 +292,31 @@ def test_body_error_is_not_masked_by_cleanup_failure(hardware_server: RunningSer
             raise ValueError("body failed")
 
 
-def test_session_can_start_again_after_stop(hardware_server: RunningServer) -> None:
+def test_session_can_resume_after_stop(hardware_server: RunningServer) -> None:
     with (
         Robot.connect(hardware_server.endpoint) as robot,
         robot.group("leg").control("pytest") as control,
     ):
         control.start(frame())
         control.stop()
-        control.start(frame(0.1))
-        assert control.state is ControlState.RUNNING
+        assert_control_state(control.state, ControlState.DAMPED)
+        control.resume(frame(0.1))
+        assert_control_state(control.state, ControlState.RUNNING)
+
+
+def test_resume_rolls_an_ambiguous_start_back_to_damped(
+    hardware_server: RunningServer,
+) -> None:
+    with (
+        Robot.connect(hardware_server.endpoint) as robot,
+        robot.group("leg").control("pytest") as control,
+    ):
+        control.start(frame())
+        control.stop()
+        hardware_server.service.start_failure = grpc.StatusCode.UNAVAILABLE
+        with pytest.raises(ControlRpcError):
+            control.resume(frame(0.1))
+        assert control.state is ControlState.DAMPED
 
 
 def test_telemetry_reconnect_clears_state_and_increments_generation(

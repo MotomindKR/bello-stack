@@ -19,7 +19,7 @@ The common transport lifecycle and reconnect policy are in
 [`hardware/lifecycle.rs`](../components/bello-hardwared/src/hardware/lifecycle.rs).
 Typical states are `Starting`, `Connecting`, `Online`, `Degraded`, `Fault`,
 `Reconnecting`, and `Shutdown`. These device states are distinct from the motor
-group FSM states `Idle`, `Enabled`, `Running`, `Fault`, and `Shutdown` in
+group FSM states `Idle`, `Damped`, `Running`, `Fault`, and `Shutdown` in
 [`control/fsm.rs`](../components/bello-hardwared/src/control/fsm.rs).
 
 ## SocketCAN transport
@@ -191,7 +191,7 @@ socket/queue/deadline failure
 ```
 
 Motor health faults follow the same last two steps when they remain present for
-an `Enabled` or `Running` group to observe. A transient device fault may clear
+a `Damped` or `Running` group to observe. A transient device fault may clear
 on healthy feedback before that group poll and therefore may not latch at group
 level. Control enqueue failures and failed priority batches can fault the group
 directly as transmission or lifecycle-operation failures.

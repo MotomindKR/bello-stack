@@ -316,17 +316,21 @@ class ControlSession:
                 self._group._robot._stub.EnableGroup,
                 proto.EnableGroupRequest(group=self._group.name, lease_token=self._token),
             )
-            self._expect("enable", GroupState.ENABLED, response.state)
-            self._set_state(ControlState.ENABLED)
+            self._expect("enable", GroupState.DAMPED, response.state)
+            self._set_state(ControlState.DAMPED)
             try:
                 self._stream = _CommandStream(
                     self._group._robot._new_stub(), self._group.name, self._token
                 )
-                self._send_and_confirm(commands)
                 response = self._unary(
                     "start control",
                     self._group._robot._stub.StartControl,
-                    proto.StartControlRequest(group=self._group.name, lease_token=self._token),
+                    proto.StartControlRequest(
+                        group=self._group.name,
+                        lease_token=self._token,
+                        valid_for_ms=self._command_validity_ms,
+                        commands=commands,
+                    ),
                 )
                 self._expect("start", GroupState.RUNNING, response.state)
                 self._set_state(ControlState.RUNNING)
@@ -341,6 +345,43 @@ class ControlSession:
                     self._expect("rollback start", GroupState.IDLE, response.state)
                     self._set_state(ControlState.READY)
                 except BaseException as cleanup:
+                    self._set_state(ControlState.UNCERTAIN)
+                    raise CleanupError((primary, cleanup)) from primary
+                raise
+
+    def resume(self, targets: Mapping[str, CoordinateTarget]) -> None:
+        commands = self._group._commands(targets)
+        with self._operation_lock:
+            self._require(ControlState.DAMPED, "resume")
+            self._check_renewal()
+            self._stream = _CommandStream(
+                self._group._robot._new_stub(), self._group.name, self._token
+            )
+            try:
+                response = self._unary(
+                    "resume control",
+                    self._group._robot._stub.StartControl,
+                    proto.StartControlRequest(
+                        group=self._group.name,
+                        lease_token=self._token,
+                        valid_for_ms=self._command_validity_ms,
+                        commands=commands,
+                    ),
+                )
+                self._expect("resume", GroupState.RUNNING, response.state)
+                self._set_state(ControlState.RUNNING)
+            except BaseException as primary:
+                self._close_stream()
+                try:
+                    response = self._unary(
+                        "rollback resume",
+                        self._group._robot._stub.StopControl,
+                        proto.StopControlRequest(group=self._group.name, lease_token=self._token),
+                    )
+                    self._expect("rollback resume", GroupState.DAMPED, response.state)
+                    self._set_state(ControlState.DAMPED)
+                except BaseException as cleanup:
+                    self._set_state(ControlState.UNCERTAIN)
                     raise CleanupError((primary, cleanup)) from primary
                 raise
 
@@ -351,9 +392,9 @@ class ControlSession:
             try:
                 self._check_renewal()
                 self._send_and_confirm(commands)
-            except BaseException:
+            except BaseException as error:
                 self._close_stream()
-                self._set_state(ControlState.UNCERTAIN)
+                self._set_state(self._state_after_command_error(error))
                 raise
 
     def send_async(self, targets: Mapping[str, CoordinateTarget]) -> CommandReceipt:
@@ -388,29 +429,26 @@ class ControlSession:
         with self._operation_lock:
             self._require(ControlState.RUNNING, "stop")
             self._close_stream()
-            errors: list[BaseException] = []
-            try:
-                response = self._unary(
-                    "stop control",
-                    self._group._robot._stub.StopControl,
-                    proto.StopControlRequest(group=self._group.name, lease_token=self._token),
-                )
-                self._expect("stop", GroupState.ENABLED, response.state)
-                self._set_state(ControlState.ENABLED)
-            except BaseException as error:
-                errors.append(error)
-            try:
-                response = self._unary(
-                    "disable group",
-                    self._group._robot._stub.DisableGroup,
-                    proto.DisableGroupRequest(group=self._group.name, lease_token=self._token),
-                )
-                self._expect("disable", GroupState.IDLE, response.state)
-                self._set_state(ControlState.READY)
-            except BaseException as error:
-                errors.append(error)
-            if errors:
-                raise CleanupError(errors)
+            response = self._unary(
+                "stop control",
+                self._group._robot._stub.StopControl,
+                proto.StopControlRequest(group=self._group.name, lease_token=self._token),
+            )
+            self._expect("stop", GroupState.DAMPED, response.state)
+            self._set_state(ControlState.DAMPED)
+
+    def disable(self) -> None:
+        with self._operation_lock:
+            if self.state not in (ControlState.READY, ControlState.DAMPED):
+                raise self._invalid("disable")
+            self._close_stream()
+            response = self._unary(
+                "disable group",
+                self._group._robot._stub.DisableGroup,
+                proto.DisableGroupRequest(group=self._group.name, lease_token=self._token),
+            )
+            self._expect("disable", GroupState.IDLE, response.state)
+            self._set_state(ControlState.READY)
 
     def recover(self) -> None:
         with self._operation_lock:
@@ -440,7 +478,7 @@ class ControlSession:
                         self._group._robot._stub.StopControl,
                         proto.StopControlRequest(group=self._group.name, lease_token=self._token),
                     )
-                    self._expect("stop", GroupState.ENABLED, response.state)
+                    self._expect("stop", GroupState.DAMPED, response.state)
                 except BaseException as error:
                     errors.append(error)
             try:
@@ -520,9 +558,9 @@ class ControlSession:
             )
             self._validate_response(receipt._sequence, response)
             self._check_renewal()
-        except BaseException:
+        except BaseException as error:
             self._close_stream()
-            self._set_state(ControlState.UNCERTAIN)
+            self._set_state(self._state_after_command_error(error))
             raise
 
     def _validate_response(self, sequence: int, response: Any) -> None:
@@ -621,6 +659,12 @@ class ControlSession:
     def _set_state(self, state: ControlState) -> None:
         with self._state_lock:
             self._state = state
+
+    @staticmethod
+    def _state_after_command_error(error: BaseException) -> ControlState:
+        if isinstance(error, CommandRejectedError) and error.state == GroupState.DAMPED:
+            return ControlState.DAMPED
+        return ControlState.UNCERTAIN
 
     def _close_stream(self) -> None:
         stream, self._stream = self._stream, None

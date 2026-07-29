@@ -21,10 +21,10 @@ class DeviceState(IntEnum):
 class GroupState(IntEnum):
     UNSPECIFIED = 0
     IDLE = 1
-    ENABLED = 2
     RUNNING = 3
     FAULT = 4
     SHUTDOWN = 5
+    DAMPED = 6
 
 
 class CommandResult(IntEnum):
@@ -41,31 +41,31 @@ class CommandResult(IntEnum):
     EXPIRED = 10
 
 
-class FaultCause(IntEnum):
+class GroupCause(IntEnum):
     UNSPECIFIED = 0
-    COMMAND_LIMIT = 1
-    COMMAND_POSITION_STEP = 2
-    COMMAND_TIMEOUT = 3
-    SAFE_POSITION = 4
-    STALE_FEEDBACK = 5
-    TEMPERATURE = 6
-    REPORTED_MOTOR_FAULT = 7
-    MODE_STATUS = 8
-    COMMUNICATION = 9
-    ENABLE = 10
-    START = 11
-    STOP = 12
-    TRANSMISSION = 13
-    LEASE_LOSS = 14
-    DISABLE = 15
-    RECOVER = 16
+    ENABLE = 1
+    START = 2
+    STOP = 3
+    COMMAND_TIMEOUT = 4
+    DISABLE = 5
+    RECOVER = 6
+    COMMAND_LIMIT = 7
+    COMMAND_POSITION_STEP = 8
+    SAFE_POSITION = 9
+    STALE_FEEDBACK = 10
+    TEMPERATURE = 11
+    REPORTED_MOTOR_FAULT = 12
+    MODE_STATUS = 13
+    COMMUNICATION = 14
+    TRANSMISSION = 15
+    LEASE_LOSS = 16
     EXIT = 17
     INTERNAL = 18
 
 
 class ControlState(Enum):
     READY = "ready"
-    ENABLED = "enabled"
+    DAMPED = "damped"
     RUNNING = "running"
     UNCERTAIN = "uncertain"
     CLOSED = "closed"
@@ -243,8 +243,8 @@ class GroupStatus:
     monotonic_ns: int
     group: str
     state: GroupState
-    fault_detail: str
-    fault_cause: FaultCause
+    detail: str
+    cause: GroupCause
     command_count: int
     control_tick: int
     jitter_us: int

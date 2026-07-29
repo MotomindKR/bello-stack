@@ -213,11 +213,13 @@ with Robot.connect("http://127.0.0.1:50051") as robot:
         control.send(target)
 ```
 
-`control.start` enables the group, submits and confirms the initial complete
-coordinate frame, and starts the daemon's group controller. `control.send` blocks
-until the daemon acknowledges that exact command. Leaving the control context
-stops control, disables the group, stops automatic lease renewal, and releases
-the lease.
+`control.start` enables the group into `DAMPED`, then atomically starts the
+daemon controller with the initial complete coordinate frame. `control.send`
+blocks until the daemon acknowledges that exact command. `control.stop()` leaves
+the motors damped under the current lease; restart with
+`control.resume(fresh_frame)` or call `control.disable()` to return to `IDLE`.
+Leaving the control context performs stop if needed, disables the group, stops
+automatic lease renewal, and releases the lease.
 
 Latency-sensitive fixed-rate loops can use a bounded pipeline so delayed
 acknowledgements do not directly schedule the next command:
@@ -290,9 +292,11 @@ except ControlRpcError as error:
 ```
 
 The client deliberately does not reacquire control or replay a motion command
-after an ambiguous transport failure. If a command might have reached the
-daemon but its acknowledgement was lost, the session becomes `UNCERTAIN`.
-Resolve the underlying fault and call `control.recover()`, or close the session.
+after an ambiguous transport failure. If a rejected command acknowledgement
+reports daemon state `DAMPED`, the session also becomes `DAMPED` and can be
+resumed with a fresh frame. If a command might have reached the daemon but its
+acknowledgement was lost, the session becomes `UNCERTAIN`. Resolve the
+authoritative daemon state before choosing recovery or closing the session.
 
 ## Safety and lifecycle behavior
 
@@ -307,8 +311,8 @@ Keep these rules in mind:
 - send complete group targets rather than individual-coordinate updates;
 - treat rejected, timed-out, or ambiguous commands as real failures;
 - monitor group and component-health telemetry while commanding motion; and
-- configure daemon-side lease expiry and command timeout as the final backstop
-  if the Python process or network disappears.
+- rely on daemon-side lease expiry and command timeout to transition an enabled
+  group to `DAMPED` if the Python process or network disappears.
 
 Read-only inventory and telemetry do not acquire a lease. The package uses one
 small telemetry receiver thread per state cache. Active control uses a lease

@@ -331,17 +331,18 @@ The fault policy chooses the group's safety reaction. The default response is
 keys are:
 
 ```text
-command_limit             command_position_step     command_timeout
-safe_position             stale_feedback            temperature
-reported_motor_fault      mode_status               communication
-enable                    start                     stop
-transmission              lease_loss                disable
-recover                   exit                      internal
+command_limit             command_position_step     safe_position
+stale_feedback            temperature               reported_motor_fault
+mode_status               communication             enable
+transmission              disable                   recover
+exit                      internal
 ```
 
 Per-motor health and command settings decide whether a motor reports a
 condition; the group policy decides how the whole owning group reacts to that
-condition. Definitions remain authoritative in
+condition. Command timeout and lease loss always move an enabled group to
+`Damped` and are intentionally not configurable fault-policy causes.
+Definitions remain authoritative in
 [`config/model.rs`](../components/bello-hardwared/src/config/model.rs).
 
 ## Reconnect policy

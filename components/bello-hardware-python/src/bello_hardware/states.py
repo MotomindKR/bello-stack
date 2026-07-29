@@ -14,7 +14,7 @@ from .errors import ProtocolError, StateUnavailableError, WorkerShutdownError, r
 from .types import (
     DeviceState,
     DeviceStatus,
-    FaultCause,
+    GroupCause,
     GroupState,
     GroupStatus,
     HealthStatus,
@@ -318,14 +318,14 @@ class RobotStates:
                     raise ProtocolError(f"telemetry references unknown group {group.group!r}")
                 try:
                     state = GroupState(group.state)
-                    cause = FaultCause(group.fault_cause)
+                    cause = GroupCause(group.cause)
                 except ValueError as error:
                     raise ProtocolError("group telemetry contains an unknown enum value") from error
                 self._groups[group.group] = GroupStatus(
                     monotonic_ns,
                     group.group,
                     state,
-                    group.fault_detail,
+                    group.detail,
                     cause,
                     group.command_count,
                     group.control_tick,

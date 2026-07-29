@@ -35,7 +35,7 @@ pub use state::{
 };
 pub(crate) use telemetry::{TelemetryEvent, TelemetryFilter, TelemetryStream};
 pub use types::{
-    CommandBehavior, CommandPolicyCheck, CommandResult, DeviceState, FaultCause, FaultResponse,
+    CommandBehavior, CommandPolicyCheck, CommandResult, DeviceState, FaultResponse, GroupCause,
     GroupState,
 };
 

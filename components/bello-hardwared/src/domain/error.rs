@@ -24,7 +24,7 @@ pub enum CommandError {
     UnknownGroup,
     #[error("control lease was lost before the command could be applied")]
     LeaseLost,
-    #[error("group must be Enabled or Running")]
+    #[error("group must be Running")]
     InvalidState,
     #[error("command batch must contain every group motor exactly once")]
     IncompleteGroup,

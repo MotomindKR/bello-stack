@@ -18,7 +18,10 @@ pub struct GroupSnapshot {
 
 pub(crate) enum LifecycleAction {
     Enable,
-    Start,
+    Start {
+        batch: CommandBatch,
+        submitted_at: Instant,
+    },
     Stop,
     Disable,
     Recover,

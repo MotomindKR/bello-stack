@@ -195,7 +195,7 @@ impl HardwareService for FakeHardware {
         let request = request.into_inner();
         self.lifecycle("enable", request.group, request.lease_token);
         Ok(Response::new(proto::EnableGroupResponse {
-            state: proto::GroupState::Enabled as i32,
+            state: proto::GroupState::Damped as i32,
         }))
     }
 
@@ -217,7 +217,7 @@ impl HardwareService for FakeHardware {
         let request = request.into_inner();
         self.lifecycle("stop", request.group, request.lease_token);
         Ok(Response::new(proto::StopControlResponse {
-            state: proto::GroupState::Enabled as i32,
+            state: proto::GroupState::Damped as i32,
         }))
     }
 
@@ -480,11 +480,11 @@ fn telemetry(filter: &proto::WatchTelemetryRequest) -> Vec<proto::WatchTelemetry
     let mut events = vec![response(Payload::Group(proto::GroupTelemetry {
         group: GROUP.into(),
         state: proto::GroupState::Running as i32,
-        fault_detail: String::new(),
         command_count: 81,
         control_tick: 82,
         jitter_us: -7,
-        fault_cause: proto::FaultCause::Unspecified as i32,
+        detail: String::new(),
+        cause: proto::GroupCause::Unspecified as i32,
     }))];
     if filter.include_motors {
         events.extend([

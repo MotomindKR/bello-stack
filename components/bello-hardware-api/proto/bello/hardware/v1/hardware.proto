@@ -31,10 +31,12 @@ enum DeviceState {
 enum GroupState {
   GROUP_STATE_UNSPECIFIED = 0;
   GROUP_STATE_IDLE = 1;
-  GROUP_STATE_ENABLED = 2;
+  reserved 2;
+  reserved "GROUP_STATE_ENABLED";
   GROUP_STATE_RUNNING = 3;
   GROUP_STATE_FAULT = 4;
   GROUP_STATE_SHUTDOWN = 5;
+  GROUP_STATE_DAMPED = 6;
 }
 
 enum CommandPolicyCheck {
@@ -56,26 +58,26 @@ enum FaultResponse {
   FAULT_RESPONSE_DISABLE = 2;
 }
 
-enum FaultCause {
-  FAULT_CAUSE_UNSPECIFIED = 0;
-  FAULT_CAUSE_COMMAND_LIMIT = 1;
-  FAULT_CAUSE_COMMAND_POSITION_STEP = 2;
-  FAULT_CAUSE_COMMAND_TIMEOUT = 3;
-  FAULT_CAUSE_SAFE_POSITION = 4;
-  FAULT_CAUSE_STALE_FEEDBACK = 5;
-  FAULT_CAUSE_TEMPERATURE = 6;
-  FAULT_CAUSE_REPORTED_MOTOR_FAULT = 7;
-  FAULT_CAUSE_MODE_STATUS = 8;
-  FAULT_CAUSE_COMMUNICATION = 9;
-  FAULT_CAUSE_ENABLE = 10;
-  FAULT_CAUSE_START = 11;
-  FAULT_CAUSE_STOP = 12;
-  FAULT_CAUSE_TRANSMISSION = 13;
-  FAULT_CAUSE_LEASE_LOSS = 14;
-  FAULT_CAUSE_DISABLE = 15;
-  FAULT_CAUSE_RECOVER = 16;
-  FAULT_CAUSE_EXIT = 17;
-  FAULT_CAUSE_INTERNAL = 18;
+enum GroupCause {
+  GROUP_CAUSE_UNSPECIFIED = 0;
+  GROUP_CAUSE_ENABLE = 1;
+  GROUP_CAUSE_START = 2;
+  GROUP_CAUSE_STOP = 3;
+  GROUP_CAUSE_COMMAND_TIMEOUT = 4;
+  GROUP_CAUSE_DISABLE = 5;
+  GROUP_CAUSE_RECOVER = 6;
+  GROUP_CAUSE_COMMAND_LIMIT = 7;
+  GROUP_CAUSE_COMMAND_POSITION_STEP = 8;
+  GROUP_CAUSE_SAFE_POSITION = 9;
+  GROUP_CAUSE_STALE_FEEDBACK = 10;
+  GROUP_CAUSE_TEMPERATURE = 11;
+  GROUP_CAUSE_REPORTED_MOTOR_FAULT = 12;
+  GROUP_CAUSE_MODE_STATUS = 13;
+  GROUP_CAUSE_COMMUNICATION = 14;
+  GROUP_CAUSE_TRANSMISSION = 15;
+  GROUP_CAUSE_LEASE_LOSS = 16;
+  GROUP_CAUSE_EXIT = 17;
+  GROUP_CAUSE_INTERNAL = 18;
 }
 
 enum CommandResult {
@@ -209,6 +211,9 @@ message EnableGroupResponse {
 message StartControlRequest {
   string group = 1;
   string lease_token = 2;
+  // Freshness from server receipt; zero uses, and nonzero is capped by, the group timeout.
+  uint64 valid_for_ms = 3;
+  repeated MotorCommand commands = 4;
 }
 
 message StartControlResponse {
@@ -314,11 +319,13 @@ message Vector3 {
 message GroupTelemetry {
   string group = 1;
   GroupState state = 2;
-  string fault_detail = 3;
+  reserved 3, 7;
+  reserved "fault_detail", "fault_cause";
   uint64 command_count = 4;
   uint64 control_tick = 5;
   int64 jitter_us = 6;
-  FaultCause fault_cause = 7;
+  string detail = 8;
+  GroupCause cause = 9;
 }
 
 message CommandPolicyTelemetry {

@@ -27,7 +27,7 @@ event; consumers do not treat daemon-relative timestamps as unique IDs.
 The protobuf package is `bello.hardware.v1` and the fully qualified service is
 `bello.hardware.v1.HardwareService`. It uses proto3 conventions: enum value zero
 is `UNSPECIFIED`, repeated fields default to empty, and telemetry payloads use a
-`oneof`. Group/device states, command results, fault causes/responses, and
+`oneof`. Group/device states, command results, group causes, fault responses, and
 command-policy decisions are typed enums. IMU orientation and vectors are
 fixed-shape messages rather than variable-length arrays.
 
@@ -109,18 +109,22 @@ serialized in
    before expiry, including while waiting for lifecycle RPCs: enable and
    recovery can block for their configured retry/timeout windows.
 5. Call `EnableGroup`. The server configures every actuator and waits for fresh,
-   healthy feedback before returning `GROUP_STATE_ENABLED`.
-6. Open `StreamCommands` and submit a complete batch containing every motor in
-   the group. Wait for `COMMAND_RESULT_ACCEPTED`.
-7. Call `StartControl`. Start is accepted only from `Enabled` with a fresh
-   command from the current lease generation.
-8. Continue sending complete batches with increasing sequence numbers.
-9. Finish with `StopControl` (`Running` to `Enabled`) and `DisableGroup`
-   (`Enabled` to `Idle`), then `ReleaseLease`.
+   healthy feedback, applies bounded damping, and returns
+   `GROUP_STATE_DAMPED`.
+6. Call `StartControl` with `valid_for_ms` and one complete `MotorCommand` for
+   every motor. The server atomically validates and installs this initial
+   command while moving `Damped` to `Running`.
+7. Open `StreamCommands` and continue sending complete batches with increasing
+   sequence numbers. Stream commands are accepted only in `Running`.
+8. Finish with `StopControl` (`Running` to `Damped`). Either resume with another
+   atomic `StartControl`, or call `DisableGroup` (`Damped` to `Idle`) and then
+   `ReleaseLease`.
 
 If a lease expires during enable or recovery, the generation is invalidated and
 the group worker interrupts the operation rather than allowing the former owner
-to complete it.
+to complete it. Release or expiry while `Running` applies damping and leaves the
+group in `Damped` with cause `lease_loss`; lease loss while already `Damped`
+retains damping.
 
 If the group enters `Fault`, it remains latched. Correct the underlying device
 condition, then call `RecoverGroup`; successful recovery returns the group to
@@ -153,7 +157,8 @@ exact mapping.
 
 Commands are impedance targets: position, velocity, torque feed-forward, `kp`,
 and `kd`. Missing, duplicate, unknown, stale, expired, unsafe, or superseded
-batches are not silently accepted. Every well-formed request receives a
+batches are not silently accepted, and stream commands are legal only while the
+group is `Running`. Every well-formed request receives a
 `StreamCommandsResponse` with the same group/sequence, a typed `CommandResult`,
 human-readable `detail`, and the observed `GroupState`. A domain rejection does
 not close the stream; malformed input such as an invalid token encoding is a
@@ -186,9 +191,10 @@ motor feedback, fixed-shape IMU data, group state/timing, component health, or a
 command-policy decision. Samples are neither averaged nor replaced with a
 single latest state: every selected broadcast event is forwarded while the
 subscriber keeps pace. Motor and IMU events follow their received rates. Group
-state/detail changes publish immediately; unchanged timing snapshots are
-rate-limited to 25 Hz and can be slower when the group control rate is below
-25 Hz.
+state/cause/detail changes publish immediately. `cause` describes normal
+transitions such as `enable`, `stop`, `command_timeout`, and `lease_loss` as
+well as hard faults. Unchanged timing snapshots are rate-limited to 25 Hz and
+can be slower when the group control rate is below 25 Hz.
 
 The telemetry ring is bounded by `runtime.telemetry_capacity`. A slow
 subscriber loses overwritten events rather than blocking hardware control. On

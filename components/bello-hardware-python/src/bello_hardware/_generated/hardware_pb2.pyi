@@ -23,10 +23,10 @@ class GroupState(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
     GROUP_STATE_UNSPECIFIED: _ClassVar[GroupState]
     GROUP_STATE_IDLE: _ClassVar[GroupState]
-    GROUP_STATE_ENABLED: _ClassVar[GroupState]
     GROUP_STATE_RUNNING: _ClassVar[GroupState]
     GROUP_STATE_FAULT: _ClassVar[GroupState]
     GROUP_STATE_SHUTDOWN: _ClassVar[GroupState]
+    GROUP_STATE_DAMPED: _ClassVar[GroupState]
 
 class CommandPolicyCheck(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -47,27 +47,27 @@ class FaultResponse(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     FAULT_RESPONSE_DAMPING: _ClassVar[FaultResponse]
     FAULT_RESPONSE_DISABLE: _ClassVar[FaultResponse]
 
-class FaultCause(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+class GroupCause(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
-    FAULT_CAUSE_UNSPECIFIED: _ClassVar[FaultCause]
-    FAULT_CAUSE_COMMAND_LIMIT: _ClassVar[FaultCause]
-    FAULT_CAUSE_COMMAND_POSITION_STEP: _ClassVar[FaultCause]
-    FAULT_CAUSE_COMMAND_TIMEOUT: _ClassVar[FaultCause]
-    FAULT_CAUSE_SAFE_POSITION: _ClassVar[FaultCause]
-    FAULT_CAUSE_STALE_FEEDBACK: _ClassVar[FaultCause]
-    FAULT_CAUSE_TEMPERATURE: _ClassVar[FaultCause]
-    FAULT_CAUSE_REPORTED_MOTOR_FAULT: _ClassVar[FaultCause]
-    FAULT_CAUSE_MODE_STATUS: _ClassVar[FaultCause]
-    FAULT_CAUSE_COMMUNICATION: _ClassVar[FaultCause]
-    FAULT_CAUSE_ENABLE: _ClassVar[FaultCause]
-    FAULT_CAUSE_START: _ClassVar[FaultCause]
-    FAULT_CAUSE_STOP: _ClassVar[FaultCause]
-    FAULT_CAUSE_TRANSMISSION: _ClassVar[FaultCause]
-    FAULT_CAUSE_LEASE_LOSS: _ClassVar[FaultCause]
-    FAULT_CAUSE_DISABLE: _ClassVar[FaultCause]
-    FAULT_CAUSE_RECOVER: _ClassVar[FaultCause]
-    FAULT_CAUSE_EXIT: _ClassVar[FaultCause]
-    FAULT_CAUSE_INTERNAL: _ClassVar[FaultCause]
+    GROUP_CAUSE_UNSPECIFIED: _ClassVar[GroupCause]
+    GROUP_CAUSE_ENABLE: _ClassVar[GroupCause]
+    GROUP_CAUSE_START: _ClassVar[GroupCause]
+    GROUP_CAUSE_STOP: _ClassVar[GroupCause]
+    GROUP_CAUSE_COMMAND_TIMEOUT: _ClassVar[GroupCause]
+    GROUP_CAUSE_DISABLE: _ClassVar[GroupCause]
+    GROUP_CAUSE_RECOVER: _ClassVar[GroupCause]
+    GROUP_CAUSE_COMMAND_LIMIT: _ClassVar[GroupCause]
+    GROUP_CAUSE_COMMAND_POSITION_STEP: _ClassVar[GroupCause]
+    GROUP_CAUSE_SAFE_POSITION: _ClassVar[GroupCause]
+    GROUP_CAUSE_STALE_FEEDBACK: _ClassVar[GroupCause]
+    GROUP_CAUSE_TEMPERATURE: _ClassVar[GroupCause]
+    GROUP_CAUSE_REPORTED_MOTOR_FAULT: _ClassVar[GroupCause]
+    GROUP_CAUSE_MODE_STATUS: _ClassVar[GroupCause]
+    GROUP_CAUSE_COMMUNICATION: _ClassVar[GroupCause]
+    GROUP_CAUSE_TRANSMISSION: _ClassVar[GroupCause]
+    GROUP_CAUSE_LEASE_LOSS: _ClassVar[GroupCause]
+    GROUP_CAUSE_EXIT: _ClassVar[GroupCause]
+    GROUP_CAUSE_INTERNAL: _ClassVar[GroupCause]
 
 class CommandResult(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -92,10 +92,10 @@ DEVICE_STATE_FAULT: DeviceState
 DEVICE_STATE_SHUTDOWN: DeviceState
 GROUP_STATE_UNSPECIFIED: GroupState
 GROUP_STATE_IDLE: GroupState
-GROUP_STATE_ENABLED: GroupState
 GROUP_STATE_RUNNING: GroupState
 GROUP_STATE_FAULT: GroupState
 GROUP_STATE_SHUTDOWN: GroupState
+GROUP_STATE_DAMPED: GroupState
 COMMAND_POLICY_CHECK_UNSPECIFIED: CommandPolicyCheck
 COMMAND_POLICY_CHECK_LIMIT: CommandPolicyCheck
 COMMAND_POLICY_CHECK_POSITION_STEP: CommandPolicyCheck
@@ -106,25 +106,25 @@ COMMAND_BEHAVIOR_FAULT: CommandBehavior
 FAULT_RESPONSE_UNSPECIFIED: FaultResponse
 FAULT_RESPONSE_DAMPING: FaultResponse
 FAULT_RESPONSE_DISABLE: FaultResponse
-FAULT_CAUSE_UNSPECIFIED: FaultCause
-FAULT_CAUSE_COMMAND_LIMIT: FaultCause
-FAULT_CAUSE_COMMAND_POSITION_STEP: FaultCause
-FAULT_CAUSE_COMMAND_TIMEOUT: FaultCause
-FAULT_CAUSE_SAFE_POSITION: FaultCause
-FAULT_CAUSE_STALE_FEEDBACK: FaultCause
-FAULT_CAUSE_TEMPERATURE: FaultCause
-FAULT_CAUSE_REPORTED_MOTOR_FAULT: FaultCause
-FAULT_CAUSE_MODE_STATUS: FaultCause
-FAULT_CAUSE_COMMUNICATION: FaultCause
-FAULT_CAUSE_ENABLE: FaultCause
-FAULT_CAUSE_START: FaultCause
-FAULT_CAUSE_STOP: FaultCause
-FAULT_CAUSE_TRANSMISSION: FaultCause
-FAULT_CAUSE_LEASE_LOSS: FaultCause
-FAULT_CAUSE_DISABLE: FaultCause
-FAULT_CAUSE_RECOVER: FaultCause
-FAULT_CAUSE_EXIT: FaultCause
-FAULT_CAUSE_INTERNAL: FaultCause
+GROUP_CAUSE_UNSPECIFIED: GroupCause
+GROUP_CAUSE_ENABLE: GroupCause
+GROUP_CAUSE_START: GroupCause
+GROUP_CAUSE_STOP: GroupCause
+GROUP_CAUSE_COMMAND_TIMEOUT: GroupCause
+GROUP_CAUSE_DISABLE: GroupCause
+GROUP_CAUSE_RECOVER: GroupCause
+GROUP_CAUSE_COMMAND_LIMIT: GroupCause
+GROUP_CAUSE_COMMAND_POSITION_STEP: GroupCause
+GROUP_CAUSE_SAFE_POSITION: GroupCause
+GROUP_CAUSE_STALE_FEEDBACK: GroupCause
+GROUP_CAUSE_TEMPERATURE: GroupCause
+GROUP_CAUSE_REPORTED_MOTOR_FAULT: GroupCause
+GROUP_CAUSE_MODE_STATUS: GroupCause
+GROUP_CAUSE_COMMUNICATION: GroupCause
+GROUP_CAUSE_TRANSMISSION: GroupCause
+GROUP_CAUSE_LEASE_LOSS: GroupCause
+GROUP_CAUSE_EXIT: GroupCause
+GROUP_CAUSE_INTERNAL: GroupCause
 COMMAND_RESULT_UNSPECIFIED: CommandResult
 COMMAND_RESULT_ACCEPTED: CommandResult
 COMMAND_RESULT_UNKNOWN_GROUP: CommandResult
@@ -328,12 +328,16 @@ class EnableGroupResponse(_message.Message):
     def __init__(self, state: _Optional[_Union[GroupState, str]] = ...) -> None: ...
 
 class StartControlRequest(_message.Message):
-    __slots__ = ("group", "lease_token")
+    __slots__ = ("group", "lease_token", "valid_for_ms", "commands")
     GROUP_FIELD_NUMBER: _ClassVar[int]
     LEASE_TOKEN_FIELD_NUMBER: _ClassVar[int]
+    VALID_FOR_MS_FIELD_NUMBER: _ClassVar[int]
+    COMMANDS_FIELD_NUMBER: _ClassVar[int]
     group: str
     lease_token: str
-    def __init__(self, group: _Optional[str] = ..., lease_token: _Optional[str] = ...) -> None: ...
+    valid_for_ms: int
+    commands: _containers.RepeatedCompositeFieldContainer[MotorCommand]
+    def __init__(self, group: _Optional[str] = ..., lease_token: _Optional[str] = ..., valid_for_ms: _Optional[int] = ..., commands: _Optional[_Iterable[_Union[MotorCommand, _Mapping]]] = ...) -> None: ...
 
 class StartControlResponse(_message.Message):
     __slots__ = ("state",)
@@ -504,22 +508,22 @@ class Vector3(_message.Message):
     def __init__(self, x: _Optional[float] = ..., y: _Optional[float] = ..., z: _Optional[float] = ...) -> None: ...
 
 class GroupTelemetry(_message.Message):
-    __slots__ = ("group", "state", "fault_detail", "command_count", "control_tick", "jitter_us", "fault_cause")
+    __slots__ = ("group", "state", "command_count", "control_tick", "jitter_us", "detail", "cause")
     GROUP_FIELD_NUMBER: _ClassVar[int]
     STATE_FIELD_NUMBER: _ClassVar[int]
-    FAULT_DETAIL_FIELD_NUMBER: _ClassVar[int]
     COMMAND_COUNT_FIELD_NUMBER: _ClassVar[int]
     CONTROL_TICK_FIELD_NUMBER: _ClassVar[int]
     JITTER_US_FIELD_NUMBER: _ClassVar[int]
-    FAULT_CAUSE_FIELD_NUMBER: _ClassVar[int]
+    DETAIL_FIELD_NUMBER: _ClassVar[int]
+    CAUSE_FIELD_NUMBER: _ClassVar[int]
     group: str
     state: GroupState
-    fault_detail: str
     command_count: int
     control_tick: int
     jitter_us: int
-    fault_cause: FaultCause
-    def __init__(self, group: _Optional[str] = ..., state: _Optional[_Union[GroupState, str]] = ..., fault_detail: _Optional[str] = ..., command_count: _Optional[int] = ..., control_tick: _Optional[int] = ..., jitter_us: _Optional[int] = ..., fault_cause: _Optional[_Union[FaultCause, str]] = ...) -> None: ...
+    detail: str
+    cause: GroupCause
+    def __init__(self, group: _Optional[str] = ..., state: _Optional[_Union[GroupState, str]] = ..., command_count: _Optional[int] = ..., control_tick: _Optional[int] = ..., jitter_us: _Optional[int] = ..., detail: _Optional[str] = ..., cause: _Optional[_Union[GroupCause, str]] = ...) -> None: ...
 
 class CommandPolicyTelemetry(_message.Message):
     __slots__ = ("group", "motor_name", "check", "behavior", "detail", "command_modified", "command_rejected", "fault_response")

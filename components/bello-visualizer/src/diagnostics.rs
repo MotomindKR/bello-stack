@@ -297,8 +297,8 @@ fn overview_ui(ui: &mut egui::Ui, snapshot: &DisplaySnapshot) {
         ui.horizontal_wrapped(|ui| {
             ui.monospace(&group.group);
             group_state_cell(ui, group.state);
-            if !group.fault_detail.is_empty() {
-                ui.colored_label(Color32::LIGHT_RED, &group.fault_detail);
+            if !group.detail.is_empty() {
+                ui.colored_label(Color32::LIGHT_RED, &group.detail);
             }
         });
     }
@@ -484,11 +484,11 @@ fn groups_ui(ui: &mut egui::Ui, snapshot: &DisplaySnapshot) {
                         group.telemetry_current_connection,
                     );
                     ui.monospace(format!("{:.1} Hz", group.control_rate_hz));
-                    ui.monospace(format!("{:?}", group.fault_cause));
-                    if group.fault_detail.is_empty() {
+                    ui.monospace(format!("{:?}", group.cause));
+                    if group.detail.is_empty() {
                         ui.weak("—");
                     } else {
-                        ui.label(&group.fault_detail);
+                        ui.label(&group.detail);
                     }
                     if group.telemetry_available {
                         ui.monospace(group.command_count.to_string());
@@ -639,7 +639,8 @@ fn group_state_color(state: GroupState) -> Color32 {
     match state {
         GroupState::Running => Color32::LIGHT_GREEN,
         GroupState::Fault => Color32::LIGHT_RED,
-        GroupState::Idle | GroupState::Enabled => Color32::LIGHT_BLUE,
+        GroupState::Idle => Color32::LIGHT_BLUE,
+        GroupState::Damped => Color32::YELLOW,
         GroupState::Shutdown | GroupState::Unspecified | GroupState::Unknown(_) => Color32::GRAY,
         _ => Color32::GRAY,
     }

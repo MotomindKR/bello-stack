@@ -15,8 +15,9 @@ The core invariants are:
 - command validity starts when the daemon begins submission and continues
   through lease admission, the mailbox, and group-thread processing;
 - only `Running` transmits the staged command periodically;
-- losing ownership faults an active group; a required motor that is still
-  unavailable when the active group polls it also faults the group;
+- command timeout and loss of ownership move an enabled group to `Damped`;
+- a required motor that is still unavailable when an enabled group polls it
+  faults the group;
 - a fault response is attempted for every group motor, including motors on
   other buses;
 - automatic transport recovery never silently clears a group fault once
@@ -55,9 +56,10 @@ on the watchdog running at an exact instant. See
 Release and expiry set the active generation to zero and wake the group. Any
 queued operation rechecks its generation on the group thread; any queued command
 does the same before staging. Lease loss clears all staged command state. It
-faults a group in `Enabled` or `Running`, applies the configured `lease_loss`
-response, and is otherwise acknowledged without changing `Idle` or an existing
-`Fault`.
+moves `Running` to `Damped` with a mechanically bounded damping command.
+`Damped` stays damped and records `lease_loss` as its latest cause. `Idle` and
+an existing `Fault` do not change state. Lease loss during enable stops the
+motors and leaves the group `Idle`; a failed stop instead latches `Fault`.
 
 ## Motor-group FSM
 
@@ -65,19 +67,22 @@ The group FSM is deliberately small and has no `Degraded` state:
 
 | Current state | Operation/event | Next state | Additional condition or action |
 | --- | --- | --- | --- |
-| `Idle` | enable | `Enabled` | Configure and enable every motor; wait for fresh healthy feedback |
-| `Enabled` | start | `Running` | A complete, safe, unexpired command from the current generation must already be staged |
-| `Running` | stop | `Enabled` | Clear command state and send one damping safety batch |
-| `Idle`, `Enabled`, `Running` | disable | `Idle` | Active states clear commands and send stop frames; `Idle` is idempotent |
-| `Enabled`, `Running` | lease loss | `Fault` | Apply the configured lease-loss response |
-| Any state except `Shutdown` | detected fault | `Fault` | Latch cause/detail and apply the configured response |
+| `Idle` | enable | `Damped` | Configure and enable every motor, require fresh healthy feedback, then send a bounded damping command |
+| `Damped` | enable | `Damped` | Idempotently adopt the already-damped group under the current lease |
+| `Damped` | start with initial command | `Running` | Atomically validate and install one complete, safe, unexpired command |
+| `Running` | stop | `Damped` | Clear command state and send one damping safety batch |
+| `Running` | command timeout | `Damped` | Clear command state and send one damping safety batch |
+| `Damped`, `Running` | lease loss | `Damped` | Apply or retain damping and record cause `lease_loss` |
+| `Idle`, `Damped`, `Running` | disable | `Idle` | Enabled states clear commands and send stop frames; `Idle` is idempotent |
+| Any state except `Shutdown` | hard fault | `Fault` | Latch cause/detail and apply the configured fault response |
 | `Fault` | recover | `Idle` | Request motor fault clearing, then require every motor and bus to be healthy |
 | Any state | process shutdown | `Shutdown` | Apply the configured exit response first |
 
 All other requested transitions are rejected without changing state. Every
 lifecycle operation must carry a valid lease, including stop, disable, and
 recover. `Fault` is latched even if the underlying transport later reconnects.
-`Shutdown` is terminal for the worker. Transition legality is defined in
+`Damped` has no escalation timer and persists until start, disable, a hard
+fault, or shutdown. `Shutdown` is terminal for the worker. Transition legality is defined in
 [`control/fsm.rs`](../components/bello-hardwared/src/control/fsm.rs); hardware
 guards and reactions are in
 [`control/group.rs`](../components/bello-hardwared/src/control/group.rs).
@@ -90,14 +95,18 @@ has completed.
 
 - **Enable** clears old command state, sends Robstride run-mode, active-report,
   and enable configuration, then waits for new healthy feedback. It retries the
-  whole configured sequence. Shutdown or lease loss interrupts this wait and
+  whole configured sequence, sends bounded damping, and returns `Damped` only
+  after damping succeeds. Shutdown or lease loss interrupts this wait and
   attempts to stop the motors.
-- **Start** sends no special start frame. It changes the group to `Running` only
-  when the current lease generation has already submitted a complete command
-  whose deadline is still in the future. A missing or expired initial command
-  from an otherwise valid `Enabled` state faults the group with cause `start`.
+- **Start** sends no special start frame. Its request carries the initial
+  complete motor command and validity. The group validates and installs that
+  command while `Damped`, then changes to `Running` in the same serialized
+  operation. An invalid, incomplete, unsafe, or expired initial command leaves
+  the group `Damped` unless the configured command policy itself requests a
+  hard fault.
 - **Stop** clears the staged command and sends a mechanically bounded damping
-  command once. It leaves the motors enabled and returns the group to `Enabled`.
+  command once. It leaves the motors enabled and returns the group to `Damped`.
+  Stop is idempotent in `Damped` and preserves the existing cause and detail.
   If fresh finite feedback is unavailable, safe damping cannot be formed: the
   daemon sends motor stop frames and latches the group in `Fault`.
 - **Disable** sends Robstride stop frames from active states and returns to
@@ -116,10 +125,11 @@ The command stream is latest-value control, not a FIFO trajectory buffer. Each
 group has one mailbox slot. A new submission replaces an older submission that
 the group thread has not yet processed; the old request receives `Superseded`.
 Once accepted, the command is stored per motor. `Running` reuses it on every
-control tick until a newer complete batch replaces it, or until enable, stop,
-active-state disable, recover, lease loss, fault, or shutdown clears it. Start
-retains the staged command. A command already expired when a running tick
-evaluates it is not submitted and faults the group; after tick admission, the
+control tick until a newer complete batch replaces it, or until stop, disable,
+recover, lease loss, fault, or shutdown clears it. `StartControl` installs the
+first command directly; stream commands are accepted only in `Running`. A
+command expired when a running tick evaluates it is not submitted: command
+state is cleared and the group moves to `Damped`. After tick admission, the
 resulting CAN batch is governed by its own one-period freshness deadline.
 
 The daemon records `submitted_at` before taking the lease gate. The effective
@@ -134,7 +144,8 @@ and [`control/group.rs`](../components/bello-hardwared/src/control/group.rs).
 Command admission on the group thread verifies, in order:
 
 1. the lease generation is still current and nonzero;
-2. the group is `Enabled` or `Running`;
+2. the group is `Damped` for the initial `StartControl` command or `Running`
+   for a stream command;
 3. the command deadline is still in the future;
 4. the sequence is newer than the previous retained sequence for the current
    command state;
@@ -163,7 +174,7 @@ rate-limited to one every 40 ms and are evaluated on control ticks, so their
 steady-state rate is capped at 25 Hz but quantized to group ticks and can be
 lower even when the control rate is above 25 Hz.
 
-`Enabled` polls each motor's already-classified status and the exact coupled
+`Damped` polls each motor's already-classified status and the exact coupled
 differential feedback pose, but does not send periodic control frames.
 `Running` first performs the same availability poll, re-evaluates the retained
 command against current feedback and the mechanical envelope, and checks the
@@ -272,26 +283,28 @@ group immediately. See
 ## Fault propagation and reactions
 
 The group polls all member motor lifecycle states on every control tick while
-`Enabled` or `Running`. A motor still non-online at that poll becomes a group
+`Damped` or `Running`. A motor still non-online at that poll becomes a group
 fault. Feedback classification and watchdog scanning happen independently in
 the shared Robstride worker, so a short device fault that clears on healthy
 feedback before the group poll is not guaranteed to latch at group level. A
 typed motor fault observed by the group maps to its matching cause; otherwise
 the cause is `communication`. Direct control-transmission errors fault the group
 without waiting for a later device-status poll.
+Group telemetry records a cause for every state transition, not only faults.
 The major cause families are:
 
 | Family | Causes |
 | --- | --- |
-| Command | `command_limit`, `command_position_step`, `command_timeout` |
+| Normal lifecycle | `enable`, `start`, `stop`, `command_timeout`, `disable`, `recover` |
+| Command fault | `command_limit`, `command_position_step` |
 | Motor/device | `safe_position`, `stale_feedback`, `temperature`, `reported_motor_fault`, `mode_status`, `communication` |
-| Lifecycle operation | `enable`, `start`, `stop`, `disable`, `recover` |
 | Delivery/ownership | `transmission`, `lease_loss` |
 | Process integrity | `exit`, `internal` |
 
-The complete enum and configurable selection live in
-[`config/model.rs`](../components/bello-hardwared/src/config/model.rs); detection
-and mapping live in
+The public `GroupCause` enum covers all of these transitions. Fault-response
+configuration accepts only causes that can produce a hard fault; it does not
+accept `start`, `stop`, `command_timeout`, or `lease_loss`. Detection and
+mapping live in
 [`control/group.rs`](../components/bello-hardwared/src/control/group.rs).
 `exit` is a reaction selector for orderly shutdown: it does not latch `Fault`,
 and the group proceeds to `Shutdown` after attempting the response.
@@ -319,9 +332,11 @@ and [`hardware/imu/mod.rs`](../components/bello-hardwared/src/hardware/imu/mod.r
 
 ### Configurable reaction
 
-Each group has a default fault response and may override it by cause. The same
-response resolver is used for detected faults, lifecycle-operation failures,
-lease loss, worker panic, and process exit.
+Each group has a default fault response and may override it by hard-fault
+cause. The same response resolver is used for detected faults,
+lifecycle-operation failures, worker panic, and process exit. Command timeout
+and lease loss always use the dedicated transition to `Damped`; they are not
+fault-policy override keys.
 
 - **Damping** sends zero velocity/torque/`kp` and the latest measured position
   as an inert target. The configured `kd` values are scaled together as needed
@@ -332,6 +347,12 @@ lease loss, worker panic, and process exit.
   unvalidated damping command.
 - **Disable** sends Robstride stop frames without requesting fault clearing and
   marks operating feedback as no longer expected.
+
+The dedicated transitions to `Damped` use the same validated damping
+construction. If it cannot be formed or transmitted, the daemon sends stop
+frames and latches `Fault`; if that fallback also fails, the fault detail
+records both failures. The group never reports `Damped` unless damping was
+successfully established or was already retained there.
 
 Both responses are grouped per bus into safety-barrier batches. The group
 submits every bus before waiting for any completion, so one failed bus does not

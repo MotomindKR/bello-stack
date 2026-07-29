@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use tonic::Status;
 
-use crate::config::{CommandBehavior, FaultCause, FaultResponse};
-use crate::control::{CommandPolicyCheck, GroupState};
+use crate::config::{CommandBehavior, FaultResponse};
+use crate::control::{CommandPolicyCheck, GroupCause, GroupState};
 use crate::domain::{
     CommandBatch, CommandError, DeviceState, DeviceStatus, ImpedanceCommand, LeaseToken,
     MotorCommand, MotorName, TelemetryEvent, TelemetryPayload,
@@ -17,13 +17,38 @@ pub fn lease_token(value: &str) -> Result<LeaseToken, Status> {
 }
 
 pub fn command_batch(value: proto::StreamCommandsRequest) -> Result<CommandBatch, Status> {
+    command_batch_fields(
+        value.group,
+        value.lease_token,
+        value.sequence,
+        value.valid_for_ms,
+        value.commands,
+    )
+}
+
+pub fn start_command_batch(value: proto::StartControlRequest) -> Result<CommandBatch, Status> {
+    command_batch_fields(
+        value.group,
+        value.lease_token,
+        0,
+        value.valid_for_ms,
+        value.commands,
+    )
+}
+
+fn command_batch_fields(
+    group: String,
+    lease_token_value: String,
+    sequence: u64,
+    valid_for_ms: u64,
+    commands: Vec<proto::MotorCommand>,
+) -> Result<CommandBatch, Status> {
     Ok(CommandBatch {
-        group: value.group.into(),
-        lease_token: lease_token(&value.lease_token)?,
-        sequence: value.sequence,
-        valid_for: (value.valid_for_ms != 0).then(|| Duration::from_millis(value.valid_for_ms)),
-        commands: value
-            .commands
+        group: group.into(),
+        lease_token: lease_token(&lease_token_value)?,
+        sequence,
+        valid_for: (valid_for_ms != 0).then(|| Duration::from_millis(valid_for_ms)),
+        commands: commands
             .into_iter()
             .map(|command| MotorCommand {
                 motor: MotorName::from(command.motor_name),
@@ -58,7 +83,7 @@ pub fn device_status(value: &DeviceStatus) -> proto::DeviceStatus {
 pub fn group_state(value: GroupState) -> i32 {
     (match value {
         GroupState::Idle => proto::GroupState::Idle,
-        GroupState::Enabled => proto::GroupState::Enabled,
+        GroupState::Damped => proto::GroupState::Damped,
         GroupState::Running => proto::GroupState::Running,
         GroupState::Fault => proto::GroupState::Fault,
         GroupState::Shutdown => proto::GroupState::Shutdown,
@@ -102,27 +127,27 @@ fn fault_response(value: Option<FaultResponse>) -> i32 {
     }) as i32
 }
 
-fn fault_cause(value: Option<FaultCause>) -> i32 {
+fn group_cause(value: GroupCause) -> i32 {
     (match value {
-        None => proto::FaultCause::Unspecified,
-        Some(FaultCause::CommandLimit) => proto::FaultCause::CommandLimit,
-        Some(FaultCause::CommandPositionStep) => proto::FaultCause::CommandPositionStep,
-        Some(FaultCause::CommandTimeout) => proto::FaultCause::CommandTimeout,
-        Some(FaultCause::SafePosition) => proto::FaultCause::SafePosition,
-        Some(FaultCause::StaleFeedback) => proto::FaultCause::StaleFeedback,
-        Some(FaultCause::Temperature) => proto::FaultCause::Temperature,
-        Some(FaultCause::ReportedMotorFault) => proto::FaultCause::ReportedMotorFault,
-        Some(FaultCause::ModeStatus) => proto::FaultCause::ModeStatus,
-        Some(FaultCause::Communication) => proto::FaultCause::Communication,
-        Some(FaultCause::Enable) => proto::FaultCause::Enable,
-        Some(FaultCause::Start) => proto::FaultCause::Start,
-        Some(FaultCause::Stop) => proto::FaultCause::Stop,
-        Some(FaultCause::Transmission) => proto::FaultCause::Transmission,
-        Some(FaultCause::LeaseLoss) => proto::FaultCause::LeaseLoss,
-        Some(FaultCause::Disable) => proto::FaultCause::Disable,
-        Some(FaultCause::Recover) => proto::FaultCause::Recover,
-        Some(FaultCause::Exit) => proto::FaultCause::Exit,
-        Some(FaultCause::Internal) => proto::FaultCause::Internal,
+        GroupCause::Unspecified => proto::GroupCause::Unspecified,
+        GroupCause::Enable => proto::GroupCause::Enable,
+        GroupCause::Start => proto::GroupCause::Start,
+        GroupCause::Stop => proto::GroupCause::Stop,
+        GroupCause::CommandTimeout => proto::GroupCause::CommandTimeout,
+        GroupCause::Disable => proto::GroupCause::Disable,
+        GroupCause::Recover => proto::GroupCause::Recover,
+        GroupCause::CommandLimit => proto::GroupCause::CommandLimit,
+        GroupCause::CommandPositionStep => proto::GroupCause::CommandPositionStep,
+        GroupCause::SafePosition => proto::GroupCause::SafePosition,
+        GroupCause::StaleFeedback => proto::GroupCause::StaleFeedback,
+        GroupCause::Temperature => proto::GroupCause::Temperature,
+        GroupCause::ReportedMotorFault => proto::GroupCause::ReportedMotorFault,
+        GroupCause::ModeStatus => proto::GroupCause::ModeStatus,
+        GroupCause::Communication => proto::GroupCause::Communication,
+        GroupCause::Transmission => proto::GroupCause::Transmission,
+        GroupCause::LeaseLoss => proto::GroupCause::LeaseLoss,
+        GroupCause::Exit => proto::GroupCause::Exit,
+        GroupCause::Internal => proto::GroupCause::Internal,
     }) as i32
 }
 
@@ -172,11 +197,11 @@ pub fn telemetry_event(
             proto::watch_telemetry_response::Payload::Group(proto::GroupTelemetry {
                 group: value.group.to_string(),
                 state: group_state(value.state),
-                fault_detail: value.fault_detail,
                 command_count: value.command_count,
                 control_tick: value.control_tick,
                 jitter_us: value.jitter_us,
-                fault_cause: fault_cause(value.fault_cause),
+                detail: value.detail,
+                cause: group_cause(value.cause),
             })
         }
         TelemetryPayload::CommandPolicy(value) => {
@@ -260,11 +285,14 @@ mod tests {
     }
 
     #[test]
-    fn fault_causes_are_typed_on_the_wire() {
+    fn group_causes_are_typed_on_the_wire() {
         assert_eq!(
-            fault_cause(Some(FaultCause::Temperature)),
-            proto::FaultCause::Temperature as i32
+            group_cause(GroupCause::Temperature),
+            proto::GroupCause::Temperature as i32
         );
-        assert_eq!(fault_cause(None), proto::FaultCause::Unspecified as i32);
+        assert_eq!(
+            group_cause(GroupCause::Unspecified),
+            proto::GroupCause::Unspecified as i32
+        );
     }
 }

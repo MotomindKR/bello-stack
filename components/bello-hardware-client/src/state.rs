@@ -6,7 +6,7 @@ use tonic::Code;
 
 use crate::inventory::DeviceStatus;
 use crate::{
-    CommandBehavior, CommandPolicyCheck, Error, FaultCause, FaultResponse, GroupState, Robot,
+    CommandBehavior, CommandPolicyCheck, Error, FaultResponse, GroupCause, GroupState, Robot,
     TelemetryFilter, TelemetryStream,
 };
 
@@ -59,8 +59,8 @@ pub struct GroupSnapshot {
     pub monotonic_ns: u64,
     pub group: String,
     pub state: GroupState,
-    pub fault_detail: String,
-    pub fault_cause: FaultCause,
+    pub detail: String,
+    pub cause: GroupCause,
     pub command_count: u64,
     pub control_tick: u64,
     pub jitter_us: i64,
@@ -351,8 +351,8 @@ impl RobotState {
                     monotonic_ns: event.monotonic_ns,
                     group: group.group,
                     state: GroupState::from_raw(group.state),
-                    fault_detail: group.fault_detail,
-                    fault_cause: FaultCause::from_raw(group.fault_cause),
+                    detail: group.detail,
+                    cause: GroupCause::from_raw(group.cause),
                     command_count: group.command_count,
                     control_tick: group.control_tick,
                     jitter_us: group.jitter_us,

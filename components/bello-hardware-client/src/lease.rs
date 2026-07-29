@@ -4,8 +4,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::time::{Duration, Instant};
 
 use bello_hardware_api::{
-    AcquireLeaseResponse, DisableGroupRequest, EnableGroupRequest, GroupState, RecoverGroupRequest,
-    ReleaseLeaseRequest, RenewLeaseRequest, StartControlRequest, StopControlRequest,
+    AcquireLeaseResponse, DisableGroupRequest, EnableGroupRequest, GroupState, MotorCommand,
+    RecoverGroupRequest, ReleaseLeaseRequest, RenewLeaseRequest, StartControlRequest,
+    StopControlRequest,
 };
 use tokio::sync::{Mutex, watch};
 use tonic::Code;
@@ -13,7 +14,7 @@ use tonic::Code;
 use crate::client::conservative_deadline;
 use crate::command::{self, CommandStream, CommandStreamOptions};
 use crate::duration::positive_milliseconds;
-use crate::{EnumValue, Error, HardwareClient};
+use crate::{CommandValidity, EnumValue, Error, HardwareClient};
 
 /// Requested lease duration on acquire or renew.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -174,13 +175,19 @@ impl GroupLease {
         Ok(EnumValue::from_raw(response.state))
     }
 
-    pub async fn start(&self) -> Result<EnumValue<GroupState>, Error> {
+    pub async fn start(
+        &self,
+        validity: CommandValidity,
+        commands: Vec<MotorCommand>,
+    ) -> Result<EnumValue<GroupState>, Error> {
         self.ensure_active()?;
         let mut client = self.client.inner.clone();
         let response = client
             .start_control(StartControlRequest {
                 group: self.group.clone(),
                 lease_token: self.token.clone(),
+                valid_for_ms: validity.to_milliseconds()?,
+                commands,
             })
             .await
             .map_err(|status| self.rpc_error(status))?

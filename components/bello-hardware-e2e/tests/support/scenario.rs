@@ -2,7 +2,7 @@ use std::{env, path::PathBuf, process::Command, time::Duration};
 
 use anyhow::{Context, Result, anyhow, bail};
 use bello_hardware_client::raw::proto::watch_telemetry_response::Payload;
-use bello_hardware_client::raw::proto::{DeviceState, FaultCause, GroupState, MotorCommand};
+use bello_hardware_client::raw::proto::{DeviceState, GroupCause, GroupState, MotorCommand};
 use bello_hardware_client::raw::{
     CommandStreamOptions, CommandValidity, EnumValue, GroupLease, HardwareClient, LeaseDuration,
     TelemetryFilter, TelemetryStream,
@@ -68,11 +68,16 @@ pub async fn run(
         )
         .await?;
 
-    require_state(lease.enable().await?, GroupState::Enabled)?;
+    require_state(lease.enable().await?, GroupState::Damped)?;
     wait_for_motors_online(&client, timeout_duration, hardwared, emulator).await?;
 
+    require_state(
+        lease
+            .start(CommandValidity::For(Duration::from_millis(200)), command())
+            .await?,
+        GroupState::Running,
+    )?;
     let commands = CommandStream::start(&lease).await?;
-    require_state(lease.start().await?, GroupState::Running)?;
 
     // Suspending the process preserves actuator state while making the test,
     // rather than emulator startup timing, own the feedback-loss phase.
@@ -80,7 +85,8 @@ pub async fn run(
     let feedback_fault = wait_for_fault(
         &mut telemetry,
         timeout_duration,
-        FaultCause::StaleFeedback,
+        GroupState::Fault,
+        GroupCause::StaleFeedback,
         hardwared,
         Some(emulator),
     )
@@ -96,22 +102,34 @@ pub async fn run(
         .await?;
 
     require_state(lease.recover().await?, GroupState::Idle)?;
-    require_state(lease.enable().await?, GroupState::Enabled)?;
+    require_state(lease.enable().await?, GroupState::Damped)?;
 
+    require_state(
+        lease
+            .start(CommandValidity::For(Duration::from_millis(200)), command())
+            .await?,
+        GroupState::Running,
+    )?;
     let timeout_commands = CommandStream::start(&lease).await?;
-    require_state(lease.start().await?, GroupState::Running)?;
     drop(timeout_commands);
     let timeout_fault = wait_for_fault(
         &mut telemetry,
         timeout_duration,
-        FaultCause::CommandTimeout,
+        GroupState::Damped,
+        GroupCause::CommandTimeout,
         hardwared,
         Some(emulator),
     )
     .await?;
 
-    require_state(lease.recover().await?, GroupState::Idle)?;
-    require_state(lease.enable().await?, GroupState::Enabled)?;
+    require_state(
+        lease
+            .start(CommandValidity::For(Duration::from_millis(200)), command())
+            .await?,
+        GroupState::Running,
+    )?;
+    require_state(lease.stop().await?, GroupState::Damped)?;
+    require_state(lease.enable().await?, GroupState::Damped)?;
     require_state(lease.disable().await?, GroupState::Idle)?;
     require_state(lease.release().await?, GroupState::Idle)?;
 
@@ -122,13 +140,19 @@ pub async fn run(
             LeaseDuration::For(Duration::from_millis(300)),
         )
         .await?;
-    require_state(expiring.enable().await?, GroupState::Enabled)?;
+    require_state(expiring.enable().await?, GroupState::Damped)?;
+    require_state(
+        expiring
+            .start(CommandValidity::For(Duration::from_millis(200)), command())
+            .await?,
+        GroupState::Running,
+    )?;
     let lease_commands = CommandStream::start(&expiring).await?;
-    require_state(expiring.start().await?, GroupState::Running)?;
     let lease_fault = wait_for_fault(
         &mut telemetry,
         timeout_duration,
-        FaultCause::LeaseLoss,
+        GroupState::Damped,
+        GroupCause::LeaseLoss,
         hardwared,
         Some(emulator),
     )
@@ -267,7 +291,8 @@ fn command() -> Vec<MotorCommand> {
 async fn wait_for_fault(
     telemetry: &mut TelemetryStream,
     duration: Duration,
-    expected: FaultCause,
+    expected_state: GroupState,
+    expected: GroupCause,
     hardwared: &mut ManagedProcess,
     mut emulator: Option<&mut ManagedProcess>,
 ) -> Result<String> {
@@ -275,24 +300,35 @@ async fn wait_for_fault(
     loop {
         let now = Instant::now();
         if now >= deadline {
-            bail!("timed out waiting for {expected:?} group fault");
+            bail!("timed out waiting for {expected_state:?} with cause {expected:?}");
         }
         match timeout((deadline - now).min(PROCESS_POLL), telemetry.message()).await {
             Ok(result) => {
                 let event =
-                    result?.ok_or_else(|| anyhow!("telemetry stream closed before group fault"))?;
+                    result?.ok_or_else(|| anyhow!("telemetry stream closed before group state"))?;
                 if let Payload::Group(group) = event.payload
                     && group.group == GROUP
-                    && group.state == GroupState::Fault as i32
                 {
-                    if group.fault_cause == expected as i32 {
-                        return Ok(group.fault_detail);
+                    if group.state == expected_state as i32 {
+                        if group.cause == expected as i32 {
+                            return Ok(group.detail);
+                        }
+                        if expected_state != GroupState::Fault {
+                            continue;
+                        }
+                        bail!(
+                            "expected {expected_state:?} with cause {expected:?}, observed cause {}: {}",
+                            group.cause,
+                            group.detail
+                        );
                     }
-                    bail!(
-                        "expected {expected:?} group fault, observed cause {}: {}",
-                        group.fault_cause,
-                        group.fault_detail
-                    );
+                    if group.state == GroupState::Fault as i32 {
+                        bail!(
+                            "expected {expected_state:?} with cause {expected:?}, observed Fault cause {}: {}",
+                            group.cause,
+                            group.detail
+                        );
+                    }
                 }
             }
             Err(_) => {

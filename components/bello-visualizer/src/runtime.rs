@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use bello_hardware_client::{
     CommandBehavior, ConnectOptions, ControlOptions, CoordinateTarget, DeviceState, DeviceStatus,
-    FaultCause, GroupState, Quaternion, Robot, RobotStateChange, StateStreamOptions, TlsOptions,
+    GroupCause, GroupState, Quaternion, Robot, RobotStateChange, StateStreamOptions, TlsOptions,
     Vector3,
 };
 use bello_pose_api::WatchPoseRequest;
@@ -81,8 +81,8 @@ pub struct DisplayGroup {
     pub telemetry_current_connection: bool,
     pub monotonic_ns: Option<u64>,
     pub age: Option<Duration>,
-    pub fault_detail: String,
-    pub fault_cause: FaultCause,
+    pub detail: String,
+    pub cause: GroupCause,
     pub command_count: u64,
     pub control_tick: u64,
     pub jitter_us: i64,
@@ -1137,8 +1137,8 @@ fn apply_robot_inventory(
                     telemetry_current_connection: false,
                     monotonic_ns: None,
                     age: None,
-                    fault_detail: String::new(),
-                    fault_cause: FaultCause::Unspecified,
+                    detail: String::new(),
+                    cause: GroupCause::Unspecified,
                     command_count: 0,
                     control_tick: 0,
                     jitter_us: 0,
@@ -1283,23 +1283,23 @@ fn apply_robot_state(raw: &mut RawHardware, state: &bello_hardware_client::Robot
             };
             let changed = !target.telemetry_available
                 || target.state != group.state
-                || target.fault_cause != group.fault_cause
-                || target.fault_detail != group.fault_detail;
+                || target.cause != group.cause
+                || target.detail != group.detail;
             target.state = group.state;
             target.telemetry_available = true;
             target.telemetry_current_connection = true;
             target.monotonic_ns = Some(group.monotonic_ns);
-            target.fault_detail = group.fault_detail.clone();
-            target.fault_cause = group.fault_cause;
+            target.detail = group.detail.clone();
+            target.cause = group.cause;
             target.command_count = group.command_count;
             target.control_tick = group.control_tick;
             target.jitter_us = group.jitter_us;
             raw.group_received.insert(group.group.clone(), now);
             if changed {
-                let detail = if group.fault_detail.is_empty() {
+                let detail = if group.detail.is_empty() {
                     format!("state changed to {:?}", group.state)
                 } else {
-                    format!("{:?}: {}", group.state, group.fault_detail)
+                    format!("{:?}: {}", group.state, group.detail)
                 };
                 push_event(
                     raw,

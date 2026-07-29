@@ -269,9 +269,9 @@ async fn run() -> anyhow::Result<()> {
                             ui.horizontal(|ui| {
                                 ui.colored_label(
                                     kiss3d::egui::Color32::LIGHT_RED,
-                                    format!("{:?}", fault.fault_cause),
+                                    format!("{:?}", fault.cause),
                                 )
-                                .on_hover_text(&fault.fault_detail);
+                                .on_hover_text(&fault.detail);
                                 let busy = control_status_busy(&status);
                                 if ui
                                     .add_enabled(
@@ -279,7 +279,7 @@ async fn run() -> anyhow::Result<()> {
                                         kiss3d::egui::Button::new("Clear Fault")
                                             .fill(kiss3d::egui::Color32::DARK_RED),
                                     )
-                                    .on_hover_text(&fault.fault_detail)
+                                    .on_hover_text(&fault.detail)
                                     .clicked()
                                     && let Err(error) = runtime.recover_groups(vec![group.clone()])
                                 {

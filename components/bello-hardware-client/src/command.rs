@@ -26,7 +26,7 @@ pub enum CommandValidity {
 }
 
 impl CommandValidity {
-    fn to_milliseconds(self) -> Result<u64, Error> {
+    pub(crate) fn to_milliseconds(self) -> Result<u64, Error> {
         match self {
             Self::GroupDefault => Ok(0),
             Self::For(duration) => positive_milliseconds(duration, "command validity"),

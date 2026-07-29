@@ -77,7 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .await?;
 
-    // Enables the group, confirms the initial frame, then starts the controller.
+    // Enables damping, then atomically starts with the complete initial frame.
     control.start(initial).await?;
 
     let next = group
@@ -95,7 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Returns only after the daemon accepts the complete snapshot.
     control.send(next).await?;
 
-    // Stops, disables, ends automatic renewal, and releases ownership.
+    // Stops into Damped, disables, ends automatic renewal, and releases ownership.
     control.shutdown().await?;
     Ok(())
 }
@@ -194,12 +194,13 @@ the new stream. Normal server EOF remains visible as `None`.
 - `MotorGroup::control` acquires exclusive write ownership and immediately
   starts automatic renewal. `control_with` customizes lease duration, command
   validity, acknowledgement timeout, and bounded task shutdown.
-- `ControlSession::start` performs enable, initial-frame acceptance, and start
-  in the required order.
+- `ControlSession::start` enables the group into `Damped` and atomically starts
+  it with the complete initial frame.
 - `ControlSession::send` allocates the sequence, submits one bounded request,
   correlates the response, and returns only for `ACCEPTED`.
-- `ControlSession::stop` stops and disables while retaining ownership, allowing
-  another `start` on the same session.
+- `ControlSession::stop` leaves the group `Damped` while retaining ownership.
+- `ControlSession::resume` atomically starts a damped group with a fresh
+  complete frame; `disable` explicitly returns it to `Idle`.
 - `ControlSession::recover` performs explicit recovery from a latched group
   fault.
 - `ControlSession::shutdown` stops and disables when needed, bounds renewal-task
@@ -207,12 +208,12 @@ the new stream. Normal server EOF remains visible as `None`.
 
 Motion is never transparently reacquired, reconnected, or replayed. A renewal,
 lease, command-stream, or acknowledgement failure is returned to the caller.
-An ambiguous or rejected running command moves the session to `Uncertain` and
-closes its command stream, preventing an accidental retry before explicit
-recovery or shutdown.
+A rejected command whose acknowledgement reports daemon state `Damped` moves
+the session to `Damped`; other ambiguous or rejected running commands move it
+to `Uncertain`. Both close the command stream.
 Dropping `ControlSession` aborts its local renewal task but cannot perform async
 network cleanup; call and await `shutdown` during normal operation. The daemon's
-lease expiry and fault policy remain the final safety backstop.
+command-timeout and lease-loss damping remain the final safety backstop.
 
 ## Raw access
 

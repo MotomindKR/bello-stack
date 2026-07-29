@@ -1,5 +1,6 @@
 mod support;
 
+use std::collections::HashMap;
 use std::fs;
 use std::net::{SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
@@ -167,7 +168,7 @@ async fn canonical_lower_body_enforces_coupled_ankle_limits_over_two_buses() -> 
     let mut telemetry = client
         .watch_telemetry(WatchTelemetryRequest {
             groups: vec![GROUP.into()],
-            include_motors: false,
+            include_motors: true,
             include_imu: false,
             include_health: false,
             imus: Vec::new(),
@@ -175,26 +176,29 @@ async fn canonical_lower_body_enforces_coupled_ankle_limits_over_two_buses() -> 
         })
         .await?
         .into_inner();
+    let initial_positions =
+        wait_for_motor_positions(&mut telemetry, &fixture.motor_names, Duration::from_secs(1))
+            .await?;
+    let initial = canonical_lower_body_command(
+        &lease.token,
+        1,
+        &fixture.motor_names,
+        &initial_positions,
+        0.0,
+    );
+    client
+        .start_control(StartControlRequest {
+            group: GROUP.into(),
+            lease_token: lease.token.clone(),
+            valid_for_ms: initial.valid_for_ms,
+            commands: initial.commands,
+        })
+        .await?;
     let (command_tx, command_rx) = mpsc::channel(1);
     let mut responses = client
         .stream_commands(ReceiverStream::new(command_rx))
         .await?
         .into_inner();
-    command_tx
-        .send(canonical_lower_body_command(
-            &lease.token,
-            1,
-            &fixture.motor_names,
-            0.0,
-        ))
-        .await?;
-    require_accepted(&mut responses, 1).await?;
-    client
-        .start_control(StartControlRequest {
-            group: GROUP.into(),
-            lease_token: lease.token.clone(),
-        })
-        .await?;
 
     for (sequence, ankle_position) in [(2, 0.04), (3, 0.08)] {
         command_tx
@@ -202,6 +206,7 @@ async fn canonical_lower_body_enforces_coupled_ankle_limits_over_two_buses() -> 
                 &lease.token,
                 sequence,
                 &fixture.motor_names,
+                &initial_positions,
                 ankle_position,
             ))
             .await?;
@@ -212,6 +217,7 @@ async fn canonical_lower_body_enforces_coupled_ankle_limits_over_two_buses() -> 
             &lease.token,
             4,
             &fixture.motor_names,
+            &initial_positions,
             0.12,
         ))
         .await?;
@@ -369,7 +375,7 @@ async fn visualizer_runtime_commands_at_profile_rate_without_rendering() -> Resu
             "visualizer control did not remain running: control={:?}, daemon={:?}, fault={}",
             after.control.get(GROUP),
             group.state,
-            group.fault_detail
+            group.detail
         );
     }
 
@@ -521,22 +527,20 @@ async fn grpc_can_latency_distribution() -> Result<()> {
         .await?;
     wait_for_online(&mut client, Duration::from_secs(3)).await?;
 
+    let initial = latency_command(&lease.token, 1, 0.0);
+    client
+        .start_control(StartControlRequest {
+            group: GROUP.into(),
+            lease_token: lease.token.clone(),
+            valid_for_ms: initial.valid_for_ms,
+            commands: initial.commands,
+        })
+        .await?;
     let (command_tx, command_rx) = mpsc::channel(1);
     let mut responses = client
         .stream_commands(ReceiverStream::new(command_rx))
         .await?
         .into_inner();
-    command_tx
-        .send(latency_command(&lease.token, 1, 0.0))
-        .await
-        .context("submitting initial command")?;
-    require_accepted(&mut responses, 1).await?;
-    client
-        .start_control(StartControlRequest {
-            group: GROUP.into(),
-            lease_token: lease.token.clone(),
-        })
-        .await?;
 
     let samples = std::env::var("BELLO_LATENCY_SAMPLES")
         .ok()
@@ -703,7 +707,8 @@ fn canonical_lower_body_command(
     token: &str,
     sequence: u64,
     motor_names: &[String],
-    left_ankle_position: f64,
+    initial_positions: &HashMap<String, f64>,
+    left_ankle_offset: f64,
 ) -> StreamCommandsRequest {
     StreamCommandsRequest {
         group: "lower_body".into(),
@@ -714,9 +719,10 @@ fn canonical_lower_body_command(
             .iter()
             .map(|motor_name| MotorCommand {
                 motor_name: motor_name.clone(),
-                position: matches!(motor_name.as_str(), "left_ankle_1" | "left_ankle_2")
-                    .then_some(left_ankle_position)
-                    .unwrap_or(0.0),
+                position: initial_positions[motor_name]
+                    + matches!(motor_name.as_str(), "left_ankle_1" | "left_ankle_2")
+                        .then_some(left_ankle_offset)
+                        .unwrap_or(0.0),
                 velocity: 0.0,
                 torque_feedforward: 0.0,
                 kp: 0.0,
@@ -724,6 +730,31 @@ fn canonical_lower_body_command(
             })
             .collect(),
     }
+}
+
+async fn wait_for_motor_positions(
+    telemetry: &mut tonic::Streaming<bello_hardware_api::WatchTelemetryResponse>,
+    motor_names: &[String],
+    duration: Duration,
+) -> Result<HashMap<String, f64>> {
+    let deadline = Instant::now() + duration;
+    let mut positions = HashMap::with_capacity(motor_names.len());
+    while positions.len() < motor_names.len() {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            bail!("timed out waiting for complete initial motor feedback");
+        }
+        let event = timeout(remaining, telemetry.message())
+            .await
+            .context("waiting for initial motor feedback")??
+            .context("telemetry stream closed")?;
+        if let Some(Payload::Motor(motor)) = event.payload
+            && motor_names.contains(&motor.motor_name)
+        {
+            positions.insert(motor.motor_name, motor.position);
+        }
+    }
+    Ok(positions)
 }
 
 async fn require_accepted(

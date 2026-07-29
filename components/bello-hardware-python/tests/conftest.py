@@ -103,6 +103,7 @@ class FakeHardware:
         self.command_delay = 0.0
         self.renew_failure: grpc.StatusCode | None = None
         self.enable_failure: grpc.StatusCode | None = None
+        self.start_failure: grpc.StatusCode | None = None
         self.disable_failure: grpc.StatusCode | None = None
         self.telemetry_failures = 0
         self.telemetry_calls = 0
@@ -148,20 +149,23 @@ class FakeHardware:
         if self.enable_failure is not None:
             context.abort(self.enable_failure, "test enable failure")
         with self.lock:
-            self.state = proto.GROUP_STATE_ENABLED
-        return proto.EnableGroupResponse(state=proto.GROUP_STATE_ENABLED)
+            self.state = proto.GROUP_STATE_DAMPED
+        return proto.EnableGroupResponse(state=proto.GROUP_STATE_DAMPED)
 
     def StartControl(self, request: Any, context: Any) -> proto.StartControlResponse:
-        del request, context
+        del request
         with self.lock:
+            self.command_count += 1
             self.state = proto.GROUP_STATE_RUNNING
+        if self.start_failure is not None:
+            context.abort(self.start_failure, "test start response failure")
         return proto.StartControlResponse(state=proto.GROUP_STATE_RUNNING)
 
     def StopControl(self, request: Any, context: Any) -> proto.StopControlResponse:
         del request, context
         with self.lock:
-            self.state = proto.GROUP_STATE_ENABLED
-        return proto.StopControlResponse(state=proto.GROUP_STATE_ENABLED)
+            self.state = proto.GROUP_STATE_DAMPED
+        return proto.StopControlResponse(state=proto.GROUP_STATE_DAMPED)
 
     def DisableGroup(self, request: Any, context: Any) -> proto.DisableGroupResponse:
         del request

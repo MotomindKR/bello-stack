@@ -160,6 +160,31 @@ impl HardwareDaemon {
         Ok(reply.await?)
     }
 
+    pub(crate) async fn start_control(&self, batch: CommandBatch) -> Result<Transition> {
+        let submitted_at = Instant::now();
+        if self.shutting_down.load(Ordering::Acquire) {
+            return Err(anyhow!("hardware daemon is shutting down"));
+        }
+        let reply = {
+            let _gate = self.lease_gate.lock();
+            let generation = self
+                .leases
+                .verify(&batch.group, batch.lease_token)
+                .map_err(anyhow::Error::from)?;
+            self.groups
+                .get(&batch.group)
+                .ok_or_else(|| anyhow!("unknown group {}", batch.group))?
+                .enqueue_lifecycle(
+                    LifecycleAction::Start {
+                        batch,
+                        submitted_at,
+                    },
+                    generation,
+                )?
+        };
+        Ok(reply.await?)
+    }
+
     /// Verifies ownership and places a command in the group mailbox under the
     /// same lease gate used by expiry and release. The controller reply is
     /// awaited only after releasing the gate.

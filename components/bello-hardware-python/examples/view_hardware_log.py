@@ -144,16 +144,16 @@ def load_log(path: Path, max_points: int) -> dict[str, Any]:
                 name = str(group["group"])
                 groups[name] = {
                     "state": group["state"],
-                    "fault_cause": group["fault_cause"],
-                    "fault_detail": group["fault_detail"],
+                    "cause": group["cause"],
+                    "detail": group["detail"],
                     "command_count": group["command_count"],
                     "control_tick": group["control_tick"],
                     "jitter_us": group["jitter_us"],
                 }
                 signature = (
                     group["state"],
-                    group["fault_cause"],
-                    group["fault_detail"],
+                    group["cause"],
+                    group["detail"],
                 )
                 if previous_group.get(name) != signature:
                     events.append(
@@ -162,7 +162,7 @@ def load_log(path: Path, max_points: int) -> dict[str, Any]:
                             "kind": "group",
                             "component": name,
                             "state": group["state"],
-                            "detail": group["fault_detail"] or group["fault_cause"],
+                            "detail": group["detail"] or group["cause"],
                         }
                     )
                     previous_group[name] = signature
@@ -311,7 +311,7 @@ for(const item of DATA.inventory.serial_devices||[])inventory.push(['serial',ite
 for(const item of DATA.inventory.imus||[])inventory.push(['imu',item.name,item.serial_device,item.status]);
 for(const item of DATA.inventory.motors||[])inventory.push(['motor',item.name,`${item.group} / ${item.bus}:${item.id}`,item.status]);
 document.getElementById('inventory').innerHTML=inventory.map(([kind,name,location,status])=>`<tr><td>${esc(kind)}</td><td>${esc(name)}</td><td>${esc(location)}</td><td class="${status&&['fault','degraded','reconnecting'].includes(status.state)?'fault':''}">${esc(status?status.state:'unknown')}</td><td>${esc(status?status.detail:'')}</td></tr>`).join('');
-document.getElementById('groups').innerHTML=Object.entries(DATA.groups).map(([name,g])=>`<tr><td>${esc(name)}</td><td class="${g.state==='fault'?'fault':''}">${esc(g.state)}</td><td>${esc(g.fault_detail||g.fault_cause)}</td><td>${g.command_count}</td><td>${g.control_tick}</td><td>${g.jitter_us}</td></tr>`).join('');
+document.getElementById('groups').innerHTML=Object.entries(DATA.groups).map(([name,g])=>`<tr><td>${esc(name)}</td><td class="${g.state==='fault'?'fault':''}">${esc(g.state)}</td><td>${esc(g.detail||g.cause)}</td><td>${g.command_count}</td><td>${g.control_tick}</td><td>${g.jitter_us}</td></tr>`).join('');
 document.getElementById('eventNote').textContent=`Showing ${DATA.events.length.toLocaleString()} of ${DATA.event_count.toLocaleString()} events (most recent first).`;
 document.getElementById('events').innerHTML=[...DATA.events].reverse().map(e=>`<tr><td>${e.time.toFixed(3)} s</td><td>${esc(e.kind)}</td><td>${esc(e.component)}</td><td class="${['fault','degraded','reconnecting'].includes(e.state)?'fault':''}">${esc(e.state)}</td><td>${esc(e.detail)}</td></tr>`).join('');
 drawMotors();drawImu();let timer;window.onresize=()=>{clearTimeout(timer);timer=setTimeout(()=>{drawMotors();drawImu();},100);};

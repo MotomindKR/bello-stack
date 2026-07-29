@@ -37,6 +37,7 @@ struct FakeSettings {
     renew_started: Notify,
     renew_in_flight: AtomicBool,
     fail_renew: AtomicBool,
+    fail_start: AtomicBool,
     reject_commands: AtomicBool,
     fail_release: AtomicBool,
 }
@@ -51,6 +52,7 @@ impl Default for FakeHardware {
                 renew_started: Notify::new(),
                 renew_in_flight: AtomicBool::new(false),
                 fail_renew: AtomicBool::new(false),
+                fail_start: AtomicBool::new(false),
                 reject_commands: AtomicBool::new(false),
                 fail_release: AtomicBool::new(false),
             }),
@@ -64,6 +66,7 @@ struct Recorded {
     renewed: Vec<RenewLeaseRequest>,
     released: Vec<ReleaseLeaseRequest>,
     lifecycle: Vec<LifecycleCall>,
+    starts: Vec<StartControlRequest>,
     commands: Vec<StreamCommandsRequest>,
     telemetry: Vec<WatchTelemetryRequest>,
 }
@@ -332,7 +335,7 @@ impl HardwareService for FakeHardware {
         let request = request.into_inner();
         self.record_lifecycle("enable", request.group, request.lease_token);
         Ok(Response::new(EnableGroupResponse {
-            state: GroupState::Enabled as i32,
+            state: GroupState::Damped as i32,
         }))
     }
 
@@ -341,7 +344,15 @@ impl HardwareService for FakeHardware {
         request: Request<StartControlRequest>,
     ) -> Result<Response<StartControlResponse>, Status> {
         let request = request.into_inner();
-        self.record_lifecycle("start", request.group, request.lease_token);
+        self.record_lifecycle("start", request.group.clone(), request.lease_token.clone());
+        self.state
+            .lock()
+            .expect("fake state mutex poisoned")
+            .starts
+            .push(request);
+        if self.settings.fail_start.load(Ordering::Relaxed) {
+            return Err(Status::unavailable("start response unavailable"));
+        }
         Ok(Response::new(StartControlResponse {
             state: GroupState::Running as i32,
         }))
@@ -354,7 +365,7 @@ impl HardwareService for FakeHardware {
         let request = request.into_inner();
         self.record_lifecycle("stop", request.group, request.lease_token);
         Ok(Response::new(StopControlResponse {
-            state: GroupState::Enabled as i32,
+            state: GroupState::Damped as i32,
         }))
     }
 
@@ -416,10 +427,12 @@ impl HardwareService for FakeHardware {
                     } else {
                         "accepted".into()
                     },
-                    state: if rejected {
+                    state: if lease_lost {
+                        GroupState::Damped as i32
+                    } else if rejected {
                         GroupState::Fault as i32
                     } else {
-                        GroupState::Enabled as i32
+                        GroupState::Running as i32
                     },
                 };
             }
@@ -532,7 +545,22 @@ async fn canonical_workflow_binds_group_token_sequences_and_filters() {
     assert!(!format!("{lease:?}").contains(TOKEN));
     assert_eq!(
         lease.enable().await.expect("enable group"),
-        EnumValue::Known(GroupState::Enabled)
+        EnumValue::Known(GroupState::Damped)
+    );
+    assert_eq!(
+        lease
+            .start(
+                CommandValidity::For(Duration::from_millis(100)),
+                vec![MotorCommand {
+                    motor_name: "motor_a".into(),
+                    kp: 10.0,
+                    kd: 1.0,
+                    ..Default::default()
+                }],
+            )
+            .await
+            .expect("start control"),
+        EnumValue::Known(GroupState::Running)
     );
 
     let stream = lease
@@ -590,10 +618,6 @@ async fn canonical_workflow_binds_group_token_sequences_and_filters() {
         2
     );
 
-    assert_eq!(
-        lease.start().await.expect("start control"),
-        EnumValue::Known(GroupState::Running)
-    );
     let original_deadline = lease.deadline();
     let shortened_deadline = lease
         .renew(LeaseDuration::For(Duration::from_millis(500)))
@@ -602,7 +626,7 @@ async fn canonical_workflow_binds_group_token_sequences_and_filters() {
     assert!(shortened_deadline.expires_at() < original_deadline.expires_at());
     assert_eq!(
         lease.stop().await.expect("stop control"),
-        EnumValue::Known(GroupState::Enabled)
+        EnumValue::Known(GroupState::Damped)
     );
     assert_eq!(
         lease.disable().await.expect("disable group"),
@@ -739,7 +763,7 @@ async fn locally_expired_lease_still_allows_best_effort_cleanup() {
 
     assert_eq!(
         lease.stop().await.expect("best-effort stop"),
-        EnumValue::Known(GroupState::Enabled)
+        EnumValue::Known(GroupState::Damped)
     );
     assert_eq!(
         lease.disable().await.expect("best-effort disable"),
@@ -1026,7 +1050,10 @@ async fn ergonomic_robot_api_hides_lease_stream_and_acknowledgement_workflow() {
 
     {
         let recorded = server.state.lock().expect("fake state mutex poisoned");
-        assert_eq!(recorded.commands.len(), 2);
+        assert_eq!(recorded.starts.len(), 1);
+        assert_eq!(recorded.starts[0].commands[0].motor_name, "motor_a");
+        assert_eq!(recorded.starts[0].valid_for_ms, 100);
+        assert_eq!(recorded.commands.len(), 1);
         assert_eq!(recorded.commands[0].commands[0].motor_name, "motor_a");
         assert_eq!(
             recorded
@@ -1213,6 +1240,7 @@ async fn ergonomic_control_surfaces_automatic_renewal_failure() {
     })
     .await
     .expect("failed renewal attempt");
+    tokio::time::sleep(Duration::from_millis(5)).await;
 
     assert!(matches!(
         control.start(frame).await,
@@ -1261,5 +1289,35 @@ async fn ergonomic_control_never_retries_after_a_rejected_running_command() {
     ));
 
     control.shutdown().await.expect("clean up control");
+    server.stop().await;
+}
+
+#[tokio::test]
+async fn ergonomic_resume_rolls_an_ambiguous_start_back_to_damped() {
+    let server = FakeServer::start().await;
+    let robot = Robot::connect(server.endpoint.clone())
+        .await
+        .expect("connect robot");
+    let group = robot.group(GROUP).expect("resolve group");
+    let frame = || {
+        group
+            .frame()
+            .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
+            .expect("assign target")
+            .build()
+            .expect("build frame")
+    };
+    let mut control = group
+        .control("resume-rollback")
+        .await
+        .expect("acquire control");
+
+    control.start(frame()).await.expect("start control");
+    control.stop().await.expect("stop control");
+    server.settings.fail_start.store(true, Ordering::Relaxed);
+    assert!(control.resume(frame()).await.is_err());
+    assert_eq!(control.state(), bello_hardware_client::ControlState::Damped);
+
+    control.shutdown().await.expect("shutdown damped control");
     server.stop().await;
 }

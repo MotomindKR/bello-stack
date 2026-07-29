@@ -172,8 +172,8 @@ def snapshot_record(robot: Robot, states: Any) -> dict[str, Any]:
             {
                 "group": group.group,
                 "state": enum_name(group.state),
-                "fault_detail": group.fault_detail,
-                "fault_cause": enum_name(group.fault_cause),
+                "detail": group.detail,
+                "cause": enum_name(group.cause),
                 "command_count": group.command_count,
                 "control_tick": group.control_tick,
                 "jitter_us": group.jitter_us,

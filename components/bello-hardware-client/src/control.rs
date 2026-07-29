@@ -68,7 +68,7 @@ impl ControlOptions {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ControlState {
     Ready,
-    Enabled,
+    Damped,
     Running,
     Uncertain,
     Closed,
@@ -78,7 +78,7 @@ impl ControlState {
     fn description(self) -> &'static str {
         match self {
             Self::Ready => "ready",
-            Self::Enabled => "enabled",
+            Self::Damped => "damped",
             Self::Running => "running",
             Self::Uncertain => "uncertain",
             Self::Closed => "closed",
@@ -152,14 +152,14 @@ impl ControlSession {
         self.state
     }
 
-    /// Enables the group, submits and confirms the initial frame, then starts control.
+    /// Enables damping, then atomically starts control with the initial frame.
     pub async fn start(&mut self, initial: CommandFrame) -> Result<(), Error> {
         self.require_state(ControlState::Ready, "start")?;
         let initial = initial.into_commands(self.group.name())?;
         self.check_renewal()?;
         let actual = GroupState::from_wire(self.lease.enable().await?);
-        self.expect_state("enable", GroupState::Enabled, actual)?;
-        self.state = ControlState::Enabled;
+        self.expect_state("enable", GroupState::Damped, actual)?;
+        self.state = ControlState::Damped;
 
         let stream = self
             .lease
@@ -170,15 +170,43 @@ impl ControlSession {
             Err(error) => return Err(self.rollback_start(error).await),
         };
 
-        if let Err(error) = self.send_and_confirm(initial).await {
-            return Err(self.rollback_start(error).await);
-        }
-        let actual = match self.lease.start().await {
+        let actual = match self
+            .lease
+            .start(self.options.command_validity, initial)
+            .await
+        {
             Ok(state) => GroupState::from_wire(state),
             Err(error) => return Err(self.rollback_start(error).await),
         };
         if let Err(error) = self.expect_state("start", GroupState::Running, actual) {
             return Err(self.rollback_start(error).await);
+        }
+        self.state = ControlState::Running;
+        Ok(())
+    }
+
+    /// Atomically resumes a damped group with a fresh initial frame.
+    pub async fn resume(&mut self, initial: CommandFrame) -> Result<(), Error> {
+        self.require_state(ControlState::Damped, "resume")?;
+        let initial = initial.into_commands(self.group.name())?;
+        self.check_renewal()?;
+        self.command_stream = Some(
+            self.lease
+                .open_command_stream(CommandStreamOptions::default())
+                .await?,
+        );
+        let actual = match self
+            .lease
+            .start(self.options.command_validity, initial)
+            .await
+        {
+            Ok(state) => GroupState::from_wire(state),
+            Err(error) => {
+                return Err(self.rollback_resume(error).await);
+            }
+        };
+        if let Err(error) = self.expect_state("resume", GroupState::Running, actual) {
+            return Err(self.rollback_resume(error).await);
         }
         self.state = ControlState::Running;
         Ok(())
@@ -196,48 +224,43 @@ impl ControlSession {
         match self.send_and_confirm(commands).await {
             Ok(()) => Ok(()),
             Err(error) => {
-                // Once a submitted command has an ambiguous or rejected
-                // outcome, do not permit another motion command on this
-                // stream. Explicit recovery or shutdown must reconcile state.
                 self.command_stream.take();
-                self.state = ControlState::Uncertain;
+                self.state = if matches!(
+                    &error,
+                    Error::RejectedCommand {
+                        state: GroupState::Damped,
+                        ..
+                    }
+                ) {
+                    ControlState::Damped
+                } else {
+                    ControlState::Uncertain
+                };
                 Err(error)
             }
         }
     }
 
-    /// Stops and disables the group while retaining the renewed lease for another start.
+    /// Stops periodic control and leaves the group damped under the current lease.
     pub async fn stop(&mut self) -> Result<(), Error> {
         self.require_state(ControlState::Running, "stop")?;
         self.command_stream.take();
-        let mut errors = Vec::new();
-        match self.lease.stop().await {
-            Ok(state) => {
-                let actual = GroupState::from_wire(state);
-                if let Err(error) = self.expect_state("stop", GroupState::Enabled, actual) {
-                    errors.push(error.to_string());
-                } else {
-                    self.state = ControlState::Enabled;
-                }
-            }
-            Err(error) => errors.push(error.to_string()),
+        let actual = GroupState::from_wire(self.lease.stop().await?);
+        self.expect_state("stop", GroupState::Damped, actual)?;
+        self.state = ControlState::Damped;
+        Ok(())
+    }
+
+    /// Disables a damped or authoritatively discovered group and returns to `Ready`.
+    pub async fn disable(&mut self) -> Result<(), Error> {
+        if !matches!(self.state, ControlState::Ready | ControlState::Damped) {
+            return Err(self.invalid_state("disable"));
         }
-        match self.lease.disable().await {
-            Ok(state) => {
-                let actual = GroupState::from_wire(state);
-                if let Err(error) = self.expect_state("disable", GroupState::Idle, actual) {
-                    errors.push(error.to_string());
-                } else {
-                    self.state = ControlState::Ready;
-                }
-            }
-            Err(error) => errors.push(error.to_string()),
-        }
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(Error::CleanupFailed(errors))
-        }
+        self.command_stream.take();
+        let actual = GroupState::from_wire(self.lease.disable().await?);
+        self.expect_state("disable", GroupState::Idle, actual)?;
+        self.state = ControlState::Ready;
+        Ok(())
     }
 
     /// Recovers a faulted group and returns the session to `Ready`.
@@ -262,14 +285,14 @@ impl ControlSession {
             match self.lease.stop().await {
                 Ok(state) => {
                     let actual = GroupState::from_wire(state);
-                    if let Err(error) = self.expect_state("stop", GroupState::Enabled, actual) {
+                    if let Err(error) = self.expect_state("stop", GroupState::Damped, actual) {
                         errors.push(error.to_string());
                     }
                 }
                 Err(error) => errors.push(error.to_string()),
             }
         }
-        // Disable is valid from Idle, Enabled, and Running. Always ask the
+        // Disable is valid from Idle, Damped, and Running. Always ask the
         // authoritative daemon, including after an ambiguous lifecycle error.
         match self.lease.disable().await {
             Ok(state) => {
@@ -363,6 +386,7 @@ impl ControlSession {
 
     async fn rollback_start(&mut self, primary: Error) -> Error {
         self.command_stream.take();
+        self.state = ControlState::Uncertain;
         match self.lease.disable().await {
             Ok(state) if GroupState::from_wire(state) == GroupState::Idle => {
                 self.state = ControlState::Ready;
@@ -372,6 +396,25 @@ impl ControlSession {
                 primary.to_string(),
                 format!(
                     "start rollback returned {:?} instead of Idle",
+                    GroupState::from_wire(state)
+                ),
+            ]),
+            Err(cleanup) => Error::CleanupFailed(vec![primary.to_string(), cleanup.to_string()]),
+        }
+    }
+
+    async fn rollback_resume(&mut self, primary: Error) -> Error {
+        self.command_stream.take();
+        self.state = ControlState::Uncertain;
+        match self.lease.stop().await {
+            Ok(state) if GroupState::from_wire(state) == GroupState::Damped => {
+                self.state = ControlState::Damped;
+                primary
+            }
+            Ok(state) => Error::CleanupFailed(vec![
+                primary.to_string(),
+                format!(
+                    "resume rollback returned {:?} instead of Damped",
                     GroupState::from_wire(state)
                 ),
             ]),
