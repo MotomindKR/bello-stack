@@ -18,13 +18,15 @@ use crate::mechanics::MechanicalViolation;
 use crate::telemetry::Telemetry;
 
 use super::command_policy::{
-    CommandPolicyCheck, CommandPolicyIssue, check_command, select_position_reference,
+    CommandPolicyCheck, CommandPolicyIssue, check_command, mechanical_violation_behavior,
+    select_position_reference,
 };
 use super::fsm::{GroupCause, GroupFsm, GroupState};
 use super::group_handle::{CommandSubmission, GroupSnapshot, LifecycleAction, LifecycleRequest};
 use super::spec::GroupSpec;
 
 const GROUP_TELEMETRY_PERIOD: Duration = Duration::from_millis(40);
+const MECHANICAL_WARNING_PERIOD: Duration = Duration::from_secs(1);
 
 enum DampingOutcome {
     Applied,
@@ -92,6 +94,7 @@ pub(super) struct GroupController {
     last_published_state: GroupState,
     last_published_cause: GroupCause,
     last_published_detail: String,
+    last_mechanical_warning: Option<Instant>,
 }
 
 impl GroupController {
@@ -123,6 +126,7 @@ impl GroupController {
             last_published_state: GroupState::Idle,
             last_published_cause: GroupCause::Unspecified,
             last_published_detail: String::new(),
+            last_mechanical_warning: None,
         }
     }
 
@@ -589,7 +593,7 @@ impl GroupController {
             })
             .collect();
         if let Err(violation) = self.spec.mechanical.validate_commands(&staged, &feedback) {
-            return self.reject_mechanical_command(violation);
+            self.handle_mechanical_command(violation)?;
         }
         for motor in &mut self.motors {
             motor.command = staged.remove(&motor.controller.spec.name);
@@ -670,9 +674,13 @@ impl GroupController {
                 })
                 .collect();
             if let Err(violation) = self.spec.mechanical.validate_commands(&commands, &feedback) {
-                self.enter_fault(FaultCause::CommandLimit, violation.detail);
-                self.update_snapshot(jitter_us);
-                return;
+                if self.mechanical_violation_behavior(&violation) == CommandBehavior::Warn {
+                    self.publish_mechanical_warning(&violation);
+                } else {
+                    self.enter_fault(FaultCause::CommandLimit, violation.detail);
+                    self.update_snapshot(jitter_us);
+                    return;
+                }
             }
             for motor in &self.motors {
                 if let Some(command) = motor.command
@@ -710,21 +718,27 @@ impl GroupController {
             .map_err(|violation| violation.detail)
     }
 
-    fn reject_mechanical_command(
+    fn mechanical_violation_behavior(&self, violation: &MechanicalViolation) -> CommandBehavior {
+        mechanical_violation_behavior(
+            violation.computed_torque_warning_allowed(),
+            violation.affected_motors.iter().filter_map(|name| {
+                self.motors
+                    .iter()
+                    .find(|motor| motor.controller.spec.name == *name)
+                    .map(|motor| &motor.controller.spec.command_policy)
+            }),
+        )
+    }
+
+    fn handle_mechanical_command(
         &mut self,
         violation: MechanicalViolation,
     ) -> Result<(), CommandError> {
-        let fault = violation.affected_motors.iter().any(|name| {
-            self.motors.iter().any(|motor| {
-                motor.controller.spec.name == *name
-                    && motor.controller.spec.command_policy.limit == CommandBehavior::Fault
-            })
-        });
-        let behavior = if fault {
-            CommandBehavior::Fault
-        } else {
-            CommandBehavior::Reject
-        };
+        let behavior = self.mechanical_violation_behavior(&violation);
+        if behavior == CommandBehavior::Warn {
+            self.publish_mechanical_warning(&violation);
+            return Ok(());
+        }
         let issue = CommandPolicyIssue {
             check: CommandPolicyCheck::CommandLimit,
             behavior,
@@ -736,9 +750,9 @@ impl GroupController {
         self.publish_command_policy_event(
             &violation.motor,
             &issue,
-            fault.then(|| self.response(FaultCause::CommandLimit)),
+            (behavior == CommandBehavior::Fault).then(|| self.response(FaultCause::CommandLimit)),
         );
-        if fault {
+        if behavior == CommandBehavior::Fault {
             self.enter_fault(FaultCause::CommandLimit, violation.detail);
             self.update_snapshot(0);
         }
@@ -746,6 +760,35 @@ impl GroupController {
             motor: violation.motor,
             violation: violation.violation,
         })
+    }
+
+    fn publish_mechanical_warning(&mut self, violation: &MechanicalViolation) {
+        let now = Instant::now();
+        if self
+            .last_mechanical_warning
+            .is_some_and(|last| now.duration_since(last) < MECHANICAL_WARNING_PERIOD)
+        {
+            return;
+        }
+        self.last_mechanical_warning = Some(now);
+        tracing::warn!(
+            group = %self.spec.name,
+            motor = %violation.motor,
+            detail = %violation.detail,
+            "computed torque envelope violation allowed by command policy"
+        );
+        self.publish_command_policy_event(
+            &violation.motor,
+            &CommandPolicyIssue {
+                check: CommandPolicyCheck::CommandLimit,
+                behavior: CommandBehavior::Warn,
+                violation: violation.violation.clone(),
+                detail: violation.detail.clone(),
+                command_modified: false,
+                command_rejected: false,
+            },
+            None,
+        );
     }
 
     fn respond(&self, response: FaultResponse) -> Result<(), String> {

@@ -63,6 +63,13 @@ pub(crate) struct MechanicalViolation {
     pub(crate) affected_motors: Vec<MotorName>,
     pub(crate) violation: SafetyViolation,
     pub(crate) detail: String,
+    computed_torque_warning_allowed: bool,
+}
+
+impl MechanicalViolation {
+    pub(crate) fn computed_torque_warning_allowed(&self) -> bool {
+        self.computed_torque_warning_allowed
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -184,6 +191,7 @@ impl MechanicalEnvelope {
                 affected_motors: vec![motor.clone()],
                 violation: SafetyViolation::TorqueLimit,
                 detail: "cannot validate an incomplete mechanical command".into(),
+                computed_torque_warning_allowed: false,
             });
         }
         for direct in &self.direct {
@@ -194,6 +202,7 @@ impl MechanicalEnvelope {
                     affected_motors: vec![direct.motor.clone()],
                     violation,
                     detail,
+                    computed_torque_warning_allowed: false,
                 },
             )?;
         }
@@ -228,6 +237,7 @@ impl MechanicalEnvelope {
                             "differential {:?}: {detail}",
                             differential.transmission.name
                         ),
+                        computed_torque_warning_allowed: false,
                     },
                 )?;
             }
@@ -242,12 +252,14 @@ impl MechanicalEnvelope {
                     affected_motors: vec![motor.clone()],
                     violation: SafetyViolation::TorqueLimit,
                     detail: "cannot validate impedance torque without a complete command".into(),
+                    computed_torque_warning_allowed: false,
                 })?;
                 let measured = feedback.get(motor).ok_or_else(|| MechanicalViolation {
                     motor: motor.clone(),
                     affected_motors: vec![motor.clone()],
                     violation: SafetyViolation::TorqueLimit,
                     detail: "cannot validate impedance torque without fresh motor feedback".into(),
+                    computed_torque_warning_allowed: false,
                 })?;
                 validate_finite_feedback(motor, measured)?;
                 let requested = command.torque
@@ -276,6 +288,7 @@ impl MechanicalEnvelope {
                 affected_motors: vec![motor.clone()],
                 violation: SafetyViolation::TorqueLimit,
                 detail: "cannot construct safe damping without fresh motor feedback".into(),
+                computed_torque_warning_allowed: false,
             })?;
             validate_finite_feedback(motor, measured)?;
             let requested = -self.motor_damping_kd[motor] * measured.velocity;
@@ -327,6 +340,7 @@ impl MechanicalEnvelope {
                         "impedance torque request {requested:.4} outside motor limit [{:.4}, {:.4}]",
                         limits.0, limits.1
                     ),
+                    computed_torque_warning_allowed: true,
                 });
             }
         }
@@ -341,6 +355,7 @@ impl MechanicalEnvelope {
                         "joint {:?} impedance torque request {torque:.4} exceeds URDF effort limit {:.4}",
                         direct.joint.name, direct.joint.effort
                     ),
+                    computed_torque_warning_allowed: true,
                 });
             }
         }
@@ -366,6 +381,7 @@ impl MechanicalEnvelope {
                             "differential {:?} joint {:?} impedance torque request {torque:.4} exceeds URDF effort limit {:.4}",
                             differential.transmission.name, joint.name, joint.effort
                         ),
+                        computed_torque_warning_allowed: true,
                     });
                 }
             }
@@ -384,6 +400,7 @@ impl MechanicalEnvelope {
                     detail: format!(
                         "motor damping requires a torque envelope containing zero, got [{minimum:.4}, {maximum:.4}]"
                     ),
+                    computed_torque_warning_allowed: false,
                 });
             }
             let (velocity_min, velocity_max) = self.motor_feedback_velocity_limits[motor];
@@ -483,7 +500,7 @@ impl MechanicalEnvelope {
                         affected_motors: differential.motors.to_vec(),
                         violation: SafetyViolation::PositionLimit,
                         detail: format!(
-                            "differential {:?} feedback resolves joint {:?} position {:.4} outside URDF limit [{:.4}, {:.4}] (protocol tolerance {:.6})",
+                            "differential {:?} feedback resolves joint {:?} position {:.4} outside URDF limit [{:.4}, {:.4}] (feedback tolerance {:.6})",
                             differential.transmission.name,
                             joint.name,
                             state.position,
@@ -491,6 +508,7 @@ impl MechanicalEnvelope {
                             joint.upper,
                             tolerance
                         ),
+                        computed_torque_warning_allowed: false,
                     });
                 }
             }
@@ -525,6 +543,7 @@ fn nonfinite_feedback_violation(motor: &MotorName, field: &'static str) -> Mecha
         affected_motors: vec![motor.clone()],
         violation: SafetyViolation::NonFinite { field },
         detail: format!("cannot validate mechanical torque: {field} is not finite"),
+        computed_torque_warning_allowed: false,
     }
 }
 

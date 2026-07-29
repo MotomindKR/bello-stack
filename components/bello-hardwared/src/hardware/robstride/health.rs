@@ -74,7 +74,7 @@ pub(super) fn classify_feedback(
         Some((
             MotorFaultCause::SafePosition,
             format!(
-                "feedback position {:.4} outside configured safe range [{:.4}, {:.4}] (protocol tolerance {:.6})",
+                "feedback position {:.4} outside configured safe range [{:.4}, {:.4}] (feedback tolerance {:.6})",
                 value.position,
                 spec.health.safe_position_min,
                 spec.health.safe_position_max,

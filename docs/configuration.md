@@ -236,6 +236,7 @@ motors:
     health:
       safe_position_min: -2.2
       safe_position_max: 2.2
+      feedback_position_tolerance: 0.2
       temperature_warning_c: 60.0
       maximum_temperature_c: 80.0
       temperature_recovery_c: 75.0
@@ -244,6 +245,7 @@ motors:
       maximum_position_step: 0.5
       limit: clamp
       position_step: fault
+      computed_torque: reject
     fault_damping_kd: 2.0
 ```
 
@@ -259,6 +261,11 @@ the Type-1 protocol position span. The configured safe feedback range must
 contain the command position range; its effective range is also narrowed to
 the URDF coordinate envelope. Inventory reports these effective command
 limits, not the raw protocol span.
+
+`feedback_position_tolerance` is in radians and expands only the feedback
+position fault boundary; it does not expand accepted command targets. It must
+be finite and between one protocol quantization interval and `0.2`. Its
+default is two protocol quantization intervals.
 
 For an asymmetric model range, `direction: -1` reverses and negates the range
 before it is exposed in robot coordinates. `velocity_abs` and `torque_abs`
@@ -276,12 +283,19 @@ motor must stay at or below `temperature_recovery_c` continuously for
 `temperature_recovery_duration_ms` before its device fault clears. The group
 fault remains latched until explicit recovery.
 
-Command policy behavior values are `clamp`, `reject`, and `fault`. The fault
-damping gain must be positive and no greater than the effective motor `kd`
-limit. At runtime, all gains in a group are scaled down together when needed to
-keep persistent damping torque within the motor and URDF mechanical envelope
-over the full model feedback-velocity range. `maximum_position_step` compares
-the first target of a lease generation
+Scalar `limit` and `position_step` policy behavior values are `clamp`, `reject`,
+and `fault`. `computed_torque` accepts `warn`, `reject`, or `fault`; `warn`
+transmits the original command and publishes rate-limited warning telemetry
+when a finite, fully evaluated impedance torque exceeds a motor or URDF effort
+limit. It does not bypass missing or non-finite feedback, position or velocity
+limits, scalar command limits, or position-step checks. Bello's maintained
+hardware description selects `computed_torque: warn`.
+
+The fault damping gain must be positive and no greater than the effective motor
+`kd` limit. At runtime, all gains in a group are scaled down together when
+needed to keep persistent damping torque within the motor and URDF mechanical
+envelope over the full model feedback-velocity range.
+`maximum_position_step` compares the first target of a lease generation
 with fresh measured feedback and subsequent targets with the previously
 accepted target. Bello's maintained hardware description sets this guard to
 0.5 rad. Model-dependent bounds are intentionally documented in
@@ -294,9 +308,10 @@ admission, then every complete group command is transformed into joint space
 and checked against the exact coupled position, velocity, and effort limits.
 The effort check includes the requested impedance torque
 `tau_ff + kp * position_error + kd * velocity_error`. Coupled or
-impedance-derived violations are rejected rather than component-wise clamped,
-because independent clamping does not preserve a differential request. The
-same check runs before every retained command is transmitted.
+impedance-derived violations cannot be component-wise clamped because
+independent clamping does not preserve a differential request. They follow the
+affected motors' `computed_torque` behavior instead. The same check runs before
+every retained command is transmitted.
 
 ### Hardware-description `motor_groups`
 

@@ -149,6 +149,7 @@ pub enum CommandBehavior {
     Clamp,
     Reject,
     Fault,
+    Warn,
     Unknown(i32),
 }
 
@@ -159,6 +160,7 @@ impl CommandBehavior {
             Ok(proto::CommandBehavior::Clamp) => Self::Clamp,
             Ok(proto::CommandBehavior::Reject) => Self::Reject,
             Ok(proto::CommandBehavior::Fault) => Self::Fault,
+            Ok(proto::CommandBehavior::Warn) => Self::Warn,
             Err(_) => Self::Unknown(raw),
         }
     }

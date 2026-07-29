@@ -50,6 +50,7 @@ enum CommandBehavior {
   COMMAND_BEHAVIOR_CLAMP = 1;
   COMMAND_BEHAVIOR_REJECT = 2;
   COMMAND_BEHAVIOR_FAULT = 3;
+  COMMAND_BEHAVIOR_WARN = 4;
 }
 
 enum FaultResponse {

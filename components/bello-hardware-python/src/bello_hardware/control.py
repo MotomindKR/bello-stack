@@ -393,8 +393,7 @@ class ControlSession:
                 self._check_renewal()
                 self._send_and_confirm(commands)
             except BaseException as error:
-                self._close_stream()
-                self._set_state(self._state_after_command_error(error))
+                self._handle_command_error(error)
                 raise
 
     def send_async(self, targets: Mapping[str, CoordinateTarget]) -> CommandReceipt:
@@ -464,7 +463,7 @@ class ControlSession:
             self._expect("recover", GroupState.IDLE, response.state)
             self._set_state(ControlState.READY)
 
-    def close(self) -> None:
+    def close(self, *, preserve_damping: bool = False) -> None:
         with self._operation_lock:
             if self.state == ControlState.CLOSED:
                 return
@@ -481,15 +480,16 @@ class ControlSession:
                     self._expect("stop", GroupState.DAMPED, response.state)
                 except BaseException as error:
                     errors.append(error)
-            try:
-                response = self._unary(
-                    "disable group",
-                    self._group._robot._stub.DisableGroup,
-                    proto.DisableGroupRequest(group=self._group.name, lease_token=self._token),
-                )
-                self._expect("disable", GroupState.IDLE, response.state)
-            except BaseException as error:
-                errors.append(error)
+            if not preserve_damping:
+                try:
+                    response = self._unary(
+                        "disable group",
+                        self._group._robot._stub.DisableGroup,
+                        proto.DisableGroupRequest(group=self._group.name, lease_token=self._token),
+                    )
+                    self._expect("disable", GroupState.IDLE, response.state)
+                except BaseException as error:
+                    errors.append(error)
 
             self._renewal_stop.set()
             if self._renewal is not threading.current_thread():
@@ -501,7 +501,12 @@ class ControlSession:
                         self._group._robot._stub.ReleaseLease,
                         proto.ReleaseLeaseRequest(token=self._token),
                     )
-                self._expect("release", GroupState.IDLE, response.state)
+                expected = (
+                    (GroupState.IDLE, GroupState.DAMPED, GroupState.FAULT)
+                    if preserve_damping
+                    else (GroupState.IDLE,)
+                )
+                self._expect_any("release", expected, response.state)
             except BaseException as error:
                 errors.append(error)
             self._set_state(ControlState.CLOSED)
@@ -559,8 +564,7 @@ class ControlSession:
             self._validate_response(receipt._sequence, response)
             self._check_renewal()
         except BaseException as error:
-            self._close_stream()
-            self._set_state(self._state_after_command_error(error))
+            self._handle_command_error(error)
             raise
 
     def _validate_response(self, sequence: int, response: Any) -> None:
@@ -635,16 +639,25 @@ class ControlSession:
             raise control_rpc_error(operation, error) from error
 
     def _expect(self, operation: str, expected: GroupState, actual_value: int) -> None:
+        self._expect_any(operation, (expected,), actual_value)
+
+    def _expect_any(
+        self,
+        operation: str,
+        expected: tuple[GroupState, ...],
+        actual_value: int,
+    ) -> None:
         try:
             actual = GroupState(actual_value)
         except ValueError as error:
             raise ProtocolError(
                 f"{operation} returned unknown group state {actual_value}"
             ) from error
-        if actual != expected:
+        if actual not in expected:
+            names = ", ".join(state.name for state in expected)
             raise ControlError(
                 f"{operation} for {self._group.name!r} returned {actual.name}, "
-                f"expected {expected.name}"
+                f"expected one of {names}"
             )
 
     def _require(self, expected: ControlState, operation: str) -> None:
@@ -660,10 +673,19 @@ class ControlSession:
         with self._state_lock:
             self._state = state
 
+    def _handle_command_error(self, error: BaseException) -> None:
+        state = self._state_after_command_error(error)
+        if state != ControlState.RUNNING:
+            self._close_stream()
+        self._set_state(state)
+
     @staticmethod
     def _state_after_command_error(error: BaseException) -> ControlState:
-        if isinstance(error, CommandRejectedError) and error.state == GroupState.DAMPED:
-            return ControlState.DAMPED
+        if isinstance(error, CommandRejectedError):
+            if error.state == GroupState.RUNNING:
+                return ControlState.RUNNING
+            if error.state == GroupState.DAMPED:
+                return ControlState.DAMPED
         return ControlState.UNCERTAIN
 
     def _close_stream(self) -> None:

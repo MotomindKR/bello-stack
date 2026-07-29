@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use robstride_protocol::{CONTROL_POSITION_MAX, CONTROL_POSITION_MIN};
+use robstride_protocol::{CONTROL_POSITION_MAX, CONTROL_POSITION_MIN, CONTROL_POSITION_SPAN};
 use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -246,6 +246,7 @@ impl Default for MotorLimits {
 pub struct MotorHealth {
     pub safe_position_min: f64,
     pub safe_position_max: f64,
+    pub feedback_position_tolerance: f64,
     pub temperature_warning_c: f64,
     pub maximum_temperature_c: f64,
     pub temperature_recovery_c: f64,
@@ -256,6 +257,7 @@ impl Default for MotorHealth {
         Self {
             safe_position_min: CONTROL_POSITION_MIN,
             safe_position_max: CONTROL_POSITION_MAX,
+            feedback_position_tolerance: default_feedback_position_tolerance(),
             temperature_warning_c: 60.0,
             maximum_temperature_c: 80.0,
             temperature_recovery_c: 75.0,
@@ -264,12 +266,17 @@ impl Default for MotorHealth {
     }
 }
 
+fn default_feedback_position_tolerance() -> f64 {
+    2.0 * CONTROL_POSITION_SPAN / u16::MAX as f64
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct MotorCommandPolicy {
     pub maximum_position_step: f64,
     pub limit: CommandBehavior,
     pub position_step: CommandBehavior,
+    pub computed_torque: CommandBehavior,
 }
 
 impl Default for MotorCommandPolicy {
@@ -278,6 +285,7 @@ impl Default for MotorCommandPolicy {
             maximum_position_step: 0.5,
             limit: CommandBehavior::Reject,
             position_step: CommandBehavior::Fault,
+            computed_torque: CommandBehavior::Reject,
         }
     }
 }
@@ -292,6 +300,7 @@ pub enum CommandBehavior {
     Clamp,
     Reject,
     Fault,
+    Warn,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]

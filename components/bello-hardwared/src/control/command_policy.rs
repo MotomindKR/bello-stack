@@ -1,4 +1,4 @@
-use crate::config::CommandBehavior;
+use crate::config::{CommandBehavior, MotorCommandPolicy};
 use crate::domain::{ImpedanceCommand, SafetyViolation};
 use crate::hardware::robstride::MotorSpec;
 
@@ -63,6 +63,33 @@ pub(crate) fn select_position_reference(
         previous_target.map(PositionReference::PreviousTarget)
     } else {
         measured_position.map(PositionReference::Measured)
+    }
+}
+
+pub(crate) fn mechanical_violation_behavior<'a>(
+    computed_torque_warning_allowed: bool,
+    policies: impl IntoIterator<Item = &'a MotorCommandPolicy>,
+) -> CommandBehavior {
+    let mut found = false;
+    let mut selected = CommandBehavior::Warn;
+    for policy in policies {
+        found = true;
+        let behavior = if computed_torque_warning_allowed {
+            policy.computed_torque
+        } else {
+            policy.limit
+        };
+        if behavior == CommandBehavior::Fault {
+            return CommandBehavior::Fault;
+        }
+        if behavior != CommandBehavior::Warn {
+            selected = CommandBehavior::Reject;
+        }
+    }
+    if found {
+        selected
+    } else {
+        CommandBehavior::Reject
     }
 }
 
@@ -210,6 +237,35 @@ mod tests {
     }
 
     #[test]
+    fn computed_torque_warning_requires_every_affected_motor_to_allow_it() {
+        let mut first = MotorCommandPolicy {
+            computed_torque: CommandBehavior::Warn,
+            ..MotorCommandPolicy::default()
+        };
+        let mut second = first.clone();
+        assert_eq!(
+            mechanical_violation_behavior(true, [&first, &second]),
+            CommandBehavior::Warn
+        );
+
+        second.computed_torque = CommandBehavior::Reject;
+        assert_eq!(
+            mechanical_violation_behavior(true, [&first, &second]),
+            CommandBehavior::Reject
+        );
+
+        first.computed_torque = CommandBehavior::Fault;
+        assert_eq!(
+            mechanical_violation_behavior(true, [&first, &second]),
+            CommandBehavior::Fault
+        );
+        assert_eq!(
+            mechanical_violation_behavior(false, [&second]),
+            CommandBehavior::Reject
+        );
+    }
+
+    #[test]
     fn position_step_reports_its_reference() {
         let mut motor = motor();
         motor.command_policy.maximum_position_step = 0.5;
@@ -237,15 +293,15 @@ mod tests {
     }
 
     #[test]
-    fn canonical_target_step_rejects_more_than_half_a_radian() {
+    fn canonical_target_step_rejects_more_than_two_radians() {
         let motor = motor();
-        assert_eq!(motor.command_policy.maximum_position_step, 0.5);
+        assert_eq!(motor.command_policy.maximum_position_step, 2.0);
         let report = check_command(
             ImpedanceCommand {
-                position: 0.501,
+                position: 1.0,
                 ..Default::default()
             },
-            Some(PositionReference::Measured(0.0)),
+            Some(PositionReference::Measured(-1.001)),
             &motor,
         );
         assert_eq!(report.issues.len(), 1);

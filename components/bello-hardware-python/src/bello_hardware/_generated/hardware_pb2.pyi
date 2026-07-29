@@ -40,6 +40,7 @@ class CommandBehavior(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     COMMAND_BEHAVIOR_CLAMP: _ClassVar[CommandBehavior]
     COMMAND_BEHAVIOR_REJECT: _ClassVar[CommandBehavior]
     COMMAND_BEHAVIOR_FAULT: _ClassVar[CommandBehavior]
+    COMMAND_BEHAVIOR_WARN: _ClassVar[CommandBehavior]
 
 class FaultResponse(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -103,6 +104,7 @@ COMMAND_BEHAVIOR_UNSPECIFIED: CommandBehavior
 COMMAND_BEHAVIOR_CLAMP: CommandBehavior
 COMMAND_BEHAVIOR_REJECT: CommandBehavior
 COMMAND_BEHAVIOR_FAULT: CommandBehavior
+COMMAND_BEHAVIOR_WARN: CommandBehavior
 FAULT_RESPONSE_UNSPECIFIED: FaultResponse
 FAULT_RESPONSE_DAMPING: FaultResponse
 FAULT_RESPONSE_DISABLE: FaultResponse

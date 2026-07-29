@@ -99,6 +99,7 @@ class FakeHardware:
         self.command_count = 0
         self.renew_count = 0
         self.release_count = 0
+        self.disable_count = 0
         self.reject_next = False
         self.command_delay = 0.0
         self.renew_failure: grpc.StatusCode | None = None
@@ -141,8 +142,8 @@ class FakeHardware:
         del request, context
         with self.lock:
             self.release_count += 1
-            self.state = proto.GROUP_STATE_IDLE
-        return proto.ReleaseLeaseResponse(state=proto.GROUP_STATE_IDLE)
+            state = self.state
+        return proto.ReleaseLeaseResponse(state=state)
 
     def EnableGroup(self, request: Any, context: Any) -> proto.EnableGroupResponse:
         del request
@@ -172,6 +173,7 @@ class FakeHardware:
         if self.disable_failure is not None:
             context.abort(self.disable_failure, "test disable failure")
         with self.lock:
+            self.disable_count += 1
             self.state = proto.GROUP_STATE_IDLE
         return proto.DisableGroupResponse(state=proto.GROUP_STATE_IDLE)
 
