@@ -36,7 +36,7 @@ motors:
     health: &motor_health
       safe_position_min: -12.57
       safe_position_max: 12.57
-      feedback_position_tolerance: 0.002
+      feedback_position_tolerance: 0.1
       temperature_warning_c: 60.0
       maximum_temperature_c: 80.0
       temperature_recovery_c: 75.0
@@ -74,7 +74,7 @@ motors:
     health: &wrist_yaw_health
       safe_position_min: -1.67
       safe_position_max: 1.67
-      feedback_position_tolerance: 0.002
+      feedback_position_tolerance: 0.1
       temperature_warning_c: 60.0
       maximum_temperature_c: 80.0
       temperature_recovery_c: 75.0

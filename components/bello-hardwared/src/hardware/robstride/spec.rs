@@ -205,7 +205,7 @@ fn validate_health(config: &MotorConfig) -> Result<()> {
         || health.safe_position_min > config.limits.position_min
         || health.safe_position_max < config.limits.position_max
         || health.feedback_position_tolerance < CONTROL_POSITION_SPAN / u16::MAX as f64
-        || health.feedback_position_tolerance > 0.01
+        || health.feedback_position_tolerance > 0.1
         || health.temperature_warning_c <= 0.0
         || health.temperature_warning_c >= health.maximum_temperature_c
         || health.maximum_temperature_c <= 0.0
@@ -308,16 +308,16 @@ mod tests {
     #[test]
     fn accepts_configured_feedback_position_tolerance() {
         let config: MotorConfig = serde_yaml::from_str(
-            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\nhealth: { feedback_position_tolerance: 0.002 }",
+            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\nhealth: { feedback_position_tolerance: 0.1 }",
         )
         .unwrap();
         let spec = MotorSpec::try_from(&config).unwrap();
-        assert_eq!(spec.feedback_position_tolerance, 0.002);
+        assert_eq!(spec.feedback_position_tolerance, 0.1);
     }
 
     #[test]
     fn rejects_feedback_position_tolerance_outside_guardrail() {
-        for tolerance in [0.0, 0.02] {
+        for tolerance in [0.0, 0.2] {
             let yaml = format!(
                 "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\nhealth: {{ feedback_position_tolerance: {tolerance} }}"
             );
