@@ -210,8 +210,9 @@ a complete pair, so individually valid ankle-motor targets cannot violate
 ankle roll/pitch limits. The torque check evaluates feedforward plus the current
 impedance error. A coupled violation is never independently clamped; it is
 rejected unless one of the affected motors configures `fault` behavior. Motor
-feedback position checks allow two protocol quantization intervals at a limit,
-and differential feedback propagates that tolerance through its transmission.
+feedback position checks allow the configured feedback-position tolerance at a
+limit; it defaults to two protocol quantization intervals, and differential
+feedback propagates that tolerance through its transmission.
 Safety damping uses the same motor and direct/differential torque envelope. Its
 group-wide gain scale covers every velocity representable by each motor model,
 including the worst signed velocity combinations of a differential, so the

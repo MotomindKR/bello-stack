@@ -483,7 +483,7 @@ impl MechanicalEnvelope {
                         affected_motors: differential.motors.to_vec(),
                         violation: SafetyViolation::PositionLimit,
                         detail: format!(
-                            "differential {:?} feedback resolves joint {:?} position {:.4} outside URDF limit [{:.4}, {:.4}] (protocol tolerance {:.6})",
+                            "differential {:?} feedback resolves joint {:?} position {:.4} outside URDF limit [{:.4}, {:.4}] (feedback tolerance {:.6})",
                             differential.transmission.name,
                             joint.name,
                             state.position,

@@ -236,6 +236,7 @@ motors:
     health:
       safe_position_min: -2.2
       safe_position_max: 2.2
+      feedback_position_tolerance: 0.002
       temperature_warning_c: 60.0
       maximum_temperature_c: 80.0
       temperature_recovery_c: 75.0
@@ -259,6 +260,11 @@ the Type-1 protocol position span. The configured safe feedback range must
 contain the command position range; its effective range is also narrowed to
 the URDF coordinate envelope. Inventory reports these effective command
 limits, not the raw protocol span.
+
+`feedback_position_tolerance` is in radians and expands only the feedback
+position fault boundary; it does not expand accepted command targets. It must
+be finite and between one protocol quantization interval and `0.01`. Its
+default is two protocol quantization intervals.
 
 For an asymmetric model range, `direction: -1` reverses and negates the range
 before it is exposed in robot coordinates. `velocity_abs` and `torque_abs`

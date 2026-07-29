@@ -36,6 +36,7 @@ motors:
     health: &motor_health
       safe_position_min: -12.57
       safe_position_max: 12.57
+      feedback_position_tolerance: 0.002
       temperature_warning_c: 60.0
       maximum_temperature_c: 80.0
       temperature_recovery_c: 75.0
@@ -44,17 +45,17 @@ motors:
       maximum_position_step: 0.5
       limit: clamp
       position_step: reject
-    fault_damping_kd: 2.0
-  - { name: left_hip_pitch, coordinate: left_hip_pitch_joint, bus: can0, id: 61, model: ROBSTRIDE_04, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
-  - { name: left_hip_roll, coordinate: left_hip_roll_joint, bus: can0, id: 62, model: ROBSTRIDE_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
-  - { name: left_hip_yaw, coordinate: left_hip_yaw_joint, bus: can0, id: 63, model: ROBSTRIDE_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
-  - { name: left_knee_mix_1, coordinate: left_knee_joint, bus: can0, id: 64, model: ROBSTRIDE_04, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
+    fault_damping_kd: 10.0
+  - { name: left_hip_pitch, coordinate: left_hip_pitch_joint, bus: can0, id: 61, model: ROBSTRIDE_04, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 10.0 }
+  - { name: left_hip_roll, coordinate: left_hip_roll_joint, bus: can0, id: 62, model: ROBSTRIDE_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 10.0 }
+  - { name: left_hip_yaw, coordinate: left_hip_yaw_joint, bus: can0, id: 63, model: ROBSTRIDE_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 10.0 }
+  - { name: left_knee_mix_1, coordinate: left_knee_joint, bus: can0, id: 64, model: ROBSTRIDE_04, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 10.0 }
   - { name: left_ankle_1, coordinate: left_ankle_motor_1, bus: can0, id: 67, model: ROBSTRIDE_06, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
   - { name: left_ankle_2, coordinate: left_ankle_motor_2, bus: can0, id: 66, model: ROBSTRIDE_06, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
-  - { name: right_hip_pitch, coordinate: right_hip_pitch_joint, bus: can0, id: 71, model: ROBSTRIDE_04, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
-  - { name: right_hip_roll, coordinate: right_hip_roll_joint, bus: can0, id: 72, model: ROBSTRIDE_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
-  - { name: right_hip_yaw, coordinate: right_hip_yaw_joint, bus: can0, id: 73, model: ROBSTRIDE_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
-  - { name: right_knee_mix_1, coordinate: right_knee_joint, bus: can0, id: 74, model: ROBSTRIDE_04, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
+  - { name: right_hip_pitch, coordinate: right_hip_pitch_joint, bus: can0, id: 71, model: ROBSTRIDE_04, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 10.0 }
+  - { name: right_hip_roll, coordinate: right_hip_roll_joint, bus: can0, id: 72, model: ROBSTRIDE_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 10.0 }
+  - { name: right_hip_yaw, coordinate: right_hip_yaw_joint, bus: can0, id: 73, model: ROBSTRIDE_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 10.0 }
+  - { name: right_knee_mix_1, coordinate: right_knee_joint, bus: can0, id: 74, model: ROBSTRIDE_04, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 10.0 }
   - { name: right_ankle_1, coordinate: right_ankle_motor_1, bus: can0, id: 77, model: ROBSTRIDE_06, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
   - { name: right_ankle_2, coordinate: right_ankle_motor_2, bus: can0, id: 76, model: ROBSTRIDE_06, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
   - { name: left_arm_1, coordinate: left_shoulder_pitch_joint, bus: can1, id: 31, model: ROBSTRIDE_04, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
@@ -73,6 +74,7 @@ motors:
     health: &wrist_yaw_health
       safe_position_min: -1.67
       safe_position_max: 1.67
+      feedback_position_tolerance: 0.002
       temperature_warning_c: 60.0
       maximum_temperature_c: 80.0
       temperature_recovery_c: 75.0
