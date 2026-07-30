@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -14,11 +14,13 @@ use tokio::net::TcpListener;
 use tokio::sync::{oneshot, watch};
 use tokio_stream::wrappers::TcpListenerStream;
 use tonic::{Request, Response, Status};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
+use crate::alignment::{CoordinateHistory, source_time_ns};
 use crate::config::EstimatorConfig;
 use crate::filter::{ContactFilter, PoseEstimate};
-use crate::model::{CoordinateState, KinematicModel};
+use crate::imu_filter::ImuLowPass;
+use crate::model::KinematicModel;
 
 #[derive(Clone, Debug)]
 struct StampedPose {
@@ -211,10 +213,17 @@ async fn monitor_hardware(
 ) -> anyhow::Result<()> {
     let mut states = robot.states().await.context("open hardware state stream")?;
     let mut filter = ContactFilter::new(&config);
+    let mut imu_low_pass = ImuLowPass::new(
+        config.orientation_lpf_cutoff_hz,
+        config.gyro_lpf_cutoff_hz,
+        config.acceleration_lpf_cutoff_hz,
+    );
+    let mut coordinate_history = CoordinateHistory::default();
     let mut generation = None;
     let mut previous_imu_ns = None;
     let mut previous_motor_epoch = None;
     let mut sequence = 0_u64;
+    let mut last_diagnostics = Instant::now();
 
     loop {
         let state = tokio::select! {
@@ -233,6 +242,8 @@ async fn monitor_hardware(
             generation = Some(state.generation());
             previous_imu_ns = None;
             previous_motor_epoch = None;
+            imu_low_pass.reset();
+            coordinate_history.clear();
             if state.generation() != 0 {
                 warn!(
                     generation = state.generation(),
@@ -240,8 +251,25 @@ async fn monitor_hardware(
                 );
             }
         }
-        let Some(RobotStateChange::Imu(imu)) = state.last_change() else {
-            continue;
+        let imu = match state.last_change() {
+            Some(RobotStateChange::Motor(motor)) => {
+                if model
+                    .required_coordinates()
+                    .iter()
+                    .any(|name| name == &motor.coordinate)
+                {
+                    coordinate_history.observe(
+                        &motor.coordinate,
+                        motor.monotonic_ns,
+                        motor.feedback_age,
+                        motor.position,
+                        motor.velocity,
+                    );
+                }
+                continue;
+            }
+            Some(RobotStateChange::Imu(imu)) => imu,
+            _ => continue,
         };
         if imu.imu != config.imu || imu.sample_age > config.imu_stale() {
             continue;
@@ -266,12 +294,24 @@ async fn monitor_hardware(
             continue;
         }
 
-        let Some((coordinates, motor_epoch)) =
-            fresh_coordinates(state, &model, imu.monotonic_ns, config.motor_stale())
-        else {
+        let imu_source_ns = source_time_ns(imu.monotonic_ns, imu.sample_age);
+        let filtered_imu = imu_low_pass.update(
+            imu_source_ns,
+            orientation,
+            angular_velocity,
+            linear_acceleration,
+        );
+        let orientation = filtered_imu.orientation;
+        let angular_velocity = filtered_imu.angular_velocity;
+        let linear_acceleration = filtered_imu.linear_acceleration;
+        let Some(coordinates) = coordinate_history.sample_at(
+            model.required_coordinates(),
+            imu_source_ns,
+            config.motor_stale(),
+        ) else {
             continue;
         };
-        let feet = match model.feet(&coordinates) {
+        let feet = match model.feet(&coordinates.values) {
             Ok(feet) => feet,
             Err(error) => {
                 warn!(%error, "discarding invalid kinematic sample");
@@ -280,27 +320,46 @@ async fn monitor_hardware(
         };
 
         let mut pose = None;
-        let new_motor_frame = previous_motor_epoch.is_none_or(|previous| motor_epoch > previous);
+        let new_motor_frame =
+            previous_motor_epoch.is_none_or(|previous| coordinates.epoch_ns > previous);
         if !filter.initialized() {
             pose = Some(filter.initialize(orientation, angular_velocity, feet));
         } else if let Some(previous) = previous_imu_ns
-            && imu.monotonic_ns > previous
+            && imu_source_ns > previous
         {
-            let interval = Duration::from_nanos(imu.monotonic_ns - previous);
+            let interval = Duration::from_nanos(imu_source_ns - previous);
             if interval <= Duration::from_millis(100) {
                 pose = Some(filter.propagate(orientation, linear_acceleration, interval)?);
             }
         }
         if new_motor_frame {
             let interval = previous_motor_epoch
-                .and_then(|previous| motor_epoch.checked_sub(previous))
+                .and_then(|previous| coordinates.epoch_ns.checked_sub(previous))
                 .map(Duration::from_nanos)
                 .filter(|interval| *interval <= Duration::from_millis(500))
                 .unwrap_or(Duration::from_millis(10));
-            pose = Some(filter.correct_contacts(orientation, angular_velocity, feet, interval)?);
-            previous_motor_epoch = Some(motor_epoch);
+            let correction =
+                filter.correct_contacts(orientation, angular_velocity, feet, interval)?;
+            log_contact_diagnostics(&correction.contacts);
+            pose = Some(correction.pose);
+            previous_motor_epoch = Some(coordinates.epoch_ns);
         }
-        previous_imu_ns = Some(imu.monotonic_ns);
+        previous_imu_ns = Some(imu_source_ns);
+        if last_diagnostics.elapsed() >= Duration::from_secs(1) {
+            let diagnostics = filter.diagnostics();
+            debug!(
+                position = ?diagnostics.position,
+                velocity = ?diagnostics.velocity,
+                accelerometer_bias = ?diagnostics.accelerometer_bias,
+                contact_positions = ?diagnostics.contact_positions,
+                active_contacts = ?diagnostics.active_contacts,
+                contact_probabilities = ?diagnostics.contact_probabilities,
+                effective_contact_probabilities = ?diagnostics.effective_contact_probabilities,
+                motor_alignment_ms = coordinates.maximum_offset.as_secs_f64() * 1000.0,
+                "pose estimator diagnostics"
+            );
+            last_diagnostics = Instant::now();
+        }
         if let Some(pose) = pose {
             sequence = sequence.saturating_add(1);
             poses.send_replace(Some(StampedPose {
@@ -313,31 +372,24 @@ async fn monitor_hardware(
     }
 }
 
-fn fresh_coordinates(
-    state: &bello_hardware_client::RobotState,
-    model: &KinematicModel,
-    now_ns: u64,
-    maximum_age: Duration,
-) -> Option<(BTreeMap<String, CoordinateState>, u64)> {
-    let mut coordinates = BTreeMap::new();
-    let mut epoch = u64::MAX;
-    for name in model.required_coordinates() {
-        let sample = state.coordinate(name).ok()?;
-        let elapsed = Duration::from_nanos(now_ns.saturating_sub(sample.monotonic_ns));
-        let age = sample.feedback_age.saturating_add(elapsed);
-        if age > maximum_age || !sample.position.is_finite() || !sample.velocity.is_finite() {
-            return None;
+fn log_contact_diagnostics(contacts: &[crate::filter::ContactDiagnostics; 2]) {
+    for (foot, contact) in ["left", "right"].into_iter().zip(contacts) {
+        if contact.changed {
+            info!(
+                foot,
+                active = contact.active,
+                probability = contact.probability,
+                effective_probability = contact.effective_probability,
+                height = contact.height,
+                relative_height = contact.relative_height,
+                world_speed = contact.world_speed,
+                kinematic_speed = contact.kinematic_speed,
+                contact_motion_speed = contact.contact_motion_speed,
+                world_speed_reliability = contact.world_speed_reliability,
+                "pose-estimator contact changed"
+            );
         }
-        epoch = epoch.min(sample.monotonic_ns);
-        coordinates.insert(
-            name.clone(),
-            CoordinateState {
-                position: sample.position,
-                velocity: sample.velocity,
-            },
-        );
     }
-    Some((coordinates, epoch))
 }
 
 fn normalized_orientation(

@@ -4,6 +4,7 @@ use anyhow::bail;
 use nalgebra::{SMatrix, SVector, UnitQuaternion, Vector3};
 
 use crate::config::EstimatorConfig;
+use crate::contact::ContactManager;
 use crate::model::FootKinematics;
 
 const POSITION: usize = 0;
@@ -12,6 +13,15 @@ const ACCEL_BIAS: usize = 6;
 const LEFT_CONTACT: usize = 9;
 const RIGHT_CONTACT: usize = 12;
 const STATE_SIZE: usize = 15;
+const CONTACT_MEASUREMENT_VARIANCE_MIN: f64 = 4.0e-6;
+const CONTACT_MEASUREMENT_VARIANCE_MAX: f64 = 1.0e-2;
+const CONTACT_PROCESS_VARIANCE_MIN: f64 = 4.0e-6;
+const CONTACT_PROCESS_VARIANCE_MAX: f64 = 2.5e-2;
+const CONTACT_PROBABILITY_EXPONENT: i32 = 3;
+const CONTACT_BIAS_UPDATE_PROBABILITY: f64 = 0.95;
+const CONTACT_REFERENCE_INTERVAL_SECONDS: f64 = 0.01;
+const CONTACT_MINIMUM_INTERVAL_SECONDS: f64 = 0.002;
+const CONTACT_MAXIMUM_INTERVAL_SECONDS: f64 = 0.05;
 
 type StateVector = SVector<f64, STATE_SIZE>;
 type Covariance = SMatrix<f64, STATE_SIZE, STATE_SIZE>;
@@ -23,88 +33,47 @@ pub struct PoseEstimate {
     pub orientation: UnitQuaternion<f64>,
 }
 
-#[derive(Clone, Copy, Debug)]
-struct ContactThresholds {
-    entry_speed: f64,
-    exit_speed: f64,
-    entry_height: f64,
-    exit_height: f64,
-    dwell: Duration,
-}
-
 #[derive(Clone, Copy, Debug, Default)]
-struct ContactLatch {
-    active: bool,
-    qualifying_for: Duration,
+pub struct ContactDiagnostics {
+    pub active: bool,
+    pub changed: bool,
+    pub probability: f64,
+    pub effective_probability: f64,
+    pub height: f64,
+    pub relative_height: f64,
+    pub world_speed: f64,
+    pub kinematic_speed: f64,
+    pub contact_motion_speed: f64,
+    pub world_speed_reliability: f64,
 }
 
-#[derive(Debug)]
-struct ContactManager {
-    thresholds: ContactThresholds,
-    feet: [ContactLatch; 2],
+#[derive(Clone, Copy, Debug)]
+pub struct ContactCorrection {
+    pub pose: PoseEstimate,
+    pub contacts: [ContactDiagnostics; 2],
 }
 
-impl ContactManager {
-    fn new(config: &EstimatorConfig) -> Self {
-        Self {
-            thresholds: ContactThresholds {
-                entry_speed: config.contact_entry_speed_mps,
-                exit_speed: config.contact_exit_speed_mps,
-                entry_height: config.contact_entry_height_m,
-                exit_height: config.contact_exit_height_m,
-                dwell: config.contact_dwell(),
-            },
-            feet: [ContactLatch::default(); 2],
-        }
-    }
-
-    fn initialize(&mut self, heights: [f64; 2], speeds: [f64; 2]) -> [bool; 2] {
-        let minimum = heights[0].min(heights[1]);
-        for index in 0..2 {
-            self.feet[index].active = heights[index] - minimum <= self.thresholds.entry_height
-                && speeds[index] <= self.thresholds.entry_speed;
-            self.feet[index].qualifying_for = Duration::ZERO;
-        }
-        [self.feet[0].active, self.feet[1].active]
-    }
-
-    fn update(&mut self, heights: [f64; 2], speeds: [f64; 2], dt: Duration) -> [bool; 2] {
-        let minimum = heights[0].min(heights[1]);
-        for index in 0..2 {
-            let relative_height = heights[index] - minimum;
-            let latch = &mut self.feet[index];
-            if latch.active {
-                if relative_height > self.thresholds.exit_height
-                    || speeds[index] > self.thresholds.exit_speed
-                {
-                    latch.active = false;
-                    latch.qualifying_for = Duration::ZERO;
-                }
-            } else if relative_height <= self.thresholds.entry_height
-                && speeds[index] <= self.thresholds.entry_speed
-            {
-                latch.qualifying_for = latch.qualifying_for.saturating_add(dt);
-                if latch.qualifying_for >= self.thresholds.dwell {
-                    latch.active = true;
-                    latch.qualifying_for = Duration::ZERO;
-                }
-            } else {
-                latch.qualifying_for = Duration::ZERO;
-            }
-        }
-        [self.feet[0].active, self.feet[1].active]
-    }
+#[derive(Clone, Copy, Debug)]
+pub struct FilterDiagnostics {
+    pub position: Vector3<f64>,
+    pub velocity: Vector3<f64>,
+    pub accelerometer_bias: Vector3<f64>,
+    pub contact_positions: [Vector3<f64>; 2],
+    pub active_contacts: [bool; 2],
+    pub contact_probabilities: [f64; 2],
+    pub effective_contact_probabilities: [f64; 2],
 }
 
-/// Translation-only contact-aided linear Kalman filter. Orientation is supplied
-/// by the EBIMU and deliberately remains outside the state.
+/// Translation-only contact-aided linear Kalman filter. Filtered EBIMU
+/// orientation deliberately remains outside the state.
 #[derive(Debug)]
 pub struct ContactFilter {
     state: StateVector,
     covariance: Covariance,
     contacts: ContactManager,
+    planar: bool,
+    ground_height: f64,
     initialized: bool,
-    active_contacts: [bool; 2],
 }
 
 impl ContactFilter {
@@ -113,13 +82,28 @@ impl ContactFilter {
             state: StateVector::zeros(),
             covariance: Covariance::identity(),
             contacts: ContactManager::new(config),
+            planar: config.planar,
+            ground_height: config.ground_height_m,
             initialized: false,
-            active_contacts: [false; 2],
         }
     }
 
     pub fn initialized(&self) -> bool {
         self.initialized
+    }
+
+    pub fn diagnostics(&self) -> FilterDiagnostics {
+        let contact_probabilities = self.contacts.probabilities();
+        FilterDiagnostics {
+            position: self.position(),
+            velocity: self.velocity(),
+            accelerometer_bias: self.accelerometer_bias(),
+            contact_positions: [self.contact_position(0), self.contact_position(1)],
+            active_contacts: self.contacts.active(),
+            contact_probabilities,
+            effective_contact_probabilities: contact_probabilities
+                .map(effective_contact_probability),
+        }
     }
 
     pub fn initialize(
@@ -141,18 +125,32 @@ impl ContactFilter {
         let rotation = orientation.to_rotation_matrix();
         let omega_world = rotation * angular_velocity_local;
         let relative = feet.map(|foot| rotation * foot.position);
-        let velocities = feet.map(|foot| {
-            (omega_world.cross(&(rotation * foot.position)) + rotation * foot.relative_velocity)
-                .norm()
+        let kinematic_velocities = feet.map(|foot| {
+            omega_world.cross(&(rotation * foot.position)) + rotation * foot.relative_velocity
+        });
+        let contact_motion_speeds = kinematic_velocities.map(|velocity| {
+            if self.planar {
+                velocity.z.abs()
+            } else {
+                velocity.norm()
+            }
         });
         let minimum_height = relative[0].z.min(relative[1].z);
-        self.state[POSITION + 2] = -minimum_height;
+        let ground_height = if self.planar { self.ground_height } else { 0.0 };
+        self.state[POSITION + 2] = ground_height - minimum_height;
         let base_position = self.position();
-        self.active_contacts = self
-            .contacts
-            .initialize([relative[0].z, relative[1].z], velocities);
+        let contacts = self.contacts.initialize(
+            [
+                base_position.z + relative[0].z,
+                base_position.z + relative[1].z,
+            ],
+            contact_motion_speeds,
+        );
         for (index, relative_position) in relative.into_iter().enumerate() {
             self.set_contact_position(index, base_position + relative_position);
+            if self.planar && contacts[index].active {
+                self.constrain_contact_to_plane(index);
+            }
         }
         self.initialized = true;
         PoseEstimate {
@@ -202,10 +200,16 @@ impl ContactFilter {
         process
             .fixed_view_mut::<3, 3>(ACCEL_BIAS, ACCEL_BIAS)
             .copy_from(&(SMatrix::<f64, 3, 3>::identity() * (2.5e-5 * dt)));
-        for offset in [LEFT_CONTACT, RIGHT_CONTACT] {
+        let contact_probabilities = self.contacts.probabilities();
+        for (index, offset) in [LEFT_CONTACT, RIGHT_CONTACT].into_iter().enumerate() {
+            let variance = confidence_scaled_variance(
+                effective_contact_probability(contact_probabilities[index]),
+                CONTACT_PROCESS_VARIANCE_MIN,
+                CONTACT_PROCESS_VARIANCE_MAX,
+            );
             process
                 .fixed_view_mut::<3, 3>(offset, offset)
-                .copy_from(&(SMatrix::<f64, 3, 3>::identity() * (4.0e-6 * dt)));
+                .copy_from(&(SMatrix::<f64, 3, 3>::identity() * (variance * dt)));
         }
         self.covariance = transition * self.covariance * transition.transpose() + process;
         self.symmetrize();
@@ -221,43 +225,85 @@ impl ContactFilter {
         angular_velocity_local: Vector3<f64>,
         feet: [FootKinematics; 2],
         update_interval: Duration,
-    ) -> anyhow::Result<PoseEstimate> {
+    ) -> anyhow::Result<ContactCorrection> {
         if !self.initialized {
-            return Ok(self.initialize(orientation, angular_velocity_local, feet));
+            let pose = self.initialize(orientation, angular_velocity_local, feet);
+            return Ok(ContactCorrection {
+                pose,
+                contacts: [ContactDiagnostics::default(); 2],
+            });
         }
         let rotation = orientation.to_rotation_matrix();
         let omega_world = rotation * angular_velocity_local;
         let base_position = self.position();
         let base_velocity = self.velocity();
         let relative = feet.map(|foot| rotation * foot.position);
-        let world_velocity = feet.map(|foot| {
-            base_velocity
-                + omega_world.cross(&(rotation * foot.position))
-                + rotation * foot.relative_velocity
+        let kinematic_velocity = feet.map(|foot| {
+            omega_world.cross(&(rotation * foot.position)) + rotation * foot.relative_velocity
         });
+        let world_velocity = kinematic_velocity.map(|velocity| base_velocity + velocity);
         let heights = [
             base_position.z + relative[0].z,
             base_position.z + relative[1].z,
         ];
         let speeds = [world_velocity[0].norm(), world_velocity[1].norm()];
-        let previous = self.active_contacts;
-        self.active_contacts = self.contacts.update(heights, speeds, update_interval);
+        let kinematic_speeds = [kinematic_velocity[0].norm(), kinematic_velocity[1].norm()];
+        let contact_motion_speeds = kinematic_velocity.map(|velocity| {
+            if self.planar {
+                velocity.z.abs()
+            } else {
+                velocity.norm()
+            }
+        });
+        let contacts =
+            self.contacts
+                .update(heights, contact_motion_speeds, speeds, update_interval);
+        let minimum_height = heights[0].min(heights[1]);
+        let mut diagnostics = [ContactDiagnostics::default(); 2];
         for index in 0..2 {
-            if self.active_contacts[index] && !previous[index] {
+            diagnostics[index].probability = contacts[index].probability;
+            diagnostics[index].effective_probability =
+                effective_contact_probability(contacts[index].probability);
+            diagnostics[index].height = heights[index];
+            diagnostics[index].relative_height = heights[index] - minimum_height;
+            diagnostics[index].world_speed = speeds[index];
+            diagnostics[index].kinematic_speed = kinematic_speeds[index];
+            diagnostics[index].contact_motion_speed = contact_motion_speeds[index];
+            diagnostics[index].world_speed_reliability = contacts[index].world_speed_reliability;
+            if contacts[index].active && contacts[index].changed {
                 self.set_contact_position(index, self.position() + relative[index]);
                 self.reset_contact_covariance(index);
             }
-            if self.active_contacts[index] {
-                self.correct_contact(index, relative[index])?;
+            if contacts[index].active {
+                if self.planar {
+                    self.constrain_contact_to_plane(index);
+                }
+                self.correct_contact(
+                    index,
+                    relative[index],
+                    contacts[index].probability,
+                    update_interval,
+                )?;
             }
+            diagnostics[index].active = contacts[index].active;
+            diagnostics[index].changed = contacts[index].changed;
         }
-        Ok(PoseEstimate {
-            position: self.position(),
-            orientation,
+        Ok(ContactCorrection {
+            pose: PoseEstimate {
+                position: self.position(),
+                orientation,
+            },
+            contacts: diagnostics,
         })
     }
 
-    fn correct_contact(&mut self, index: usize, relative: Vector3<f64>) -> anyhow::Result<()> {
+    fn correct_contact(
+        &mut self,
+        index: usize,
+        relative: Vector3<f64>,
+        probability: f64,
+        update_interval: Duration,
+    ) -> anyhow::Result<()> {
         let offset = contact_offset(index);
         let mut observation = MeasurementMatrix::zeros();
         observation
@@ -268,12 +314,16 @@ impl ContactFilter {
             .copy_from(&-SMatrix::<f64, 3, 3>::identity());
         let measurement = -relative;
         let innovation = measurement - observation * self.state;
-        let noise = SMatrix::<f64, 3, 3>::identity() * 4.0e-6;
+        let variance = contact_measurement_variance(probability, update_interval);
+        let noise = SMatrix::<f64, 3, 3>::identity() * variance;
         let innovation_covariance = observation * self.covariance * observation.transpose() + noise;
         let inverse = innovation_covariance
             .try_inverse()
             .ok_or_else(|| anyhow::anyhow!("contact innovation covariance is singular"))?;
-        let gain = self.covariance * observation.transpose() * inverse;
+        let mut gain = self.covariance * observation.transpose() * inverse;
+        if probability < CONTACT_BIAS_UPDATE_PROBABILITY {
+            gain.fixed_rows_mut::<3>(ACCEL_BIAS).fill(0.0);
+        }
         self.state += gain * innovation;
         let identity = Covariance::identity();
         let residual = identity - gain * observation;
@@ -293,6 +343,15 @@ impl ContactFilter {
         }
         for axis in 0..3 {
             self.covariance[(offset + axis, offset + axis)] = 1.0e-3;
+        }
+    }
+
+    fn constrain_contact_to_plane(&mut self, index: usize) {
+        let vertical = contact_offset(index) + 2;
+        self.state[vertical] = self.ground_height;
+        for axis in 0..STATE_SIZE {
+            self.covariance[(vertical, axis)] = 0.0;
+            self.covariance[(axis, vertical)] = 0.0;
         }
     }
 
@@ -320,11 +379,40 @@ impl ContactFilter {
         self.state.fixed_rows::<3>(ACCEL_BIAS).into_owned()
     }
 
+    fn contact_position(&self, index: usize) -> Vector3<f64> {
+        self.state
+            .fixed_rows::<3>(contact_offset(index))
+            .into_owned()
+    }
+
     fn set_contact_position(&mut self, index: usize, value: Vector3<f64>) {
         self.state
             .fixed_rows_mut::<3>(contact_offset(index))
             .copy_from(&value);
     }
+}
+
+fn confidence_scaled_variance(probability: f64, minimum: f64, maximum: f64) -> f64 {
+    minimum + (1.0 - probability.clamp(0.0, 1.0)) * (maximum - minimum)
+}
+
+fn effective_contact_probability(probability: f64) -> f64 {
+    probability
+        .clamp(0.0, 1.0)
+        .powi(CONTACT_PROBABILITY_EXPONENT)
+}
+
+fn contact_measurement_variance(probability: f64, update_interval: Duration) -> f64 {
+    let confidence_variance = confidence_scaled_variance(
+        effective_contact_probability(probability),
+        CONTACT_MEASUREMENT_VARIANCE_MIN,
+        CONTACT_MEASUREMENT_VARIANCE_MAX,
+    );
+    let interval = update_interval.as_secs_f64().clamp(
+        CONTACT_MINIMUM_INTERVAL_SECONDS,
+        CONTACT_MAXIMUM_INTERVAL_SECONDS,
+    );
+    confidence_variance * CONTACT_REFERENCE_INTERVAL_SECONDS / interval
 }
 
 fn contact_offset(index: usize) -> usize {
@@ -343,19 +431,27 @@ mod tests {
         EstimatorConfig {
             urdf: "unused".into(),
             hardware_endpoint: "http://127.0.0.1:50051".into(),
-            listen: "127.0.0.1:50052".parse().unwrap(),
+            listen: "127.0.0.1:50053".parse().unwrap(),
             imu: "imu".into(),
             reference_frame: "odom".into(),
             tracked_frame: "pelvis".into(),
+            planar: false,
+            ground_height_m: 0.0,
             left_foot: "left".into(),
             right_foot: "right".into(),
             imu_stale_ms: 20,
             motor_stale_ms: 50,
-            contact_entry_speed_mps: 0.15,
-            contact_exit_speed_mps: 0.30,
-            contact_entry_height_m: 0.03,
-            contact_exit_height_m: 0.06,
-            contact_dwell_ms: 40,
+            orientation_lpf_cutoff_hz: 20.0,
+            gyro_lpf_cutoff_hz: 30.0,
+            acceleration_lpf_cutoff_hz: 25.0,
+            contact_height_full_m: 0.015,
+            contact_height_zero_m: 0.06,
+            contact_motion_full_mps: 0.10,
+            contact_motion_zero_mps: 0.60,
+            contact_world_speed_full_mps: 0.10,
+            contact_world_speed_zero_mps: 0.50,
+            contact_probability_rise_ms: 80,
+            contact_probability_fall_ms: 20,
         }
     }
 
@@ -377,7 +473,103 @@ mod tests {
         let mut filter = ContactFilter::new(&config());
         let pose = filter.initialize(UnitQuaternion::identity(), Vector3::zeros(), feet());
         assert!((pose.position.z - 0.8).abs() < 1.0e-12);
-        assert_eq!(filter.active_contacts, [true, true]);
+        assert_eq!(filter.contacts.active(), [true, true]);
+        assert_eq!(filter.contacts.probabilities(), [1.0, 1.0]);
+    }
+
+    #[test]
+    fn planar_initialization_uses_the_configured_ground_height() {
+        let mut config = config();
+        config.planar = true;
+        config.ground_height_m = 0.2;
+        let mut filter = ContactFilter::new(&config);
+
+        let pose = filter.initialize(UnitQuaternion::identity(), Vector3::zeros(), feet());
+
+        assert!((pose.position.z - 1.0).abs() < 1.0e-12);
+        assert_eq!(filter.contacts.active(), [true, true]);
+    }
+
+    #[test]
+    fn planar_primary_motion_score_ignores_horizontal_kinematic_motion() {
+        let mut config = config();
+        config.planar = true;
+        let mut filter = ContactFilter::new(&config);
+        let mut moving_feet = feet();
+        for foot in &mut moving_feet {
+            foot.relative_velocity = Vector3::new(2.0, 0.0, 0.0);
+        }
+
+        filter.initialize(UnitQuaternion::identity(), Vector3::zeros(), moving_feet);
+
+        assert_eq!(filter.contacts.active(), [true, true]);
+        assert_eq!(filter.contacts.probabilities(), [1.0, 1.0]);
+    }
+
+    #[test]
+    fn confidence_scales_measurement_and_anchor_process_variance() {
+        assert_eq!(
+            confidence_scaled_variance(
+                1.0,
+                CONTACT_MEASUREMENT_VARIANCE_MIN,
+                CONTACT_MEASUREMENT_VARIANCE_MAX,
+            ),
+            CONTACT_MEASUREMENT_VARIANCE_MIN
+        );
+        assert_eq!(
+            confidence_scaled_variance(
+                0.0,
+                CONTACT_PROCESS_VARIANCE_MIN,
+                CONTACT_PROCESS_VARIANCE_MAX,
+            ),
+            CONTACT_PROCESS_VARIANCE_MAX
+        );
+        let half = confidence_scaled_variance(0.5, 2.0, 10.0);
+        assert_eq!(half, 6.0);
+    }
+
+    #[test]
+    fn contact_probability_is_cubed_before_filter_weighting() {
+        assert_eq!(effective_contact_probability(0.5), 0.125);
+        assert_eq!(effective_contact_probability(1.0), 1.0);
+        assert_eq!(effective_contact_probability(-1.0), 0.0);
+    }
+
+    #[test]
+    fn contact_information_is_normalized_by_update_interval() {
+        let reference = contact_measurement_variance(0.8, Duration::from_secs_f64(0.01));
+        let twice_as_fast = contact_measurement_variance(0.8, Duration::from_secs_f64(0.005));
+        let half_as_fast = contact_measurement_variance(0.8, Duration::from_secs_f64(0.02));
+
+        assert!((twice_as_fast - 2.0 * reference).abs() < 1.0e-12);
+        assert!((half_as_fast - 0.5 * reference).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn uncertain_contact_cannot_update_accelerometer_bias() {
+        fn corrected_bias(probability: f64) -> Vector3<f64> {
+            let mut filter = ContactFilter::new(&config());
+            filter.initialize(UnitQuaternion::identity(), Vector3::zeros(), feet());
+            filter
+                .propagate(
+                    UnitQuaternion::identity(),
+                    Vector3::zeros(),
+                    Duration::from_millis(100),
+                )
+                .unwrap();
+            filter
+                .correct_contact(
+                    0,
+                    Vector3::new(1.0, 0.1, -0.8),
+                    probability,
+                    Duration::from_millis(10),
+                )
+                .unwrap();
+            filter.accelerometer_bias()
+        }
+
+        assert_eq!(corrected_bias(0.9), Vector3::zeros());
+        assert!(corrected_bias(1.0).norm() > 1.0e-6);
     }
 
     #[test]
@@ -403,5 +595,59 @@ mod tests {
         }
         assert!((filter.position().z - 0.8).abs() < 1.0e-8);
         assert!(filter.velocity().norm() < 1.0e-8);
+    }
+
+    #[test]
+    fn planar_recontact_uses_relative_height_and_restores_the_ground() {
+        fn recontact_after_vertical_error(planar: bool) -> ContactFilter {
+            let mut config = config();
+            config.planar = planar;
+            let mut filter = ContactFilter::new(&config);
+            filter.initialize(UnitQuaternion::identity(), Vector3::zeros(), feet());
+            filter.state[POSITION + 2] = 0.4;
+            filter.contacts.clear();
+            for _ in 0..20 {
+                filter
+                    .correct_contacts(
+                        UnitQuaternion::identity(),
+                        Vector3::zeros(),
+                        feet(),
+                        Duration::from_millis(40),
+                    )
+                    .unwrap();
+            }
+            filter
+        }
+
+        let unconstrained = recontact_after_vertical_error(false);
+        assert!((unconstrained.position().z - 0.4).abs() < 1.0e-12);
+
+        let planar = recontact_after_vertical_error(true);
+        assert!((planar.position().z - 0.8).abs() < 2.0e-3);
+        assert_eq!(planar.state[LEFT_CONTACT + 2], 0.0);
+        assert_eq!(planar.state[RIGHT_CONTACT + 2], 0.0);
+    }
+
+    #[test]
+    fn planar_recontact_is_not_blocked_by_drifting_base_velocity() {
+        let mut config = config();
+        config.planar = true;
+        let mut filter = ContactFilter::new(&config);
+        filter.initialize(UnitQuaternion::identity(), Vector3::zeros(), feet());
+        filter.set_velocity(Vector3::new(1.0, -2.0, 0.5));
+        filter.contacts.clear();
+
+        for _ in 0..3 {
+            filter
+                .correct_contacts(
+                    UnitQuaternion::identity(),
+                    Vector3::zeros(),
+                    feet(),
+                    Duration::from_millis(config.contact_probability_rise_ms),
+                )
+                .unwrap();
+        }
+
+        assert_eq!(filter.contacts.active(), [true, true]);
     }
 }

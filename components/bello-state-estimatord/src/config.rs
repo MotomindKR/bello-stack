@@ -18,6 +18,8 @@ pub struct EstimatorConfig {
     pub reference_frame: String,
     #[serde(default = "default_base")]
     pub tracked_frame: String,
+    pub planar: bool,
+    pub ground_height_m: f64,
     #[serde(default = "default_left_foot")]
     pub left_foot: String,
     #[serde(default = "default_right_foot")]
@@ -26,16 +28,28 @@ pub struct EstimatorConfig {
     pub imu_stale_ms: u64,
     #[serde(default = "default_motor_stale_ms")]
     pub motor_stale_ms: u64,
-    #[serde(default = "default_contact_entry_speed")]
-    pub contact_entry_speed_mps: f64,
-    #[serde(default = "default_contact_exit_speed")]
-    pub contact_exit_speed_mps: f64,
-    #[serde(default = "default_contact_entry_height")]
-    pub contact_entry_height_m: f64,
-    #[serde(default = "default_contact_exit_height")]
-    pub contact_exit_height_m: f64,
-    #[serde(default = "default_contact_dwell_ms")]
-    pub contact_dwell_ms: u64,
+    #[serde(default = "default_orientation_lpf_cutoff_hz")]
+    pub orientation_lpf_cutoff_hz: f64,
+    #[serde(default = "default_gyro_lpf_cutoff_hz")]
+    pub gyro_lpf_cutoff_hz: f64,
+    #[serde(default = "default_acceleration_lpf_cutoff_hz")]
+    pub acceleration_lpf_cutoff_hz: f64,
+    #[serde(default = "default_contact_height_full")]
+    pub contact_height_full_m: f64,
+    #[serde(default = "default_contact_height_zero")]
+    pub contact_height_zero_m: f64,
+    #[serde(default = "default_contact_motion_full")]
+    pub contact_motion_full_mps: f64,
+    #[serde(default = "default_contact_motion_zero")]
+    pub contact_motion_zero_mps: f64,
+    #[serde(default = "default_contact_world_speed_full")]
+    pub contact_world_speed_full_mps: f64,
+    #[serde(default = "default_contact_world_speed_zero")]
+    pub contact_world_speed_zero_mps: f64,
+    #[serde(default = "default_contact_probability_rise_ms")]
+    pub contact_probability_rise_ms: u64,
+    #[serde(default = "default_contact_probability_fall_ms")]
+    pub contact_probability_fall_ms: u64,
 }
 
 impl EstimatorConfig {
@@ -63,23 +77,53 @@ impl EstimatorConfig {
                 bail!("{name} must be non-empty without surrounding whitespace");
             }
         }
-        if value.imu_stale_ms == 0 || value.motor_stale_ms == 0 || value.contact_dwell_ms == 0 {
-            bail!("freshness limits and contact_dwell_ms must be positive");
+        if value.imu_stale_ms == 0
+            || value.motor_stale_ms == 0
+            || value.contact_probability_rise_ms == 0
+            || value.contact_probability_fall_ms == 0
+        {
+            bail!("freshness limits and contact probability time constants must be positive");
         }
         for (name, number) in [
-            ("contact_entry_speed_mps", value.contact_entry_speed_mps),
-            ("contact_exit_speed_mps", value.contact_exit_speed_mps),
-            ("contact_entry_height_m", value.contact_entry_height_m),
-            ("contact_exit_height_m", value.contact_exit_height_m),
+            ("contact_height_full_m", value.contact_height_full_m),
+            ("contact_height_zero_m", value.contact_height_zero_m),
+            ("contact_motion_full_mps", value.contact_motion_full_mps),
+            ("contact_motion_zero_mps", value.contact_motion_zero_mps),
+            (
+                "contact_world_speed_full_mps",
+                value.contact_world_speed_full_mps,
+            ),
+            (
+                "contact_world_speed_zero_mps",
+                value.contact_world_speed_zero_mps,
+            ),
         ] {
-            if !number.is_finite() || number <= 0.0 {
+            if !number.is_finite() || number < 0.0 {
+                bail!("{name} must be nonnegative and finite");
+            }
+        }
+        if !value.ground_height_m.is_finite() {
+            bail!("ground_height_m must be finite");
+        }
+        for (name, cutoff) in [
+            ("orientation_lpf_cutoff_hz", value.orientation_lpf_cutoff_hz),
+            ("gyro_lpf_cutoff_hz", value.gyro_lpf_cutoff_hz),
+            (
+                "acceleration_lpf_cutoff_hz",
+                value.acceleration_lpf_cutoff_hz,
+            ),
+        ] {
+            if !cutoff.is_finite() || cutoff <= 0.0 {
                 bail!("{name} must be positive and finite");
             }
         }
-        if value.contact_entry_speed_mps >= value.contact_exit_speed_mps
-            || value.contact_entry_height_m >= value.contact_exit_height_m
+        if value.contact_height_full_m >= value.contact_height_zero_m
+            || value.contact_motion_full_mps >= value.contact_motion_zero_mps
+            || value.contact_world_speed_full_mps >= value.contact_world_speed_zero_mps
         {
-            bail!("contact entry thresholds must be smaller than exit thresholds");
+            bail!(
+                "full-confidence contact thresholds must be smaller than zero-confidence thresholds"
+            );
         }
         Ok(value)
     }
@@ -92,8 +136,12 @@ impl EstimatorConfig {
         Duration::from_millis(self.motor_stale_ms)
     }
 
-    pub fn contact_dwell(&self) -> Duration {
-        Duration::from_millis(self.contact_dwell_ms)
+    pub fn contact_probability_rise(&self) -> Duration {
+        Duration::from_millis(self.contact_probability_rise_ms)
+    }
+
+    pub fn contact_probability_fall(&self) -> Duration {
+        Duration::from_millis(self.contact_probability_fall_ms)
     }
 }
 
@@ -118,18 +166,36 @@ const fn default_imu_stale_ms() -> u64 {
 const fn default_motor_stale_ms() -> u64 {
     50
 }
-const fn default_contact_entry_speed() -> f64 {
-    0.15
+const fn default_orientation_lpf_cutoff_hz() -> f64 {
+    20.0
 }
-const fn default_contact_exit_speed() -> f64 {
-    0.30
+const fn default_gyro_lpf_cutoff_hz() -> f64 {
+    30.0
 }
-const fn default_contact_entry_height() -> f64 {
-    0.03
+const fn default_acceleration_lpf_cutoff_hz() -> f64 {
+    25.0
 }
-const fn default_contact_exit_height() -> f64 {
+const fn default_contact_height_full() -> f64 {
+    0.015
+}
+const fn default_contact_height_zero() -> f64 {
     0.06
 }
-const fn default_contact_dwell_ms() -> u64 {
-    40
+const fn default_contact_motion_full() -> f64 {
+    0.10
+}
+const fn default_contact_motion_zero() -> f64 {
+    0.60
+}
+const fn default_contact_world_speed_full() -> f64 {
+    0.10
+}
+const fn default_contact_world_speed_zero() -> f64 {
+    0.50
+}
+const fn default_contact_probability_rise_ms() -> u64 {
+    80
+}
+const fn default_contact_probability_fall_ms() -> u64 {
+    20
 }
