@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Callable
 from itertools import pairwise
 from types import SimpleNamespace
@@ -25,6 +26,7 @@ from bello_upper_body_teleop.control import (
     required_transition_duration,
     run_teleoperation,
     slew_positions,
+    wait_for_initial_positions,
 )
 
 
@@ -128,30 +130,28 @@ def test_settings_reject_unsafe_timing_values(
         factory()
 
 
-class _FakeState:
-    position = 0.2
-    feedback_age_ms = 1.0
+class _FakeStateReader:
+    def __init__(self, coordinates: tuple[str, ...]) -> None:
+        self._coordinates = coordinates
+        self.timings = [(1_000_000, 0)]
+        self.read_count = 0
 
-
-class _FakeStates:
-    def __init__(self) -> None:
-        self.closed = False
-
-    def coordinate(self, _coordinate: str) -> _FakeState:
-        return _FakeState()
-
-    def wait_for_change(self, timeout: float | None = None) -> bool:
-        return timeout is not None
-
-    def close(self) -> None:
-        self.closed = True
-
-    def __enter__(self) -> _FakeStates:
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> Literal[False]:
-        self.close()
-        return False
+    def read(self, timeout: float | None = None) -> SimpleNamespace:
+        assert timeout is not None
+        sample_age_ns, round_trip_ns = self.timings[min(self.read_count, len(self.timings) - 1)]
+        self.read_count += 1
+        return SimpleNamespace(
+            motors=tuple(
+                SimpleNamespace(
+                    coordinate=coordinate,
+                    position=0.2,
+                    sample_age_ns=sample_age_ns,
+                )
+                for coordinate in self._coordinates
+            ),
+            received_monotonic_ns=time.monotonic_ns(),
+            round_trip_ns=round_trip_ns,
+        )
 
 
 class _FakeReceipt:
@@ -223,18 +223,18 @@ class _FakeRobot:
             "wrist_yaw",
             WRIST_YAW_COORDINATES,
         )
-        self.states_instance = _FakeStates()
-        self.wrist_states_instance = _FakeStates()
+        self.state_reader = _FakeStateReader(self.group_instance.coordinates)
+        self.wrist_state_reader = _FakeStateReader(self.wrist_group_instance.coordinates)
 
     def group(self, name: str) -> _FakeGroup:
         if name == "wrist_yaw":
             return self.wrist_group_instance
         return self.group_instance
 
-    def states(self, **kwargs: object) -> _FakeStates:
+    def states(self, **kwargs: object) -> _FakeStateReader:
         if kwargs.get("groups") == ("wrist_yaw",):
-            return self.wrist_states_instance
-        return self.states_instance
+            return self.wrist_state_reader
+        return self.state_reader
 
 
 class _FakeSource:
@@ -246,6 +246,24 @@ class _FakeSource:
     def read(self) -> TeachingArmSample:
         self.read_count += 1
         return self.sample
+
+
+def test_initial_position_read_retries_transport_stale_frame() -> None:
+    robot = _FakeRobot()
+    robot.state_reader.timings = [
+        (1_000_000, 200_000_000),
+        (1_000_000, 0),
+    ]
+
+    positions = wait_for_initial_positions(
+        cast(Robot, robot),
+        "upper_body",
+        timeout_seconds=0.1,
+        maximum_feedback_age_seconds=0.1,
+    )
+
+    assert positions == {coordinate: pytest.approx(0.2) for coordinate in UPPER_BODY_COORDINATES}
+    assert robot.state_reader.read_count == 2
 
 
 class _FakeConfirmationGate:
@@ -325,7 +343,6 @@ def test_run_holds_feedback_then_interpolates_only_after_second_confirmation() -
     session = robot.group_instance.session
     assert session.started is not None
     assert session.closed
-    assert robot.states_instance.closed
     assert source.read_count >= 5
     assert [token for token, _message in confirmation.requests] == ["HOLD", "TELEOP"]
     assert all(target.position_radians == pytest.approx(0.2) for target in session.started.values())
@@ -387,7 +404,6 @@ def test_optional_wrist_yaw_group_holds_captured_positions_for_entire_run() -> N
     wrist_session = robot.wrist_group_instance.session
     assert wrist_session.started is not None
     assert wrist_session.closed
-    assert robot.wrist_states_instance.closed
     assert tuple(wrist_session.started) == WRIST_YAW_COORDINATES
     assert all(
         target.position_radians == pytest.approx(0.2) for target in wrist_session.started.values()

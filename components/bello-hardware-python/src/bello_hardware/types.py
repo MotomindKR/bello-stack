@@ -213,52 +213,6 @@ class Vector3:
 
 
 @dataclass(frozen=True, slots=True)
-class MotorState:
-    monotonic_ns: int
-    group: str
-    motor: str
-    coordinate: str
-    position: float
-    velocity: float
-    torque: float
-    temperature: float
-    fault_bits: int
-    mode_status: int
-    feedback_age_ms: int
-
-
-@dataclass(frozen=True, slots=True)
-class ImuState:
-    monotonic_ns: int
-    imu: str
-    orientation: Quaternion
-    angular_velocity: Vector3
-    linear_acceleration: Vector3
-    device_timestamp_ms: int
-    sample_age_ms: int
-
-
-@dataclass(frozen=True, slots=True)
-class GroupStatus:
-    monotonic_ns: int
-    group: str
-    state: GroupState
-    detail: str
-    cause: GroupCause
-    command_count: int
-    control_tick: int
-    jitter_us: int
-
-
-@dataclass(frozen=True, slots=True)
-class HealthStatus:
-    monotonic_ns: int
-    component: str
-    status: DeviceStatus | None
-    dropped_events: int
-
-
-@dataclass(frozen=True, slots=True)
 class StateFrameMotor:
     sample_monotonic_ns: int
     sample_age_ns: int

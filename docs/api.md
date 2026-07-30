@@ -12,8 +12,8 @@ types and lease-oriented primitives remain available under its explicit `raw`
 module for diagnostics and specialized integrations.
 Python applications should normally use the pure-Python
 [`bello-hardware`](../components/bello-hardware-python) package. It presents the
-same robot, group, complete-frame, renewed-session, and latest-state concepts
-over generated blocking gRPC bindings.
+same robot, group, complete-frame, and renewed-session concepts over generated
+blocking gRPC bindings.
 
 The Rust client's `Robot` inventory exposes buses, serial devices, motors,
 groups, and IMUs with their initial status. Each motor also carries the daemon's
@@ -58,11 +58,11 @@ it does not load or bind the Rust client. Generated protobuf modules are a
 private transport detail shipped in the wheel, so application machines need
 neither Rust nor `protoc`.
 
-The public API is deliberately blocking. Lease renewal, command
-acknowledgements, and latest-state telemetry reception use small background I/O
-threads so user control code remains synchronous. `ControlSession.send` still
-returns only after the matching daemon acknowledgement. Ambiguous or rejected
-motion is never reconnected, reacquired, or replayed automatically.
+The public API is deliberately blocking. State frames are read synchronously;
+only lease renewal and command acknowledgements use small background I/O
+threads. `ControlSession.send` still returns only after the matching daemon
+acknowledgement. Ambiguous or rejected motion is never reconnected, reacquired,
+or replayed automatically.
 Lifecycle transport failures retain their gRPC status through
 `ControlRpcError`; lease denial remains the more specific `LeaseLostError`.
 

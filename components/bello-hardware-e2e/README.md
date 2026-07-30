@@ -20,8 +20,8 @@ The ignored host-vCAN scenario exercises:
 
 - the ergonomic `Robot`/`ControlSession` path, including automatic renewal and
   confirmed command frames;
-- the blocking Python `RobotStateReader` and `Robot`/`ControlSession` paths
-  through generated gRPC, including a complete aggregated daemon state frame;
+- the blocking Python `Robot.states()` and `Robot`/`ControlSession` paths
+  through generated gRPC, including a complete daemon state frame;
 - the headless visualizer `RuntimeHandle`, matching URDF coordinates, and its
   configured complete-frame command rate without a renderer;
 - lease acquisition, release, and expiry;

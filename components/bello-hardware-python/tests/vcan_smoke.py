@@ -13,7 +13,7 @@ def main(endpoint: str) -> None:
         "e2e_joint_2": CoordinateTarget.position(0.0, kp=20.0, kd=1.0),
     }
     with Robot.connect(endpoint) as robot:
-        state = robot.state_reader(groups=("e2e_group",)).read(timeout=1.0)
+        state = robot.states(groups=("e2e_group",)).read(timeout=1.0)
         if {motor.coordinate for motor in state.motors} != {
             "e2e_joint_1",
             "e2e_joint_2",

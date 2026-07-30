@@ -5,8 +5,9 @@ to discover the configured robot, read motor and IMU telemetry, and control
 motor groups from a normal synchronous Python program.
 
 The package is a small pure-Python layer over gRPC. Applications work with
-Python objects such as `Robot`, `MotorGroup`, `CoordinateTarget`, and `MotorState`;
-they do not need to construct protobuf messages or manage lease tokens.
+Python objects such as `Robot`, `MotorGroup`, `CoordinateTarget`, and
+`HardwareStateFrame`; they do not need to construct protobuf messages or manage
+lease tokens.
 
 ## Before you start
 
@@ -66,8 +67,8 @@ import bello_hardware
 
 ## Connect and inspect the robot
 
-Use `Robot` as a context manager so the gRPC channel and any background workers
-are always closed:
+Use `Robot` as a context manager so the gRPC channel and any owned control
+sessions are always closed:
 
 ```python
 from bello_hardware import Robot
@@ -98,65 +99,17 @@ robot.close()
 
 Prefer the context-manager form whenever possible.
 
-## Read telemetry
+## Read state
 
-`RobotStates` receives telemetry in a background thread and retains the latest
-value for each component. It is a latest-state cache, not an event history or
-an unbounded queue.
-
-```python
-from bello_hardware import Robot, StateUnavailableError
-
-with Robot.connect("http://127.0.0.1:50051") as robot:
-    with robot.states() as states:
-        while states.wait_for_change(timeout=1.0):
-            try:
-                hip = states.coordinate("hip")
-            except StateUnavailableError:
-                # No sample for this coordinate has arrived yet.
-                continue
-
-            print(
-                "position=", hip.position,
-                "velocity=", hip.velocity,
-                "temperature=", hip.temperature,
-            )
-```
-
-You can restrict the subscription when you only need selected groups or IMUs:
-
-```python
-from bello_hardware import StateUnavailableError
-
-with robot.states(groups=("leg",), imus=("body-imu",)) as states:
-    while states.wait_for_change(timeout=1.0):
-        try:
-            group = states.group("leg")
-            imu = states.imu("body-imu")
-        except StateUnavailableError:
-            continue
-        print(group)
-        print(imu)
-        break
-```
-
-Useful accessors include:
-
-- `states.coordinate("hip")` and `states.motor("hip-motor")`;
-- `states.group("leg")`;
-- `states.imu("body-imu")`;
-- `states.health("can0")`; and
-- the `states.motors`, `states.groups`, and `states.imus` snapshots.
-
-For a control loop, use `RobotStateReader` instead. Each call returns one
+`Robot.states()` creates a synchronous reader. Each `read()` returns one
 immutable frame built from the latest samples for every selected motor, IMU,
-and group. If producer caches are still initializing, the reader retries that
-condition within the caller's timeout. There is no background frame receiver
-or frame queue.
+and group. If daemon state is still initializing, the reader waits for a
+complete frame within the caller's timeout. There is no Python telemetry
+aggregator, background receiver, or frame queue.
 
 ```python
 with Robot.connect("http://127.0.0.1:50051") as robot:
-    reader = robot.state_reader(
+    reader = robot.states(
         groups=("leg",),
         imus=("body-imu",),
     )
@@ -171,13 +124,12 @@ RPC round-trip duration. A control loop can conservatively add that duration
 and any time since receipt to its freshness checks, covering transport and
 Python scheduling delays without synchronized clocks. Apply those checks to
 motor, IMU, and group ages, and reject a sample span wider than the control
-loop's coherence budget. Use `RobotStates` and
-`WatchTelemetry` when event history, health, or command-policy telemetry is
-required.
+loop's coherence budget. The raw `WatchTelemetry` protocol stream remains
+available to protocol-level diagnostics that require event history, health, or
+command-policy events.
 
-For temporary debugging, `examples/log_hardware.py` records the complete latest
-state as newline-delimited JSON whenever telemetry changes (capped at 50 Hz by
-default):
+For temporary debugging, `examples/log_hardware.py` records complete state
+frames as newline-delimited JSON at 50 Hz by default:
 
 ```sh
 PYTHONPATH=components/bello-hardware-python/src \
@@ -186,9 +138,10 @@ PYTHONPATH=components/bello-hardware-python/src \
 ```
 
 It creates `hardware-<UTC timestamp>.jsonl` in the current directory. Use
-`--output -` for stdout, `--rate 100` to change the cap, or `--duration 30` for
-a bounded capture. The first line contains inventory; later lines contain all
-currently available motor, group, IMU, and component-health values.
+`--output -` for stdout, `--rate 100` to change the sampling rate, or
+`--duration 30` for a bounded capture. The first line contains inventory; later
+lines contain complete motor, group, and IMU frames with sample and transport
+timing.
 
 Turn a capture into a self-contained interactive browser dashboard with no
 additional Python dependencies:
@@ -198,18 +151,9 @@ python3 components/bello-hardware-python/examples/view_hardware_log.py \
   hardware-20260722T120000Z.jsonl
 ```
 
-The dashboard plots selectable motor and IMU channels and summarizes group,
-fault, and component-health transitions. It writes `LOG.jsonl.html` and opens
-it in the default browser; pass `--no-open` when running headless.
-
-Telemetry reconnects after transient gRPC failures by default. Reconnection
-clears the cache and increments `states.generation`, preventing stale values
-from looking current after a daemon or connection restart. Each thread calling
-`wait_for_change` has its own change cursor. Motor `feedback_age_ms` and IMU
-`sample_age_ms` continue increasing from their client arrival time while a
-cached value is retained. An IMU health transition away from `ONLINE`
-invalidates its cached sample, so `states.imu(...)` raises
-`StateUnavailableError` until a new sample arrives.
+The dashboard plots selectable motor and IMU channels and summarizes group and
+fault transitions. It writes `LOG.jsonl.html` and opens it in the default
+browser; pass `--no-open` when running headless.
 
 ## Control a motor group
 
@@ -343,14 +287,15 @@ Keep these rules in mind:
 - use context managers or call `close()` explicitly;
 - send complete group targets rather than individual-coordinate updates;
 - treat rejected, timed-out, or ambiguous commands as real failures;
-- monitor group and component-health telemetry while commanding motion; and
+- monitor complete group state while commanding motion and use protocol-level
+  diagnostics when component-health events are required; and
 - rely on daemon-side lease expiry and command timeout to transition an enabled
   group to `DAMPED` if the Python process or network disappears.
 
-Read-only inventory and telemetry do not acquire a lease. The package uses one
-small telemetry receiver thread per state cache. Active control uses a lease
-renewal thread and an acknowledgement receiver; CAN, serial, device FSMs, and
-fixed-rate motor control stay in `bello-hardwared`.
+Read-only inventory and state reads do not acquire a lease or start a client
+worker. Active control uses a lease renewal thread and an acknowledgement
+receiver; CAN, serial, device FSMs, and fixed-rate motor control stay in
+`bello-hardwared`.
 
 ## Connection endpoints
 

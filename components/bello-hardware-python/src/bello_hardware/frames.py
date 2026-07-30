@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import grpc  # type: ignore[import-untyped]
 
@@ -91,12 +91,6 @@ class RobotStateReader:
             received_monotonic_ns=received_ns,
             round_trip_ns=max(0, received_ns - request_started_ns),
         )
-
-    def __enter__(self) -> RobotStateReader:
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> Literal[False]:
-        return False
 
     def _decode(
         self,

@@ -306,7 +306,7 @@ components/bello-hardware-client/
   src/telemetry.rs         filters and event stream
 
 components/bello-hardware-python/
-  src/bello_hardware/      blocking robot, control, and latest-state API
+  src/bello_hardware/      blocking robot, control, and complete-state API
   tests/                   gRPC behavior and vCAN smoke driver
 
 components/bello-visualizer/

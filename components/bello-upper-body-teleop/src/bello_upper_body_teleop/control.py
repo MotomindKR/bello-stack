@@ -15,8 +15,6 @@ from bello_hardware import (
     CoordinateTarget,
     Motor,
     Robot,
-    RobotStates,
-    StateUnavailableError,
 )
 
 from .config import (
@@ -296,39 +294,50 @@ def wait_for_initial_positions(
     *,
     timeout_seconds: float,
     maximum_feedback_age_seconds: float,
-) -> tuple[RobotStates, dict[str, float]]:
-    """Open telemetry and wait for one fresh position for every group coordinate."""
+) -> dict[str, float]:
+    """Read one complete, fresh position frame for a motor group."""
 
     group = robot.group(group_name)
-    states = robot.states(groups=(group_name,), imus=())
+    reader = robot.states(groups=(group_name,), imus=())
     deadline = time.monotonic() + timeout_seconds
-    last_problem = "no telemetry received"
-    try:
-        while True:
-            positions: dict[str, float] = {}
-            try:
-                for coordinate in group.coordinates:
-                    state = states.coordinate(coordinate)
-                    if state.feedback_age_ms > maximum_feedback_age_seconds * 1_000.0:
-                        last_problem = (
-                            f"stale feedback for {coordinate!r}: {state.feedback_age_ms:.1f} ms"
-                        )
-                        break
-                    positions[coordinate] = state.position
-                else:
-                    return states, positions
-            except StateUnavailableError as error:
-                last_problem = str(error)
+    maximum_age_ns = int(maximum_feedback_age_seconds * 1_000_000_000)
+    last_problem = "no complete state frame received"
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0.0:
+            raise TimeoutError(
+                f"timed out waiting for fresh {group_name!r} feedback: {last_problem}"
+            )
+        try:
+            frame = reader.read(timeout=remaining)
+        except TimeoutError as error:
+            raise TimeoutError(
+                f"timed out waiting for fresh {group_name!r} feedback: {last_problem}"
+            ) from error
 
-            remaining = deadline - time.monotonic()
-            if remaining <= 0.0:
-                raise TimeoutError(
-                    f"timed out waiting for fresh {group_name!r} telemetry: {last_problem}"
+        consumer_delay_ns = max(0, time.monotonic_ns() - frame.received_monotonic_ns)
+        transport_delay_ns = frame.round_trip_ns + consumer_delay_ns
+        stale = [
+            motor
+            for motor in frame.motors
+            if motor.sample_age_ns + transport_delay_ns > maximum_age_ns
+        ]
+        if not stale:
+            positions = {motor.coordinate: motor.position for motor in frame.motors}
+            expected = set(group.coordinates)
+            actual = set(positions)
+            if actual != expected:
+                raise RuntimeError(
+                    f"state frame coordinate mismatch for {group_name!r}: "
+                    f"missing={sorted(expected - actual)}, "
+                    f"unexpected={sorted(actual - expected)}"
                 )
-            states.wait_for_change(timeout=min(remaining, 0.1))
-    except BaseException:
-        states.close()
-        raise
+            return positions
+
+        worst = max(stale, key=lambda motor: motor.sample_age_ns)
+        total_age_ms = (worst.sample_age_ns + transport_delay_ns) / 1_000_000.0
+        last_problem = f"stale feedback for {worst.coordinate!r}: {total_age_ms:.1f} ms"
+        time.sleep(min(0.01, max(0.0, deadline - time.monotonic())))
 
 
 def run_teleoperation(
@@ -395,22 +404,20 @@ def run_teleoperation(
     # robot feedback as close as possible to the moment control is enabled.
     sample = source.read()
     with ExitStack() as stack:
-        states, initial_positions = wait_for_initial_positions(
+        initial_positions = wait_for_initial_positions(
             robot,
             group.name,
             timeout_seconds=settings.telemetry_timeout_seconds,
             maximum_feedback_age_seconds=settings.maximum_feedback_age_seconds,
         )
-        stack.enter_context(states)
         wrist_yaw_positions: dict[str, float] | None = None
         if wrist_yaw_group is not None:
-            wrist_yaw_states, wrist_yaw_positions = wait_for_initial_positions(
+            wrist_yaw_positions = wait_for_initial_positions(
                 robot,
                 wrist_yaw_group.name,
                 timeout_seconds=settings.telemetry_timeout_seconds,
                 maximum_feedback_age_seconds=settings.maximum_feedback_age_seconds,
             )
-            stack.enter_context(wrist_yaw_states)
 
         control = stack.enter_context(
             group.control(

@@ -32,7 +32,7 @@ source comments.
 - [`bello-hardware-client`](../components/bello-hardware-client) documents the
   maintained high-level Rust client, explicit renewal, and command streams.
 - [`bello-hardware-python`](../components/bello-hardware-python) documents the
-  blocking pure-Python client and its latest-state cache.
+  blocking pure-Python client and synchronous complete state reads.
 - [`bello-visualizer`](../components/bello-visualizer) documents native URDF
   rendering, transmission reconstruction, tracking, and toggle control.
 - [Operations](operations.md) provides startup, vCAN emulation, diagnostics,
