@@ -19,7 +19,7 @@ without editing the YAML when they run on another host:
 cargo run -p bello-visualizer -- \
   --config components/bello-visualizer/config/bello-vcan.yaml \
   --hardware-endpoint https://robot.local:50051 \
-  --pose-endpoint https://robot.local:50052
+  --pose-endpoint https://robot.local:50053
 ```
 
 `--pose-endpoint` requires `root.source: external_pose`. The configured

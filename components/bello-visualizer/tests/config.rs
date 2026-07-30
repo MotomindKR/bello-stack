@@ -121,7 +121,7 @@ fn maintained_bello_vcan_configuration_loads_the_canonical_description() {
             staleness_ms,
             ..
         } => {
-            assert_eq!(endpoint, "http://127.0.0.1:50052");
+            assert_eq!(endpoint, "http://127.0.0.1:50053");
             assert_eq!(reference_frame, "odom");
             assert_eq!(tracked_frame, "pelvis_link");
             assert_eq!(*staleness_ms, 200);

@@ -4,9 +4,9 @@ hardware:
   endpoint: http://127.0.0.1:50051
   # endpoint: http://192.168.0.8:50051
 root:
-  # Simulation ground truth served directly by bello-run-emulator.
+  # Contact-aided pose served by bello-state-estimatord.
   source: external_pose
-  endpoint: http://127.0.0.1:50052
+  endpoint: http://127.0.0.1:50053
   reference_frame: odom
   tracked_frame: pelvis_link
   staleness_ms: 200

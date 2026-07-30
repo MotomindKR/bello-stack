@@ -123,14 +123,14 @@ preferred regression check; see
 
 The maintained visualizer reads the canonical URDF under
 `descriptions/bello/`, hardware inventory from port 50051, and an optional
-neutral `PoseService` on port 50052. Inspect a configured pose provider with:
+neutral `PoseService` on port 50053. Inspect a configured pose provider with:
 
 ```sh
 grpcurl -plaintext \
   -import-path components/bello-pose-api/proto \
   -proto bello/pose/v1/pose.proto \
   -d '{"referenceFrame":"odom","trackedFrame":"pelvis_link"}' \
-  127.0.0.1:50052 bello.pose.v1.PoseService/WatchPose
+  127.0.0.1:50053 bello.pose.v1.PoseService/WatchPose
 ```
 
 When the configured SocketCAN, IMU, hardware, and pose providers are available,
@@ -145,7 +145,7 @@ cargo run -p bello-visualizer -- \
 
 Both visualizer service endpoints default to localhost. When the providers run
 on another host, use TLS and append `--hardware-endpoint https://HOST:50051`
-and `--pose-endpoint https://HOST:50052`.
+and `--pose-endpoint https://HOST:50053`.
 
 If hardware or pose telemetry disconnects or becomes stale, the visualizer
 freezes the last root transform and shows the condition; root tracking never
