@@ -572,3 +572,91 @@ class WatchTelemetryResponse(_message.Message):
     health: HealthTelemetry
     command_policy: CommandPolicyTelemetry
     def __init__(self, monotonic_ns: _Optional[int] = ..., motor: _Optional[_Union[MotorTelemetry, _Mapping]] = ..., imu: _Optional[_Union[ImuTelemetry, _Mapping]] = ..., group: _Optional[_Union[GroupTelemetry, _Mapping]] = ..., health: _Optional[_Union[HealthTelemetry, _Mapping]] = ..., command_policy: _Optional[_Union[CommandPolicyTelemetry, _Mapping]] = ...) -> None: ...
+
+class GetStateFrameRequest(_message.Message):
+    __slots__ = ("groups", "imus")
+    GROUPS_FIELD_NUMBER: _ClassVar[int]
+    IMUS_FIELD_NUMBER: _ClassVar[int]
+    groups: _containers.RepeatedScalarFieldContainer[str]
+    imus: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, groups: _Optional[_Iterable[str]] = ..., imus: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class StateMotor(_message.Message):
+    __slots__ = ("group", "motor_name", "position", "velocity", "torque", "temperature", "fault_bits", "mode_status", "sample_monotonic_ns", "sample_age_ns")
+    GROUP_FIELD_NUMBER: _ClassVar[int]
+    MOTOR_NAME_FIELD_NUMBER: _ClassVar[int]
+    POSITION_FIELD_NUMBER: _ClassVar[int]
+    VELOCITY_FIELD_NUMBER: _ClassVar[int]
+    TORQUE_FIELD_NUMBER: _ClassVar[int]
+    TEMPERATURE_FIELD_NUMBER: _ClassVar[int]
+    FAULT_BITS_FIELD_NUMBER: _ClassVar[int]
+    MODE_STATUS_FIELD_NUMBER: _ClassVar[int]
+    SAMPLE_MONOTONIC_NS_FIELD_NUMBER: _ClassVar[int]
+    SAMPLE_AGE_NS_FIELD_NUMBER: _ClassVar[int]
+    group: str
+    motor_name: str
+    position: float
+    velocity: float
+    torque: float
+    temperature: float
+    fault_bits: int
+    mode_status: int
+    sample_monotonic_ns: int
+    sample_age_ns: int
+    def __init__(self, group: _Optional[str] = ..., motor_name: _Optional[str] = ..., position: _Optional[float] = ..., velocity: _Optional[float] = ..., torque: _Optional[float] = ..., temperature: _Optional[float] = ..., fault_bits: _Optional[int] = ..., mode_status: _Optional[int] = ..., sample_monotonic_ns: _Optional[int] = ..., sample_age_ns: _Optional[int] = ...) -> None: ...
+
+class StateImu(_message.Message):
+    __slots__ = ("imu_name", "orientation", "angular_velocity", "linear_acceleration", "device_timestamp_ms", "sample_monotonic_ns", "sample_age_ns")
+    IMU_NAME_FIELD_NUMBER: _ClassVar[int]
+    ORIENTATION_FIELD_NUMBER: _ClassVar[int]
+    ANGULAR_VELOCITY_FIELD_NUMBER: _ClassVar[int]
+    LINEAR_ACCELERATION_FIELD_NUMBER: _ClassVar[int]
+    DEVICE_TIMESTAMP_MS_FIELD_NUMBER: _ClassVar[int]
+    SAMPLE_MONOTONIC_NS_FIELD_NUMBER: _ClassVar[int]
+    SAMPLE_AGE_NS_FIELD_NUMBER: _ClassVar[int]
+    imu_name: str
+    orientation: Quaternion
+    angular_velocity: Vector3
+    linear_acceleration: Vector3
+    device_timestamp_ms: int
+    sample_monotonic_ns: int
+    sample_age_ns: int
+    def __init__(self, imu_name: _Optional[str] = ..., orientation: _Optional[_Union[Quaternion, _Mapping]] = ..., angular_velocity: _Optional[_Union[Vector3, _Mapping]] = ..., linear_acceleration: _Optional[_Union[Vector3, _Mapping]] = ..., device_timestamp_ms: _Optional[int] = ..., sample_monotonic_ns: _Optional[int] = ..., sample_age_ns: _Optional[int] = ...) -> None: ...
+
+class StateGroup(_message.Message):
+    __slots__ = ("group", "state", "command_count", "control_tick", "jitter_us", "detail", "cause", "sample_monotonic_ns", "sample_age_ns")
+    GROUP_FIELD_NUMBER: _ClassVar[int]
+    STATE_FIELD_NUMBER: _ClassVar[int]
+    COMMAND_COUNT_FIELD_NUMBER: _ClassVar[int]
+    CONTROL_TICK_FIELD_NUMBER: _ClassVar[int]
+    JITTER_US_FIELD_NUMBER: _ClassVar[int]
+    DETAIL_FIELD_NUMBER: _ClassVar[int]
+    CAUSE_FIELD_NUMBER: _ClassVar[int]
+    SAMPLE_MONOTONIC_NS_FIELD_NUMBER: _ClassVar[int]
+    SAMPLE_AGE_NS_FIELD_NUMBER: _ClassVar[int]
+    group: str
+    state: GroupState
+    command_count: int
+    control_tick: int
+    jitter_us: int
+    detail: str
+    cause: GroupCause
+    sample_monotonic_ns: int
+    sample_age_ns: int
+    def __init__(self, group: _Optional[str] = ..., state: _Optional[_Union[GroupState, str]] = ..., command_count: _Optional[int] = ..., control_tick: _Optional[int] = ..., jitter_us: _Optional[int] = ..., detail: _Optional[str] = ..., cause: _Optional[_Union[GroupCause, str]] = ..., sample_monotonic_ns: _Optional[int] = ..., sample_age_ns: _Optional[int] = ...) -> None: ...
+
+class GetStateFrameResponse(_message.Message):
+    __slots__ = ("captured_monotonic_ns", "motors", "imus", "groups", "oldest_sample_age_ns", "sample_span_ns")
+    CAPTURED_MONOTONIC_NS_FIELD_NUMBER: _ClassVar[int]
+    MOTORS_FIELD_NUMBER: _ClassVar[int]
+    IMUS_FIELD_NUMBER: _ClassVar[int]
+    GROUPS_FIELD_NUMBER: _ClassVar[int]
+    OLDEST_SAMPLE_AGE_NS_FIELD_NUMBER: _ClassVar[int]
+    SAMPLE_SPAN_NS_FIELD_NUMBER: _ClassVar[int]
+    captured_monotonic_ns: int
+    motors: _containers.RepeatedCompositeFieldContainer[StateMotor]
+    imus: _containers.RepeatedCompositeFieldContainer[StateImu]
+    groups: _containers.RepeatedCompositeFieldContainer[StateGroup]
+    oldest_sample_age_ns: int
+    sample_span_ns: int
+    def __init__(self, captured_monotonic_ns: _Optional[int] = ..., motors: _Optional[_Iterable[_Union[StateMotor, _Mapping]]] = ..., imus: _Optional[_Iterable[_Union[StateImu, _Mapping]]] = ..., groups: _Optional[_Iterable[_Union[StateGroup, _Mapping]]] = ..., oldest_sample_age_ns: _Optional[int] = ..., sample_span_ns: _Optional[int] = ...) -> None: ...

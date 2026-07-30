@@ -9,11 +9,17 @@ use tokio::sync::oneshot;
 
 use crate::domain::{CommandBatch, CommandError};
 
-use super::fsm::{GroupState, Transition};
+use super::fsm::{GroupCause, GroupState, Transition};
 
 #[derive(Clone, Debug, Default)]
 pub struct GroupSnapshot {
     pub state: GroupState,
+    pub cause: GroupCause,
+    pub detail: String,
+    pub command_count: u64,
+    pub control_tick: u64,
+    pub jitter_us: i64,
+    pub updated: Option<Instant>,
 }
 
 pub(crate) enum LifecycleAction {

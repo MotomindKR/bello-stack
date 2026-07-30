@@ -73,9 +73,9 @@ use of the wire contract.
 
 ## Access model
 
-`ListHardware` and `WatchTelemetry` are read-only and require no lease. Any
-number of observers may use them concurrently, subject to server and network
-capacity. There is no separate read-only lease.
+`ListHardware`, `WatchTelemetry`, and `GetStateFrame` are read-only and
+require no lease. Any number of observers may use them concurrently, subject
+to server and network capacity. There is no separate read-only lease.
 
 Motion authority is an exclusive bearer lease for one named motor group.
 Different groups may be leased concurrently, but one group has at most one
@@ -91,6 +91,7 @@ serialized in
 | --- | --- | --- |
 | `ListHardware` | No | Read configured topology and current component/group states. |
 | `WatchTelemetry` | No | Subscribe to selected dynamic events. |
+| `GetStateFrame` | No | Read one complete latest motor, IMU, and group state frame. |
 | `AcquireLease` | No | Obtain exclusive write ownership for one group. |
 | `RenewLease` | Token | Extend that token's expiry. |
 | `ReleaseLease` | Token | Invalidate ownership and wait for the group reaction. |
@@ -209,6 +210,27 @@ so a forced deadline expiry can truncate the tail. Transport/device terminal
 events happen later and are not guaranteed over gRPC. These semantics live in
 [`telemetry_stream.rs`](../components/bello-hardwared/src/api/grpc/telemetry_stream.rs)
 and [`telemetry.rs`](../components/bello-hardwared/src/telemetry.rs).
+
+`GetStateFrame` is the client-paced control-loop interface. Its request selects
+groups and IMUs using the same empty-means-all convention. The daemon samples
+its latest producer caches directly. Until every selected motor, IMU, and group
+has a sample, it returns `FAILED_PRECONDITION`; the Python state reader retries
+that startup condition within the caller's timeout. Each successful response
+contains the complete selected set, daemon-relative capture and per-sample
+timestamps, the oldest sample age, and the span between the oldest and newest
+samples.
+
+Every successful request assembles one response from the current caches, so
+there is no server or client frame stream that can accumulate behind a slow
+Python consumer. Clients conservatively add the complete read duration,
+including any startup retries, to the daemon-reported sample ages. Control
+clients should reject stale group samples as well as stale motor and IMU
+samples, and bound `sample_span_ns` so a response assembled from widely
+separated producer cycles cannot be treated as coherent. `WatchTelemetry`
+remains the event and diagnostics API when individual changes, health events,
+command-policy decisions, or drop counts are required. The state-frame
+semantics live in
+[`state_frame.rs`](../components/bello-hardwared/src/api/grpc/state_frame.rs).
 
 ## Security boundary
 

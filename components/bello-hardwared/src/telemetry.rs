@@ -20,7 +20,14 @@ impl Telemetry {
     }
 
     pub fn monotonic_ns(&self) -> u64 {
-        self.started.elapsed().as_nanos().min(u64::MAX as u128) as u64
+        self.monotonic_ns_at(Instant::now())
+    }
+
+    pub(crate) fn monotonic_ns_at(&self, captured: Instant) -> u64 {
+        captured
+            .saturating_duration_since(self.started)
+            .as_nanos()
+            .min(u64::MAX as u128) as u64
     }
 
     pub fn event(&self, payload: TelemetryPayload) -> TelemetryEvent {

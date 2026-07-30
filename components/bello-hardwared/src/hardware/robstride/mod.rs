@@ -3,7 +3,7 @@ mod health;
 mod manager;
 mod spec;
 
-pub(crate) use controller::MotorController;
+pub(crate) use controller::{MotorController, TimedFeedback};
 pub(crate) use health::MotorFaultCause;
 pub(crate) use manager::MotorManager;
 pub(crate) use robstride_protocol::Feedback;

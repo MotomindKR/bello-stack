@@ -128,7 +128,7 @@ fn fault_response(value: Option<FaultResponse>) -> i32 {
     }) as i32
 }
 
-fn group_cause(value: GroupCause) -> i32 {
+pub fn group_cause(value: GroupCause) -> i32 {
     (match value {
         GroupCause::Unspecified => proto::GroupCause::Unspecified,
         GroupCause::Enable => proto::GroupCause::Enable,
@@ -150,6 +150,23 @@ fn group_cause(value: GroupCause) -> i32 {
         GroupCause::Exit => proto::GroupCause::Exit,
         GroupCause::Internal => proto::GroupCause::Internal,
     }) as i32
+}
+
+pub fn quaternion(value: [f64; 4]) -> proto::Quaternion {
+    proto::Quaternion {
+        x: value[0],
+        y: value[1],
+        z: value[2],
+        w: value[3],
+    }
+}
+
+pub fn vector3(value: [f64; 3]) -> proto::Vector3 {
+    proto::Vector3 {
+        x: value[0],
+        y: value[1],
+        z: value[2],
+    }
 }
 
 pub fn telemetry_event(
@@ -174,22 +191,9 @@ pub fn telemetry_event(
         TelemetryPayload::Imu(value) => {
             proto::watch_telemetry_response::Payload::Imu(proto::ImuTelemetry {
                 imu_name: value.imu.to_string(),
-                orientation: Some(proto::Quaternion {
-                    x: value.orientation_xyzw[0],
-                    y: value.orientation_xyzw[1],
-                    z: value.orientation_xyzw[2],
-                    w: value.orientation_xyzw[3],
-                }),
-                angular_velocity: Some(proto::Vector3 {
-                    x: value.angular_velocity_xyz[0],
-                    y: value.angular_velocity_xyz[1],
-                    z: value.angular_velocity_xyz[2],
-                }),
-                linear_acceleration: Some(proto::Vector3 {
-                    x: value.linear_acceleration_xyz[0],
-                    y: value.linear_acceleration_xyz[1],
-                    z: value.linear_acceleration_xyz[2],
-                }),
+                orientation: Some(quaternion(value.orientation_xyzw)),
+                angular_velocity: Some(vector3(value.angular_velocity_xyz)),
+                linear_acceleration: Some(vector3(value.linear_acceleration_xyz)),
                 device_timestamp_ms: value.device_timestamp_ms,
                 sample_age_ms: value.sample_age_ms.saturating_add(transport_age_ms),
             })

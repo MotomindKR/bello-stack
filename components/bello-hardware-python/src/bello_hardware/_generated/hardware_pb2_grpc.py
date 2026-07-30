@@ -46,6 +46,11 @@ class HardwareServiceStub:
                 request_serializer=hardware__pb2.WatchTelemetryRequest.SerializeToString,
                 response_deserializer=hardware__pb2.WatchTelemetryResponse.FromString,
                 _registered_method=True)
+        self.GetStateFrame = channel.unary_unary(
+                '/bello.hardware.v1.HardwareService/GetStateFrame',
+                request_serializer=hardware__pb2.GetStateFrameRequest.SerializeToString,
+                response_deserializer=hardware__pb2.GetStateFrameResponse.FromString,
+                _registered_method=True)
         self.AcquireLease = channel.unary_unary(
                 '/bello.hardware.v1.HardwareService/AcquireLease',
                 request_serializer=hardware__pb2.AcquireLeaseRequest.SerializeToString,
@@ -104,6 +109,12 @@ class HardwareServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def WatchTelemetry(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetStateFrame(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -175,6 +186,11 @@ def add_HardwareServiceServicer_to_server(servicer, server):
                     servicer.WatchTelemetry,
                     request_deserializer=hardware__pb2.WatchTelemetryRequest.FromString,
                     response_serializer=hardware__pb2.WatchTelemetryResponse.SerializeToString,
+            ),
+            'GetStateFrame': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetStateFrame,
+                    request_deserializer=hardware__pb2.GetStateFrameRequest.FromString,
+                    response_serializer=hardware__pb2.GetStateFrameResponse.SerializeToString,
             ),
             'AcquireLease': grpc.unary_unary_rpc_method_handler(
                     servicer.AcquireLease,
@@ -277,6 +293,33 @@ class HardwareService:
             '/bello.hardware.v1.HardwareService/WatchTelemetry',
             hardware__pb2.WatchTelemetryRequest.SerializeToString,
             hardware__pb2.WatchTelemetryResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetStateFrame(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bello.hardware.v1.HardwareService/GetStateFrame',
+            hardware__pb2.GetStateFrameRequest.SerializeToString,
+            hardware__pb2.GetStateFrameResponse.FromString,
             options,
             channel_credentials,
             insecure,

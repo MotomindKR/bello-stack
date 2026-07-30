@@ -8,7 +8,7 @@ use anyhow::{Result, anyhow};
 use robstride_protocol::{feedback_motor_id, frame_target, parse_feedback};
 use tracing::error;
 
-use super::controller::{ControlBatcher, MotorController};
+use super::controller::{ControlBatcher, MotorController, TimedFeedback};
 use crate::config::ResolvedTopology;
 use crate::domain::{DeviceState, DeviceStatus, MotorAddress, MotorName};
 use crate::hardware::can::{BusManager, ReceivedFrame};
@@ -131,6 +131,12 @@ impl MotorManager {
 
     pub(crate) fn status(&self, name: &MotorName) -> Option<DeviceStatus> {
         self.controllers.get(name).map(MotorController::status)
+    }
+
+    pub(crate) fn feedback(&self, name: &MotorName) -> Option<TimedFeedback> {
+        self.controllers
+            .get(name)
+            .and_then(MotorController::feedback)
     }
 }
 

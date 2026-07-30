@@ -148,6 +148,33 @@ Useful accessors include:
 - `states.health("can0")`; and
 - the `states.motors`, `states.groups`, and `states.imus` snapshots.
 
+For a control loop, use `RobotStateReader` instead. Each call returns one
+immutable frame built from the latest samples for every selected motor, IMU,
+and group. If producer caches are still initializing, the reader retries that
+condition within the caller's timeout. There is no background frame receiver
+or frame queue.
+
+```python
+with Robot.connect("http://127.0.0.1:50051") as robot:
+    reader = robot.state_reader(
+        groups=("leg",),
+        imus=("body-imu",),
+    )
+    while True:
+        frame = reader.read(timeout=1.0)
+        print(frame.motors, frame.imus, frame.groups)
+```
+
+Empty group or IMU selectors select all configured devices. Frames expose
+daemon-side sample ages and span, the local receive timestamp, and the complete
+RPC round-trip duration. A control loop can conservatively add that duration
+and any time since receipt to its freshness checks, covering transport and
+Python scheduling delays without synchronized clocks. Apply those checks to
+motor, IMU, and group ages, and reject a sample span wider than the control
+loop's coherence budget. Use `RobotStates` and
+`WatchTelemetry` when event history, health, or command-policy telemetry is
+required.
+
 For temporary debugging, `examples/log_hardware.py` records the complete latest
 state as newline-delimited JSON whenever telemetry changes (capped at 50 Hz by
 default):

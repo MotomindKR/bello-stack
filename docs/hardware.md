@@ -301,7 +301,8 @@ reported as malformed input.
 
 Every valid sample is emitted individually at the received rate. Multiple IMUs
 remain distinct by name; their samples are neither averaged nor combined. The
-telemetry channel is event-based rather than a cached latest-state publisher.
+raw telemetry channel remains event-based; the IMU worker also retains one
+latest sample for complete `GetStateFrame` reads.
 
 ### Health and reconnect
 
@@ -333,6 +334,7 @@ gRPC telemetry stream.
 | CAN RX | SocketCAN input | Blocking/event-driven with a 100 ms OS timeout |
 | Motor health scan | `feedback_timeout_ms / 4`, clamped to 1–20 ms | Checks bus state and armed feedback watchdogs |
 | Serial TX | Sensor configuration requests | Event-driven; bounded by `timeout_ms` |
+| gRPC state frames | Client request cadence | Returns one complete latest-cache frame per request |
 | Serial RX | Port input | Blocking/event-driven with configured OS timeout |
 | Serial supervisor | Fixed 20 ms monitor poll | Detects worker failures and reconnect requests |
 | EBIMU output | `output_rate_hz` | Device-generated samples at an exact integer-ms interval |

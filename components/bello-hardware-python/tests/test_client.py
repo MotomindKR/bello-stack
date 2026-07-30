@@ -18,6 +18,7 @@ from bello_hardware import (
     InvalidTargetError,
     LeaseLostError,
     Robot,
+    RpcError,
     StateUnavailableError,
 )
 from bello_hardware._generated import hardware_pb2 as proto
@@ -186,6 +187,82 @@ def test_latest_state_cache(hardware_server: RunningServer) -> None:
         assert hip.position == pytest.approx(0.25)
         assert hip.temperature == pytest.approx(32.0)
         assert states.group("leg").monotonic_ns == 2_000
+
+
+def test_complete_state_frame_uses_one_synchronous_rpc(
+    hardware_server: RunningServer,
+) -> None:
+    with Robot.connect(hardware_server.endpoint) as robot:
+        reader = robot.state_reader(
+            groups=("leg",),
+            imus=("body",),
+        )
+        assert hardware_server.service.state_frame_calls == 0
+        state = reader.read(timeout=1.0)
+
+        assert hardware_server.service.state_frame_calls == 1
+        positions = {motor.coordinate: motor.position for motor in state.motors}
+        assert positions == pytest.approx({"hip": 0.25, "knee": -0.5})
+        assert state.imus[0].orientation.w == pytest.approx(1.0)
+        assert state.groups[0].state.name == "IDLE"
+        assert state.groups[0].sample_age_ns == 500
+        assert state.oldest_sample_age_ns == 1_000
+        assert state.sample_span_ns == 500
+
+
+def test_state_frame_reports_complete_read_duration(
+    hardware_server: RunningServer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    timestamps = iter((1_000_000, 7_000_000))
+    monkeypatch.setattr(
+        "bello_hardware.frames.time.monotonic_ns",
+        lambda: next(timestamps),
+    )
+    with Robot.connect(hardware_server.endpoint) as robot:
+        reader = robot.state_reader(
+            groups=("leg",),
+            imus=("body",),
+        )
+        state = reader.read(timeout=1.0)
+
+        assert state.round_trip_ns == 6_000_000
+
+
+def test_state_frame_waits_for_complete_daemon_cache(
+    hardware_server: RunningServer,
+) -> None:
+    hardware_server.service.state_frame_incomplete_count = 2
+    with Robot.connect(hardware_server.endpoint) as robot:
+        state = robot.state_reader(groups=("leg",), imus=("body",)).read(timeout=1.0)
+
+        assert hardware_server.service.state_frame_calls == 3
+        assert {motor.coordinate for motor in state.motors} == {"hip", "knee"}
+
+
+def test_state_frame_cache_wait_honors_timeout(
+    hardware_server: RunningServer,
+) -> None:
+    hardware_server.service.state_frame_incomplete_count = 100
+    with (
+        Robot.connect(hardware_server.endpoint) as robot,
+        pytest.raises(TimeoutError, match="complete hardware state"),
+    ):
+        robot.state_reader(groups=("leg",), imus=("body",)).read(timeout=0.001)
+
+
+def test_state_frame_transport_unavailable_is_not_retried(
+    hardware_server: RunningServer,
+) -> None:
+    hardware_server.service.state_frame_failure = grpc.StatusCode.UNAVAILABLE
+    with (
+        Robot.connect(hardware_server.endpoint) as robot,
+        pytest.raises(RpcError) as failure,
+    ):
+        robot.state_reader(groups=("leg",), imus=("body",)).read(timeout=1.0)
+
+    assert failure.value.code is grpc.StatusCode.UNAVAILABLE
+    assert hardware_server.service.state_frame_calls == 1
 
 
 def test_cached_sample_ages_continue_increasing(
