@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from threading import Thread
 
 import grpc  # type: ignore[import-untyped]
 import pytest
@@ -14,11 +13,10 @@ from bello_hardware import (
     ControlRpcError,
     ControlState,
     CoordinateTarget,
-    DeviceState,
     InvalidTargetError,
     LeaseLostError,
     Robot,
-    StateUnavailableError,
+    RpcError,
 )
 from bello_hardware._generated import hardware_pb2 as proto
 
@@ -177,67 +175,80 @@ def test_incomplete_frames_fail_before_transmission(hardware_server: RunningServ
     assert hardware_server.service.command_count == 0
 
 
-def test_latest_state_cache(hardware_server: RunningServer) -> None:
-    with Robot.connect(hardware_server.endpoint) as robot, robot.states() as states:
-        deadline = time.monotonic() + 1.0
-        while len(states.groups) == 0 and time.monotonic() < deadline:
-            assert states.wait_for_change(timeout=1.0)
-        hip = states.coordinate("hip")
-        assert hip.position == pytest.approx(0.25)
-        assert hip.temperature == pytest.approx(32.0)
-        assert states.group("leg").monotonic_ns == 2_000
-
-
-def test_cached_sample_ages_continue_increasing(
+def test_complete_state_frame_uses_one_synchronous_rpc(
     hardware_server: RunningServer,
 ) -> None:
-    with Robot.connect(hardware_server.endpoint) as robot, robot.states() as states:
-        deadline = time.monotonic() + 1.0
-        while (not states.motors or not states.imus) and time.monotonic() < deadline:
-            assert states.wait_for_change(timeout=1.0)
-        motor_age = states.motor("hip_motor").feedback_age_ms
-        imu_age = states.imu("body").sample_age_ms
-
-        time.sleep(0.03)
-
-        assert states.motor("hip_motor").feedback_age_ms >= motor_age + 20
-        assert states.imu("body").sample_age_ms >= imu_age + 20
-
-
-def test_unhealthy_imu_invalidates_cached_sample(
-    hardware_server: RunningServer,
-) -> None:
-    with Robot.connect(hardware_server.endpoint) as robot, robot.states() as states:
-        deadline = time.monotonic() + 1.0
-        while not states.imus and time.monotonic() < deadline:
-            assert states.wait_for_change(timeout=1.0)
-
-        hardware_server.service.emit_telemetry(
-            proto.WatchTelemetryResponse(
-                monotonic_ns=5_000,
-                health=proto.HealthTelemetry(
-                    component="imu/body",
-                    device_status=proto.DeviceStatus(
-                        state=proto.DEVICE_STATE_RECONNECTING,
-                        detail="no valid IMU sample",
-                        transition_count=2,
-                    ),
-                ),
-            )
+    with Robot.connect(hardware_server.endpoint) as robot:
+        reader = robot.states(
+            groups=("leg",),
+            imus=("body",),
         )
-        deadline = time.monotonic() + 1.0
-        while time.monotonic() < deadline:
-            health = states.health("imu/body")
-            if (
-                health is not None
-                and health.status is not None
-                and health.status.state == DeviceState.RECONNECTING
-            ):
-                break
-            assert states.wait_for_change(timeout=1.0)
+        assert hardware_server.service.state_frame_calls == 0
+        state = reader.read(timeout=1.0)
 
-        with pytest.raises(StateUnavailableError):
-            states.imu("body")
+        assert hardware_server.service.state_frame_calls == 1
+        positions = {motor.coordinate: motor.position for motor in state.motors}
+        assert positions == pytest.approx({"hip": 0.25, "knee": -0.5})
+        assert state.imus[0].orientation.w == pytest.approx(1.0)
+        assert state.groups[0].state.name == "IDLE"
+        assert state.groups[0].sample_age_ns == 500
+        assert state.oldest_sample_age_ns == 1_000
+        assert state.sample_span_ns == 500
+
+
+def test_state_frame_reports_complete_read_duration(
+    hardware_server: RunningServer,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    timestamps = iter((1_000_000, 7_000_000))
+    monkeypatch.setattr(
+        "bello_hardware.frames.time.monotonic_ns",
+        lambda: next(timestamps),
+    )
+    with Robot.connect(hardware_server.endpoint) as robot:
+        reader = robot.states(
+            groups=("leg",),
+            imus=("body",),
+        )
+        state = reader.read(timeout=1.0)
+
+        assert state.round_trip_ns == 6_000_000
+
+
+def test_state_frame_waits_for_complete_daemon_cache(
+    hardware_server: RunningServer,
+) -> None:
+    hardware_server.service.state_frame_incomplete_count = 2
+    with Robot.connect(hardware_server.endpoint) as robot:
+        state = robot.states(groups=("leg",), imus=("body",)).read(timeout=1.0)
+
+        assert hardware_server.service.state_frame_calls == 3
+        assert {motor.coordinate for motor in state.motors} == {"hip", "knee"}
+
+
+def test_state_frame_cache_wait_honors_timeout(
+    hardware_server: RunningServer,
+) -> None:
+    hardware_server.service.state_frame_incomplete_count = 100
+    with (
+        Robot.connect(hardware_server.endpoint) as robot,
+        pytest.raises(TimeoutError, match="complete hardware state"),
+    ):
+        robot.states(groups=("leg",), imus=("body",)).read(timeout=0.001)
+
+
+def test_state_frame_transport_unavailable_is_not_retried(
+    hardware_server: RunningServer,
+) -> None:
+    hardware_server.service.state_frame_failure = grpc.StatusCode.UNAVAILABLE
+    with (
+        Robot.connect(hardware_server.endpoint) as robot,
+        pytest.raises(RpcError) as failure,
+    ):
+        robot.states(groups=("leg",), imus=("body",)).read(timeout=1.0)
+
+    assert failure.value.code is grpc.StatusCode.UNAVAILABLE
+    assert hardware_server.service.state_frame_calls == 1
 
 
 def test_target_validation() -> None:
@@ -334,33 +345,3 @@ def test_resume_rolls_an_ambiguous_start_back_to_damped(
         with pytest.raises(ControlRpcError):
             control.resume(frame(0.1))
         assert control.state is ControlState.DAMPED
-
-
-def test_telemetry_reconnect_clears_state_and_increments_generation(
-    hardware_server: RunningServer,
-) -> None:
-    hardware_server.service.telemetry_failures = 1
-    with Robot.connect(hardware_server.endpoint) as robot, robot.states() as states:
-        deadline = time.monotonic() + 1.0
-        while not states.motors and time.monotonic() < deadline:
-            assert states.wait_for_change(timeout=1.0)
-        assert states.generation == 1
-        assert hardware_server.service.telemetry_calls >= 2
-
-
-def test_each_waiting_thread_has_an_independent_state_cursor(
-    hardware_server: RunningServer,
-) -> None:
-    with Robot.connect(hardware_server.endpoint) as robot, robot.states() as states:
-        deadline = time.monotonic() + 1.0
-        while not states.groups and time.monotonic() < deadline:
-            assert states.wait_for_change(timeout=1.0)
-        results: list[bool] = []
-        waiters = [
-            Thread(target=lambda: results.append(states.wait_for_change(0.1))) for _ in range(2)
-        ]
-        for waiter in waiters:
-            waiter.start()
-        for waiter in waiters:
-            waiter.join()
-        assert results == [True, True]

@@ -919,7 +919,15 @@ impl GroupController {
         let state = self.fsm.state();
         let cause = self.fsm.cause();
         let detail = self.fsm.detail().to_owned();
-        self.snapshot.write().state = state;
+        *self.snapshot.write() = super::GroupSnapshot {
+            state,
+            cause,
+            detail: detail.clone(),
+            command_count: self.command_count,
+            control_tick: self.tick,
+            jitter_us,
+            updated: Some(Instant::now()),
+        };
         let changed = state != self.last_published_state
             || cause != self.last_published_cause
             || detail != self.last_published_detail;

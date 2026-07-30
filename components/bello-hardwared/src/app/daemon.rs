@@ -16,6 +16,7 @@ use crate::hardware::can::BusManager;
 use crate::hardware::imu::{ImuHandle, ImuWorker};
 use crate::hardware::lifecycle::DeviceStatus;
 use crate::hardware::robstride::MotorManager;
+use crate::hardware::robstride::TimedFeedback;
 use crate::hardware::serial::SerialManager;
 use crate::lease::{Lease, LeaseError, LeaseManager};
 use crate::telemetry::Telemetry;
@@ -93,6 +94,10 @@ impl HardwareDaemon {
 
     pub(crate) fn motor_status(&self, name: &MotorName) -> Option<DeviceStatus> {
         self.motor_workers.status(name)
+    }
+
+    pub(crate) fn motor_feedback(&self, name: &MotorName) -> Option<TimedFeedback> {
+        self.motor_workers.feedback(name)
     }
 
     pub(crate) fn imu(&self, name: &ImuName) -> Option<&ImuHandle> {

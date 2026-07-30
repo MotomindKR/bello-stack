@@ -104,14 +104,6 @@ class RobotCleanupError(BelloError):
         super().__init__("robot cleanup failed: " + "; ".join(map(str, self.errors)))
 
 
-class StateUnavailableError(BelloError):
-    """No current telemetry is available for a configured component."""
-
-
-class WorkerShutdownError(BelloError):
-    """A background client worker did not stop before its deadline."""
-
-
 def rpc_error(operation: str, error: grpc.RpcError) -> RpcError:
     code = error.code()
     detail = error.details() or str(error)

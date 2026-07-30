@@ -258,6 +258,13 @@ impl HardwareService for FakeHardware {
         Ok(Response::new(Box::pin(tokio_stream::iter(events))))
     }
 
+    async fn get_state_frame(
+        &self,
+        _: Request<GetStateFrameRequest>,
+    ) -> Result<Response<GetStateFrameResponse>, Status> {
+        Err(Status::unimplemented("not used by this fake"))
+    }
+
     async fn acquire_lease(
         &self,
         request: Request<AcquireLeaseRequest>,

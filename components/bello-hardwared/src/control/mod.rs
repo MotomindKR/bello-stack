@@ -8,6 +8,6 @@ mod spec;
 
 pub(crate) use command_policy::CommandPolicyCheck;
 pub use fsm::{GroupCause, GroupState, Transition};
-pub(crate) use group_handle::{GroupHandle, GroupQueueError, LifecycleAction};
+pub(crate) use group_handle::{GroupHandle, GroupQueueError, GroupSnapshot, LifecycleAction};
 pub(crate) use group_worker::GroupWorker;
 pub(crate) use spec::GroupSpec;

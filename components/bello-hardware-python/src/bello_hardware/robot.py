@@ -14,7 +14,7 @@ from ._generated import hardware_pb2 as proto
 from ._generated import hardware_pb2_grpc
 from ._inventory import Inventory, MotorGroup
 from .errors import BelloError, RobotCleanupError, rpc_error
-from .states import RobotStates
+from .frames import RobotStateReader
 from .tls import TlsCredentials
 from .types import Motor
 
@@ -87,16 +87,13 @@ class Robot:
         *,
         groups: tuple[str, ...] = (),
         imus: tuple[str, ...] = (),
-        reconnect: bool = True,
-        reconnect_delay: float = 0.2,
-    ) -> RobotStates:
+    ) -> RobotStateReader:
+        """Create a synchronous complete-state reader for selected devices."""
         self._ensure_open()
-        return RobotStates(
+        return RobotStateReader(
             self,
             groups=groups,
             imus=imus,
-            reconnect=reconnect,
-            reconnect_delay=reconnect_delay,
         )
 
     def close(self) -> None:

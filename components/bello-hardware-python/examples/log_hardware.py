@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Record Bello hardware telemetry as newline-delimited JSON snapshots."""
+"""Record complete Bello hardware state frames as newline-delimited JSON."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from enum import Enum
 from pathlib import Path
 from typing import IO, Any
 
-from bello_hardware import DeviceStatus, Robot
+from bello_hardware import DeviceStatus, HardwareStateFrame, Robot
 
 
 def parse_args() -> argparse.Namespace:
@@ -132,26 +132,16 @@ def inventory_record(robot: Robot, endpoint: str) -> dict[str, Any]:
     }
 
 
-def health_component_names(robot: Robot) -> tuple[str, ...]:
-    inventory = robot.inventory
-    names = {
-        *(bus.name for bus in inventory.buses),
-        *(serial.name for serial in inventory.serial_devices),
-        *(imu.name for imu in inventory.imus),
-        *(motor.name for motor in robot.motors),
-        "grpc_telemetry",
-    }
-    return tuple(sorted(names))
-
-
-def snapshot_record(robot: Robot, states: Any) -> dict[str, Any]:
-    health = [states.health(name) for name in health_component_names(robot)]
+def snapshot_record(frame: HardwareStateFrame) -> dict[str, Any]:
     return {
-        "record": "telemetry",
+        "record": "state_frame",
         "logged_at": datetime.now(timezone.utc).isoformat(),
         "logged_unix_ns": time.time_ns(),
-        "daemon_monotonic_ns": states.monotonic_ns,
-        "connection_generation": states.generation,
+        "captured_monotonic_ns": frame.captured_monotonic_ns,
+        "received_monotonic_ns": frame.received_monotonic_ns,
+        "round_trip_ns": frame.round_trip_ns,
+        "oldest_sample_age_ns": frame.oldest_sample_age_ns,
+        "sample_span_ns": frame.sample_span_ns,
         "motors": [
             {
                 "group": motor.group,
@@ -164,9 +154,10 @@ def snapshot_record(robot: Robot, states: Any) -> dict[str, Any]:
                 "fault_bits": motor.fault_bits,
                 "mode_status": motor.mode_status,
                 "feedback_age_ms": motor.feedback_age_ms,
-                "monotonic_ns": motor.monotonic_ns,
+                "sample_monotonic_ns": motor.sample_monotonic_ns,
+                "sample_age_ns": motor.sample_age_ns,
             }
-            for motor in states.motors
+            for motor in frame.motors
         ],
         "groups": [
             {
@@ -177,9 +168,10 @@ def snapshot_record(robot: Robot, states: Any) -> dict[str, Any]:
                 "command_count": group.command_count,
                 "control_tick": group.control_tick,
                 "jitter_us": group.jitter_us,
-                "monotonic_ns": group.monotonic_ns,
+                "sample_monotonic_ns": group.sample_monotonic_ns,
+                "sample_age_ns": group.sample_age_ns,
             }
-            for group in states.groups
+            for group in frame.groups
         ],
         "imus": [
             {
@@ -202,19 +194,10 @@ def snapshot_record(robot: Robot, states: Any) -> dict[str, Any]:
                 },
                 "device_timestamp_ms": imu.device_timestamp_ms,
                 "sample_age_ms": imu.sample_age_ms,
-                "monotonic_ns": imu.monotonic_ns,
+                "sample_monotonic_ns": imu.sample_monotonic_ns,
+                "sample_age_ns": imu.sample_age_ns,
             }
-            for imu in states.imus
-        ],
-        "health": [
-            {
-                "component": item.component,
-                "status": device_status(item.status),
-                "dropped_events": item.dropped_events,
-                "monotonic_ns": item.monotonic_ns,
-            }
-            for item in health
-            if item is not None
+            for imu in frame.imus
         ],
     }
 
@@ -238,25 +221,26 @@ def run(args: argparse.Namespace) -> int:
     with (
         output_context as output,
         Robot.connect(args.endpoint, timeout=args.connect_timeout) as robot,
-        robot.states() as states,
     ):
         write_record(output, inventory_record(robot, args.endpoint))
+        reader = robot.states()
         started = time.monotonic()
         sample_period = 1.0 / args.rate
         next_sample = started
         while args.duration is None or time.monotonic() - started < args.duration:
+            now = time.monotonic()
+            if now < next_sample:
+                time.sleep(next_sample - now)
             remaining_duration = (
                 None if args.duration is None else args.duration - (time.monotonic() - started)
             )
             timeout = 1.0 if remaining_duration is None else min(1.0, max(0.0, remaining_duration))
-            if not states.wait_for_change(timeout=timeout):
-                continue
-
-            now = time.monotonic()
-            if now < next_sample:
-                time.sleep(next_sample - now)
-            write_record(output, snapshot_record(robot, states))
-            next_sample = time.monotonic() + sample_period
+            if timeout <= 0.0:
+                break
+            write_record(output, snapshot_record(reader.read(timeout=timeout)))
+            next_sample += sample_period
+            if next_sample < time.monotonic():
+                next_sample = time.monotonic()
     return 0
 
 

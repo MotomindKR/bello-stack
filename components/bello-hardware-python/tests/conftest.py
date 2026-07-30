@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import queue
 import threading
 import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -106,12 +104,9 @@ class FakeHardware:
         self.enable_failure: grpc.StatusCode | None = None
         self.start_failure: grpc.StatusCode | None = None
         self.disable_failure: grpc.StatusCode | None = None
-        self.telemetry_failures = 0
-        self.telemetry_calls = 0
-        self.telemetry_events: queue.Queue[proto.WatchTelemetryResponse] = queue.Queue()
-
-    def emit_telemetry(self, response: proto.WatchTelemetryResponse) -> None:
-        self.telemetry_events.put(response)
+        self.state_frame_calls = 0
+        self.state_frame_incomplete_count = 0
+        self.state_frame_failure: grpc.StatusCode | None = None
 
     def ListHardware(self, request: Any, context: Any) -> proto.ListHardwareResponse:
         del request, context
@@ -215,58 +210,89 @@ class FakeHardware:
 
     def WatchTelemetry(self, request: Any, context: Any) -> Iterator[proto.WatchTelemetryResponse]:
         del request
+        context.abort(grpc.StatusCode.UNIMPLEMENTED, "not used by Python client tests")
+        if False:
+            yield proto.WatchTelemetryResponse()
+
+    def GetStateFrame(self, request: Any, context: Any) -> proto.GetStateFrameResponse:
+        del request
         with self.lock:
-            self.telemetry_calls += 1
-            fail = self.telemetry_failures > 0
-            if fail:
-                self.telemetry_failures -= 1
-        if fail:
-            context.abort(grpc.StatusCode.UNAVAILABLE, "test telemetry interruption")
-        yield proto.WatchTelemetryResponse(
-            monotonic_ns=1_000,
-            motor=proto.MotorTelemetry(
+            self.state_frame_calls += 1
+            incomplete = self.state_frame_incomplete_count > 0
+            self.state_frame_incomplete_count -= int(incomplete)
+            failure = self.state_frame_failure
+            state = self.state
+            command_count = self.command_count
+            captured = self.state_frame_calls * 10_000
+        if failure is not None:
+            context.abort(failure, "test state frame failure")
+        if incomplete:
+            context.abort(
+                grpc.StatusCode.FAILED_PRECONDITION,
+                "complete hardware state is not yet available",
+            )
+        return state_frame(
+            captured=captured,
+            state=state,
+            command_count=command_count,
+        )
+
+
+def state_frame(
+    *,
+    captured: int = 10_000,
+    state: Any = proto.GROUP_STATE_IDLE,
+    command_count: int = 0,
+) -> proto.GetStateFrameResponse:
+    motor_sample = captured - 1_000
+    group_sample = captured - 500
+    return proto.GetStateFrameResponse(
+        captured_monotonic_ns=captured,
+        motors=[
+            proto.StateMotor(
                 group="leg",
                 motor_name="hip_motor",
                 position=0.25,
                 velocity=0.5,
                 torque=1.0,
                 temperature=32.0,
-                feedback_age_ms=2,
+                sample_monotonic_ns=motor_sample,
+                sample_age_ns=1_000,
             ),
-        )
-        yield proto.WatchTelemetryResponse(
-            monotonic_ns=2_000,
-            group=proto.GroupTelemetry(
+            proto.StateMotor(
                 group="leg",
-                state=proto.GROUP_STATE_IDLE,
-                command_count=self.command_count,
+                motor_name="knee_motor",
+                position=-0.5,
+                velocity=-0.25,
+                torque=-1.0,
+                temperature=33.0,
+                sample_monotonic_ns=motor_sample,
+                sample_age_ns=1_000,
             ),
-        )
-        yield proto.WatchTelemetryResponse(
-            monotonic_ns=3_000,
-            health=proto.HealthTelemetry(
-                component="imu/body",
-                device_status=proto.DeviceStatus(
-                    state=proto.DEVICE_STATE_ONLINE,
-                    detail="streaming",
-                    transition_count=1,
-                ),
-            ),
-        )
-        yield proto.WatchTelemetryResponse(
-            monotonic_ns=4_000,
-            imu=proto.ImuTelemetry(
+        ],
+        imus=[
+            proto.StateImu(
                 imu_name="body",
                 orientation=proto.Quaternion(w=1.0),
                 angular_velocity=proto.Vector3(),
                 linear_acceleration=proto.Vector3(z=9.80665),
                 device_timestamp_ms=100,
-                sample_age_ms=3,
-            ),
-        )
-        while context.is_active():
-            with suppress(queue.Empty):
-                yield self.telemetry_events.get(timeout=0.01)
+                sample_monotonic_ns=motor_sample,
+                sample_age_ns=1_000,
+            )
+        ],
+        groups=[
+            proto.StateGroup(
+                group="leg",
+                state=state,
+                command_count=command_count,
+                sample_monotonic_ns=group_sample,
+                sample_age_ns=500,
+            )
+        ],
+        oldest_sample_age_ns=1_000,
+        sample_span_ns=500,
+    )
 
 
 @dataclass(frozen=True)

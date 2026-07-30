@@ -85,13 +85,11 @@ def load_log(path: Path, max_points: int) -> dict[str, Any]:
     start_ns: int | None = None
     end_time = 0.0
     sample_count = 0
-    generations: set[int] = set()
     motors: dict[str, dict[str, list[list[float]]]] = {}
     imus: dict[str, dict[str, list[list[float]]]] = {}
     groups: dict[str, dict[str, Any]] = {}
     events: list[dict[str, Any]] = []
     previous_group: dict[str, tuple[Any, ...]] = {}
-    previous_health: dict[str, tuple[Any, ...]] = {}
 
     with path.open(encoding="utf-8") as lines:
         for line_number, line in enumerate(lines, 1):
@@ -105,7 +103,7 @@ def load_log(path: Path, max_points: int) -> dict[str, Any]:
             if record == "inventory":
                 inventory = row
                 continue
-            if record != "telemetry":
+            if record != "state_frame":
                 continue
 
             logged_ns = int(row["logged_unix_ns"])
@@ -114,8 +112,6 @@ def load_log(path: Path, max_points: int) -> dict[str, Any]:
             timestamp = (logged_ns - start_ns) / 1_000_000_000.0
             end_time = max(end_time, timestamp)
             sample_count += 1
-            generations.add(int(row.get("connection_generation", 0)))
-
             for motor in row.get("motors", []):
                 name = str(motor["motor"])
                 empty_motor: dict[str, list[list[float]]] = {metric: [] for metric in MOTOR_METRICS}
@@ -167,30 +163,10 @@ def load_log(path: Path, max_points: int) -> dict[str, Any]:
                     )
                     previous_group[name] = signature
 
-            for health in row.get("health", []):
-                name = str(health["component"])
-                status = health.get("status") or {}
-                signature = (
-                    status.get("state", "unknown"),
-                    status.get("detail", ""),
-                    health.get("dropped_events", 0),
-                )
-                if previous_health.get(name) != signature:
-                    events.append(
-                        {
-                            "time": timestamp,
-                            "kind": "health",
-                            "component": name,
-                            "state": signature[0],
-                            "detail": signature[1] or f"dropped events: {signature[2]}",
-                        }
-                    )
-                    previous_health[name] = signature
-
     if inventory is None:
         raise ValueError("log has no inventory record")
     if sample_count == 0:
-        raise ValueError("log has no telemetry records")
+        raise ValueError("log has no state-frame records")
 
     for device in motors.values():
         for metric, points in device.items():
@@ -209,7 +185,6 @@ def load_log(path: Path, max_points: int) -> dict[str, Any]:
         "source": path.name,
         "duration": end_time,
         "samples": sample_count,
-        "generations": len(generations),
         "initial_faults": initial_faults,
         "inventory": inventory,
         "motors": dict(sorted(motors.items())),
@@ -269,14 +244,14 @@ table { width:100%; border-collapse:collapse; } th,td { padding:8px 9px; text-al
   </section>
   <section class="panel"><h2>Hardware inventory at connection</h2><div class="table-wrap"><table><thead><tr><th>Kind</th><th>Name</th><th>Location</th><th>State</th><th>Detail</th></tr></thead><tbody id="inventory"></tbody></table></div></section>
   <section class="panel"><h2>Latest group state</h2><div class="table-wrap"><table><thead><tr><th>Group</th><th>State</th><th>Fault</th><th>Commands</th><th>Tick</th><th>Jitter µs</th></tr></thead><tbody id="groups"></tbody></table></div></section>
-  <section class="panel"><h2>State changes and health events</h2><div class="muted" id="eventNote"></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Kind</th><th>Component</th><th>State</th><th>Detail</th></tr></thead><tbody id="events"></tbody></table></div></section>
+  <section class="panel"><h2>Group state changes</h2><div class="muted" id="eventNote"></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Kind</th><th>Component</th><th>State</th><th>Detail</th></tr></thead><tbody id="events"></tbody></table></div></section>
 </main>
 <script>
 const DATA=__DATA__;
 const COLORS=['#58a6ff','#f2cc60','#56d364','#ff7b72','#bc8cff','#39c5cf','#ffa657','#ec6cb9','#8b949e','#7ee787','#d2a8ff','#79c0ff'];
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 document.getElementById('source').textContent=DATA.source;
-const cards=[['Duration',DATA.duration.toFixed(2)+' s'],['Snapshots',DATA.samples.toLocaleString()],['Motors',Object.keys(DATA.motors).length],['IMUs',Object.keys(DATA.imus).length],['Connections',DATA.generations],['Initial warnings',DATA.initial_faults]];
+const cards=[['Duration',DATA.duration.toFixed(2)+' s'],['Snapshots',DATA.samples.toLocaleString()],['Motors',Object.keys(DATA.motors).length],['IMUs',Object.keys(DATA.imus).length],['Initial warnings',DATA.initial_faults]];
 document.getElementById('cards').innerHTML=cards.map(([k,v])=>`<div class="card"><strong>${esc(v)}</strong><span>${esc(k)}</span></div>`).join('');
 
 function fillSelect(element, values){ element.innerHTML=values.map(v=>`<option value="${esc(v)}">${esc(v.replaceAll('_',' '))}</option>`).join(''); }

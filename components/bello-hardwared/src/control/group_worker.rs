@@ -79,7 +79,11 @@ impl GroupWorker {
                         }))
                         .is_err();
                     if safety_panicked {
-                        panic_snapshot.write().state = crate::control::GroupState::Fault;
+                        let mut snapshot = panic_snapshot.write();
+                        snapshot.state = crate::control::GroupState::Fault;
+                        snapshot.cause = crate::control::GroupCause::Internal;
+                        snapshot.detail = "group panic handler also panicked".into();
+                        snapshot.updated = Some(std::time::Instant::now());
                         tracing::error!(
                             "group panic handler also panicked; safety state is unknown"
                         );

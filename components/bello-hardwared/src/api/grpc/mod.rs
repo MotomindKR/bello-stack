@@ -8,6 +8,7 @@ mod conversion;
 mod inventory;
 mod service;
 mod spec;
+mod state_frame;
 mod telemetry_stream;
 
 pub use service::HardwareGrpc;

@@ -189,6 +189,7 @@ serial reader thread
   -> timestamped byte chunks
   -> IMU worker line framing
   -> EBIMU parse, unit conversion, quaternion normalization
+  -> per-IMU latest sample
   -> one telemetry event per valid sample
 ```
 
@@ -203,11 +204,15 @@ and [`hardware/imu/ebimu.rs`](../components/bello-hardwared/src/hardware/imu/ebi
 
 Transports, motors, sensors, command policy, and groups publish timestamped
 domain events to one broadcaster. gRPC applies per-subscriber filters and
-reports subscriber-local lag as a health event. External consumers use the
-public `WatchTelemetry` RPC; the daemon does not own visualization or durable
-storage. Telemetry capacity is the daemon's shared ring-retention window, not a
-sampling rate or a request to average data. See
-[`api/grpc/telemetry_stream.rs`](../components/bello-hardwared/src/api/grpc/telemetry_stream.rs)
+reports subscriber-local lag as a health event. External diagnostic consumers
+use `WatchTelemetry`. Control-loop consumers use client-paced `GetStateFrame`
+requests, which sample the latest motor, IMU, and group caches into one complete
+response with per-sample timing without draining the event broadcaster. The
+daemon does not own visualization or durable storage. Telemetry capacity is the
+shared raw-event ring-retention window, not a state-frame queue or sampling
+rate. See
+[`api/grpc/telemetry_stream.rs`](../components/bello-hardwared/src/api/grpc/telemetry_stream.rs),
+[`api/grpc/state_frame.rs`](../components/bello-hardwared/src/api/grpc/state_frame.rs)
 and [`telemetry.rs`](../components/bello-hardwared/src/telemetry.rs).
 
 ## Shared device lifecycle
@@ -301,7 +306,7 @@ components/bello-hardware-client/
   src/telemetry.rs         filters and event stream
 
 components/bello-hardware-python/
-  src/bello_hardware/      blocking robot, control, and latest-state API
+  src/bello_hardware/      blocking robot, control, and complete-state API
   tests/                   gRPC behavior and vCAN smoke driver
 
 components/bello-visualizer/

@@ -6,6 +6,7 @@ package bello.hardware.v1;
 service HardwareService {
   rpc ListHardware(ListHardwareRequest) returns (ListHardwareResponse);
   rpc WatchTelemetry(WatchTelemetryRequest) returns (stream WatchTelemetryResponse);
+  rpc GetStateFrame(GetStateFrameRequest) returns (GetStateFrameResponse);
   rpc AcquireLease(AcquireLeaseRequest) returns (AcquireLeaseResponse);
   rpc RenewLease(RenewLeaseRequest) returns (RenewLeaseResponse);
   rpc ReleaseLease(ReleaseLeaseRequest) returns (ReleaseLeaseResponse);
@@ -355,4 +356,53 @@ message WatchTelemetryResponse {
     HealthTelemetry health = 5;
     CommandPolicyTelemetry command_policy = 6;
   }
+}
+
+message GetStateFrameRequest {
+  repeated string groups = 1;
+  repeated string imus = 2;
+}
+
+message StateMotor {
+  string group = 1;
+  string motor_name = 2;
+  double position = 3;
+  double velocity = 4;
+  double torque = 5;
+  double temperature = 6;
+  uint32 fault_bits = 7;
+  uint32 mode_status = 8;
+  uint64 sample_monotonic_ns = 9;
+  uint64 sample_age_ns = 10;
+}
+
+message StateImu {
+  string imu_name = 1;
+  Quaternion orientation = 2;
+  Vector3 angular_velocity = 3;
+  Vector3 linear_acceleration = 4;
+  uint64 device_timestamp_ms = 5;
+  uint64 sample_monotonic_ns = 6;
+  uint64 sample_age_ns = 7;
+}
+
+message StateGroup {
+  string group = 1;
+  GroupState state = 2;
+  uint64 command_count = 3;
+  uint64 control_tick = 4;
+  int64 jitter_us = 5;
+  string detail = 6;
+  GroupCause cause = 7;
+  uint64 sample_monotonic_ns = 8;
+  uint64 sample_age_ns = 9;
+}
+
+message GetStateFrameResponse {
+  uint64 captured_monotonic_ns = 1;
+  repeated StateMotor motors = 2;
+  repeated StateImu imus = 3;
+  repeated StateGroup groups = 4;
+  uint64 oldest_sample_age_ns = 5;
+  uint64 sample_span_ns = 6;
 }

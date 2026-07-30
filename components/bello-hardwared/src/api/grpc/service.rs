@@ -4,7 +4,7 @@ use std::time::Instant;
 use tokio::sync::watch;
 use tonic::{Request, Response, Status};
 
-use super::{command_stream, conversion, inventory, telemetry_stream};
+use super::{command_stream, conversion, inventory, state_frame, telemetry_stream};
 use crate::app::HardwareDaemon;
 use crate::control::{GroupQueueError, LifecycleAction, Transition};
 use crate::domain::{GroupName, ImuName};
@@ -47,6 +47,19 @@ impl HardwareService for HardwareGrpc {
             request,
             self.shutdown.clone(),
         )))
+    }
+
+    async fn get_state_frame(
+        &self,
+        request: Request<GetStateFrameRequest>,
+    ) -> Result<Response<GetStateFrameResponse>, Status> {
+        let request = request.into_inner();
+        self.validate_state_frame_selectors(&request)?;
+        state_frame::get(&self.daemon, &request)
+            .map(Response::new)
+            .ok_or_else(|| {
+                Status::failed_precondition("complete hardware state is not yet available")
+            })
     }
 
     async fn acquire_lease(
@@ -257,6 +270,32 @@ impl HardwareGrpc {
         }
         Ok(())
     }
+
+    fn validate_state_frame_selectors(&self, request: &GetStateFrameRequest) -> Result<(), Status> {
+        if has_duplicates(&request.groups) {
+            return Err(Status::invalid_argument(
+                "state frame group selectors must be unique",
+            ));
+        }
+        if has_duplicates(&request.imus) {
+            return Err(Status::invalid_argument(
+                "state frame IMU selectors must be unique",
+            ));
+        }
+        self.validate_telemetry_selectors(&WatchTelemetryRequest {
+            groups: request.groups.clone(),
+            include_motors: true,
+            include_imu: true,
+            include_health: false,
+            imus: request.imus.clone(),
+            include_command_policy_events: false,
+        })
+    }
+}
+
+fn has_duplicates(values: &[String]) -> bool {
+    let mut seen = std::collections::HashSet::with_capacity(values.len());
+    values.iter().any(|value| !seen.insert(value))
 }
 
 fn lease_status(error: LeaseError) -> Status {

@@ -17,11 +17,9 @@ from .errors import (
     ProtocolError,
     RobotCleanupError,
     RpcError,
-    StateUnavailableError,
-    WorkerShutdownError,
 )
+from .frames import RobotStateReader
 from .robot import Robot
-from .states import RobotStates
 from .tls import TlsCredentials
 from .types import (
     Bus,
@@ -32,15 +30,15 @@ from .types import (
     DeviceStatus,
     GroupCause,
     GroupState,
-    GroupStatus,
-    HealthStatus,
+    HardwareStateFrame,
     Imu,
-    ImuState,
     Motor,
     MotorLimits,
-    MotorState,
     Quaternion,
     SerialDevice,
+    StateFrameGroup,
+    StateFrameImu,
+    StateFrameMotor,
     Vector3,
 )
 
@@ -63,10 +61,8 @@ __all__ = [
     "DeviceStatus",
     "GroupCause",
     "GroupState",
-    "GroupStatus",
-    "HealthStatus",
+    "HardwareStateFrame",
     "Imu",
-    "ImuState",
     "InvalidSessionStateError",
     "InvalidTargetError",
     "Inventory",
@@ -75,16 +71,16 @@ __all__ = [
     "Motor",
     "MotorGroup",
     "MotorLimits",
-    "MotorState",
     "ProtocolError",
     "Quaternion",
     "Robot",
     "RobotCleanupError",
-    "RobotStates",
+    "RobotStateReader",
     "RpcError",
     "SerialDevice",
-    "StateUnavailableError",
+    "StateFrameGroup",
+    "StateFrameImu",
+    "StateFrameMotor",
     "TlsCredentials",
     "Vector3",
-    "WorkerShutdownError",
 ]

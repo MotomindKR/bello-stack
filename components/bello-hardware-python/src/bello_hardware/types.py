@@ -213,8 +213,9 @@ class Vector3:
 
 
 @dataclass(frozen=True, slots=True)
-class MotorState:
-    monotonic_ns: int
+class StateFrameMotor:
+    sample_monotonic_ns: int
+    sample_age_ns: int
     group: str
     motor: str
     coordinate: str
@@ -224,23 +225,31 @@ class MotorState:
     temperature: float
     fault_bits: int
     mode_status: int
-    feedback_age_ms: int
+
+    @property
+    def feedback_age_ms(self) -> int:
+        return self.sample_age_ns // 1_000_000
 
 
 @dataclass(frozen=True, slots=True)
-class ImuState:
-    monotonic_ns: int
+class StateFrameImu:
+    sample_monotonic_ns: int
+    sample_age_ns: int
     imu: str
     orientation: Quaternion
     angular_velocity: Vector3
     linear_acceleration: Vector3
     device_timestamp_ms: int
-    sample_age_ms: int
+
+    @property
+    def sample_age_ms(self) -> int:
+        return self.sample_age_ns // 1_000_000
 
 
 @dataclass(frozen=True, slots=True)
-class GroupStatus:
-    monotonic_ns: int
+class StateFrameGroup:
+    sample_monotonic_ns: int
+    sample_age_ns: int
     group: str
     state: GroupState
     detail: str
@@ -251,8 +260,12 @@ class GroupStatus:
 
 
 @dataclass(frozen=True, slots=True)
-class HealthStatus:
-    monotonic_ns: int
-    component: str
-    status: DeviceStatus | None
-    dropped_events: int
+class HardwareStateFrame:
+    captured_monotonic_ns: int
+    received_monotonic_ns: int
+    round_trip_ns: int
+    motors: tuple[StateFrameMotor, ...]
+    imus: tuple[StateFrameImu, ...]
+    groups: tuple[StateFrameGroup, ...]
+    oldest_sample_age_ns: int
+    sample_span_ns: int

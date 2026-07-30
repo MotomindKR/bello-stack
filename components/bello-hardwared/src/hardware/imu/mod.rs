@@ -4,6 +4,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
+use parking_lot::RwLock;
 use tracing::{info, warn};
 
 use crate::domain::{ImuName, ImuTelemetry, TelemetryPayload};
@@ -35,6 +36,13 @@ pub struct ImuSample {
 pub struct ImuHandle {
     pub name: ImuName,
     pub lifecycle: DeviceLifecycle,
+    latest: Arc<RwLock<Option<ImuSample>>>,
+}
+
+impl ImuHandle {
+    pub(crate) fn latest(&self) -> Option<ImuSample> {
+        self.latest.read().clone()
+    }
 }
 
 pub(crate) struct ImuWorker {
@@ -59,6 +67,7 @@ impl ImuWorker {
         let handle = ImuHandle {
             name: config.name.clone(),
             lifecycle,
+            latest: Arc::new(RwLock::new(None)),
         };
         let worker_handle = handle.clone();
         let worker_stop = stop.clone();
@@ -284,6 +293,7 @@ fn report_parse_error(state: &ImuHandle, config: &ImuSpec, error: &anyhow::Error
 }
 
 fn publish(state: &ImuHandle, telemetry: &Telemetry, sample: ImuSample) {
+    *state.latest.write() = Some(sample.clone());
     telemetry.send(TelemetryPayload::Imu(ImuTelemetry {
         imu: state.name.clone(),
         orientation_xyzw: sample.orientation_xyzw,

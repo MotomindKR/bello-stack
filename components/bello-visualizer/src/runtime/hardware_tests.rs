@@ -135,6 +135,13 @@ impl HardwareService for FakeHardware {
         Ok(Response::new(Box::pin(output)))
     }
 
+    async fn get_state_frame(
+        &self,
+        _: Request<proto::GetStateFrameRequest>,
+    ) -> Result<Response<proto::GetStateFrameResponse>, Status> {
+        Err(Status::unimplemented("not used by this fake"))
+    }
+
     async fn acquire_lease(
         &self,
         request: Request<proto::AcquireLeaseRequest>,
