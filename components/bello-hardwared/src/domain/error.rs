@@ -12,8 +12,6 @@ pub enum SafetyViolation {
     VelocityLimit,
     #[error("torque outside safe limit")]
     TorqueLimit,
-    #[error("gain outside safe limit")]
-    GainLimit,
     #[error("position step exceeds limit")]
     PositionStep,
 }

@@ -322,62 +322,30 @@ mod tests {
     }
 
     #[test]
-    fn direct_envelope_checks_position_velocity_full_impedance_and_feedback() {
+    fn direct_envelope_checks_position_and_velocity() {
         let topology = canonical_topology();
         let lower = topology.groups.get(&GroupName::from("lower_body")).unwrap();
         let motor = MotorName::from("left_hip_pitch");
-        let feedback = neutral_feedback(lower);
         let mut commands = neutral_commands(lower);
 
         commands.get_mut(&motor).unwrap().position = 2.0;
-        let position = lower
-            .mechanical
-            .validate_commands(&commands, &feedback)
-            .unwrap_err();
+        let position = lower.mechanical.validate_targets(&commands).unwrap_err();
         assert_eq!(position.violation, SafetyViolation::PositionLimit);
         assert!(position.detail.contains("left_hip_pitch_joint"));
 
         commands.get_mut(&motor).unwrap().position = 0.0;
         commands.get_mut(&motor).unwrap().velocity = 31.0;
-        let velocity = lower
-            .mechanical
-            .validate_commands(&commands, &feedback)
-            .unwrap_err();
+        let velocity = lower.mechanical.validate_targets(&commands).unwrap_err();
         assert_eq!(velocity.violation, SafetyViolation::VelocityLimit);
         assert!(velocity.detail.contains("left_hip_pitch_joint"));
 
-        commands.get_mut(&motor).unwrap().velocity = 0.0;
-        commands.get_mut(&motor).unwrap().position = 1.3;
-        commands.get_mut(&motor).unwrap().kp = 100.0;
-        let torque = lower
-            .mechanical
-            .validate_commands(&commands, &feedback)
-            .unwrap_err();
-        assert_eq!(torque.violation, SafetyViolation::TorqueLimit);
-        assert!(torque.detail.contains("impedance torque request"));
-        assert!(torque.computed_torque_warning_allowed());
-
-        commands.insert(motor.clone(), ImpedanceCommand::default());
-        let mut incomplete_feedback = feedback;
-        incomplete_feedback.remove(&motor);
-        let missing = lower
-            .mechanical
-            .validate_commands(&commands, &incomplete_feedback)
-            .unwrap_err();
-        assert_eq!(missing.violation, SafetyViolation::TorqueLimit);
-        assert!(missing.detail.contains("without fresh motor feedback"));
-        assert!(!missing.computed_torque_warning_allowed());
-
         commands.remove(&motor);
-        let incomplete = lower
-            .mechanical
-            .validate_commands(&commands, &incomplete_feedback)
-            .unwrap_err();
+        let incomplete = lower.mechanical.validate_targets(&commands).unwrap_err();
         assert!(incomplete.detail.contains("incomplete mechanical command"));
     }
 
     #[test]
-    fn differential_envelope_checks_position_velocity_and_full_impedance() {
+    fn differential_envelope_checks_position_and_velocity() {
         let topology = canonical_topology();
         let lower = topology.groups.get(&GroupName::from("lower_body")).unwrap();
         let mut feedback = neutral_feedback(lower);
@@ -404,13 +372,9 @@ mod tests {
                 .contains("feedback tolerance 0.200000")
         );
 
-        feedback = neutral_feedback(lower);
         commands.get_mut(&first).unwrap().position = 0.2;
         commands.get_mut(&second).unwrap().position = 0.2;
-        let position = lower
-            .mechanical
-            .validate_commands(&commands, &feedback)
-            .unwrap_err();
+        let position = lower.mechanical.validate_targets(&commands).unwrap_err();
         assert_eq!(position.violation, SafetyViolation::PositionLimit);
         assert!(position.detail.contains("left_ankle_roll_joint"));
 
@@ -418,30 +382,13 @@ mod tests {
         commands.get_mut(&second).unwrap().position = 0.0;
         commands.get_mut(&first).unwrap().velocity = 31.0;
         commands.get_mut(&second).unwrap().velocity = 31.0;
-        let velocity = lower
-            .mechanical
-            .validate_commands(&commands, &feedback)
-            .unwrap_err();
+        let velocity = lower.mechanical.validate_targets(&commands).unwrap_err();
         assert_eq!(velocity.violation, SafetyViolation::VelocityLimit);
         assert!(velocity.detail.contains("left_ankle_roll_joint"));
-
-        for motor in [&first, &second] {
-            let command = commands.get_mut(motor).unwrap();
-            command.position = 0.08;
-            command.velocity = 0.0;
-            command.kp = 300.0;
-        }
-        let torque = lower
-            .mechanical
-            .validate_commands(&commands, &feedback)
-            .unwrap_err();
-        assert_eq!(torque.violation, SafetyViolation::TorqueLimit);
-        assert!(torque.detail.contains("left_ankle_roll_joint"));
-        assert!(torque.computed_torque_warning_allowed());
     }
 
     #[test]
-    fn damping_is_bounded_for_direct_and_differential_model_velocity_ranges() {
+    fn damping_uses_configured_gains_without_scaling() {
         let topology = canonical_topology();
 
         let wrist = topology.groups.get(&GroupName::from("wrist_yaw")).unwrap();
@@ -449,15 +396,6 @@ mod tests {
         let wrist_feedback = neutral_feedback(wrist);
         let wrist_damping = wrist.mechanical.damping_commands(&wrist_feedback).unwrap();
         assert!((wrist_damping[&left_wrist].kd - 0.11).abs() < 1.0e-12);
-        let mut maximum_wrist_feedback = wrist_feedback;
-        maximum_wrist_feedback
-            .get_mut(&left_wrist)
-            .unwrap()
-            .velocity = 50.0;
-        wrist
-            .mechanical
-            .validate_commands(&wrist_damping, &maximum_wrist_feedback)
-            .unwrap();
 
         let lower = topology.groups.get(&GroupName::from("lower_body")).unwrap();
         let first = MotorName::from("left_ankle_1");
@@ -468,13 +406,6 @@ mod tests {
         assert!((ankle_damping[&first].kd - 0.4).abs() < 1.0e-12);
         assert!((ankle_damping[&second].kd - 0.4).abs() < 1.0e-12);
         assert!((ankle_damping[&hip].kd - 8.0).abs() < 1.0e-12);
-        let mut maximum_ankle_feedback = lower_feedback.clone();
-        maximum_ankle_feedback.get_mut(&first).unwrap().velocity = 50.0;
-        maximum_ankle_feedback.get_mut(&second).unwrap().velocity = 50.0;
-        lower
-            .mechanical
-            .validate_commands(&ankle_damping, &maximum_ankle_feedback)
-            .unwrap();
 
         let mut missing = lower_feedback.clone();
         missing.remove(&first);
@@ -482,12 +413,12 @@ mod tests {
         assert!(error.detail.contains("without fresh motor feedback"));
 
         let mut nonfinite = lower_feedback;
-        nonfinite.get_mut(&first).unwrap().velocity = f64::NAN;
+        nonfinite.get_mut(&first).unwrap().position = f64::NAN;
         let error = lower.mechanical.damping_commands(&nonfinite).unwrap_err();
         assert_eq!(
             error.violation,
             SafetyViolation::NonFinite {
-                field: "feedback velocity"
+                field: "feedback position"
             }
         );
     }

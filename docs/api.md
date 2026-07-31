@@ -110,7 +110,7 @@ serialized in
    before expiry, including while waiting for lifecycle RPCs: enable and
    recovery can block for their configured retry/timeout windows.
 5. Call `EnableGroup`. The server configures every actuator and waits for fresh,
-   healthy feedback, applies bounded damping, and returns
+   healthy feedback, applies configured damping, and returns
    `GROUP_STATE_DAMPED`.
 6. Call `StartControl` with `valid_for_ms` and one complete `MotorCommand` for
    every motor. The server atomically validates and installs this initial

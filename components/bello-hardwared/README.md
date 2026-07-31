@@ -31,8 +31,9 @@ selects groups from
 and maps that description's logical buses and serial devices to host names.
 Stable bitrate, host ID, sensor rate, and timeout settings remain in the
 description. Its referenced canonical URDF supplies direct and differential
-joint position, velocity, and effort limits enforced by the daemon. The daemon
-does not create CAN links or change their bitrate.
+joint position and velocity limits plus scalar feedforward-torque caps derived
+from effort limits. The daemon does not create CAN links or change their
+bitrate.
 
 That physical configuration exposes `lower_body` and `upper_body` for normal
 control, plus an independent `wrist_yaw` group containing `left_arm_7` and

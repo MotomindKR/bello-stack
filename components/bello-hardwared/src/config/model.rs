@@ -225,8 +225,6 @@ pub struct MotorLimits {
     pub position_max: f64,
     pub velocity_abs: Option<f64>,
     pub torque_abs: Option<f64>,
-    pub kp_max: Option<f64>,
-    pub kd_max: Option<f64>,
 }
 impl Default for MotorLimits {
     fn default() -> Self {
@@ -235,8 +233,6 @@ impl Default for MotorLimits {
             position_max: CONTROL_POSITION_MAX,
             velocity_abs: None,
             torque_abs: None,
-            kp_max: None,
-            kd_max: None,
         }
     }
 }
@@ -276,7 +272,6 @@ pub struct MotorCommandPolicy {
     pub maximum_position_step: f64,
     pub limit: CommandBehavior,
     pub position_step: CommandBehavior,
-    pub computed_torque: CommandBehavior,
 }
 
 impl Default for MotorCommandPolicy {
@@ -285,7 +280,6 @@ impl Default for MotorCommandPolicy {
             maximum_position_step: 0.5,
             limit: CommandBehavior::Reject,
             position_step: CommandBehavior::Fault,
-            computed_torque: CommandBehavior::Reject,
         }
     }
 }
@@ -300,7 +294,6 @@ pub enum CommandBehavior {
     Clamp,
     Reject,
     Fault,
-    Warn,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]

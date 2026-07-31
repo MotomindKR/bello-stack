@@ -14,7 +14,6 @@ struct JointEnvelope {
     lower: f64,
     upper: f64,
     velocity: f64,
-    effort: f64,
 }
 
 impl JointEnvelope {
@@ -38,7 +37,6 @@ impl JointEnvelope {
             lower: limits.lower,
             upper: limits.upper,
             velocity: limits.velocity,
-            effort: limits.effort,
         }
     }
 }
@@ -63,22 +61,13 @@ pub(crate) struct MechanicalViolation {
     pub(crate) affected_motors: Vec<MotorName>,
     pub(crate) violation: SafetyViolation,
     pub(crate) detail: String,
-    computed_torque_warning_allowed: bool,
-}
-
-impl MechanicalViolation {
-    pub(crate) fn computed_torque_warning_allowed(&self) -> bool {
-        self.computed_torque_warning_allowed
-    }
 }
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct MechanicalEnvelope {
     direct: Vec<DirectEnvelope>,
     differentials: Vec<DifferentialEnvelope>,
-    motor_torque_limits: HashMap<MotorName, (f64, f64)>,
     motor_damping_kd: HashMap<MotorName, f64>,
-    motor_feedback_velocity_limits: HashMap<MotorName, (f64, f64)>,
 }
 
 impl MechanicalEnvelope {
@@ -150,48 +139,27 @@ impl MechanicalEnvelope {
         Ok(Self {
             direct,
             differentials,
-            motor_torque_limits: group_motors
-                .iter()
-                .map(|name| {
-                    let limits = &motors[name].limits;
-                    (name.clone(), (limits.torque_min, limits.torque_max))
-                })
-                .collect(),
             motor_damping_kd: group_motors
                 .iter()
                 .map(|name| (name.clone(), motors[name].fault_damping_kd))
                 .collect(),
-            motor_feedback_velocity_limits: group_motors
-                .iter()
-                .map(|name| {
-                    let motor = &motors[name];
-                    let limits = if motor.params.direction == 1 {
-                        (motor.params.velocity_min, motor.params.velocity_max)
-                    } else {
-                        (-motor.params.velocity_max, -motor.params.velocity_min)
-                    };
-                    (name.clone(), limits)
-                })
-                .collect(),
         })
     }
 
-    pub(crate) fn validate_commands(
+    pub(crate) fn validate_targets(
         &self,
         commands: &HashMap<MotorName, ImpedanceCommand>,
-        feedback: &HashMap<MotorName, Feedback>,
     ) -> Result<(), MechanicalViolation> {
         if let Some(motor) = self
-            .motor_torque_limits
+            .motor_damping_kd
             .keys()
             .find(|motor| !commands.contains_key(*motor))
         {
             return Err(MechanicalViolation {
                 motor: motor.clone(),
                 affected_motors: vec![motor.clone()],
-                violation: SafetyViolation::TorqueLimit,
+                violation: SafetyViolation::PositionLimit,
                 detail: "cannot validate an incomplete mechanical command".into(),
-                computed_torque_warning_allowed: false,
             });
         }
         for direct in &self.direct {
@@ -202,7 +170,6 @@ impl MechanicalEnvelope {
                     affected_motors: vec![direct.motor.clone()],
                     violation,
                     detail,
-                    computed_torque_warning_allowed: false,
                 },
             )?;
         }
@@ -237,76 +204,26 @@ impl MechanicalEnvelope {
                             "differential {:?}: {detail}",
                             differential.transmission.name
                         ),
-                        computed_torque_warning_allowed: false,
                     },
                 )?;
             }
         }
-
-        let requested_torques = self
-            .motor_torque_limits
-            .keys()
-            .map(|motor| {
-                let command = commands.get(motor).ok_or_else(|| MechanicalViolation {
-                    motor: motor.clone(),
-                    affected_motors: vec![motor.clone()],
-                    violation: SafetyViolation::TorqueLimit,
-                    detail: "cannot validate impedance torque without a complete command".into(),
-                    computed_torque_warning_allowed: false,
-                })?;
-                let measured = feedback.get(motor).ok_or_else(|| MechanicalViolation {
-                    motor: motor.clone(),
-                    affected_motors: vec![motor.clone()],
-                    violation: SafetyViolation::TorqueLimit,
-                    detail: "cannot validate impedance torque without fresh motor feedback".into(),
-                    computed_torque_warning_allowed: false,
-                })?;
-                validate_finite_feedback(motor, measured)?;
-                let requested = command.torque
-                    + command.kp * (command.position - measured.position)
-                    + command.kd * (command.velocity - measured.velocity);
-                if !requested.is_finite() {
-                    return Err(nonfinite_feedback_violation(
-                        motor,
-                        "computed impedance torque",
-                    ));
-                }
-                Ok((motor.clone(), requested))
-            })
-            .collect::<Result<HashMap<_, _>, _>>()?;
-        self.validate_torque_envelope(&requested_torques)
+        Ok(())
     }
 
     pub(crate) fn damping_commands(
         &self,
         feedback: &HashMap<MotorName, Feedback>,
     ) -> Result<HashMap<MotorName, ImpedanceCommand>, MechanicalViolation> {
-        let mut requested_torques = HashMap::with_capacity(self.motor_torque_limits.len());
-        for motor in self.motor_torque_limits.keys() {
+        for motor in self.motor_damping_kd.keys() {
             let measured = feedback.get(motor).ok_or_else(|| MechanicalViolation {
                 motor: motor.clone(),
                 affected_motors: vec![motor.clone()],
-                violation: SafetyViolation::TorqueLimit,
-                detail: "cannot construct safe damping without fresh motor feedback".into(),
-                computed_torque_warning_allowed: false,
+                violation: SafetyViolation::PositionLimit,
+                detail: "cannot construct damping without fresh motor feedback".into(),
             })?;
-            validate_finite_feedback(motor, measured)?;
-            let requested = -self.motor_damping_kd[motor] * measured.velocity;
-            if !requested.is_finite() {
-                return Err(nonfinite_feedback_violation(
-                    motor,
-                    "computed damping torque",
-                ));
-            }
-            requested_torques.insert(motor.clone(), requested);
+            validate_finite_feedback_position(motor, measured)?;
         }
-
-        let scale = self.damping_scale()?;
-        let scaled_torques = requested_torques
-            .iter()
-            .map(|(motor, torque)| (motor.clone(), torque * scale))
-            .collect();
-        self.validate_torque_envelope(&scaled_torques)?;
 
         Ok(self
             .motor_damping_kd
@@ -317,145 +234,12 @@ impl MechanicalEnvelope {
                     motor.clone(),
                     ImpedanceCommand {
                         position: measured.position,
-                        kd: kd * scale,
+                        kd: *kd,
                         ..Default::default()
                     },
                 )
             })
             .collect())
-    }
-
-    fn validate_torque_envelope(
-        &self,
-        requested_torques: &HashMap<MotorName, f64>,
-    ) -> Result<(), MechanicalViolation> {
-        for (motor, limits) in &self.motor_torque_limits {
-            let requested = requested_torques[motor];
-            if !(limits.0..=limits.1).contains(&requested) {
-                return Err(MechanicalViolation {
-                    motor: motor.clone(),
-                    affected_motors: vec![motor.clone()],
-                    violation: SafetyViolation::TorqueLimit,
-                    detail: format!(
-                        "impedance torque request {requested:.4} outside motor limit [{:.4}, {:.4}]",
-                        limits.0, limits.1
-                    ),
-                    computed_torque_warning_allowed: true,
-                });
-            }
-        }
-        for direct in &self.direct {
-            let torque = requested_torques[&direct.motor];
-            if torque.abs() > direct.joint.effort {
-                return Err(MechanicalViolation {
-                    motor: direct.motor.clone(),
-                    affected_motors: vec![direct.motor.clone()],
-                    violation: SafetyViolation::TorqueLimit,
-                    detail: format!(
-                        "joint {:?} impedance torque request {torque:.4} exceeds URDF effort limit {:.4}",
-                        direct.joint.name, direct.joint.effort
-                    ),
-                    computed_torque_warning_allowed: true,
-                });
-            }
-        }
-        for differential in &self.differentials {
-            let coordinates = differential
-                .transmission
-                .coordinates
-                .iter()
-                .zip(&differential.motors)
-                .map(|(coordinate, motor)| (coordinate.clone(), requested_torques[motor]))
-                .collect::<BTreeMap<_, _>>();
-            let joints = differential
-                .transmission
-                .resolve_torques(&coordinates)
-                .expect("complete validated differential torques");
-            for ((_, torque), joint) in joints.iter().zip(&differential.joints) {
-                if torque.abs() > joint.effort {
-                    return Err(MechanicalViolation {
-                        motor: differential.motors[0].clone(),
-                        affected_motors: differential.motors.to_vec(),
-                        violation: SafetyViolation::TorqueLimit,
-                        detail: format!(
-                            "differential {:?} joint {:?} impedance torque request {torque:.4} exceeds URDF effort limit {:.4}",
-                            differential.transmission.name, joint.name, joint.effort
-                        ),
-                        computed_torque_warning_allowed: true,
-                    });
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn damping_scale(&self) -> Result<f64, MechanicalViolation> {
-        let mut scale = 1.0_f64;
-        for (motor, (minimum, maximum)) in &self.motor_torque_limits {
-            if *minimum > 0.0 || *maximum < 0.0 {
-                return Err(MechanicalViolation {
-                    motor: motor.clone(),
-                    affected_motors: vec![motor.clone()],
-                    violation: SafetyViolation::TorqueLimit,
-                    detail: format!(
-                        "motor damping requires a torque envelope containing zero, got [{minimum:.4}, {maximum:.4}]"
-                    ),
-                    computed_torque_warning_allowed: false,
-                });
-            }
-            let (velocity_min, velocity_max) = self.motor_feedback_velocity_limits[motor];
-            for torque in [
-                -self.motor_damping_kd[motor] * velocity_min,
-                -self.motor_damping_kd[motor] * velocity_max,
-            ] {
-                scale = scale.min(scale_for_interval(torque, *minimum, *maximum));
-            }
-        }
-        for direct in &self.direct {
-            let (velocity_min, velocity_max) = self.motor_feedback_velocity_limits[&direct.motor];
-            let kd = self.motor_damping_kd[&direct.motor];
-            scale = scale.min(scale_for_effort(
-                (-kd * velocity_min).abs().max((-kd * velocity_max).abs()),
-                direct.joint.effort,
-            ));
-        }
-        for differential in &self.differentials {
-            let mut maximum_joint_torque = [0.0_f64; 2];
-            for corner in 0..4 {
-                let coordinates = differential
-                    .transmission
-                    .coordinates
-                    .iter()
-                    .zip(&differential.motors)
-                    .enumerate()
-                    .map(|(index, (coordinate, motor))| {
-                        let limits = self.motor_feedback_velocity_limits[motor];
-                        let velocity = if corner & (1 << index) == 0 {
-                            limits.0
-                        } else {
-                            limits.1
-                        };
-                        (coordinate.clone(), -self.motor_damping_kd[motor] * velocity)
-                    })
-                    .collect::<BTreeMap<_, _>>();
-                for (index, (_, torque)) in differential
-                    .transmission
-                    .resolve_torques(&coordinates)
-                    .expect("complete validated differential torques")
-                    .iter()
-                    .enumerate()
-                {
-                    maximum_joint_torque[index] = maximum_joint_torque[index].max(torque.abs());
-                }
-            }
-            for (torque, joint) in maximum_joint_torque.iter().zip(&differential.joints) {
-                scale = scale.min(scale_for_effort(*torque, joint.effort));
-            }
-        }
-        if scale < 1.0 {
-            scale *= 1.0 - 16.0 * f64::EPSILON;
-        }
-        Ok(scale)
     }
 
     pub(crate) fn validate_feedback_positions(
@@ -508,7 +292,6 @@ impl MechanicalEnvelope {
                             joint.upper,
                             tolerance
                         ),
-                        computed_torque_warning_allowed: false,
                     });
                 }
             }
@@ -522,17 +305,12 @@ impl MechanicalEnvelope {
     }
 }
 
-fn validate_finite_feedback(
+fn validate_finite_feedback_position(
     motor: &MotorName,
     feedback: &Feedback,
 ) -> Result<(), MechanicalViolation> {
-    for (field, value) in [
-        ("feedback position", feedback.position),
-        ("feedback velocity", feedback.velocity),
-    ] {
-        if !value.is_finite() {
-            return Err(nonfinite_feedback_violation(motor, field));
-        }
+    if !feedback.position.is_finite() {
+        return Err(nonfinite_feedback_violation(motor, "feedback position"));
     }
     Ok(())
 }
@@ -542,26 +320,7 @@ fn nonfinite_feedback_violation(motor: &MotorName, field: &'static str) -> Mecha
         motor: motor.clone(),
         affected_motors: vec![motor.clone()],
         violation: SafetyViolation::NonFinite { field },
-        detail: format!("cannot validate mechanical torque: {field} is not finite"),
-        computed_torque_warning_allowed: false,
-    }
-}
-
-fn scale_for_interval(value: f64, minimum: f64, maximum: f64) -> f64 {
-    if value > maximum {
-        maximum / value
-    } else if value < minimum {
-        minimum / value
-    } else {
-        1.0
-    }
-}
-
-fn scale_for_effort(value: f64, effort: f64) -> f64 {
-    if value.abs() > effort {
-        effort / value.abs()
-    } else {
-        1.0
+        detail: format!("{field} is not finite"),
     }
 }
 
@@ -643,4 +402,29 @@ fn validate_joint_target(
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn damping_preserves_configured_gain_above_protocol_range() {
+        let motor = MotorName::from("motor");
+        let envelope = MechanicalEnvelope {
+            motor_damping_kd: HashMap::from([(motor.clone(), 200.0)]),
+            ..MechanicalEnvelope::default()
+        };
+        let feedback = HashMap::from([(
+            motor.clone(),
+            Feedback {
+                position: 0.5,
+                ..Feedback::default()
+            },
+        )]);
+
+        let commands = envelope.damping_commands(&feedback).unwrap();
+        assert_eq!(commands[&motor].position, 0.5);
+        assert_eq!(commands[&motor].kd, 200.0);
+    }
 }
