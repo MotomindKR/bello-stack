@@ -395,7 +395,7 @@ mod tests {
         let left_wrist = MotorName::from("left_arm_7");
         let wrist_feedback = neutral_feedback(wrist);
         let wrist_damping = wrist.mechanical.damping_commands(&wrist_feedback).unwrap();
-        assert!((wrist_damping[&left_wrist].kd - 0.11).abs() < 1.0e-12);
+        assert!((wrist_damping[&left_wrist].kd - 0.22).abs() < 1.0e-12);
 
         let lower = topology.groups.get(&GroupName::from("lower_body")).unwrap();
         let first = MotorName::from("left_ankle_1");
@@ -403,9 +403,9 @@ mod tests {
         let hip = MotorName::from("left_hip_pitch");
         let lower_feedback = neutral_feedback(lower);
         let ankle_damping = lower.mechanical.damping_commands(&lower_feedback).unwrap();
-        assert!((ankle_damping[&first].kd - 0.4).abs() < 1.0e-12);
-        assert!((ankle_damping[&second].kd - 0.4).abs() < 1.0e-12);
-        assert!((ankle_damping[&hip].kd - 8.0).abs() < 1.0e-12);
+        assert!((ankle_damping[&first].kd - 0.8).abs() < 1.0e-12);
+        assert!((ankle_damping[&second].kd - 0.8).abs() < 1.0e-12);
+        assert!((ankle_damping[&hip].kd - 16.0).abs() < 1.0e-12);
 
         let mut missing = lower_feedback.clone();
         missing.remove(&first);
