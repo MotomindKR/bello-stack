@@ -245,7 +245,6 @@ motors:
       maximum_position_step: 0.5
       limit: clamp
       position_step: fault
-      computed_torque: reject
     fault_damping_kd: 2.0
 ```
 
@@ -254,13 +253,14 @@ motors:
 ID cannot equal that bus's `host_id`. `direction` is `1` or `-1`.
 
 The selected Robstride `model` supplies protocol velocity, torque, and gain
-caps. The URDF supplies the robot-coordinate position, velocity, and effort
-envelope. The daemon intersects those sources, and optional `limits` may only
-narrow the result. Position command limits must be ordered and remain within
-the Type-1 protocol position span. The configured safe feedback range must
-contain the command position range; its effective range is also narrowed to
-the URDF coordinate envelope. Inventory reports these effective command
-limits, not the raw protocol span.
+encoding ranges. The URDF supplies the robot-coordinate position, velocity,
+and effort envelope. Hardwared intersects the position, velocity, and scalar
+feedforward-torque sources, and optional `limits` may only narrow those
+results. Position command limits must be ordered and remain within the Type-1
+protocol position span. The configured safe feedback range must contain the
+command position range; its effective range is also narrowed to the URDF
+coordinate envelope. Inventory reports the effective position, velocity, and
+feedforward-torque limits plus the model's gain encoding ranges.
 
 `feedback_position_tolerance` is in radians and expands only the feedback
 position fault boundary; it does not expand accepted command targets. It must
@@ -284,17 +284,13 @@ motor must stay at or below `temperature_recovery_c` continuously for
 fault remains latched until explicit recovery.
 
 Scalar `limit` and `position_step` policy behavior values are `clamp`, `reject`,
-and `fault`. `computed_torque` accepts `warn`, `reject`, or `fault`; `warn`
-transmits the original command and publishes rate-limited warning telemetry
-when a finite, fully evaluated impedance torque exceeds a motor or URDF effort
-limit. It does not bypass missing or non-finite feedback, position or velocity
-limits, scalar command limits, or position-step checks. Bello's maintained
-hardware description selects `computed_torque: warn`.
+and `fault`. Scalar limits apply to position, velocity, and feedforward torque.
+Finite `kp` and `kd` values are passed through without a hardwared gain guard;
+the Robstride Type-1 encoder saturates them to the model's representable range.
 
-The fault damping gain must be positive and no greater than the effective motor
-`kd` limit. At runtime, all gains in a group are scaled down together when
-needed to keep persistent damping torque within the motor and URDF mechanical
-envelope over the full model feedback-velocity range.
+The fault damping gain must be finite and positive. Hardwared sends the
+configured value without torque-envelope evaluation or group-wide scaling; the
+Robstride Type-1 encoder applies only its physical gain encoding range.
 `maximum_position_step` compares the first target of a lease generation
 with fresh measured feedback and subsequent targets with the previously
 accepted target. Bello's maintained hardware description sets this guard to
@@ -305,13 +301,10 @@ rather than duplicated here.
 Direct joints use their URDF limits directly. Differential actuator
 coordinates receive conservative independent ranges for inventory and scalar
 admission, then every complete group command is transformed into joint space
-and checked against the exact coupled position, velocity, and effort limits.
-The effort check includes the requested impedance torque
-`tau_ff + kp * position_error + kd * velocity_error`. Coupled or
-impedance-derived violations cannot be component-wise clamped because
-independent clamping does not preserve a differential request. They follow the
-affected motors' `computed_torque` behavior instead. The same check runs before
-every retained command is transmitted.
+and checked against the exact coupled position and velocity limits. Hardwared
+does not compute impedance-derived torque or enforce a coupled differential
+effort envelope. Feedforward torque remains subject to each actuator's scalar
+clamp.
 
 ### Hardware-description `motor_groups`
 

@@ -4,7 +4,7 @@ use robstride_protocol::{
     MotorParams, model_limits,
 };
 
-use crate::config::{CommandBehavior, MotorCommandPolicy, MotorConfig, MotorHealth};
+use crate::config::{MotorCommandPolicy, MotorConfig, MotorHealth};
 use crate::domain::{BusName, MotorAddress, MotorName};
 
 #[derive(Clone, Debug)]
@@ -66,7 +66,7 @@ impl TryFrom<&MotorConfig> for MotorSpec {
         let params = MotorParams::for_model(&config.model, config.direction)
             .expect("validated Robstride model and direction");
         let limits = command_limits(config, model);
-        validate_fault_damping(config, limits.kd_max)?;
+        validate_fault_damping(config)?;
         Ok(Self {
             name: MotorName::from(config.name.as_str()),
             coordinate: config.coordinate.clone(),
@@ -114,9 +114,9 @@ fn command_limits(config: &MotorConfig, model: ModelLimits) -> MotorCommandLimit
         torque_min,
         torque_max,
         kp_min: model.kp_min,
-        kp_max: config.limits.kp_max.unwrap_or(model.kp_max),
+        kp_max: model.kp_max,
         kd_min: model.kd_min,
-        kd_max: config.limits.kd_max.unwrap_or(model.kd_max),
+        kd_max: model.kd_max,
     }
 }
 
@@ -138,15 +138,11 @@ fn validate_limits(config: &MotorConfig, model: ModelLimits) -> Result<()> {
     {
         bail!("motors.{}.limits.position range is invalid", config.name);
     }
-    for (field, value, allow_zero) in [
-        ("velocity_abs", limits.velocity_abs, false),
-        ("torque_abs", limits.torque_abs, false),
-        ("kp_max", limits.kp_max, true),
-        ("kd_max", limits.kd_max, true),
+    for (field, value) in [
+        ("velocity_abs", limits.velocity_abs),
+        ("torque_abs", limits.torque_abs),
     ] {
-        if value
-            .is_some_and(|value| !value.is_finite() || value < 0.0 || (!allow_zero && value == 0.0))
-        {
+        if value.is_some_and(|value| !value.is_finite() || value <= 0.0) {
             bail!("motors.{}.limits.{field} is invalid", config.name);
         }
     }
@@ -169,20 +165,6 @@ fn validate_limits(config: &MotorConfig, model: ModelLimits) -> Result<()> {
         {
             bail!(
                 "motors.{}.limits.{field} {configured} exceeds the maximum absolute {} model capability [{minimum}, {maximum}]",
-                config.name,
-                config.model
-            );
-        }
-    }
-    for (field, configured, maximum) in [
-        ("kp_max", limits.kp_max, model.kp_max),
-        ("kd_max", limits.kd_max, model.kd_max),
-    ] {
-        if let Some(configured) = configured
-            && configured > maximum
-        {
-            bail!(
-                "motors.{}.limits.{field} {configured} exceeds {} model limit {maximum}",
                 config.name,
                 config.model
             );
@@ -231,25 +213,13 @@ fn validate_command_policy(config: &MotorConfig) -> Result<()> {
             config.name,
         );
     }
-    if policy.limit == CommandBehavior::Warn
-        || policy.position_step == CommandBehavior::Warn
-        || policy.computed_torque == CommandBehavior::Clamp
-    {
-        bail!(
-            "motors.{}.command_policy uses a behavior unsupported by that check",
-            config.name,
-        );
-    }
     Ok(())
 }
 
-fn validate_fault_damping(config: &MotorConfig, maximum: f64) -> Result<()> {
-    if !config.fault_damping_kd.is_finite()
-        || config.fault_damping_kd <= 0.0
-        || config.fault_damping_kd > maximum
-    {
+fn validate_fault_damping(config: &MotorConfig) -> Result<()> {
+    if !config.fault_damping_kd.is_finite() || config.fault_damping_kd <= 0.0 {
         bail!(
-            "motors.{}.fault_damping_kd must be positive and within the motor gain range",
+            "motors.{}.fault_damping_kd must be finite and positive",
             config.name
         );
     }
@@ -345,38 +315,28 @@ mod tests {
     }
 
     #[test]
-    fn accepts_warning_only_computed_torque_policy() {
+    fn accepts_damping_gain_above_protocol_range() {
         let config: MotorConfig = serde_yaml::from_str(
-            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\ncommand_policy: { computed_torque: warn }",
+            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\nfault_damping_kd: 200.0",
         )
         .unwrap();
         let spec = MotorSpec::try_from(&config).unwrap();
-        assert_eq!(spec.command_policy.computed_torque, CommandBehavior::Warn);
+        assert_eq!(spec.fault_damping_kd, 200.0);
     }
 
     #[test]
-    fn rejects_unsupported_warning_and_clamp_policy_combinations() {
-        for policy in [
-            "limit: warn",
-            "position_step: warn",
-            "computed_torque: clamp",
-        ] {
+    fn rejects_unsupported_warning_policy_combinations() {
+        for policy in ["limit: warn", "position_step: warn"] {
             let yaml = format!(
                 "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\ncommand_policy: {{ {policy} }}"
             );
-            let config: MotorConfig = serde_yaml::from_str(&yaml).unwrap();
-            assert!(MotorSpec::try_from(&config).is_err());
+            assert!(serde_yaml::from_str::<MotorConfig>(&yaml).is_err());
         }
     }
 
     #[test]
     fn rejects_limit_overrides_above_model_capabilities() {
-        for (field, value) in [
-            ("velocity_abs", 20.1),
-            ("torque_abs", 60.1),
-            ("kp_max", 5000.1),
-            ("kd_max", 100.1),
-        ] {
+        for (field, value) in [("velocity_abs", 20.1), ("torque_abs", 60.1)] {
             let yaml = format!(
                 "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\nlimits: {{ {field}: {value} }}"
             );

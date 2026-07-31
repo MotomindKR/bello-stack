@@ -66,31 +66,15 @@ pub(crate) fn select_position_reference(
     }
 }
 
-pub(crate) fn mechanical_violation_behavior<'a>(
-    computed_torque_warning_allowed: bool,
+pub(crate) fn coupled_limit_behavior<'a>(
     policies: impl IntoIterator<Item = &'a MotorCommandPolicy>,
 ) -> CommandBehavior {
-    let mut found = false;
-    let mut selected = CommandBehavior::Warn;
     for policy in policies {
-        found = true;
-        let behavior = if computed_torque_warning_allowed {
-            policy.computed_torque
-        } else {
-            policy.limit
-        };
-        if behavior == CommandBehavior::Fault {
+        if policy.limit == CommandBehavior::Fault {
             return CommandBehavior::Fault;
         }
-        if behavior != CommandBehavior::Warn {
-            selected = CommandBehavior::Reject;
-        }
     }
-    if found {
-        selected
-    } else {
-        CommandBehavior::Reject
-    }
+    CommandBehavior::Reject
 }
 
 pub(crate) fn check_command(
@@ -139,18 +123,6 @@ pub(crate) fn check_command(
             &mut command.torque,
             motor.limits.torque_min,
             motor.limits.torque_max,
-        ),
-        (
-            SafetyViolation::GainLimit,
-            &mut command.kp,
-            motor.limits.kp_min,
-            motor.limits.kp_max,
-        ),
-        (
-            SafetyViolation::GainLimit,
-            &mut command.kd,
-            motor.limits.kd_min,
-            motor.limits.kd_max,
         ),
     ];
     for (violation, value, minimum, maximum) in limits {
@@ -237,32 +209,55 @@ mod tests {
     }
 
     #[test]
-    fn computed_torque_warning_requires_every_affected_motor_to_allow_it() {
-        let mut first = MotorCommandPolicy {
-            computed_torque: CommandBehavior::Warn,
-            ..MotorCommandPolicy::default()
-        };
+    fn feedforward_torque_remains_clamped() {
+        let motor = motor();
+        let report = check_command(
+            ImpedanceCommand {
+                torque: motor.limits.torque_max + 1.0,
+                ..Default::default()
+            },
+            None,
+            &motor,
+        );
+        assert_eq!(report.command.torque, motor.limits.torque_max);
+        assert_eq!(report.issues[0].violation, SafetyViolation::TorqueLimit);
+        assert!(report.issues[0].command_modified);
+        assert!(!report.issues[0].command_rejected);
+    }
+
+    #[test]
+    fn coupled_limit_faults_if_any_affected_motor_requests_fault() {
+        let first = MotorCommandPolicy::default();
         let mut second = first.clone();
         assert_eq!(
-            mechanical_violation_behavior(true, [&first, &second]),
-            CommandBehavior::Warn
-        );
-
-        second.computed_torque = CommandBehavior::Reject;
-        assert_eq!(
-            mechanical_violation_behavior(true, [&first, &second]),
+            coupled_limit_behavior([&first, &second]),
             CommandBehavior::Reject
         );
 
-        first.computed_torque = CommandBehavior::Fault;
+        second.limit = CommandBehavior::Clamp;
         assert_eq!(
-            mechanical_violation_behavior(true, [&first, &second]),
+            coupled_limit_behavior([&first, &second]),
+            CommandBehavior::Reject
+        );
+
+        second.limit = CommandBehavior::Fault;
+        assert_eq!(
+            coupled_limit_behavior([&first, &second]),
             CommandBehavior::Fault
         );
-        assert_eq!(
-            mechanical_violation_behavior(false, [&second]),
-            CommandBehavior::Reject
-        );
+    }
+
+    #[test]
+    fn finite_gains_are_not_limited() {
+        let motor = motor();
+        let command = ImpedanceCommand {
+            kp: motor.limits.kp_max * 2.0,
+            kd: motor.limits.kd_max * 2.0,
+            ..Default::default()
+        };
+        let report = check_command(command, None, &motor);
+        assert!(report.issues.is_empty());
+        assert_eq!(report.command, command);
     }
 
     #[test]
