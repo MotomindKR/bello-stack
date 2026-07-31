@@ -285,7 +285,7 @@ impl Default for MotorCommandPolicy {
 }
 
 fn default_fault_damping_kd() -> f64 {
-    2.0
+    4.0
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
