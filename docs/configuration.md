@@ -236,7 +236,7 @@ motors:
     health:
       safe_position_min: -2.2
       safe_position_max: 2.2
-      feedback_position_tolerance: 0.2
+      feedback_position_tolerance: 0.4
       temperature_warning_c: 60.0
       maximum_temperature_c: 80.0
       temperature_recovery_c: 75.0
@@ -264,7 +264,7 @@ feedforward-torque limits plus the model's gain encoding ranges.
 
 `feedback_position_tolerance` is in radians and expands only the feedback
 position fault boundary; it does not expand accepted command targets. It must
-be finite and between one protocol quantization interval and `0.2`. Its
+be finite and between one protocol quantization interval and `0.4`. Its
 default is two protocol quantization intervals.
 
 For an asymmetric model range, `direction: -1` reverses and negates the range

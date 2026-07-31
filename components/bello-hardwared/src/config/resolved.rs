@@ -353,14 +353,14 @@ mod tests {
         let first = MotorName::from("left_ankle_1");
         let second = MotorName::from("left_ankle_2");
 
-        feedback.get_mut(&first).unwrap().position = 0.28;
-        feedback.get_mut(&second).unwrap().position = 0.28;
+        feedback.get_mut(&first).unwrap().position = 0.38;
+        feedback.get_mut(&second).unwrap().position = 0.38;
         lower
             .mechanical
             .validate_feedback_positions(&feedback)
             .unwrap();
-        feedback.get_mut(&first).unwrap().position = 0.29;
-        feedback.get_mut(&second).unwrap().position = 0.29;
+        feedback.get_mut(&first).unwrap().position = 0.39;
+        feedback.get_mut(&second).unwrap().position = 0.39;
         let feedback_position = lower
             .mechanical
             .validate_feedback_positions(&feedback)
@@ -369,7 +369,7 @@ mod tests {
         assert!(
             feedback_position
                 .detail
-                .contains("feedback tolerance 0.200000")
+                .contains("feedback tolerance 0.400000")
         );
 
         commands.get_mut(&first).unwrap().position = 0.2;
