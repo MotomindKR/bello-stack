@@ -1,7 +1,7 @@
 # Same sphere-hand kinematic contract, connected to the local hardware emulator.
 urdf: ../../../descriptions/bello/full_body/urdf/bello_full_body.urdf
 hardware_endpoint: http://127.0.0.1:50051
-listen: 127.0.0.1:50053
+listen: 0.0.0.0:50053
 imu: imu
 reference_frame: odom
 tracked_frame: pelvis_link
