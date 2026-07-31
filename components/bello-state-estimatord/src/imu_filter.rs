@@ -47,7 +47,13 @@ impl ImuLowPass {
         orientation: UnitQuaternion<f64>,
         angular_velocity: Vector3<f64>,
         linear_acceleration: Vector3<f64>,
-    ) -> FilteredImu {
+    ) -> Option<FilteredImu> {
+        if self
+            .previous_source_ns
+            .is_some_and(|previous| source_ns <= previous)
+        {
+            return None;
+        }
         let interval = self
             .previous_source_ns
             .and_then(|previous| source_ns.checked_sub(previous))
@@ -65,7 +71,7 @@ impl ImuLowPass {
                 linear_acceleration,
             };
             self.filtered = Some(sample);
-            return sample;
+            return Some(sample);
         };
 
         let orientation_alpha = low_pass_alpha(self.orientation_cutoff_hz, interval);
@@ -79,7 +85,7 @@ impl ImuLowPass {
                 + acceleration_alpha * (linear_acceleration - previous.linear_acceleration),
         };
         self.filtered = Some(sample);
-        sample
+        Some(sample)
     }
 }
 
@@ -98,7 +104,9 @@ mod tests {
         let angular_velocity = Vector3::new(1.0, 2.0, 3.0);
         let linear_acceleration = Vector3::new(4.0, 5.0, 6.0);
 
-        let sample = filter.update(1_000, orientation, angular_velocity, linear_acceleration);
+        let sample = filter
+            .update(1_000, orientation, angular_velocity, linear_acceleration)
+            .unwrap();
 
         assert!(sample.orientation.angle_to(&orientation) < 1.0e-12);
         assert_eq!(sample.angular_velocity, angular_velocity);
@@ -110,14 +118,18 @@ mod tests {
         let mut filter = ImuLowPass::new(20.0, 30.0, 25.0);
         let identity = UnitQuaternion::identity();
         let target = UnitQuaternion::from_euler_angles(0.0, 0.0, 1.0);
-        filter.update(0, identity, Vector3::zeros(), Vector3::zeros());
+        filter
+            .update(0, identity, Vector3::zeros(), Vector3::zeros())
+            .unwrap();
 
-        let sample = filter.update(
-            Duration::from_millis(2).as_nanos() as u64,
-            target,
-            Vector3::new(1.0, 0.0, 0.0),
-            Vector3::new(2.0, 0.0, 0.0),
-        );
+        let sample = filter
+            .update(
+                Duration::from_millis(2).as_nanos() as u64,
+                target,
+                Vector3::new(1.0, 0.0, 0.0),
+                Vector3::new(2.0, 0.0, 0.0),
+            )
+            .unwrap();
 
         assert!(sample.orientation.angle() > 0.0);
         assert!(sample.orientation.angle() < target.angle());
@@ -131,25 +143,62 @@ mod tests {
     #[test]
     fn a_long_gap_reinitializes_instead_of_smearing_the_outage() {
         let mut filter = ImuLowPass::new(20.0, 30.0, 25.0);
-        filter.update(
-            0,
-            UnitQuaternion::identity(),
-            Vector3::zeros(),
-            Vector3::zeros(),
-        );
+        filter
+            .update(
+                0,
+                UnitQuaternion::identity(),
+                Vector3::zeros(),
+                Vector3::zeros(),
+            )
+            .unwrap();
         let orientation = UnitQuaternion::from_euler_angles(0.5, 0.0, 0.0);
         let angular_velocity = Vector3::new(3.0, 0.0, 0.0);
         let linear_acceleration = Vector3::new(4.0, 0.0, 0.0);
 
-        let sample = filter.update(
-            Duration::from_secs(1).as_nanos() as u64,
-            orientation,
-            angular_velocity,
-            linear_acceleration,
-        );
+        let sample = filter
+            .update(
+                Duration::from_secs(1).as_nanos() as u64,
+                orientation,
+                angular_velocity,
+                linear_acceleration,
+            )
+            .unwrap();
 
         assert!(sample.orientation.angle_to(&orientation) < 1.0e-12);
         assert_eq!(sample.angular_velocity, angular_velocity);
         assert_eq!(sample.linear_acceleration, linear_acceleration);
+    }
+
+    #[test]
+    fn non_increasing_source_time_is_rejected_without_resetting_filter_state() {
+        let mut filter = ImuLowPass::new(20.0, 30.0, 25.0);
+        let identity = UnitQuaternion::identity();
+        filter
+            .update(1_000, identity, Vector3::zeros(), Vector3::zeros())
+            .unwrap();
+
+        assert!(
+            filter
+                .update(
+                    999,
+                    identity,
+                    Vector3::new(10.0, 0.0, 0.0),
+                    Vector3::new(10.0, 0.0, 0.0),
+                )
+                .is_none()
+        );
+
+        let sample = filter
+            .update(
+                2_000,
+                identity,
+                Vector3::new(1.0, 0.0, 0.0),
+                Vector3::new(1.0, 0.0, 0.0),
+            )
+            .unwrap();
+        assert!(sample.angular_velocity.x > 0.0);
+        assert!(sample.angular_velocity.x < 1.0);
+        assert!(sample.linear_acceleration.x > 0.0);
+        assert!(sample.linear_acceleration.x < 1.0);
     }
 }

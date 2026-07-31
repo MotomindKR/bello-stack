@@ -298,12 +298,18 @@ async fn monitor_hardware(
         }
 
         let imu_source_ns = source_time_ns(imu.monotonic_ns, imu.sample_age);
-        let filtered_imu = imu_low_pass.update(
+        let Some(filtered_imu) = imu_low_pass.update(
             imu_source_ns,
             orientation,
             angular_velocity,
             linear_acceleration,
-        );
+        ) else {
+            debug!(
+                imu_source_ns,
+                "discarding non-increasing IMU source timestamp"
+            );
+            continue;
+        };
         let orientation = filtered_imu.orientation;
         let angular_velocity = filtered_imu.angular_velocity;
         let linear_acceleration = filtered_imu.linear_acceleration;
