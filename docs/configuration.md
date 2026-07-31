@@ -245,7 +245,7 @@ motors:
       maximum_position_step: 0.5
       limit: clamp
       position_step: fault
-    fault_damping_kd: 4.0
+    fault_damping_kd: 10.0
 ```
 
 `name` identifies the device, while `coordinate` is its external robot/coordinate name.
