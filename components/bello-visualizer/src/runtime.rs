@@ -1681,7 +1681,7 @@ mod tests {
     use std::pin::Pin;
 
     use bello_pose_api::pose_service_server::{PoseService, PoseServiceServer};
-    use bello_pose_api::{Orientation, Translation, WatchPoseResponse};
+    use bello_pose_api::{LinearVelocity, Orientation, Translation, WatchPoseResponse};
     use futures_core::Stream;
     use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
     use tonic::{Request, Response, Status};
@@ -1720,6 +1720,8 @@ mod tests {
                             w: 1.0,
                         }),
                         sample_age_ms: 0,
+                        linear_velocity_metres_per_second: Some(LinearVelocity::default()),
+                        sample_monotonic_ns: 1,
                     }))
                     .await;
                 tokio::time::sleep(Duration::from_secs(1)).await;
@@ -1800,6 +1802,8 @@ mod tests {
                 ..Default::default()
             }),
             sample_age_ms: 3,
+            linear_velocity_metres_per_second: Some(LinearVelocity::default()),
+            sample_monotonic_ns: 1,
         };
         assert!(validate_pose_sample(sample.clone(), "map", "tracker", None).is_err());
         assert!(validate_pose_sample(sample.clone(), "world", "tracker", Some(2)).is_err());

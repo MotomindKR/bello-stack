@@ -7,7 +7,9 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, bail};
 use bello_hardware_client::{Robot, RobotStateChange};
 use bello_pose_api::pose_service_server::{PoseService, PoseServiceServer};
-use bello_pose_api::{Orientation, Translation, WatchPoseRequest, WatchPoseResponse};
+use bello_pose_api::{
+    LinearVelocity, Orientation, Translation, WatchPoseRequest, WatchPoseResponse,
+};
 use futures_core::Stream;
 use nalgebra::{Quaternion, UnitQuaternion, Vector3};
 use tokio::net::TcpListener;
@@ -28,6 +30,7 @@ struct StampedPose {
     pose: PoseEstimate,
     produced: Instant,
     source_age: Duration,
+    sample_monotonic_ns: u64,
 }
 
 #[derive(Clone)]
@@ -367,6 +370,7 @@ async fn monitor_hardware(
                 pose,
                 produced: Instant::now(),
                 source_age: imu.sample_age,
+                sample_monotonic_ns: imu_source_ns,
             }));
         }
     }
@@ -426,6 +430,12 @@ fn response_for(
             w: quaternion.w,
         }),
         sample_age_ms: age.as_millis().min(u64::MAX as u128) as u64,
+        linear_velocity_metres_per_second: Some(LinearVelocity {
+            x: sample.pose.linear_velocity.x,
+            y: sample.pose.linear_velocity.y,
+            z: sample.pose.linear_velocity.z,
+        }),
+        sample_monotonic_ns: sample.sample_monotonic_ns,
     }
 }
 
@@ -457,9 +467,11 @@ mod tests {
             pose: PoseEstimate {
                 position: Vector3::new(1.0, 2.0, 3.0),
                 orientation: UnitQuaternion::identity(),
+                linear_velocity: Vector3::new(0.1, 0.2, 0.3),
             },
             produced: Instant::now(),
             source_age: Duration::from_millis(4),
+            sample_monotonic_ns: 123_456,
         }));
         let response = server
             .watch_pose(Request::new(WatchPoseRequest {
@@ -471,6 +483,8 @@ mod tests {
         let sample = response.into_inner().next().await.unwrap().unwrap();
         assert_eq!(sample.sequence, 7);
         assert_eq!(sample.translation_metres.unwrap().z, 3.0);
+        assert_eq!(sample.linear_velocity_metres_per_second.unwrap().z, 0.3);
+        assert_eq!(sample.sample_monotonic_ns, 123_456);
         assert!(sample.sample_age_ms >= 4);
     }
 }

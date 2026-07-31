@@ -262,8 +262,9 @@ For startup, hardware, diagnostics, and shutdown procedures, see
 [`pose.proto`](../components/bello-pose-api/proto/bello/pose/v1/pose.proto)
 defines the independent `bello.pose.v1.PoseService`. `WatchPose` streams a
 requested reference/tracked frame pair with sequence, translation in metres,
-normalized `xyzw` orientation, and producer-reported age. Its convention is
-`reference_from_tracked`. The visualizer composes the configured
+normalized `xyzw` orientation, estimator-provided linear velocity in metres per
+second, a precise source monotonic timestamp, and producer-reported age. Its
+convention is `reference_from_tracked`. The visualizer composes the configured
 `tracked_from_model_root`; disconnects, frame/sequence errors, or stale samples
 freeze the last display transform and do not affect command or safety logic.
 
@@ -273,5 +274,5 @@ maintained local provider for Bello. It consumes the high-level
 encoder/URDF stationary-foot corrections to IMU-propagated translation. It
 implements this existing RPC directly; clients do not submit estimates and no
 second estimator-specific service exists. The service publishes only pose,
-sequence, frame names, and age. Filter covariance and contact internals remain
-private implementation details.
+linear velocity, source time, sequence, frame names, and age. Filter covariance
+and contact internals remain private implementation details.
