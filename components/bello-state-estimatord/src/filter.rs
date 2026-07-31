@@ -31,6 +31,7 @@ type MeasurementMatrix = SMatrix<f64, 3, STATE_SIZE>;
 pub struct PoseEstimate {
     pub position: Vector3<f64>,
     pub orientation: UnitQuaternion<f64>,
+    pub linear_velocity: Vector3<f64>,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -156,6 +157,7 @@ impl ContactFilter {
         PoseEstimate {
             position: base_position,
             orientation,
+            linear_velocity: self.velocity(),
         }
     }
 
@@ -216,6 +218,7 @@ impl ContactFilter {
         Ok(PoseEstimate {
             position: self.position(),
             orientation,
+            linear_velocity: self.velocity(),
         })
     }
 
@@ -292,6 +295,7 @@ impl ContactFilter {
             pose: PoseEstimate {
                 position: self.position(),
                 orientation,
+                linear_velocity: self.velocity(),
             },
             contacts: diagnostics,
         })
