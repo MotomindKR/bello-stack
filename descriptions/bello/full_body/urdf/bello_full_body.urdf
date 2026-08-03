@@ -793,42 +793,42 @@
     <parent link="torso_link" />
     <child link="r_shoulder_pitch_link" />
     <axis xyz="1.0 0.0 0.0" />
-    <limit lower="-1.57" upper="1.57" velocity="30" effort="120.0" />
+    <limit lower="-1.5" upper="0.5" velocity="30" effort="120.0" />
   </joint>
   <joint name="right_shoulder_roll_joint" type="revolute">
     <origin xyz="0.091 -0.0275 0.0" rpy="0 0 0" />
     <parent link="r_shoulder_pitch_link" />
     <child link="r_shoulder_roll_link" />
     <axis xyz="0.0 -1.0 -0.0" />
-    <limit lower="-1.57" upper="1.57" velocity="30" effort="60.0" />
+    <limit lower="-0.2" upper="2.0" velocity="30" effort="60.0" />
   </joint>
   <joint name="right_shoulder_yaw_joint" type="revolute">
     <origin xyz="0.018002 0.0275 -0.124499" rpy="0 0 0" />
     <parent link="r_shoulder_roll_link" />
     <child link="r_upper_arm_link" />
     <axis xyz="-4.4e-05 -0.0 1.0" />
-    <limit lower="-1.57" upper="1.57" velocity="30" effort="36.0" />
+    <limit lower="-1.5" upper="2.0" velocity="30" effort="36.0" />
   </joint>
   <joint name="right_elbow_pitch_joint" type="revolute">
     <origin xyz="-0.014993 -0.02575 -0.162001" rpy="0 0 0" />
     <parent link="r_upper_arm_link" />
     <child link="r_elbow_link" />
     <axis xyz="0.0 1.0 0.0" />
-    <limit lower="-1.57" upper="1.57" velocity="30" effort="36.0" />
+    <limit lower="-1.5" upper="2.4" velocity="30" effort="36.0" />
   </joint>
   <joint name="right_elbow_yaw_joint" type="revolute">
     <origin xyz="0.025005 0.02575 -0.117998" rpy="0 0 0" />
     <parent link="r_elbow_link" />
     <child link="r_lower_arm_link" />
     <axis xyz="-4.4e-05 -0.0 1.0" />
-    <limit lower="-0.523598776" upper="2.0943951" velocity="30" effort="14.0" />
+    <limit lower="-2.0943951" upper="0.523598776" velocity="30" effort="14.0" />
   </joint>
   <joint name="right_wrist_pitch_joint" type="revolute">
     <origin xyz="4e-06 0.0275 -0.086" rpy="0 0 0" />
     <parent link="r_lower_arm_link" />
     <child link="r_wrist_link" />
     <axis xyz="-0.0 -1.0 -0.0" />
-    <limit lower="-1.57" upper="1.57" velocity="30" effort="14.0" />
+    <limit lower="-1.5" upper="1.5" velocity="30" effort="14.0" />
   </joint>
   <joint name="right_wrist_yaw_joint" type="revolute">
     <origin xyz="5e-06 -0.0275 -0.102" rpy="0 0 0" />

@@ -1256,16 +1256,17 @@ mod tests {
     }
 
     #[test]
-    fn canonical_bello_urdf_loads_with_ankle_coordinates() {
+    fn canonical_bello_urdf_loads_with_paired_arms_and_ankle_coordinates() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../descriptions/bello/full_body/urdf/bello_full_body.urdf");
-        let model = KinematicModel::load(
-            &path,
-            "pelvis_link",
-            "left_ankle_roll_link",
-            "right_ankle_roll_link",
-        )
-        .unwrap();
+        let description = RobotDescription::load(&path).unwrap();
+        let model = description
+            .kinematic_model(
+                "pelvis_link",
+                "left_ankle_roll_link",
+                "right_ankle_roll_link",
+            )
+            .unwrap();
         for coordinate in [
             "left_ankle_motor_1",
             "left_ankle_motor_2",
@@ -1285,5 +1286,28 @@ mod tests {
                 .iter()
                 .any(|name| name == "left_ankle_pitch_joint")
         );
+        for joint in [
+            "shoulder_pitch_joint",
+            "shoulder_roll_joint",
+            "shoulder_yaw_joint",
+            "elbow_pitch_joint",
+            "elbow_yaw_joint",
+            "wrist_pitch_joint",
+            "wrist_yaw_joint",
+        ] {
+            let left = description
+                .joint(&format!("left_{joint}"))
+                .unwrap()
+                .limits
+                .as_ref()
+                .unwrap();
+            let right = description
+                .joint(&format!("right_{joint}"))
+                .unwrap()
+                .limits
+                .as_ref()
+                .unwrap();
+            assert_eq!((right.lower, right.upper), (left.lower, left.upper));
+        }
     }
 }
