@@ -594,6 +594,13 @@ async fn grpc_can_latency_distribution() -> Result<()> {
         process_cpu_percent(hardwared_cpu_start, process_cpu_sample(hardwared.pid()?)?)?;
     let emulator_cpu =
         process_cpu_percent(emulator_cpu_start, process_cpu_sample(emulator.pid()?)?)?;
+    let immediate_delivery_budget = Duration::from_secs_f64(0.75 / control_rate_hz);
+    let outbound_p95 = percentile(&outbound, 0.95);
+    if outbound_p95 >= immediate_delivery_budget {
+        bail!(
+            "command-triggered CAN delivery p95 {outbound_p95:?} exceeded budget {immediate_delivery_budget:?}"
+        );
+    }
 
     client
         .stop_control(StopControlRequest {
@@ -1023,6 +1030,12 @@ fn summarize(samples: &[Duration]) -> String {
         values[values.len() - 1],
         variance.sqrt(),
     )
+}
+
+fn percentile(samples: &[Duration], fraction: f64) -> Duration {
+    let mut values = samples.to_vec();
+    values.sort();
+    values[((values.len() - 1) as f64 * fraction) as usize]
 }
 
 #[derive(Clone, Copy)]

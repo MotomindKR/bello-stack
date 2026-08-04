@@ -158,6 +158,21 @@ impl GroupController {
                 self.handle_lease_loss();
                 continue;
             }
+            let pending_command = { self.command_mailbox.lock().take() };
+            if let Some(submission) = pending_command {
+                let result = self.accept_commands(
+                    submission.batch,
+                    submission.lease_generation,
+                    submission.submitted_at,
+                    GroupState::Running,
+                );
+                if result.is_ok() {
+                    self.control_tick(0);
+                    next_tick = Instant::now() + period;
+                }
+                let _ = submission.reply.send(result);
+                continue;
+            }
             let now = Instant::now();
             if now >= next_tick {
                 let jitter = now
@@ -169,17 +184,6 @@ impl GroupController {
                 if next_tick < now {
                     next_tick = now + period;
                 }
-                continue;
-            }
-            let pending_command = { self.command_mailbox.lock().take() };
-            if let Some(submission) = pending_command {
-                let result = self.accept_commands(
-                    submission.batch,
-                    submission.lease_generation,
-                    submission.submitted_at,
-                    GroupState::Running,
-                );
-                let _ = submission.reply.send(result);
                 continue;
             }
             if handled_lifecycle {

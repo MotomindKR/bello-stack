@@ -140,15 +140,16 @@ gRPC command stream
   -> HardwareDaemon verifies lease and captures its generation
   -> group latest-value mailbox
   -> group worker validates age, sequence, completeness, and motor policy
-  -> group control tick reuses the latest accepted command
+  -> accepted command triggers a control tick and re-phases periodic refresh
   -> Robstride ControlBatcher creates one batch per affected bus
   -> CAN control queue
   -> SocketCAN TX worker
 ```
 
-The API acknowledgement means the group accepted and staged the batch; it does
-not mean a CAN frame has already reached a motor. Periodic transmission begins
-only in the group's `Running` state. The detailed timing and safety rules are in
+The API acknowledgement means the group accepted the batch and ran its
+command-triggered control tick; it does not mean a CAN frame has already reached
+a motor. Periodic retransmission continues only in the group's `Running` state.
+The detailed timing and safety rules are in
 [Control and safety](control-and-safety.md). The implementation path is
 [`api/grpc/command_stream.rs`](../components/bello-hardwared/src/api/grpc/command_stream.rs),
 [`app/daemon.rs`](../components/bello-hardwared/src/app/daemon.rs),
@@ -156,11 +157,12 @@ only in the group's `Running` state. The detailed timing and safety rules are in
 [`hardware/robstride/controller.rs`](../components/bello-hardwared/src/hardware/robstride/controller.rs).
 
 CAN transmission is queue-driven, not a separate fixed-frequency CAN loop.
-Group control ticks create the periodic control traffic. A complete logical
-group tick is accumulated and submitted as one queue item per bus. Frames are
-atomic with respect to queue ordering on one bus, but separate physical buses
-cannot be made electrically atomic. The TX worker rejects work that cannot
-finish before its freshness deadline. See
+Accepted commands create immediate control ticks; timer ticks periodically
+retransmit the latest accepted command and enforce the watchdog. A complete
+logical group tick is accumulated and submitted as one queue item per bus.
+Frames are atomic with respect to queue ordering on one bus, but separate
+physical buses cannot be made electrically atomic. The TX worker rejects work
+that cannot finish before its freshness deadline. See
 [`hardware/can/supervisor.rs`](../components/bello-hardwared/src/hardware/can/supervisor.rs).
 
 ### Motor feedback to state and telemetry

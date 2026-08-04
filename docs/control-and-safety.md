@@ -124,13 +124,18 @@ and [`control/group_handle.rs`](../components/bello-hardwared/src/control/group_
 The command stream is latest-value control, not a FIFO trajectory buffer. Each
 group has one mailbox slot. A new submission replaces an older submission that
 the group thread has not yet processed; the old request receives `Superseded`.
-Once accepted, the command is stored per motor. `Running` reuses it on every
-control tick until a newer complete batch replaces it, or until stop, disable,
-recover, lease loss, fault, or shutdown clears it. `StartControl` installs the
-first command directly; stream commands are accepted only in `Running`. A
-command expired when a running tick evaluates it is not submitted: command
-state is cleared and the group moves to `Damped`. After tick admission, the
-resulting CAN batch is governed by its own one-period freshness deadline.
+Once accepted, the command is stored per motor and triggers an immediate
+control tick. That tick runs the same health, feedback, mechanical, watchdog,
+and transmission checks as a periodic tick, then re-phases the next periodic
+tick by one group period. `Running` reuses the command periodically until a
+newer complete batch replaces it, or until stop, disable, recover, lease loss,
+fault, or shutdown clears it. A pending command is processed before a
+simultaneously due periodic tick so the older command is not transmitted first.
+`StartControl` installs the first command directly; stream commands are accepted
+only in `Running`. A command expired at admission is rejected. A stored command
+that expires before a later periodic tick is not submitted: command state is
+cleared and the group moves to `Damped`. Every resulting CAN batch is governed
+by its own one-period freshness deadline.
 
 The daemon records `submitted_at` before taking the lease gate. The effective
 validity is the smaller of the batch's requested validity and the group's

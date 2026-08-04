@@ -25,7 +25,7 @@ The ignored host-vCAN scenario exercises:
 - the headless visualizer `RuntimeHandle`, matching URDF coordinates, and its
   configured complete-frame command rate without a renderer;
 - lease acquisition, release, and expiry;
-- motor enable and fixed-rate control;
+- motor enable, command-triggered control, and periodic retransmission;
 - complete command streaming;
 - the canonical 13-motor lower-body group across two buses, including exact
   differential-ankle command rejection;
@@ -34,9 +34,11 @@ The ignored host-vCAN scenario exercises:
 - child-process liveness during fault injection.
 
 The same test target also contains a release-mode latency probe. It correlates
-unique command and feedback payloads to measure `gRPC command -> vCAN frame`
-and `vCAN feedback -> gRPC telemetry` distributions without adding timestamps
-to the production path.
+unique command and feedback payloads to measure immediate `gRPC command -> vCAN
+frame` and `vCAN feedback -> gRPC telemetry` distributions without adding
+timestamps to the production path. The outbound probe fails when p95 delivery
+approaches the periodic control-tick boundary instead of remaining
+command-triggered.
 
 ## Run the vCAN scenario
 
