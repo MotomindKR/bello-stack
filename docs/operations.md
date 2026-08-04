@@ -41,6 +41,14 @@ Configure the CAN link before starting hardwared. Adjust interface, bitrate,
 and restart policy for the actual adapter and network:
 
 ```sh
+sudo scripts/setup-can.sh
+```
+
+The script configures both canonical Bello interfaces, `can0` and `can1`, for
+classic CAN at 1 Mbit/s with a 100 ms automatic restart. To configure one link
+manually instead:
+
+```sh
 sudo ip link set can0 down
 sudo ip link set can0 type can bitrate 1000000 restart-ms 100
 sudo ip link set can0 up
