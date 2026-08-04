@@ -38,6 +38,34 @@ enum EnableFailure {
     Failed(String),
 }
 
+struct CommandRefreshSchedule {
+    refresh_period: Duration,
+    command_arrival_grace: Duration,
+    next_refresh: Instant,
+}
+
+impl CommandRefreshSchedule {
+    fn new(now: Instant, refresh_period: Duration, command_arrival_grace: Duration) -> Self {
+        Self {
+            refresh_period,
+            command_arrival_grace,
+            next_refresh: now + command_arrival_grace,
+        }
+    }
+
+    fn record_immediate_send(&mut self, now: Instant) {
+        self.next_refresh = now + self.refresh_period + self.command_arrival_grace;
+    }
+
+    fn should_retransmit(&mut self, now: Instant) -> bool {
+        if now < self.next_refresh {
+            return false;
+        }
+        self.next_refresh = now + self.refresh_period;
+        true
+    }
+}
+
 impl EnableFailure {
     fn into_detail(self) -> String {
         match self {
@@ -129,7 +157,10 @@ impl GroupController {
 
     pub(super) fn run(&mut self) {
         let period = self.spec.period();
-        let mut next_tick = Instant::now() + period;
+        let now = Instant::now();
+        let mut next_tick = now + period;
+        let mut refresh_schedule =
+            CommandRefreshSchedule::new(now, self.spec.command_refresh_period(), period);
         loop {
             if self.shutdown.load(Ordering::Acquire) {
                 self.perform_shutdown();
@@ -167,8 +198,8 @@ impl GroupController {
                     GroupState::Running,
                 );
                 if result.is_ok() {
-                    self.control_tick(0);
-                    next_tick = Instant::now() + period;
+                    self.control_tick(0, true);
+                    refresh_schedule.record_immediate_send(Instant::now());
                 }
                 let _ = submission.reply.send(result);
                 continue;
@@ -179,7 +210,7 @@ impl GroupController {
                     .saturating_duration_since(next_tick)
                     .as_micros()
                     .min(i64::MAX as u128) as i64;
-                self.control_tick(jitter);
+                self.control_tick(jitter, refresh_schedule.should_retransmit(now));
                 next_tick += period;
                 if next_tick < now {
                     next_tick = now + period;
@@ -597,7 +628,7 @@ impl GroupController {
         Ok(())
     }
 
-    fn control_tick(&mut self, jitter_us: i64) {
+    fn control_tick(&mut self, jitter_us: i64, transmit_command: bool) {
         self.tick += 1;
         let state = self.fsm.state();
         if matches!(state, GroupState::Damped | GroupState::Running)
@@ -659,19 +690,21 @@ impl GroupController {
                 self.update_snapshot(jitter_us);
                 return;
             }
-            for motor in &self.motors {
-                if let Some(command) = motor.command
-                    && let Err(error) = motor.controller.send_control(command)
-                {
-                    self.enter_fault(
-                        FaultCause::Transmission,
-                        format!(
-                            "{} control transmit failed: {error}",
-                            motor.controller.spec.name
-                        ),
-                    );
-                    self.update_snapshot(jitter_us);
-                    return;
+            if transmit_command {
+                for motor in &self.motors {
+                    if let Some(command) = motor.command
+                        && let Err(error) = motor.controller.send_control(command)
+                    {
+                        self.enter_fault(
+                            FaultCause::Transmission,
+                            format!(
+                                "{} control transmit failed: {error}",
+                                motor.controller.spec.name
+                            ),
+                        );
+                        self.update_snapshot(jitter_us);
+                        return;
+                    }
                 }
             }
         }
@@ -890,5 +923,43 @@ impl GroupController {
             control_tick: self.tick,
             jitter_us,
         }));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{Duration, Instant};
+
+    use super::CommandRefreshSchedule;
+
+    #[test]
+    fn healthy_policy_commands_defer_periodic_refresh() {
+        let start = Instant::now();
+        let safety_period = Duration::from_millis(10);
+        let mut schedule =
+            CommandRefreshSchedule::new(start, Duration::from_millis(20), safety_period);
+
+        for step in 0..50 {
+            let command_at = start + Duration::from_millis(step * 20);
+            schedule.record_immediate_send(command_at);
+            assert!(!schedule.should_retransmit(command_at + safety_period));
+            assert!(!schedule.should_retransmit(command_at + Duration::from_millis(20)));
+        }
+    }
+
+    #[test]
+    fn missed_policy_command_refreshes_after_one_safety_tick_of_grace() {
+        let start = Instant::now();
+        let mut schedule = CommandRefreshSchedule::new(
+            start,
+            Duration::from_millis(20),
+            Duration::from_millis(10),
+        );
+        schedule.record_immediate_send(start);
+
+        assert!(!schedule.should_retransmit(start + Duration::from_millis(20)));
+        assert!(schedule.should_retransmit(start + Duration::from_millis(30)));
+        assert!(!schedule.should_retransmit(start + Duration::from_millis(40)));
+        assert!(schedule.should_retransmit(start + Duration::from_millis(50)));
     }
 }

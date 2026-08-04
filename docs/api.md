@@ -162,9 +162,9 @@ batches are not silently accepted, and stream commands are legal only while the
 group is `Running`. Every well-formed request receives a
 `StreamCommandsResponse` with the same group/sequence, a typed `CommandResult`,
 human-readable `detail`, and the observed `GroupState`. Acceptance triggers an
-immediate checked control tick and re-phases periodic retransmission; the
-response still acknowledges daemon admission rather than physical receipt by a
-motor. A domain rejection does not close the stream; malformed input such as an
+immediate checked control tick and defers periodic CAN refresh; the response
+still acknowledges daemon admission rather than physical receipt by a motor. A
+domain rejection does not close the stream; malformed input such as an
 invalid token encoding is a gRPC stream error. The server uses a latest-wins
 command mailbox, so clients must use responses and telemetry rather than
 assuming every submitted snapshot was applied. See

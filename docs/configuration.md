@@ -313,6 +313,7 @@ motor_groups:
   - name: group_alpha
     motors: [motor_a, motor_b]
     control_rate_hz: 250.0
+    command_refresh_rate_hz: 50.0
     command_timeout_ms: 100
     feedback_timeout_ms: 100
     enable_timeout_ms: 500
@@ -329,6 +330,8 @@ to body regions or to a single CAN interface. Groups may span buses, and
 different groups may share a bus. Every motor belongs to exactly one group.
 
 - `control_rate_hz`: finite, `1..=2000` (default `500`)
+- `command_refresh_rate_hz`: finite, `1..=control_rate_hz`; omission preserves
+  the legacy behavior by using `control_rate_hz`
 - `command_timeout_ms`: `1..=10000` (default `100`)
 - `feedback_timeout_ms`: `1..=10000` (default `100`)
 - `enable_timeout_ms`: `1..=30000` (default `500`)

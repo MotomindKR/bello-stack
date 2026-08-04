@@ -126,11 +126,15 @@ group has one mailbox slot. A new submission replaces an older submission that
 the group thread has not yet processed; the old request receives `Superseded`.
 Once accepted, the command is stored per motor and triggers an immediate
 control tick. That tick runs the same health, feedback, mechanical, watchdog,
-and transmission checks as a periodic tick, then re-phases the next periodic
-tick by one group period. `Running` reuses the command periodically until a
+and transmission checks as a periodic tick. The `control_rate_hz` safety
+schedule stays fixed and performs those checks without necessarily transmitting
+a CAN command. Each immediate command defers periodic CAN refresh for one
+`command_refresh_rate_hz` period plus one safety tick. If no newer command
+arrives, hardwared then retransmits the retained command at the refresh rate.
+The one-tick grace prevents the refresh deadline from racing a policy command
+expected at the same nominal frequency. `Running` retains the command until a
 newer complete batch replaces it, or until stop, disable, recover, lease loss,
-fault, or shutdown clears it. A pending command is processed before a
-simultaneously due periodic tick so the older command is not transmitted first.
+fault, or shutdown clears it.
 `StartControl` installs the first command directly; stream commands are accepted
 only in `Running`. A command expired at admission is rejected. A stored command
 that expires before a later periodic tick is not submitted: command state is

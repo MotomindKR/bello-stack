@@ -239,10 +239,11 @@ CoordinateTarget.hybrid(
 
 The Python application sends new targets when it chooses; it does not need to
 reproduce the group's fixed-rate loop. While the group is running, each accepted
-command triggers an immediate checked control tick and re-phases the daemon's
-configured periodic retransmission. The daemon continues applying the latest
-accepted command at that periodic rate and enforces its command-validity and
-safety policies.
+command triggers an immediate checked control tick. The daemon keeps its fixed
+periodic safety schedule independently. Immediate commands defer periodic CAN
+refresh; if the command stream goes quiet, the daemon reapplies the latest
+accepted command at `command_refresh_rate_hz`. Command-validity and safety
+policies remain enforced at `control_rate_hz`.
 
 ## Handle failures
 

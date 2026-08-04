@@ -329,6 +329,8 @@ pub struct GroupConfig {
     pub motors: Vec<String>,
     #[serde(default = "default_control_rate")]
     pub control_rate_hz: f64,
+    #[serde(default)]
+    pub command_refresh_rate_hz: Option<f64>,
     #[serde(default = "default_command_timeout")]
     pub command_timeout_ms: u64,
     #[serde(default = "default_feedback_timeout")]

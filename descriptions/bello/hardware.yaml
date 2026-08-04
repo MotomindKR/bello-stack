@@ -93,6 +93,7 @@ motor_groups:
   - name: lower_body
     motors: [waist_yaw, left_hip_pitch, left_hip_roll, left_hip_yaw, left_knee_mix_1, left_ankle_1, left_ankle_2, right_hip_pitch, right_hip_roll, right_hip_yaw, right_knee_mix_1, right_ankle_1, right_ankle_2]
     control_rate_hz: 100.0
+    command_refresh_rate_hz: 50.0
     command_timeout_ms: 500
     feedback_timeout_ms: 100
     enable_timeout_ms: 500
@@ -100,5 +101,5 @@ motor_groups:
     fault_policy: &fault_policy
       default: damping
       overrides: { temperature: disable, reported_motor_fault: disable }
-  - { name: upper_body, motors: [left_arm_1, left_arm_2, left_arm_3, left_arm_4, left_arm_5, left_arm_6, right_arm_1, right_arm_2, right_arm_3, right_arm_4, right_arm_5, right_arm_6], control_rate_hz: 100.0, command_timeout_ms: 500, feedback_timeout_ms: 100, enable_timeout_ms: 500, enable_retries: 3, fault_policy: *fault_policy }
-  - { name: wrist_yaw, motors: [left_arm_7, right_arm_7], control_rate_hz: 100.0, command_timeout_ms: 500, feedback_timeout_ms: 100, enable_timeout_ms: 500, enable_retries: 3, fault_policy: *fault_policy }
+  - { name: upper_body, motors: [left_arm_1, left_arm_2, left_arm_3, left_arm_4, left_arm_5, left_arm_6, right_arm_1, right_arm_2, right_arm_3, right_arm_4, right_arm_5, right_arm_6], control_rate_hz: 100.0, command_refresh_rate_hz: 50.0, command_timeout_ms: 500, feedback_timeout_ms: 100, enable_timeout_ms: 500, enable_retries: 3, fault_policy: *fault_policy }
+  - { name: wrist_yaw, motors: [left_arm_7, right_arm_7], control_rate_hz: 100.0, command_refresh_rate_hz: 50.0, command_timeout_ms: 500, feedback_timeout_ms: 100, enable_timeout_ms: 500, enable_retries: 3, fault_policy: *fault_policy }

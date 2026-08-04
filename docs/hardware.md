@@ -133,17 +133,18 @@ sequence is sent again on the next enable.
 
 ### Control batches
 
-The motor-group worker runs at `control_rate_hz`. On each tick it calls every
-motor controller once. A shared `ControlBatcher` holds those frames until all
-motors in the group have contributed, partitions them by CAN bus, and enqueues
-one control batch per bus with the same logical tick deadline. This makes the
-queue item atomic on each bus and supports groups that span buses. If the same
-motor contributes twice before the batch completes, the incomplete batch is
-discarded and reported as interrupted.
+The motor-group worker performs safety and watchdog checks at
+`control_rate_hz`. Accepted stream commands are checked and transmitted
+immediately without changing that schedule. While commands keep arriving they
+defer the periodic CAN refresh deadline. If the stream goes quiet, the retained
+command is retransmitted at `command_refresh_rate_hz` after one additional
+safety-tick grace period.
 
-The configured rate drives control production; CAN TX itself is queue-driven.
-CAN RX is also event-driven by incoming frames. Therefore neither has an
-independent fixed polling frequency.
+A shared `ControlBatcher` holds each logical transmission until all motors in
+the group have contributed, partitions the frames by CAN bus, and enqueues one
+control batch per bus with the same deadline. This makes the queue item atomic
+on each bus and supports groups that span buses. CAN TX is queue-driven and CAN
+RX is event-driven by incoming frames.
 
 ### Feedback routing and watchdogs
 
@@ -329,7 +330,8 @@ gRPC telemetry stream.
 
 | Activity | Timing source | Behavior |
 | --- | --- | --- |
-| Motor group control | `control_rate_hz`, 1–2000 Hz | Periodic group worker; produces one frame per motor per tick |
+| Motor-group safety | `control_rate_hz`, 1–2000 Hz | Fixed checks; does not necessarily transmit CAN commands |
+| Held-command refresh | `command_refresh_rate_hz`, 1–`control_rate_hz` Hz | Retransmits only after immediate commands stop arriving |
 | CAN TX | Queue arrivals and batch deadlines | Event-driven, strict safety/configuration/control priority |
 | CAN RX | SocketCAN input | Blocking/event-driven with a 100 ms OS timeout |
 | Motor health scan | `feedback_timeout_ms / 4`, clamped to 1–20 ms | Checks bus state and armed feedback watchdogs |

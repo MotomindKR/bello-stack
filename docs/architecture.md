@@ -140,7 +140,7 @@ gRPC command stream
   -> HardwareDaemon verifies lease and captures its generation
   -> group latest-value mailbox
   -> group worker validates age, sequence, completeness, and motor policy
-  -> accepted command triggers a control tick and re-phases periodic refresh
+  -> accepted command triggers a control tick and defers periodic refresh
   -> Robstride ControlBatcher creates one batch per affected bus
   -> CAN control queue
   -> SocketCAN TX worker
@@ -157,9 +157,10 @@ The detailed timing and safety rules are in
 [`hardware/robstride/controller.rs`](../components/bello-hardwared/src/hardware/robstride/controller.rs).
 
 CAN transmission is queue-driven, not a separate fixed-frequency CAN loop.
-Accepted commands create immediate control ticks; timer ticks periodically
-retransmit the latest accepted command and enforce the watchdog. A complete
-logical group tick is accumulated and submitted as one queue item per bus.
+Accepted commands create immediate control ticks. Fixed-rate safety ticks
+enforce the watchdog and command checks, while an independent refresh deadline
+retransmits the latest command only after the command stream has gone quiet. A
+complete logical group tick is accumulated and submitted as one queue item per bus.
 Frames are atomic with respect to queue ordering on one bus, but separate
 physical buses cannot be made electrically atomic. The TX worker rejects work
 that cannot finish before its freshness deadline. See
