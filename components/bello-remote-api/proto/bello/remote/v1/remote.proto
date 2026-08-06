@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package bello.remote.v1;
+
+// Streams the latest normalized operator intent from a physical controller.
+service RemoteCommandService {
+  rpc WatchCommand(WatchCommandRequest) returns (stream WatchCommandResponse);
+}
+
+message WatchCommandRequest {}
+
+message WatchCommandResponse {
+  uint64 sequence = 1;
+  // Producer monotonic source time; comparable only within this server process.
+  uint64 sample_monotonic_ns = 2;
+  bool controller_connected = 3;
+  string controller_name = 4;
+  // False until a newly connected controller has returned to neutral once.
+  bool intent_armed = 5;
+  double normalized_forward = 6;
+  double normalized_lateral = 7;
+  double normalized_yaw = 8;
+  // Level-sensitive operator request for the consumer's safe shutdown path.
+  bool abort_active = 9;
+}

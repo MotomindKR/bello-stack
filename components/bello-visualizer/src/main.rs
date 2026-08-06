@@ -460,6 +460,40 @@ fn status_ui(
     snapshot: &DisplaySnapshot,
     mapping_warnings: &BTreeMap<String, String>,
 ) {
+    if let Some(remote) = &snapshot.remote {
+        ui.strong("Remote command");
+        ui.label(format!("Listening on {}", remote.listen));
+        if let Some(error) = &remote.service_error {
+            ui.colored_label(
+                kiss3d::egui::Color32::LIGHT_RED,
+                format!("Service stopped: {error}"),
+            );
+        } else if remote.controller_connected {
+            ui.colored_label(
+                kiss3d::egui::Color32::LIGHT_GREEN,
+                format!("Controller connected: {}", remote.controller_name),
+            );
+        } else {
+            ui.colored_label(
+                kiss3d::egui::Color32::YELLOW,
+                "Controller disconnected; streaming zero intent",
+            );
+        }
+        if remote.controller_connected && !remote.intent_armed {
+            ui.colored_label(
+                kiss3d::egui::Color32::YELLOW,
+                "Return all mapped sticks to neutral",
+            );
+        }
+        ui.monospace(format!(
+            "forward {:+.3}  lateral {:+.3}  yaw {:+.3}",
+            remote.normalized_forward, remote.normalized_lateral, remote.normalized_yaw
+        ));
+        if remote.abort_active {
+            ui.colored_label(kiss3d::egui::Color32::LIGHT_RED, "Abort requested");
+        }
+        ui.separator();
+    }
     if snapshot.hardware_connected {
         ui.colored_label(
             kiss3d::egui::Color32::LIGHT_GREEN,

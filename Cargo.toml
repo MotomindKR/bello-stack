@@ -6,6 +6,7 @@ members = [
   "components/bello-hardware-e2e",
   "components/bello-hardwared",
   "components/bello-pose-api",
+  "components/bello-remote-api",
   "components/bello-robot-description",
   "components/bello-state-estimatord",
   "components/bello-visualizer",
@@ -27,10 +28,12 @@ bello-hardware-api = { path = "components/bello-hardware-api" }
 bello-hardware-client = { path = "components/bello-hardware-client" }
 bello-hardwared = { path = "components/bello-hardwared" }
 bello-pose-api = { path = "components/bello-pose-api" }
+bello-remote-api = { path = "components/bello-remote-api" }
 bello-robot-description = { path = "components/bello-robot-description" }
 clap = "4"
 crossbeam-channel = "0.5"
 futures-core = "0.3"
+gilrs = "0.11"
 nix = "0.29"
 parking_lot = "0.12"
 prost = "0.14"

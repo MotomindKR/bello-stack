@@ -33,15 +33,15 @@ supported version; the concrete Nix inputs are pinned by
 
 ## Protobuf toolchain policy
 
-Cargo does not download or vendor `protoc`. The shared API crate's build script
-invokes `tonic-prost-build` with the `protoc` found on `PATH`; the Nix shell
+Cargo does not download or vendor `protoc`. The shared API crates' build scripts
+invoke `tonic-prost-build` with the `protoc` found on `PATH`; the Nix shell
 provides it. This keeps compiler selection explicit and reproducible. See
 [`build.rs`](../components/bello-hardware-api/build.rs).
 
 Buf owns source formatting and linting under the repository-level
-[`buf.yaml`](../buf.yaml). When changing the API, edit
-[`hardware.proto`](../components/bello-hardware-api/proto/bello/hardware/v1/hardware.proto),
-run Buf, then compile/test the Rust conversions and clients. The contract is
+[`buf.yaml`](../buf.yaml). When changing an API, edit its canonical schema under
+the corresponding API component, run Buf, then compile/test its producers and
+clients. The contracts are
 greenfield: backward compatibility is not currently required, but field types,
 enum values, workflow changes, and downstream test updates should still be
 reviewed together.
@@ -56,10 +56,12 @@ python components/bello-hardware-python/scripts/generate_proto.py
 
 ## Workspace and source layout
 
-The Cargo workspace contains six components:
+The Cargo workspace includes these core components:
 
 - [`bello-hardware-api`](../components/bello-hardware-api): protobuf source and
   generated tonic client/server types;
+- [`bello-remote-api`](../components/bello-remote-api): normalized remote-command
+  protobuf source and generated tonic client/server types;
 - [`bello-hardware-client`](../components/bello-hardware-client): maintained
   robot/group/coordinate client with internal lease, command, and state machinery;
 - [`bello-hardwared`](../components/bello-hardwared): daemon and `run`/`check`

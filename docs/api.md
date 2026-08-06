@@ -266,6 +266,21 @@ For startup, hardware, diagnostics, and shutdown procedures, see
 [`operations.md`](operations.md). For build and review conventions, see
 [`development.md`](development.md).
 
+## Remote operator intent
+
+[`remote.proto`](../components/bello-remote-api/proto/bello/remote/v1/remote.proto)
+defines the independent `bello.remote.v1.RemoteCommandService`. The visualizer
+publishes normalized forward, lateral, and yaw intent, controller connection
+and neutral-arm state, and the level-sensitive Start/Options abort request.
+Sequence and producer-monotonic timestamps order samples within one server
+process; consumers measure freshness from local receipt time.
+
+The stream is read-only and does not grant hardware authority. Policy clients
+apply checkpoint-specific velocity bounds and decide how transport loss affects
+their command. The maintained physical policy runner commands exact zero while
+the stream is stale and reconnects without replaying a held stick: every new
+stream must observe neutral before nonzero intent becomes active.
+
 ## External pose stream
 
 [`pose.proto`](../components/bello-pose-api/proto/bello/pose/v1/pose.proto)

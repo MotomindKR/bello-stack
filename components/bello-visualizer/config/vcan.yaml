@@ -1,6 +1,11 @@
 urdf: vcan.urdf
 hardware:
   endpoint: http://127.0.0.1:50051
+remote:
+  listen: 127.0.0.1:50054
+  controller_index: 0
+  poll_hz: 60
+  deadzone: 0.1
 root:
   source: fixed
 refresh_hz: 60

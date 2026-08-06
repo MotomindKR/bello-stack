@@ -18,6 +18,7 @@
             libxcursor
             libxi
             libxrandr
+            udev
             libglvnd
             vulkan-loader
           ];
