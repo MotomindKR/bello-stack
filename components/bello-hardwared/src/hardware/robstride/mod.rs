@@ -2,6 +2,7 @@ mod controller;
 mod health;
 mod manager;
 mod spec;
+mod velocity;
 
 pub(crate) use controller::{MotorController, TimedFeedback};
 pub(crate) use health::MotorFaultCause;

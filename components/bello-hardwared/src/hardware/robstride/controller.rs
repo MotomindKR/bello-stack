@@ -10,7 +10,9 @@ use robstride_protocol::{
 };
 
 use super::health::{MotorFaultCause, ThermalHealth, classify_feedback};
+use super::velocity::MotorVelocityFilter;
 use super::{Feedback, MotorSpec};
+use crate::config::MotorVelocityFilterConfig;
 use crate::domain::{
     BusName, DeviceStatus, GroupName, ImpedanceCommand, MotorName, MotorTelemetry, TelemetryPayload,
 };
@@ -97,7 +99,13 @@ pub(crate) struct MotorFault {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TimedFeedback {
     pub(crate) value: Feedback,
+    pub(crate) published_velocity: f64,
     pub(crate) received: Instant,
+}
+
+pub(super) struct FeedbackProcessingConfig {
+    pub(super) timeout: Duration,
+    pub(super) velocity_filter: Option<MotorVelocityFilterConfig>,
 }
 
 /// One Robstride device bound to one raw CAN transport.
@@ -111,6 +119,7 @@ pub(crate) struct MotorController {
     bus: BusHandle,
     control_batcher: Arc<ControlBatcher>,
     feedback: Arc<RwLock<Option<TimedFeedback>>>,
+    velocity_filter: Option<Arc<Mutex<MotorVelocityFilter>>>,
     feedback_expected_since: Arc<RwLock<Option<Instant>>>,
     monitoring_request: Arc<Mutex<Option<(u64, Instant)>>>,
     thermal_health: Arc<Mutex<ThermalHealth>>,
@@ -126,7 +135,7 @@ impl MotorController {
         group: GroupName,
         bus: BusHandle,
         control_batcher: Arc<ControlBatcher>,
-        feedback_timeout: Duration,
+        feedback_processing: FeedbackProcessingConfig,
         lifecycle: DeviceLifecycle,
         telemetry: Telemetry,
     ) -> Self {
@@ -136,11 +145,17 @@ impl MotorController {
             bus,
             control_batcher,
             feedback: Arc::new(RwLock::new(None)),
+            velocity_filter: feedback_processing.velocity_filter.map(|config| {
+                Arc::new(Mutex::new(MotorVelocityFilter::new(
+                    config.current_sample_weight,
+                    feedback_processing.timeout,
+                )))
+            }),
             feedback_expected_since: Arc::new(RwLock::new(None)),
             monitoring_request: Arc::new(Mutex::new(None)),
             thermal_health: Arc::new(Mutex::new(ThermalHealth::default())),
             fault: Arc::new(RwLock::new(None)),
-            feedback_timeout,
+            feedback_timeout: feedback_processing.timeout,
             lifecycle,
             telemetry,
         }
@@ -184,6 +199,9 @@ impl MotorController {
 
     pub(crate) fn configure_enable(&self) -> Result<(), BusError> {
         *self.feedback.write() = None;
+        if let Some(filter) = &self.velocity_filter {
+            filter.lock().reset();
+        }
         *self.feedback_expected_since.write() = None;
         self.bus.enqueue_configuration_batch(vec![
             param_write_u8_frame(
@@ -327,13 +345,23 @@ impl MotorController {
     }
 
     pub(super) fn record_received_feedback(&self, value: Feedback, received: Instant) {
-        *self.feedback.write() = Some(TimedFeedback { value, received });
+        let published_velocity = self
+            .velocity_filter
+            .as_ref()
+            .map_or(value.velocity, |filter| {
+                filter.lock().apply(value.velocity, received)
+            });
+        *self.feedback.write() = Some(TimedFeedback {
+            value,
+            published_velocity,
+            received,
+        });
         self.update_health(value, received);
         self.telemetry.send(TelemetryPayload::Motor(MotorTelemetry {
             group: self.group.clone(),
             motor: self.spec.name.clone(),
             position: value.position,
-            velocity: value.velocity,
+            velocity: published_velocity,
             torque: value.torque,
             temperature: value.temperature,
             fault_bits: value.fault_bits,

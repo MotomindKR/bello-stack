@@ -8,7 +8,7 @@ use anyhow::{Result, anyhow};
 use robstride_protocol::{feedback_motor_id, frame_target, parse_feedback};
 use tracing::error;
 
-use super::controller::{ControlBatcher, MotorController, TimedFeedback};
+use super::controller::{ControlBatcher, FeedbackProcessingConfig, MotorController, TimedFeedback};
 use crate::config::ResolvedTopology;
 use crate::domain::{DeviceState, DeviceStatus, MotorAddress, MotorName};
 use crate::hardware::can::{BusManager, ReceivedFrame};
@@ -64,9 +64,12 @@ impl MotorManager {
                     .get(&motor.group)
                     .expect("resolved motor group has a control batcher")
                     .clone(),
-                *feedback_timeouts
-                    .get(&motor.group)
-                    .expect("resolved motor group has a feedback timeout"),
+                FeedbackProcessingConfig {
+                    timeout: *feedback_timeouts
+                        .get(&motor.group)
+                        .expect("resolved motor group has a feedback timeout"),
+                    velocity_filter: topology.motor_velocity_filter(),
+                },
                 lifecycle,
                 telemetry.clone(),
             );

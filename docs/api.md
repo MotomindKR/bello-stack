@@ -199,6 +199,12 @@ transitions such as `enable`, `stop`, `command_timeout`, and `lease_loss` as
 well as hard faults. Unchanged timing snapshots are rate-limited to 25 Hz and
 can be slower when the group control rate is below 25 Hz.
 
+Motor velocity in both telemetry events and state frames is the output of the
+configured `runtime.motor_velocity_filter`. The filter consumes every raw
+actuator-reported velocity sample before either API samples or forwards it;
+both APIs therefore expose the same filtered value. This does not replace the
+raw protocol value used internally for motor health and safety.
+
 The telemetry ring is bounded by `runtime.telemetry_capacity`. A slow
 subscriber loses overwritten events rather than blocking hardware control. On
 lag, the stream forcibly emits a `HealthTelemetry` event for component

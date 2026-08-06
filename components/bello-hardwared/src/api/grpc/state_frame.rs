@@ -124,7 +124,7 @@ fn collect(
                 group: motor.group.to_string(),
                 motor_name: motor.motor.to_string(),
                 position: motor.feedback.value.position,
-                velocity: motor.feedback.value.velocity,
+                velocity: motor.feedback.published_velocity,
                 torque: motor.feedback.value.torque,
                 temperature: motor.feedback.value.temperature,
                 fault_bits: u32::from(motor.feedback.value.fault_bits),

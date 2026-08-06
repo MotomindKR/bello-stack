@@ -80,11 +80,27 @@ pub(crate) struct LogicalSerialDeviceConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct RuntimeConfig {
     pub telemetry_capacity: usize,
+    pub motor_velocity_filter: Option<MotorVelocityFilterConfig>,
 }
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
             telemetry_capacity: 4096,
+            motor_velocity_filter: Some(MotorVelocityFilterConfig::default()),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct MotorVelocityFilterConfig {
+    pub current_sample_weight: f64,
+}
+
+impl Default for MotorVelocityFilterConfig {
+    fn default() -> Self {
+        Self {
+            current_sample_weight: 0.5,
         }
     }
 }

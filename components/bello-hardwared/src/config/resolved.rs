@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::{Result, anyhow, bail};
 use bello_robot_description::RobotDescription;
 
-use super::Config;
+use super::{Config, MotorVelocityFilterConfig};
 use crate::api::grpc::GrpcSpec;
 use crate::control::GroupSpec;
 use crate::domain::{BusName, GroupName, ImuName, MotorAddress, MotorName, SerialDeviceName};
@@ -23,6 +23,7 @@ pub(crate) struct ResolvedMotor {
 #[derive(Clone)]
 pub(crate) struct ResolvedTopology {
     telemetry_capacity: usize,
+    motor_velocity_filter: Option<MotorVelocityFilterConfig>,
     grpc: GrpcSpec,
     serial_devices: HashMap<SerialDeviceName, SerialSpec>,
     imus: HashMap<ImuName, ImuSpec>,
@@ -40,6 +41,13 @@ impl ResolvedTopology {
         validate_root(&config)?;
         if !(64..=1_000_000).contains(&config.runtime.telemetry_capacity) {
             bail!("runtime.telemetry_capacity must be in 64..=1000000");
+        }
+        if let Some(filter) = config.runtime.motor_velocity_filter
+            && (!filter.current_sample_weight.is_finite()
+                || !(0.0..=1.0).contains(&filter.current_sample_weight)
+                || filter.current_sample_weight == 0.0)
+        {
+            bail!("runtime.motor_velocity_filter.current_sample_weight must be in (0, 1]");
         }
         if config.robot_description.as_os_str().is_empty() {
             bail!("hardware configuration has no canonical robot description");
@@ -169,6 +177,7 @@ impl ResolvedTopology {
         validate_bus_utilization(&buses, &motors, &groups)?;
         Ok(Self {
             telemetry_capacity: config.runtime.telemetry_capacity,
+            motor_velocity_filter: config.runtime.motor_velocity_filter,
             grpc,
             serial_devices,
             imus,
@@ -180,6 +189,10 @@ impl ResolvedTopology {
 
     pub(crate) fn telemetry_capacity(&self) -> usize {
         self.telemetry_capacity
+    }
+
+    pub(crate) fn motor_velocity_filter(&self) -> Option<MotorVelocityFilterConfig> {
+        self.motor_velocity_filter
     }
 
     pub(crate) fn grpc(&self) -> &GrpcSpec {
@@ -319,6 +332,30 @@ mod tests {
         assert!((ankle.limits.position_max - 0.6109).abs() < 1.0e-9);
         assert_eq!(ankle.limits.torque_min, -36.0);
         assert_eq!(ankle.limits.torque_max, 36.0);
+    }
+
+    #[test]
+    fn motor_velocity_filter_weight_is_validated() {
+        let component = concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml");
+        let mut config = Config::load_raw(component).unwrap();
+        config
+            .runtime
+            .motor_velocity_filter
+            .as_mut()
+            .unwrap()
+            .current_sample_weight = 0.0;
+
+        let error = ResolvedTopology::resolve(config).err().unwrap().to_string();
+        assert!(error.contains("current_sample_weight"), "{error}");
+    }
+
+    #[test]
+    fn motor_velocity_filter_can_be_disabled() {
+        let component = concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml");
+        let mut config = Config::load_raw(component).unwrap();
+        config.runtime.motor_velocity_filter = None;
+
+        assert!(ResolvedTopology::resolve(config).is_ok());
     }
 
     #[test]
