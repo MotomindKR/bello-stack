@@ -3,6 +3,7 @@ set -euo pipefail
 
 readonly BITRATE=1000000
 readonly RESTART_MS=100
+readonly TX_QUEUE_LENGTH=32
 readonly INTERFACES=(can0 can1)
 
 if (( $# != 0 )); then
@@ -30,6 +31,7 @@ done
 for interface in "${INTERFACES[@]}"; do
   ip link set dev "$interface" down
   ip link set dev "$interface" type can bitrate "$BITRATE" restart-ms "$RESTART_MS"
+  ip link set dev "$interface" txqueuelen "$TX_QUEUE_LENGTH"
   ip link set dev "$interface" up
 done
 
