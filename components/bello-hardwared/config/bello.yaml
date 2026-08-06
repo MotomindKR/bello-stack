@@ -3,7 +3,7 @@ description: ../../../descriptions/bello/hardware.yaml
 runtime:
   telemetry_capacity: 4096
   motor_velocity_filter:
-    current_sample_weight: 0.5
+    cutoff_hz: 15.0
 
 grpc:
   listen: { type: tcp, address: 0.0.0.0:50051 }

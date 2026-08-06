@@ -23,7 +23,7 @@ pub(crate) struct ResolvedMotor {
 #[derive(Clone)]
 pub(crate) struct ResolvedTopology {
     telemetry_capacity: usize,
-    motor_velocity_filter: Option<MotorVelocityFilterConfig>,
+    motor_velocity_filter: MotorVelocityFilterConfig,
     grpc: GrpcSpec,
     serial_devices: HashMap<SerialDeviceName, SerialSpec>,
     imus: HashMap<ImuName, ImuSpec>,
@@ -42,12 +42,10 @@ impl ResolvedTopology {
         if !(64..=1_000_000).contains(&config.runtime.telemetry_capacity) {
             bail!("runtime.telemetry_capacity must be in 64..=1000000");
         }
-        if let Some(filter) = config.runtime.motor_velocity_filter
-            && (!filter.current_sample_weight.is_finite()
-                || !(0.0..=1.0).contains(&filter.current_sample_weight)
-                || filter.current_sample_weight == 0.0)
+        if !config.runtime.motor_velocity_filter.cutoff_hz.is_finite()
+            || config.runtime.motor_velocity_filter.cutoff_hz <= 0.0
         {
-            bail!("runtime.motor_velocity_filter.current_sample_weight must be in (0, 1]");
+            bail!("runtime.motor_velocity_filter.cutoff_hz must be finite and positive");
         }
         if config.robot_description.as_os_str().is_empty() {
             bail!("hardware configuration has no canonical robot description");
@@ -191,7 +189,7 @@ impl ResolvedTopology {
         self.telemetry_capacity
     }
 
-    pub(crate) fn motor_velocity_filter(&self) -> Option<MotorVelocityFilterConfig> {
+    pub(crate) fn motor_velocity_filter(&self) -> MotorVelocityFilterConfig {
         self.motor_velocity_filter
     }
 
@@ -335,27 +333,18 @@ mod tests {
     }
 
     #[test]
-    fn motor_velocity_filter_weight_is_validated() {
+    fn motor_velocity_filter_cutoff_is_validated() {
         let component = concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml");
         let mut config = Config::load_raw(component).unwrap();
-        config
-            .runtime
-            .motor_velocity_filter
-            .as_mut()
-            .unwrap()
-            .current_sample_weight = 0.0;
+        config.runtime.motor_velocity_filter.cutoff_hz = 0.0;
 
         let error = ResolvedTopology::resolve(config).err().unwrap().to_string();
-        assert!(error.contains("current_sample_weight"), "{error}");
+        assert!(error.contains("cutoff_hz"), "{error}");
     }
 
     #[test]
-    fn motor_velocity_filter_can_be_disabled() {
-        let component = concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml");
-        let mut config = Config::load_raw(component).unwrap();
-        config.runtime.motor_velocity_filter = None;
-
-        assert!(ResolvedTopology::resolve(config).is_ok());
+    fn canonical_motor_velocity_filter_uses_fifteen_hertz_cutoff() {
+        assert_eq!(canonical_topology().motor_velocity_filter.cutoff_hz, 15.0);
     }
 
     #[test]

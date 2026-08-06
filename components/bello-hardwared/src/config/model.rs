@@ -80,13 +80,13 @@ pub(crate) struct LogicalSerialDeviceConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct RuntimeConfig {
     pub telemetry_capacity: usize,
-    pub motor_velocity_filter: Option<MotorVelocityFilterConfig>,
+    pub motor_velocity_filter: MotorVelocityFilterConfig,
 }
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
             telemetry_capacity: 4096,
-            motor_velocity_filter: Some(MotorVelocityFilterConfig::default()),
+            motor_velocity_filter: MotorVelocityFilterConfig::default(),
         }
     }
 }
@@ -94,14 +94,12 @@ impl Default for RuntimeConfig {
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct MotorVelocityFilterConfig {
-    pub current_sample_weight: f64,
+    pub cutoff_hz: f64,
 }
 
 impl Default for MotorVelocityFilterConfig {
     fn default() -> Self {
-        Self {
-            current_sample_weight: 0.5,
-        }
+        Self { cutoff_hz: 15.0 }
     }
 }
 

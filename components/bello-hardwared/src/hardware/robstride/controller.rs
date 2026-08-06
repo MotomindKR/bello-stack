@@ -105,7 +105,7 @@ pub(crate) struct TimedFeedback {
 
 pub(super) struct FeedbackProcessingConfig {
     pub(super) timeout: Duration,
-    pub(super) velocity_filter: Option<MotorVelocityFilterConfig>,
+    pub(super) velocity_filter: MotorVelocityFilterConfig,
 }
 
 /// One Robstride device bound to one raw CAN transport.
@@ -119,7 +119,7 @@ pub(crate) struct MotorController {
     bus: BusHandle,
     control_batcher: Arc<ControlBatcher>,
     feedback: Arc<RwLock<Option<TimedFeedback>>>,
-    velocity_filter: Option<Arc<Mutex<MotorVelocityFilter>>>,
+    velocity_filter: Arc<Mutex<MotorVelocityFilter>>,
     feedback_expected_since: Arc<RwLock<Option<Instant>>>,
     monitoring_request: Arc<Mutex<Option<(u64, Instant)>>>,
     thermal_health: Arc<Mutex<ThermalHealth>>,
@@ -145,12 +145,10 @@ impl MotorController {
             bus,
             control_batcher,
             feedback: Arc::new(RwLock::new(None)),
-            velocity_filter: feedback_processing.velocity_filter.map(|config| {
-                Arc::new(Mutex::new(MotorVelocityFilter::new(
-                    config.current_sample_weight,
-                    feedback_processing.timeout,
-                )))
-            }),
+            velocity_filter: Arc::new(Mutex::new(MotorVelocityFilter::new(
+                feedback_processing.velocity_filter.cutoff_hz,
+                feedback_processing.timeout,
+            ))),
             feedback_expected_since: Arc::new(RwLock::new(None)),
             monitoring_request: Arc::new(Mutex::new(None)),
             thermal_health: Arc::new(Mutex::new(ThermalHealth::default())),
@@ -199,9 +197,7 @@ impl MotorController {
 
     pub(crate) fn configure_enable(&self) -> Result<(), BusError> {
         *self.feedback.write() = None;
-        if let Some(filter) = &self.velocity_filter {
-            filter.lock().reset();
-        }
+        self.velocity_filter.lock().reset();
         *self.feedback_expected_since.write() = None;
         self.bus.enqueue_configuration_batch(vec![
             param_write_u8_frame(
@@ -345,12 +341,7 @@ impl MotorController {
     }
 
     pub(super) fn record_received_feedback(&self, value: Feedback, received: Instant) {
-        let published_velocity = self
-            .velocity_filter
-            .as_ref()
-            .map_or(value.velocity, |filter| {
-                filter.lock().apply(value.velocity, received)
-            });
+        let published_velocity = self.velocity_filter.lock().apply(value.velocity, received);
         *self.feedback.write() = Some(TimedFeedback {
             value,
             published_velocity,

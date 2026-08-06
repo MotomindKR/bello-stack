@@ -70,7 +70,7 @@ coordinate of a complete differential transmission.
 runtime:
   telemetry_capacity: 4096
   motor_velocity_filter:
-    current_sample_weight: 0.5
+    cutoff_hz: 15.0
 ```
 
 `telemetry_capacity` is the capacity of the process-wide broadcast channel,
@@ -82,22 +82,22 @@ can drop old events without blocking hardware control.
 - default: `4096`
 - valid range: `64..=1000000`
 
-`motor_velocity_filter` applies a two-tap FIR to every actuator-reported
-velocity sample in the Robstride feedback dispatcher before publishing it:
+`motor_velocity_filter` applies a timestamp-aware first-order low-pass filter
+to every actuator-reported velocity sample in the Robstride feedback dispatcher
+before publishing it:
 
 ```text
-published = current_sample_weight * current
-          + (1 - current_sample_weight) * previous
+alpha = 1 - exp(-2 * pi * cutoff_hz * sample_interval)
+published = previous_published + alpha * (current - previous_published)
 ```
 
-The weight must be in `(0, 1]` and defaults to `0.5`. At the default, an
-alternating sample sequence at the feedback Nyquist frequency cancels exactly.
-The first sample, and the first sample after a non-increasing timestamp or a gap
-longer than the motor group's feedback timeout, passes through unchanged. Set
-`motor_velocity_filter: null` to publish the unfiltered motor-reported value.
-Filtering affects motor values published by `WatchTelemetry` and
-`GetStateFrame`; raw protocol feedback remains authoritative for internal motor
-health and safety checks.
+The cutoff must be finite and positive and defaults to `15.0` Hz. Deriving the
+coefficient from each receive interval keeps the physical cutoff stable when
+feedback timing varies. The first sample, and the first sample after a
+non-increasing timestamp or a gap longer than the motor group's feedback
+timeout, passes through unchanged. Filtering affects motor values published by
+`WatchTelemetry` and `GetStateFrame`; raw protocol feedback remains
+authoritative for internal motor health and safety checks.
 
 ### `grpc`
 
