@@ -66,8 +66,8 @@ Position is slew-limited in the background command loop.
 
 The visualizer owns the configured physical controller. Left-stick vertical
 and horizontal publish normalized forward and lateral intent; right-stick
-horizontal publishes normalized yaw. Start/Options publishes a level-sensitive
-abort request. The stream does not contain policy-specific metres-per-second or
+horizontal publishes normalized yaw. R1 publishes a level-sensitive abort
+request. The stream does not contain policy-specific metres-per-second or
 radians-per-second limits; consumers apply their own command bounds.
 
 A newly connected controller publishes zero until every mapped stick has
@@ -85,12 +85,13 @@ display. Configured quaternions are normalized when the YAML is loaded. A stale
 or disconnected pose stream freezes the last root transform and never changes
 command or safety behavior.
 
-The controls window shows the remote listen address, controller identity,
-neutral-arm state, normalized axes, abort state, and any terminal service
-error. The diagnostics window shows transport lifecycle, motor inventory and
-limits, motor/group/IMU telemetry, command state, faults, sample ages, and a bounded
-event history. Disconnected streams retain their last values but are marked
-frozen and cannot seed control.
+The controls window has a dedicated **Gamepad** tab showing the remote listen
+address, controller identity, raw stick positions, normalized command axes,
+neutral-arm state, R1 abort state, and any terminal service error.
+The diagnostics window shows transport lifecycle, motor inventory and
+limits, motor/group/IMU telemetry, command state, faults, sample ages, and a
+bounded event history. Disconnected streams retain their last values but are
+marked frozen and cannot seed control.
 
 The minimal `config/vcan.yaml` and `config/vcan.urdf` pair is useful for a
 two-joint UI smoke test. The normal test suite covers configuration,

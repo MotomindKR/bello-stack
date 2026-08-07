@@ -271,7 +271,7 @@ For startup, hardware, diagnostics, and shutdown procedures, see
 [`remote.proto`](../components/bello-remote-api/proto/bello/remote/v1/remote.proto)
 defines the independent `bello.remote.v1.RemoteCommandService`. The visualizer
 publishes normalized forward, lateral, and yaw intent, controller connection
-and neutral-arm state, and the level-sensitive Start/Options abort request.
+and neutral-arm state, and the level-sensitive R1 abort request.
 Sequence and producer-monotonic timestamps order samples within one server
 process; consumers measure freshness from local receipt time.
 

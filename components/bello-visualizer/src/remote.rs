@@ -26,6 +26,10 @@ pub struct RemoteSample {
     pub controller_connected: bool,
     pub controller_name: String,
     pub intent_armed: bool,
+    pub raw_left_stick_x: f64,
+    pub raw_left_stick_y: f64,
+    pub raw_right_stick_x: f64,
+    pub raw_right_stick_y: f64,
     pub normalized_forward: f64,
     pub normalized_lateral: f64,
     pub normalized_yaw: f64,
@@ -40,6 +44,10 @@ impl RemoteSample {
             controller_connected: false,
             controller_name: String::new(),
             intent_armed: false,
+            raw_left_stick_x: 0.0,
+            raw_left_stick_y: 0.0,
+            raw_right_stick_x: 0.0,
+            raw_right_stick_y: 0.0,
             normalized_forward: 0.0,
             normalized_lateral: 0.0,
             normalized_yaw: 0.0,
@@ -100,9 +108,10 @@ impl RemoteCommandService for RemoteServer {
 struct ControllerReading {
     key: String,
     name: String,
-    forward: f64,
-    lateral: f64,
-    yaw: f64,
+    left_stick_x: f64,
+    left_stick_y: f64,
+    right_stick_x: f64,
+    right_stick_y: f64,
     abort_active: bool,
 }
 
@@ -139,9 +148,13 @@ impl RemoteNormalizer {
             self.active_controller = Some(reading.key.clone());
             self.intent_armed = false;
         }
-        let forward = apply_deadzone(reading.forward, self.deadzone);
-        let lateral = apply_deadzone(reading.lateral, self.deadzone);
-        let yaw = apply_deadzone(reading.yaw, self.deadzone);
+        let raw_left_stick_x = reading.left_stick_x.clamp(-1.0, 1.0);
+        let raw_left_stick_y = reading.left_stick_y.clamp(-1.0, 1.0);
+        let raw_right_stick_x = reading.right_stick_x.clamp(-1.0, 1.0);
+        let raw_right_stick_y = reading.right_stick_y.clamp(-1.0, 1.0);
+        let forward = apply_deadzone(raw_left_stick_y, self.deadzone);
+        let lateral = apply_deadzone(raw_left_stick_x, self.deadzone);
+        let yaw = apply_deadzone(-raw_right_stick_x, self.deadzone);
         if !self.intent_armed && forward == 0.0 && lateral == 0.0 && yaw == 0.0 {
             self.intent_armed = true;
         }
@@ -156,6 +169,10 @@ impl RemoteNormalizer {
             controller_connected: true,
             controller_name: reading.name,
             intent_armed: self.intent_armed,
+            raw_left_stick_x,
+            raw_left_stick_y,
+            raw_right_stick_x,
+            raw_right_stick_y,
             normalized_forward: forward,
             normalized_lateral: lateral,
             normalized_yaw: yaw,
@@ -262,10 +279,11 @@ fn read_controller(gilrs: &mut Gilrs, controller_index: usize) -> Option<Control
     Some(ControllerReading {
         key: format!("{id:?}"),
         name: gamepad.name().to_owned(),
-        forward: -f64::from(gamepad.value(Axis::LeftStickY)),
-        lateral: f64::from(gamepad.value(Axis::LeftStickX)),
-        yaw: -f64::from(gamepad.value(Axis::RightStickX)),
-        abort_active: gamepad.is_pressed(Button::Start),
+        left_stick_x: f64::from(gamepad.value(Axis::LeftStickX)),
+        left_stick_y: f64::from(gamepad.value(Axis::LeftStickY)),
+        right_stick_x: f64::from(gamepad.value(Axis::RightStickX)),
+        right_stick_y: f64::from(gamepad.value(Axis::RightStickY)),
+        abort_active: gamepad.is_pressed(Button::RightTrigger),
     })
 }
 
@@ -287,6 +305,10 @@ fn update_display(latest: &RwLock<DisplaySnapshot>, listen: SocketAddr, sample: 
         controller_connected: sample.controller_connected,
         controller_name: sample.controller_name.clone(),
         intent_armed: sample.intent_armed,
+        raw_left_stick_x: sample.raw_left_stick_x,
+        raw_left_stick_y: sample.raw_left_stick_y,
+        raw_right_stick_x: sample.raw_right_stick_x,
+        raw_right_stick_y: sample.raw_right_stick_y,
         normalized_forward: sample.normalized_forward,
         normalized_lateral: sample.normalized_lateral,
         normalized_yaw: sample.normalized_yaw,
@@ -307,6 +329,10 @@ pub(crate) fn mark_service_failed(
         controller_connected: false,
         controller_name: String::new(),
         intent_armed: false,
+        raw_left_stick_x: 0.0,
+        raw_left_stick_y: 0.0,
+        raw_right_stick_x: 0.0,
+        raw_right_stick_y: 0.0,
         normalized_forward: 0.0,
         normalized_lateral: 0.0,
         normalized_yaw: 0.0,
@@ -321,13 +347,14 @@ mod tests {
     use bello_remote_api::remote_command_service_client::RemoteCommandServiceClient;
     use tokio::sync::oneshot;
 
-    fn reading(key: &str, axes: [f64; 3], abort_active: bool) -> ControllerReading {
+    fn reading(key: &str, axes: [f64; 4], abort_active: bool) -> ControllerReading {
         ControllerReading {
             key: key.into(),
             name: "test controller".into(),
-            forward: axes[0],
-            lateral: axes[1],
-            yaw: axes[2],
+            left_stick_x: axes[0],
+            left_stick_y: axes[1],
+            right_stick_x: axes[2],
+            right_stick_y: axes[3],
             abort_active,
         }
     }
@@ -343,20 +370,21 @@ mod tests {
     #[test]
     fn new_controller_requires_neutral_and_abort_bypasses_gate() {
         let mut normalizer = RemoteNormalizer::new(0.1);
-        let held = normalizer.sample(Some(reading("one", [1.0, 0.0, 0.0], true)));
+        let held = normalizer.sample(Some(reading("one", [0.0, 1.0, 0.0, 0.0], true)));
         assert!(held.controller_connected);
         assert!(!held.intent_armed);
         assert_eq!(held.normalized_forward, 0.0);
+        assert_eq!(held.raw_left_stick_y, 1.0);
         assert!(held.abort_active);
 
-        let neutral = normalizer.sample(Some(reading("one", [0.0, 0.0, 0.0], false)));
+        let neutral = normalizer.sample(Some(reading("one", [0.0; 4], false)));
         assert!(neutral.intent_armed);
-        let moving = normalizer.sample(Some(reading("one", [0.55, 0.0, 0.0], false)));
+        let moving = normalizer.sample(Some(reading("one", [0.0, 0.55, 0.0, 0.0], false)));
         assert!((moving.normalized_forward - 0.5).abs() < 1.0e-12);
 
         let disconnected = normalizer.sample(None);
         assert!(!disconnected.controller_connected);
-        let reconnected = normalizer.sample(Some(reading("one", [0.55, 0.0, 0.0], false)));
+        let reconnected = normalizer.sample(Some(reading("one", [0.0, 0.55, 0.0, 0.0], false)));
         assert!(!reconnected.intent_armed);
         assert_eq!(reconnected.normalized_forward, 0.0);
     }

@@ -3,6 +3,7 @@
 pub mod config;
 pub mod diagnostics;
 pub mod editor;
+pub mod gamepad;
 pub mod remote;
 pub mod runtime;
 pub mod scene;

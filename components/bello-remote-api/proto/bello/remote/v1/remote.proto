@@ -20,6 +20,6 @@ message WatchCommandResponse {
   double normalized_forward = 6;
   double normalized_lateral = 7;
   double normalized_yaw = 8;
-  // Level-sensitive operator request for the consumer's safe shutdown path.
+  // Level-sensitive R1 request for the consumer's safe shutdown path.
   bool abort_active = 9;
 }

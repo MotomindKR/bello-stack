@@ -6,6 +6,7 @@ use bello_hardware_client::GroupState;
 use bello_visualizer::config::RootConfig;
 use bello_visualizer::diagnostics::DiagnosticsUi;
 use bello_visualizer::editor::{EditorMode, GroupEditor};
+use bello_visualizer::gamepad::gamepad_ui;
 use bello_visualizer::runtime::{ControlStatus, DisplaySnapshot, RuntimeHandle};
 use bello_visualizer::scene::ModelScene;
 use bello_visualizer::transmission::{CoordinateFeedback, FeedbackReconstructor, Transmission};
@@ -16,6 +17,7 @@ use kiss3d::prelude::*;
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum VisualizerTab {
     Controls,
+    Gamepad,
     Environment,
 }
 
@@ -178,6 +180,7 @@ async fn run() -> anyhow::Result<()> {
                             VisualizerTab::Controls,
                             "Controls",
                         );
+                        ui.selectable_value(&mut visualizer_tab, VisualizerTab::Gamepad, "Gamepad");
                         ui.selectable_value(
                             &mut visualizer_tab,
                             VisualizerTab::Environment,
@@ -185,6 +188,11 @@ async fn run() -> anyhow::Result<()> {
                         );
                     });
                     ui.separator();
+
+                    if visualizer_tab == VisualizerTab::Gamepad {
+                        gamepad_ui(ui, snapshot.remote.as_ref());
+                        return;
+                    }
 
                     if visualizer_tab == VisualizerTab::Environment {
                         ui.heading("Scene environment");
@@ -460,40 +468,6 @@ fn status_ui(
     snapshot: &DisplaySnapshot,
     mapping_warnings: &BTreeMap<String, String>,
 ) {
-    if let Some(remote) = &snapshot.remote {
-        ui.strong("Remote command");
-        ui.label(format!("Listening on {}", remote.listen));
-        if let Some(error) = &remote.service_error {
-            ui.colored_label(
-                kiss3d::egui::Color32::LIGHT_RED,
-                format!("Service stopped: {error}"),
-            );
-        } else if remote.controller_connected {
-            ui.colored_label(
-                kiss3d::egui::Color32::LIGHT_GREEN,
-                format!("Controller connected: {}", remote.controller_name),
-            );
-        } else {
-            ui.colored_label(
-                kiss3d::egui::Color32::YELLOW,
-                "Controller disconnected; streaming zero intent",
-            );
-        }
-        if remote.controller_connected && !remote.intent_armed {
-            ui.colored_label(
-                kiss3d::egui::Color32::YELLOW,
-                "Return all mapped sticks to neutral",
-            );
-        }
-        ui.monospace(format!(
-            "forward {:+.3}  lateral {:+.3}  yaw {:+.3}",
-            remote.normalized_forward, remote.normalized_lateral, remote.normalized_yaw
-        ));
-        if remote.abort_active {
-            ui.colored_label(kiss3d::egui::Color32::LIGHT_RED, "Abort requested");
-        }
-        ui.separator();
-    }
     if snapshot.hardware_connected {
         ui.colored_label(
             kiss3d::egui::Color32::LIGHT_GREEN,
