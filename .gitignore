@@ -1,6 +1,7 @@
 /target/
 *.rrd
 .direnv/
+.envrc
 __pycache__/
 *.py[cod]
 .mypy_cache/
