@@ -457,8 +457,9 @@ The visualizer accepts one independent YAML file containing a local URDF path,
 hardware endpoint/TLS settings, fixed or externally tracked root configuration,
 refresh rate, and optional group control profiles. Relative URDF and certificate
 paths resolve from the YAML directory. The maintained full-Bello example is
-[`config/bello-vcan.yaml`](../components/bello-visualizer/config/bello-vcan.yaml);
-its hardware and pose endpoints default to localhost. Use
+[`config/bello.example.yaml`](../components/bello-visualizer/config/bello.example.yaml).
+Copy it to the ignored local `config/bello.yaml`; its hardware and pose
+endpoints default to localhost. Use
 `--hardware-endpoint` and `--pose-endpoint` to redirect those services without
 editing the YAML. The latter is valid only with `root.source: external_pose`.
 The adjacent [`config/vcan.yaml`](../components/bello-visualizer/config/vcan.yaml)

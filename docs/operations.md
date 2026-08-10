@@ -148,8 +148,10 @@ start hardwared and the visualizer in separate terminals:
 ```sh
 cargo run -p bello-hardwared -- \
   --config components/bello-hardwared/config/bello-vcan.yaml
+cp components/bello-visualizer/config/bello.example.yaml \
+  components/bello-visualizer/config/bello.yaml
 cargo run -p bello-visualizer -- \
-  --config components/bello-visualizer/config/bello-vcan.yaml
+  --config components/bello-visualizer/config/bello.yaml
 ```
 
 Both visualizer service endpoints default to localhost. When the providers run

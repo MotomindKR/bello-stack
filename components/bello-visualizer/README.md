@@ -6,20 +6,24 @@ motor and IMU telemetry, reconstructs differential ankle joints, can command
 explicitly configured motor groups, and serves normalized physical-controller
 intent to remote policy runners.
 
-Run the maintained Bello configuration with:
+Create a machine-local Bello configuration from the maintained example, then
+run it with:
 
 ```sh
+cp components/bello-visualizer/config/bello.example.yaml \
+  components/bello-visualizer/config/bello.yaml
 cargo run -p bello-visualizer -- \
-  --config components/bello-visualizer/config/bello-vcan.yaml
+  --config components/bello-visualizer/config/bello.yaml
 ```
 
-The maintained configuration uses localhost for its hardware and pose clients
-and listens on port 50054 for remote-command subscribers. Override the clients
-without editing the YAML when they run on another host:
+The local `bello.yaml` is ignored by Git. The example uses localhost for its
+hardware and pose clients and listens on port 50054 for remote-command
+subscribers. Override the clients without editing the YAML when they run on
+another host:
 
 ```sh
 cargo run -p bello-visualizer -- \
-  --config components/bello-visualizer/config/bello-vcan.yaml \
+  --config components/bello-visualizer/config/bello.yaml \
   --hardware-endpoint https://robot.local:50051 \
   --pose-endpoint https://robot.local:50053
 ```
