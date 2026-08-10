@@ -139,8 +139,8 @@ control_profiles:
 }
 
 #[test]
-fn maintained_bello_vcan_configuration_loads_the_canonical_description() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("config/bello-vcan.yaml");
+fn maintained_bello_example_configuration_loads_the_canonical_description() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("config/bello.example.yaml");
     let config = VisualizerConfig::load(path).unwrap();
     assert_eq!(config.hardware.endpoint, "http://127.0.0.1:50051");
     match &config.root {

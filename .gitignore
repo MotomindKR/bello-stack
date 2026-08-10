@@ -9,3 +9,4 @@ __pycache__/
 dist/
 hardware-*.jsonl
 hardware-*.jsonl.html
+/components/bello-visualizer/config/bello.yaml
