@@ -5,7 +5,6 @@ from __future__ import annotations
 import math
 import time
 from collections.abc import Callable, Mapping, Sequence
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack
 from dataclasses import dataclass
 from typing import Protocol
@@ -24,10 +23,6 @@ from .config import (
     validate_group_coordinates,
 )
 
-WRIST_YAW_COORDINATES = (
-    "left_wrist_yaw_joint",
-    "right_wrist_yaw_joint",
-)
 _POSITION_LIMIT_TOLERANCE_RADIANS = 1e-9
 
 
@@ -50,7 +45,6 @@ class OperatorConfirmationError(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class TeleopSettings:
     group: str = "upper_body"
-    wrist_yaw_group: str | None = None
     owner: str = "dynamixel-upper-body-teleop"
     rate_hz: float = 30.0
     maximum_velocity_radians_per_second: float = 0.5
@@ -62,15 +56,11 @@ class TeleopSettings:
     acknowledgement_timeout_seconds: float = 1.0
     rpc_timeout_seconds: float = 5.0
     pipeline_depth: int = 2
-    wrist_yaw_kp: float = 10.0
-    wrist_yaw_kd: float = 1.0
     duration_seconds: float | None = None
 
     def __post_init__(self) -> None:
         if not self.group.strip() or not self.owner.strip():
             raise ValueError("group and owner must be non-empty")
-        if self.wrist_yaw_group is not None and not self.wrist_yaw_group.strip():
-            raise ValueError("wrist-yaw group must be non-empty when enabled")
         positive = {
             "rate": self.rate_hz,
             "maximum velocity": self.maximum_velocity_radians_per_second,
@@ -90,10 +80,6 @@ class TeleopSettings:
             raise TypeError("pipeline depth must be an integer")
         if self.pipeline_depth <= 0:
             raise ValueError("pipeline depth must be positive")
-        if not math.isfinite(self.wrist_yaw_kp) or self.wrist_yaw_kp <= 0.0:
-            raise ValueError("wrist-yaw kp must be positive and finite")
-        if not math.isfinite(self.wrist_yaw_kd) or self.wrist_yaw_kd < 0.0:
-            raise ValueError("wrist-yaw kd must be non-negative and finite")
         if self.duration_seconds is not None and (
             not math.isfinite(self.duration_seconds) or self.duration_seconds <= 0.0
         ):
@@ -169,41 +155,6 @@ def _validate_live_joint_limits(
                 f"teleop range [{joint.minimum_radians}, {joint.maximum_radians}] "
                 f"for {joint.coordinate!r}"
             )
-
-
-def build_wrist_yaw_hold_frame(
-    positions: Mapping[str, float],
-    gain_scale: float,
-    *,
-    kp: float = 10.0,
-    kd: float = 1.0,
-) -> dict[str, CoordinateTarget]:
-    """Build a complete captured-position hold for the optional wrist-yaw group."""
-
-    if not math.isfinite(gain_scale) or not 0.0 <= gain_scale <= 1.0:
-        raise ValueError("gain scale must be finite and in the range 0..=1")
-    if not math.isfinite(kp) or kp <= 0.0:
-        raise ValueError("wrist-yaw kp must be positive and finite")
-    if not math.isfinite(kd) or kd < 0.0:
-        raise ValueError("wrist-yaw kd must be non-negative and finite")
-    expected = set(WRIST_YAW_COORDINATES)
-    actual = set(positions)
-    if actual != expected:
-        raise ValueError(
-            f"incomplete wrist-yaw hold positions: missing={sorted(expected - actual)}, "
-            f"unexpected={sorted(actual - expected)}"
-        )
-    frame: dict[str, CoordinateTarget] = {}
-    for coordinate in WRIST_YAW_COORDINATES:
-        position = float(positions[coordinate])
-        if not math.isfinite(position):
-            raise ValueError(f"position for {coordinate!r} must be finite")
-        frame[coordinate] = CoordinateTarget.position(
-            position,
-            kp=kp * gain_scale,
-            kd=kd,
-        )
-    return frame
 
 
 def slew_positions(
@@ -356,20 +307,6 @@ def run_teleoperation(
     group = robot.group(settings.group)
     validate_group_coordinates(group.coordinates)
     _validate_live_joint_limits(group.motors)
-    wrist_yaw_group = (
-        robot.group(settings.wrist_yaw_group) if settings.wrist_yaw_group is not None else None
-    )
-    if wrist_yaw_group is not None:
-        expected_wrist_coordinates = set(WRIST_YAW_COORDINATES)
-        actual_wrist_coordinates = set(wrist_yaw_group.coordinates)
-        if actual_wrist_coordinates != expected_wrist_coordinates or len(
-            wrist_yaw_group.coordinates
-        ) != len(WRIST_YAW_COORDINATES):
-            raise ValueError(
-                "wrist-yaw coordinate mismatch: "
-                f"missing={sorted(expected_wrist_coordinates - actual_wrist_coordinates)}, "
-                f"unexpected={sorted(actual_wrist_coordinates - expected_wrist_coordinates)}"
-            )
 
     # Prove that a complete teaching-arm sample is available before acquiring a
     # motor lease or enabling the upper body.
@@ -381,9 +318,7 @@ def run_teleoperation(
         token="HOLD",
         message=(
             f"Teaching-arm input and daemon group {group.name!r}"
-            + (f" plus {wrist_yaw_group.name!r}" if wrist_yaw_group is not None else "")
             + " are ready. HOLD will acquire control and stabilize the upper body"
-            + (" and wrist-yaw motors" if wrist_yaw_group is not None else "")
             + " at fresh measured robot positions."
         ),
     )
@@ -410,15 +345,6 @@ def run_teleoperation(
             timeout_seconds=settings.telemetry_timeout_seconds,
             maximum_feedback_age_seconds=settings.maximum_feedback_age_seconds,
         )
-        wrist_yaw_positions: dict[str, float] | None = None
-        if wrist_yaw_group is not None:
-            wrist_yaw_positions = wait_for_initial_positions(
-                robot,
-                wrist_yaw_group.name,
-                timeout_seconds=settings.telemetry_timeout_seconds,
-                maximum_feedback_age_seconds=settings.maximum_feedback_age_seconds,
-            )
-
         control = stack.enter_context(
             group.control(
                 settings.owner,
@@ -427,56 +353,9 @@ def run_teleoperation(
                 rpc_timeout=settings.rpc_timeout_seconds,
             )
         )
-        wrist_yaw_control = (
-            stack.enter_context(
-                wrist_yaw_group.control(
-                    settings.owner,
-                    command_validity=settings.command_validity_seconds,
-                    acknowledgement_timeout=settings.acknowledgement_timeout_seconds,
-                    rpc_timeout=settings.rpc_timeout_seconds,
-                )
-            )
-            if wrist_yaw_group is not None
-            else None
-        )
         initial_hold_frame = build_target_frame(initial_positions, gain_scale=0.0)
         control.start(initial_hold_frame)
         pipeline = CommandPipeline(control, max_pending=settings.pipeline_depth)
-        wrist_yaw_pipeline: CommandPipeline | None = None
-        if wrist_yaw_control is not None and wrist_yaw_positions is not None:
-            wrist_yaw_hold_frame = build_wrist_yaw_hold_frame(
-                wrist_yaw_positions,
-                gain_scale=0.0,
-                kp=settings.wrist_yaw_kp,
-                kd=settings.wrist_yaw_kd,
-            )
-            # Enabling another group may take longer than upper_body's command
-            # watchdog. Start it on a worker while the calling thread keeps the
-            # already-running upper body at its captured pose.
-            with ThreadPoolExecutor(
-                max_workers=1,
-                thread_name_prefix="bello-wrist-yaw-start",
-            ) as executor:
-                start_future = executor.submit(
-                    wrist_yaw_control.start,
-                    wrist_yaw_hold_frame,
-                )
-                startup_tick = time.monotonic()
-                while not start_future.done():
-                    pipeline.send(initial_hold_frame)
-                    pipeline.poll()
-                    startup_tick += period
-                    delay = startup_tick - time.monotonic()
-                    if delay > 0.0:
-                        time.sleep(delay)
-                    else:
-                        startup_tick = time.monotonic()
-                start_future.result()
-                pipeline.poll()
-            wrist_yaw_pipeline = CommandPipeline(
-                wrist_yaw_control,
-                max_pending=settings.pipeline_depth,
-            )
         control_started_at = time.monotonic()
         next_tick = control_started_at
         last_clipped: tuple[str, ...] = ()
@@ -506,36 +385,13 @@ def run_teleoperation(
             else:
                 report("teaching-arm positions are within configured limits")
 
-        def send_frames(
-            upper_body_frame: Mapping[str, CoordinateTarget],
-            wrist_yaw_gain_scale: float,
-        ) -> None:
+        def send_frame(upper_body_frame: Mapping[str, CoordinateTarget]) -> None:
             pipeline.send(upper_body_frame)
             pipeline.poll()
-            if wrist_yaw_pipeline is not None and wrist_yaw_positions is not None:
-                wrist_yaw_pipeline.send(
-                    build_wrist_yaw_hold_frame(
-                        wrist_yaw_positions,
-                        gain_scale=wrist_yaw_gain_scale,
-                        kp=settings.wrist_yaw_kp,
-                        kd=settings.wrist_yaw_kd,
-                    )
-                )
-                wrist_yaw_pipeline.poll()
-
-        def drain_pipelines() -> None:
-            pipeline.drain()
-            if wrist_yaw_pipeline is not None:
-                wrist_yaw_pipeline.drain()
 
         try:
             report(
                 f"HOLD confirmed; stabilizing {group.name!r} at its measured position "
-                + (
-                    f"and {wrist_yaw_group.name!r} at its measured positions "
-                    if wrist_yaw_group is not None
-                    else ""
-                )
                 + f"over {settings.gain_ramp_seconds:.1f} seconds"
             )
             hold_started_at = control_started_at
@@ -550,14 +406,11 @@ def run_teleoperation(
                     if settings.gain_ramp_seconds == 0.0
                     else min(elapsed / settings.gain_ramp_seconds, 1.0)
                 )
-                send_frames(
-                    build_target_frame(initial_positions, gain_scale),
-                    wrist_yaw_gain_scale=gain_scale,
-                )
+                send_frame(build_target_frame(initial_positions, gain_scale))
                 sample = source.read()
                 report_clipping(sample)
                 if gain_scale >= 1.0:
-                    drain_pipelines()
+                    pipeline.drain()
                     break
                 next_tick = advance_tick(next_tick)
 
@@ -585,14 +438,11 @@ def run_teleoperation(
                     return
                 sample = source.read()
                 report_clipping(sample)
-                send_frames(
-                    build_target_frame(initial_positions, gain_scale=1.0),
-                    wrist_yaw_gain_scale=1.0,
-                )
+                send_frame(build_target_frame(initial_positions, gain_scale=1.0))
                 decision = confirmation.poll()
                 if decision is True:
                     transition_target = dict(sample.positions)
-                    drain_pipelines()
+                    pipeline.drain()
                     break
                 if decision is False:
                     raise OperatorConfirmationError("TELEOP was not confirmed")
@@ -633,12 +483,9 @@ def run_teleoperation(
                     progress,
                 )
                 previous = slew_positions(previous, interpolated, maximum_delta)
-                send_frames(
-                    build_target_frame(previous, gain_scale=1.0),
-                    wrist_yaw_gain_scale=1.0,
-                )
+                send_frame(build_target_frame(previous, gain_scale=1.0))
                 if progress >= 1.0 and previous == transition_target:
-                    drain_pipelines()
+                    pipeline.drain()
                     break
                 next_tick = advance_tick(next_tick)
 
@@ -654,12 +501,9 @@ def run_teleoperation(
                 sample = source.read()
                 report_clipping(sample)
                 previous = slew_positions(previous, sample.positions, maximum_delta)
-                send_frames(
-                    build_target_frame(previous, gain_scale=1.0),
-                    wrist_yaw_gain_scale=1.0,
-                )
+                send_frame(build_target_frame(previous, gain_scale=1.0))
                 next_tick = advance_tick(next_tick)
             completed_normally = True
         finally:
             if completed_normally:
-                drain_pipelines()
+                pipeline.drain()

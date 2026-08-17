@@ -40,8 +40,8 @@ _MASTER_P_GAIN = 10
 _LIMIT_P_GAIN = _MASTER_P_GAIN * 10
 _MASTER_GOAL_CURRENT = 800
 _HOLD_P_GAIN = 250
-_WRIST_YAW_ZERO_POSITION = 2_048
-_WRIST_YAW_OPPOSITE_POSITION = _WRIST_YAW_ZERO_POSITION + _ENCODER_COUNTS_PER_TURN // 2
+_AUXILIARY_WRIST_ZERO_POSITION = 2_048
+_AUXILIARY_WRIST_OPPOSITE_POSITION = _AUXILIARY_WRIST_ZERO_POSITION + _ENCODER_COUNTS_PER_TURN // 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,8 +75,8 @@ class HeldDynamixel:
 
 AUXILIARY_HELD_DYNAMIXELS: tuple[HeldDynamixel, ...] = (
     HeldDynamixel(9, "waist_yaw", 512),
-    HeldDynamixel(27, "left_wrist_yaw", _WRIST_YAW_OPPOSITE_POSITION),
-    HeldDynamixel(17, "right_wrist_yaw", _WRIST_YAW_OPPOSITE_POSITION),
+    HeldDynamixel(27, "left_auxiliary_wrist", _AUXILIARY_WRIST_OPPOSITE_POSITION),
+    HeldDynamixel(17, "right_auxiliary_wrist", _AUXILIARY_WRIST_OPPOSITE_POSITION),
 )
 
 

@@ -13,4 +13,4 @@ grpc:
 bus_interfaces: { can0: can0, can1: can1 }
 serial_ports: { imu_serial: /dev/ttyACM0 }
 
-enabled_groups: [lower_body, upper_body, wrist_yaw]
+enabled_groups: [lower_body, upper_body]

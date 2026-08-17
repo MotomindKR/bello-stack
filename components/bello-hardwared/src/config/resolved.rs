@@ -417,12 +417,6 @@ mod tests {
     fn damping_uses_configured_gains_without_scaling() {
         let topology = canonical_topology();
 
-        let wrist = topology.groups.get(&GroupName::from("wrist_yaw")).unwrap();
-        let left_wrist = MotorName::from("left_arm_7");
-        let wrist_feedback = neutral_feedback(wrist);
-        let wrist_damping = wrist.mechanical.damping_commands(&wrist_feedback).unwrap();
-        assert!((wrist_damping[&left_wrist].kd - 0.55).abs() < 1.0e-12);
-
         let lower = topology.groups.get(&GroupName::from("lower_body")).unwrap();
         let first = MotorName::from("left_ankle_1");
         let second = MotorName::from("left_ankle_2");

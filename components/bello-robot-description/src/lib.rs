@@ -1293,7 +1293,6 @@ mod tests {
             "elbow_pitch_joint",
             "elbow_yaw_joint",
             "wrist_pitch_joint",
-            "wrist_yaw_joint",
         ] {
             let left = description
                 .joint(&format!("left_{joint}"))

@@ -195,13 +195,9 @@ def _joint(
     )
 
 
-# This is the six-joint sphere-hand morphology configured by
-# components/bello-hardwared/config/bello.yaml. The original teaching rig also
-# has a torso, a seventh wrist joint, and grippers; those devices are deliberately
-# excluded from the robot-coordinate mapping because the daemon's upper_body
-# group does not contain them. The Dynamixel reader separately locks the torso
-# at calibrated zero and the seventh wrist joints at their configured
-# half-turn-opposite positions.
+# This is the six-joint-per-arm sphere-end-effector morphology configured by
+# components/bello-hardwared/config/bello.yaml. Extra teaching-rig devices are
+# held locally and do not become robot coordinates.
 #
 # Limits are the intersection of the original teaching-arm action limits and the
 # physical upper-body actuator limits. The tighter limit wins.
@@ -305,10 +301,10 @@ UPPER_BODY_JOINTS: tuple[JointMapping, ...] = (
         "right_elbow_yaw_joint",
         1.0,
         -1.0,
-        (-30.0, 150.0),
+        (-150.0, 30.0),
         kp=20.0,
         kd=1.0,
-        default_position_radians=math.pi / 2.0,
+        default_position_radians=-math.pi / 2.0,
     ),
     _joint(
         16,

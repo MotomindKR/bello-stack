@@ -442,14 +442,12 @@ the target object schema. Prefer direct aliases as above. YAML merge keys
 ## Reading the examples
 
 The [hardware description](../descriptions/bello/hardware.yaml) defines Bello's
-logical buses, all physical motors (including wrist yaw), command policy, and
-three ownership groups. The
+logical buses, 25 physical motors, command policy, and two ownership groups. The
 [production deployment](../components/bello-hardwared/config/bello.yaml)
 enables all groups and maps `can0`/`can1` to physical interfaces. The
 [vCAN deployment](../components/bello-hardwared/config/bello-vcan.yaml)
-preserves those logical assignments while mapping to `vcan0`/`vcan1`; it omits
-the wrist-yaw group because the sphere-hand emulator does not expose IDs 37 and
-47.
+preserves those logical assignments while mapping `can0`/`can1` to
+`vcan0`/`vcan1`.
 
 ## Visualizer YAML
 
