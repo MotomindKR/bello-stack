@@ -105,11 +105,6 @@ def _parser() -> argparse.ArgumentParser:
         type=float,
         help="stop after this many seconds; by default run until interrupted",
     )
-    parser.add_argument(
-        "--hold-wrist-yaw",
-        action="store_true",
-        help=("capture and hold left_arm_7/right_arm_7 through the daemon's wrist_yaw group"),
-    )
     master_torque = parser.add_mutually_exclusive_group()
     master_torque.add_argument(
         "--enable-master-torque",
@@ -183,8 +178,6 @@ def _master_torque_mode(args: argparse.Namespace) -> MasterTorqueMode:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        if args.dry_run and args.hold_wrist_yaw:
-            raise ValueError("--hold-wrist-yaw requires --enable")
         torque_mode = _master_torque_mode(args)
         if args.dry_run:
             with DynamixelTeachingArms(
@@ -222,7 +215,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                     )
                 settings = TeleopSettings(
                     group=args.group,
-                    wrist_yaw_group=("wrist_yaw" if args.hold_wrist_yaw else None),
                     rate_hz=args.rate,
                     maximum_velocity_radians_per_second=args.max_velocity,
                     gain_ramp_seconds=args.gain_ramp,

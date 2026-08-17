@@ -29,10 +29,10 @@ def test_neutral_master_positions_map_to_zero() -> None:
         assert position == pytest.approx(0.0, abs=1e-12)
 
 
-def test_configured_default_pose_sets_opposing_elbow_yaw_positions() -> None:
+def test_configured_default_pose_sets_symmetric_elbow_yaw_positions() -> None:
     expected_defaults = dict.fromkeys(UPPER_BODY_COORDINATES, 0.0)
     expected_defaults["left_elbow_yaw_joint"] = -math.pi / 2.0
-    expected_defaults["right_elbow_yaw_joint"] = math.pi / 2.0
+    expected_defaults["right_elbow_yaw_joint"] = -math.pi / 2.0
 
     assert {
         joint.coordinate: joint.default_position_radians for joint in UPPER_BODY_JOINTS
@@ -45,7 +45,7 @@ def test_configured_default_pose_sets_opposing_elbow_yaw_positions() -> None:
         for joint in UPPER_BODY_JOINTS
     }
     assert raw[25] == 3_072
-    assert raw[15] == 1_024
+    assert raw[15] == 3_072
     sample = map_raw_positions(raw)
 
     assert sample.clipped_coordinates == ()
@@ -60,15 +60,15 @@ def test_mapping_clamps_to_tighter_physical_limits() -> None:
     raw = {
         joint.dxl_id: _raw_position(joint.position_offset_radians) for joint in UPPER_BODY_JOINTS
     }
-    right_elbow = next(
-        joint for joint in UPPER_BODY_JOINTS if joint.coordinate == "right_elbow_pitch_joint"
+    right_shoulder = next(
+        joint for joint in UPPER_BODY_JOINTS if joint.coordinate == "right_shoulder_pitch_joint"
     )
-    raw[right_elbow.dxl_id] = _raw_position(right_elbow.position_offset_radians - math.pi)
+    raw[right_shoulder.dxl_id] = _raw_position(right_shoulder.position_offset_radians + math.pi)
 
     sample = map_raw_positions(raw)
 
-    assert sample.positions[right_elbow.coordinate] == pytest.approx(1.57)
-    assert sample.clipped_coordinates == (right_elbow.coordinate,)
+    assert sample.positions[right_shoulder.coordinate] == pytest.approx(0.5)
+    assert sample.clipped_coordinates == (right_shoulder.coordinate,)
 
 
 def test_effective_limits_never_exceed_canonical_urdf_limits() -> None:

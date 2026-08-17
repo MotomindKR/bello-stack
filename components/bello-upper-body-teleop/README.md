@@ -9,7 +9,6 @@ Dynamixel teaching arms
   -> this process
   -> bello-hardware gRPC client
   -> bello-hardwared upper_body lease -> 12 tracked Robstride motors on can1
-  -> optional wrist_yaw lease         -> left_arm_7/right_arm_7 hold on can1
 ```
 
 This program can move physical hardware. Keep the robot supported, clear its
@@ -18,8 +17,8 @@ readings with `--dry-run` before using `--enable`.
 
 ## Supported morphology
 
-The checked-in mapping matches the six-joint-per-arm sphere-hand topology in
-`components/bello-hardwared/config/bello.yaml`:
+The checked-in mapping matches the six-joint-per-arm sphere-end-effector
+topology in `components/bello-hardwared/config/bello.yaml`:
 
 | Teaching-arm ID | Daemon coordinate |
 | ---: | --- |
@@ -36,10 +35,10 @@ The checked-in mapping matches the six-joint-per-arm sphere-hand topology in
 | 15 | `right_elbow_yaw_joint` |
 | 16 | `right_wrist_pitch_joint` |
 
-The configured default and weak-feedback pose is zero for ten mapped joints,
-`−π/2` for `left_elbow_yaw_joint`, and `+π/2` for
-`right_elbow_yaw_joint`. These defaults remain inside their asymmetric joint
-limits and map back through the same teaching-arm calibration.
+The configured default and weak-feedback pose is zero for ten mapped joints
+and `−π/2` for both elbow-yaw joints. These symmetric defaults remain inside
+their shared asymmetric joint limits and map back through the same teaching-arm
+calibration.
 
 The original teaching rig also has three movable joints that do not map to the
 daemon's 12-coordinate `upper_body` group. They are managed as local
@@ -48,15 +47,15 @@ configured-position locks:
 | Teaching-rig ID | Local behavior |
 | ---: | --- |
 | 9 | lock waist yaw at calibrated zero (raw 512) |
-| 27 | lock left wrist yaw 180° opposite calibrated zero (raw 4096, modulo raw 0) |
-| 17 | lock right wrist yaw 180° opposite calibrated zero (raw 4096, modulo raw 0) |
+| 27 | lock left auxiliary wrist 180° opposite calibrated zero (raw 4096, modulo raw 0) |
+| 17 | lock right auxiliary wrist 180° opposite calibrated zero (raw 4096, modulo raw 0) |
 
 These three positions never become robot commands. The two gripper Dynamixels
 (IDs 28 and 18) remain unmanaged. Startup rejects any daemon group whose
 coordinate set does not exactly match the 12 mapped joints above.
 Because encoder position is periodic, the controller chooses the nearest
 4096-count equivalent of each listed goal. For example, raw 0, 4096, and 8192
-are the same physical wrist target, so the controller avoids commanding an
+are the same physical auxiliary target, so the controller avoids commanding an
 unnecessary full turn from a nearby multi-turn reading.
 
 Offsets, directions, and action limits come from the previous
@@ -81,19 +80,6 @@ by the live daemon inventory.
 The robot impedance gains match MotoMind's deployed upper-body hold tuning:
 shoulder pitch/roll use `kp=70, kd=2`, shoulder yaw `20/1`, elbow pitch `40/2`,
 elbow yaw `20/1`, and wrist pitch `10/1`. Both arms use the same gains.
-
-The physical daemon configuration also exposes the otherwise-uncontrolled
-robot wrist-yaw motors as a separate, optional `wrist_yaw` group:
-
-| Physical motor | CAN ID | Daemon coordinate |
-| --- | ---: | --- |
-| `left_arm_7` | 37 | `left_wrist_yaw_joint` |
-| `right_arm_7` | 47 | `right_wrist_yaw_joint` |
-
-`--hold-wrist-yaw` snapshots these physical motors after `HOLD` and holds that
-measured pose with `kp=10, kd=1`. It does not command them from teaching-arm
-IDs 27 and 17; those Dynamixels continue to lock locally at their configured
-half-turn-opposite positions.
 
 ## Install
 
@@ -152,8 +138,8 @@ stale gains, writes Goal Current 800, enables torque, and verifies every
 torque-enable register.
 
 After torque-on, every acquisition cycle writes the constant configured
-robot-space default pose: left elbow yaw at `−π/2`, right elbow yaw at `+π/2`,
-and the other ten mapped joints at zero. The weak `P=10` gain is used inside
+robot-space default pose: both elbow-yaw joints at `−π/2`, with the other ten
+mapped joints at zero. The weak `P=10` gain is used inside
 the configured range. At either joint limit it switches to the original 10×
 `P=100` virtual-stop gain while Goal Position remains at that joint's default,
 resisting any further travel beyond the limit. In the same transaction, ID 9
@@ -183,22 +169,6 @@ bello-upper-body-teleop \
   --endpoint http://127.0.0.1:50051
 ```
 
-To hold the two physical wrist-yaw motors at their measured positions for the
-entire control session, add the opt-in flag:
-
-```sh
-bello-upper-body-teleop \
-  --enable \
-  --hold-wrist-yaw \
-  --endpoint http://127.0.0.1:50051
-```
-
-The daemon must be restarted with the current physical
-`components/bello-hardwared/config/bello.yaml` before using this flag so its
-inventory includes the `wrist_yaw` group. The vcan sphere-hand configuration
-does not expose this group because that emulator does not publish CAN IDs 37
-and 47. `--hold-wrist-yaw` therefore cannot be combined with `--dry-run`.
-
 The startup and handoff sequence is:
 
 1. connects to the daemon, safely configures and enables all 15 managed
@@ -207,9 +177,9 @@ The startup and handoff sequence is:
 2. verifies that the daemon's `upper_body` coordinates exactly match the
    teaching-arm mapping;
 3. waits for the operator to type `HOLD`;
-4. obtains fresh feedback from every upper-body motor and, when requested,
-   both wrist-yaw motors; acquires independent exclusive group leases; and
-   starts control at those measured positions with zero proportional gain;
+4. obtains fresh feedback from every upper-body motor, acquires the exclusive
+   group lease, and starts control at those measured positions with zero
+   proportional gain;
 5. continuously commands those same poses while ramping proportional gains
    over five seconds;
 6. keeps streaming the held pose while waiting for the operator to type

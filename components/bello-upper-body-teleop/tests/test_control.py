@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import threading
 import time
 from collections.abc import Callable
 from itertools import pairwise
@@ -17,11 +16,9 @@ from bello_upper_body_teleop.config import (
     map_raw_positions,
 )
 from bello_upper_body_teleop.control import (
-    WRIST_YAW_COORDINATES,
     OperatorConfirmationError,
     TeleopSettings,
     build_target_frame,
-    build_wrist_yaw_hold_frame,
     interpolate_positions,
     required_transition_duration,
     run_teleoperation,
@@ -65,26 +62,6 @@ def test_target_frame_rejects_a_position_outside_the_effective_limits() -> None:
 
     with pytest.raises(ValueError, match="outside its effective"):
         build_target_frame(positions, gain_scale=1.0)
-
-
-def test_wrist_yaw_hold_frame_is_complete_and_scales_only_kp() -> None:
-    positions = {
-        "left_wrist_yaw_joint": -0.3,
-        "right_wrist_yaw_joint": 0.4,
-    }
-
-    frame = build_wrist_yaw_hold_frame(
-        positions,
-        gain_scale=0.5,
-        kp=10.0,
-        kd=1.0,
-    )
-
-    assert tuple(frame) == WRIST_YAW_COORDINATES
-    assert frame["left_wrist_yaw_joint"].position_radians == pytest.approx(-0.3)
-    assert frame["right_wrist_yaw_joint"].position_radians == pytest.approx(0.4)
-    assert all(target.kp == pytest.approx(5.0) for target in frame.values())
-    assert all(target.kd == pytest.approx(1.0) for target in frame.values())
 
 
 def test_slew_positions_limits_each_joint_independently() -> None:
@@ -169,19 +146,12 @@ class _FakeControl:
         self.started: dict[str, CoordinateTarget] | None = None
         self.sent: list[dict[str, CoordinateTarget]] = []
         self.closed = False
-        self.start_wait_for: threading.Event | None = None
-        self.start_unblocked_by_event: bool | None = None
-        self.send_signal: threading.Event | None = None
 
     def start(self, targets: dict[str, CoordinateTarget]) -> None:
         self.started = targets
-        if self.start_wait_for is not None:
-            self.start_unblocked_by_event = self.start_wait_for.wait(timeout=0.5)
 
     def send_async(self, targets: dict[str, CoordinateTarget]) -> _FakeReceipt:
         self.sent.append(targets)
-        if self.send_signal is not None:
-            self.send_signal.set()
         return _FakeReceipt()
 
     def __enter__(self) -> _FakeControl:
@@ -219,21 +189,12 @@ class _FakeGroup:
 class _FakeRobot:
     def __init__(self) -> None:
         self.group_instance = _FakeGroup()
-        self.wrist_group_instance = _FakeGroup(
-            "wrist_yaw",
-            WRIST_YAW_COORDINATES,
-        )
         self.state_reader = _FakeStateReader(self.group_instance.coordinates)
-        self.wrist_state_reader = _FakeStateReader(self.wrist_group_instance.coordinates)
 
-    def group(self, name: str) -> _FakeGroup:
-        if name == "wrist_yaw":
-            return self.wrist_group_instance
+    def group(self, _name: str) -> _FakeGroup:
         return self.group_instance
 
-    def states(self, **kwargs: object) -> _FakeStateReader:
-        if kwargs.get("groups") == ("wrist_yaw",):
-            return self.wrist_state_reader
+    def states(self, **_kwargs: object) -> _FakeStateReader:
         return self.state_reader
 
 
@@ -292,7 +253,6 @@ class _FakeConfirmationGate:
         session = self._robot.group_instance.session
         if token == "HOLD":
             assert self._robot.group_instance.control_calls == 0
-            assert self._robot.wrist_group_instance.control_calls == 0
             assert session.started is None
         elif token == "TELEOP":
             assert self._robot.group_instance.control_calls == 1
@@ -367,77 +327,6 @@ def test_run_holds_feedback_then_interpolates_only_after_second_confirmation() -
     assert any(message.startswith("HOLD confirmed") for message in statuses)
     assert any(message.startswith("TELEOP confirmed") for message in statuses)
     assert any(message.startswith("transition complete") for message in statuses)
-
-
-def test_optional_wrist_yaw_group_holds_captured_positions_for_entire_run() -> None:
-    robot = _FakeRobot()
-    startup_keepalive = threading.Event()
-    robot.group_instance.session.send_signal = startup_keepalive
-    robot.wrist_group_instance.session.start_wait_for = startup_keepalive
-    source = _FakeSource()
-    confirmation = _FakeConfirmationGate(robot, (True, None, True))
-    live_started_at_read: int | None = None
-
-    def should_stop() -> bool:
-        return live_started_at_read is not None and source.read_count > live_started_at_read
-
-    def report(message: str) -> None:
-        nonlocal live_started_at_read
-        if message.startswith("transition complete"):
-            live_started_at_read = source.read_count
-
-    run_teleoperation(
-        cast(Robot, robot),
-        source,
-        TeleopSettings(
-            wrist_yaw_group="wrist_yaw",
-            rate_hz=1_000.0,
-            maximum_velocity_radians_per_second=1_000.0,
-            gain_ramp_seconds=0.002,
-            transition_duration_seconds=0.0001,
-        ),
-        confirmation=confirmation,
-        should_stop=should_stop,
-        status=report,
-    )
-
-    wrist_session = robot.wrist_group_instance.session
-    assert wrist_session.started is not None
-    assert wrist_session.closed
-    assert tuple(wrist_session.started) == WRIST_YAW_COORDINATES
-    assert all(
-        target.position_radians == pytest.approx(0.2) for target in wrist_session.started.values()
-    )
-    assert all(target.kp == 0.0 for target in wrist_session.started.values())
-    assert wrist_session.start_unblocked_by_event is True
-    assert wrist_session.sent
-    assert len(robot.group_instance.session.sent) > len(wrist_session.sent)
-    assert all(
-        target.position_radians == pytest.approx(0.2)
-        for frame in wrist_session.sent
-        for target in frame.values()
-    )
-    assert all(target.kp == pytest.approx(10.0) for target in wrist_session.sent[-1].values())
-    assert all(target.kd == pytest.approx(1.0) for target in wrist_session.sent[-1].values())
-    assert "wrist_yaw" in confirmation.requests[0][1]
-
-
-def test_optional_wrist_yaw_group_rejects_coordinate_mismatch_before_control() -> None:
-    robot = _FakeRobot()
-    robot.wrist_group_instance.coordinates = ("unexpected_joint",)
-    source = _FakeSource()
-
-    with pytest.raises(ValueError, match="wrist-yaw coordinate mismatch"):
-        run_teleoperation(
-            cast(Robot, robot),
-            source,
-            TeleopSettings(wrist_yaw_group="wrist_yaw"),
-            confirmation=_FakeConfirmationGate(robot, (True, True)),
-        )
-
-    assert source.read_count == 0
-    assert robot.group_instance.control_calls == 0
-    assert robot.wrist_group_instance.control_calls == 0
 
 
 @pytest.mark.parametrize(

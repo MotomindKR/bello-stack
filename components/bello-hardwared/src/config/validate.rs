@@ -259,8 +259,8 @@ mod tests {
         let physical = Config::load_raw(component.join("config/bello.yaml")).unwrap();
         let vcan = Config::load_raw(component.join("config/bello-vcan.yaml")).unwrap();
 
-        assert_eq!(physical.motors.len(), 27);
-        assert_eq!(physical.motor_groups.len(), 3);
+        assert_eq!(physical.motors.len(), 25);
+        assert_eq!(physical.motor_groups.len(), 2);
         assert_eq!(vcan.motors.len(), 25);
         assert_eq!(vcan.motor_groups.len(), 2);
         assert!(
@@ -270,10 +270,17 @@ mod tests {
                 .find(|motor| motor.name == "waist_yaw")
                 .is_some_and(|motor| motor.bus == "can1")
         );
-        assert!(
-            vcan.motors
+        assert_eq!(
+            physical
+                .motors
                 .iter()
-                .all(|motor| !matches!(motor.name.as_str(), "left_arm_7" | "right_arm_7"))
+                .map(|motor| motor.name.as_str())
+                .collect::<Vec<_>>(),
+            vcan
+                .motors
+                .iter()
+                .map(|motor| motor.name.as_str())
+                .collect::<Vec<_>>()
         );
         for name in ["can0", "can1"] {
             let physical_bus = physical.buses.iter().find(|bus| bus.name == name).unwrap();
@@ -328,11 +335,12 @@ mod tests {
         description
             .motors
             .iter_mut()
-            .find(|motor| motor.name == "left_arm_7")
+            .find(|motor| motor.name == "left_arm_1")
             .unwrap()
             .model = "UNKNOWN".into();
-        let deployment: DeploymentConfig =
+        let mut deployment: DeploymentConfig =
             load_yaml(&component.join("config/bello-vcan.yaml")).unwrap();
+        deployment.enabled_groups.retain(|group| group != "upper_body");
 
         assert!(
             Config::compose(description, deployment, &description_path)

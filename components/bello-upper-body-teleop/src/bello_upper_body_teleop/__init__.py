@@ -9,12 +9,10 @@ from .config import (
     validate_group_coordinates,
 )
 from .control import (
-    WRIST_YAW_COORDINATES,
     ConfirmationGate,
     OperatorConfirmationError,
     TeleopSettings,
     build_target_frame,
-    build_wrist_yaw_hold_frame,
     interpolate_positions,
     required_transition_duration,
     run_teleoperation,
@@ -34,7 +32,6 @@ __all__ = [
     "AUXILIARY_HELD_DYNAMIXELS",
     "UPPER_BODY_COORDINATES",
     "UPPER_BODY_JOINTS",
-    "WRIST_YAW_COORDINATES",
     "ConfirmationGate",
     "DynamixelCommunicationError",
     "DynamixelDependencyError",
@@ -47,7 +44,6 @@ __all__ = [
     "TeachingArmSample",
     "TeleopSettings",
     "build_target_frame",
-    "build_wrist_yaw_hold_frame",
     "interpolate_positions",
     "map_raw_positions",
     "required_transition_duration",
