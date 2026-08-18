@@ -326,8 +326,8 @@ mod tests {
         assert_eq!(waist.health.safe_position_max, 0.5);
 
         let ankle = &topology.motors[&MotorName::from("left_ankle_1")].spec;
-        assert!((ankle.limits.position_min + 1.1345).abs() < 1.0e-9);
-        assert!((ankle.limits.position_max - 0.6109).abs() < 1.0e-9);
+        assert!((ankle.limits.position_min + 1.2217).abs() < 1.0e-9);
+        assert!((ankle.limits.position_max - 0.6981).abs() < 1.0e-9);
         assert_eq!(ankle.limits.torque_min, -36.0);
         assert_eq!(ankle.limits.torque_max, 36.0);
     }
@@ -379,14 +379,14 @@ mod tests {
         let first = MotorName::from("left_ankle_1");
         let second = MotorName::from("left_ankle_2");
 
-        feedback.get_mut(&first).unwrap().position = 0.38;
-        feedback.get_mut(&second).unwrap().position = 0.38;
+        feedback.get_mut(&first).unwrap().position = 0.57;
+        feedback.get_mut(&second).unwrap().position = 0.57;
         lower
             .mechanical
             .validate_feedback_positions(&feedback)
             .unwrap();
-        feedback.get_mut(&first).unwrap().position = 0.39;
-        feedback.get_mut(&second).unwrap().position = 0.39;
+        feedback.get_mut(&first).unwrap().position = 0.58;
+        feedback.get_mut(&second).unwrap().position = 0.58;
         let feedback_position = lower
             .mechanical
             .validate_feedback_positions(&feedback)
