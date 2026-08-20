@@ -12,7 +12,7 @@ right_foot: right_ankle_roll_link
 imu_stale_ms: 20
 motor_stale_ms: 50
 orientation_lpf_cutoff_hz: 20.0
-gyro_lpf_cutoff_hz: 30.0
+gyro_lpf_cutoff_hz: 15.0
 acceleration_lpf_cutoff_hz: 25.0
 contact_height_full_m: 0.015
 contact_height_zero_m: 0.06

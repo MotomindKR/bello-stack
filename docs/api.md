@@ -287,16 +287,20 @@ stream must observe neutral before nonzero intent becomes active.
 defines the independent `bello.pose.v1.PoseService`. `WatchPose` streams a
 requested reference/tracked frame pair with sequence, translation in metres,
 normalized `xyzw` orientation, estimator-provided linear velocity in metres per
-second, a precise source monotonic timestamp, and producer-reported age. Its
-convention is `reference_from_tracked`. The visualizer composes the configured
-`tracked_from_model_root`; disconnects, frame/sequence errors, or stale samples
-freeze the last display transform and do not affect command or safety logic.
+second, filtered angular velocity in radians per second expressed in
+tracked-frame axes, a precise source monotonic timestamp, and producer-reported
+age. Its convention is `reference_from_tracked`. The visualizer composes the
+configured `tracked_from_model_root`; disconnects, frame/sequence errors, or
+stale samples freeze the last display transform and do not affect command or
+safety logic.
 
 [`bello-state-estimatord`](../components/bello-state-estimatord) is the
 maintained local provider for Bello. It consumes the high-level
 `bello-hardware-client`, uses the EBIMU quaternion for orientation, and applies
 encoder/URDF stationary-foot corrections to IMU-propagated translation. It
 implements this existing RPC directly; clients do not submit estimates and no
-second estimator-specific service exists. The service publishes only pose,
-linear velocity, source time, sequence, frame names, and age. Filter covariance
-and contact internals remain private implementation details.
+second estimator-specific service exists. The service publishes pose, linear
+velocity, filtered local angular velocity, source time, sequence, frame names,
+and age. Filter covariance and contact internals remain private implementation
+details. The canonical physical and emulator configurations low-pass angular
+velocity at 15 Hz.

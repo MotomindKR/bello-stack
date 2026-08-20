@@ -170,7 +170,7 @@ const fn default_orientation_lpf_cutoff_hz() -> f64 {
     20.0
 }
 const fn default_gyro_lpf_cutoff_hz() -> f64 {
-    30.0
+    15.0
 }
 const fn default_acceleration_lpf_cutoff_hz() -> f64 {
     25.0

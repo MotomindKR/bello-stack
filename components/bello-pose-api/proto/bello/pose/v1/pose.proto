@@ -25,6 +25,13 @@ message LinearVelocity {
   double z = 3;
 }
 
+// Tracked-frame angular velocity expressed in tracked-frame axes.
+message AngularVelocity {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
 // Unit quaternion in renderer-friendly xyzw ordering.
 message Orientation {
   double x = 1;
@@ -43,4 +50,5 @@ message WatchPoseResponse {
   LinearVelocity linear_velocity_metres_per_second = 7;
   // Producer monotonic source time; comparable only within this stream.
   uint64 sample_monotonic_ns = 8;
+  AngularVelocity angular_velocity_radians_per_second = 9;
 }

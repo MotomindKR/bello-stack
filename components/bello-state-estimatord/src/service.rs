@@ -8,7 +8,7 @@ use anyhow::{Context, bail};
 use bello_hardware_client::{Robot, RobotStateChange};
 use bello_pose_api::pose_service_server::{PoseService, PoseServiceServer};
 use bello_pose_api::{
-    LinearVelocity, Orientation, Translation, WatchPoseRequest, WatchPoseResponse,
+    AngularVelocity, LinearVelocity, Orientation, Translation, WatchPoseRequest, WatchPoseResponse,
 };
 use futures_core::Stream;
 use nalgebra::{Quaternion, UnitQuaternion, Vector3};
@@ -28,6 +28,7 @@ use crate::model::KinematicModel;
 struct StampedPose {
     sequence: u64,
     pose: PoseEstimate,
+    angular_velocity_local: Vector3<f64>,
     produced: Instant,
     source_age: Duration,
     sample_monotonic_ns: u64,
@@ -374,6 +375,7 @@ async fn monitor_hardware(
             poses.send_replace(Some(StampedPose {
                 sequence,
                 pose,
+                angular_velocity_local: angular_velocity,
                 produced: Instant::now(),
                 source_age: imu.sample_age,
                 sample_monotonic_ns: imu_source_ns,
@@ -442,6 +444,11 @@ fn response_for(
             z: sample.pose.linear_velocity.z,
         }),
         sample_monotonic_ns: sample.sample_monotonic_ns,
+        angular_velocity_radians_per_second: Some(AngularVelocity {
+            x: sample.angular_velocity_local.x,
+            y: sample.angular_velocity_local.y,
+            z: sample.angular_velocity_local.z,
+        }),
     }
 }
 
@@ -475,6 +482,7 @@ mod tests {
                 orientation: UnitQuaternion::identity(),
                 linear_velocity: Vector3::new(0.1, 0.2, 0.3),
             },
+            angular_velocity_local: Vector3::new(0.4, 0.5, 0.6),
             produced: Instant::now(),
             source_age: Duration::from_millis(4),
             sample_monotonic_ns: 123_456,
@@ -490,6 +498,7 @@ mod tests {
         assert_eq!(sample.sequence, 7);
         assert_eq!(sample.translation_metres.unwrap().z, 3.0);
         assert_eq!(sample.linear_velocity_metres_per_second.unwrap().z, 0.3);
+        assert_eq!(sample.angular_velocity_radians_per_second.unwrap().z, 0.6);
         assert_eq!(sample.sample_monotonic_ns, 123_456);
         assert!(sample.sample_age_ms >= 4);
     }
