@@ -1,0 +1,20 @@
+cameras:
+  - name: wrist
+    source:
+      type: v4l2
+      device: /dev/video0
+      format: mjpeg
+    video: { width: 320, height: 240, fps: 30 }
+    encoder:
+      type: x264
+      bitrate_kbps: 1500
+      keyframe_interval: 30
+      speed_preset: ultrafast
+    rtp:
+      # Remote GPU host or its private VPN address.
+      host: 127.0.0.1
+      port: 5600
+      bind_address: 0.0.0.0
+      payload_type: 96
+      mtu: 1200
+      receiver_latency_ms: 30

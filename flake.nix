@@ -25,8 +25,17 @@
           pythonWheelRuntimeLibraries = [
             pkgs.stdenv.cc.cc.lib
           ];
+          gstreamerPackages = with pkgs.gst_all_1; [
+            gstreamer
+            gst-plugins-base
+            gst-plugins-good
+            gst-plugins-bad
+            gst-plugins-ugly
+            gst-libav
+          ];
           runtimeLibraries =
-            visualizerRuntimeLibraries ++ pythonWheelRuntimeLibraries;
+            visualizerRuntimeLibraries ++ pythonWheelRuntimeLibraries ++
+            gstreamerPackages;
         in {
           default = pkgs.mkShell {
             packages = with pkgs; [
@@ -41,15 +50,21 @@
               can-utils
               iproute2
               buf
+              glib
+              gobject-introspection
               (python3.withPackages (python: with python; [
                 grpcio
                 grpcio-tools
                 hatchling
                 mypy
+                numpy
+                pygobject3
+                pyyaml
                 pytest
+                types-pyyaml
               ]))
               ruff
-            ] ++ visualizerRuntimeLibraries;
+            ] ++ visualizerRuntimeLibraries ++ gstreamerPackages;
             RUST_BACKTRACE = "1";
             # Keep Cargo artifacts outside this non-Git path flake. Otherwise Nix
             # copies target/ into every source snapshot before entering the shell.

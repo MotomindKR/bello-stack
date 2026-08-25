@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling>=1.30,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bello-camera"
+version = "0.1.0"
+description = "GStreamer RTP/H.264 camera transport for Bello applications"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "LicenseRef-Proprietary"
+license-files = ["LICENSE"]
+classifiers = ["Private :: Do Not Upload"]
+dependencies = ["numpy>=1.24", "PyYAML>=6,<7"]
+
+[project.scripts]
+bello-camera-stream = "bello_camera.cli:stream_main"
+bello-camera-receive = "bello_camera.cli:receive_main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bello_camera"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/bello_camera", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["gi", "gi.*"]
+ignore_missing_imports = true

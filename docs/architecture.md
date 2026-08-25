@@ -8,6 +8,10 @@ motor-group controllers, leases, telemetry fan-out, and gRPC server. The
 public read-only gRPC stream supports external monitoring; higher-level motion
 generation, kinematics, and robot behavior remain outside the daemon.
 
+Camera capture and encoding remain outside the hardware daemon as well. The
+optional `bello-camera` process owns GStreamer pipelines and publishes H.264
+over RTP/UDP, so media backpressure cannot enter actuator safety paths.
+
 The process is monolithic in deployment, not in implementation: each layer has
 one kind of policy and communicates through narrow handles and bounded queues.
 The adjacent API and Robstride protocol libraries contain shared wire-format

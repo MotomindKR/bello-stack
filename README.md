@@ -10,10 +10,16 @@ Behavior policy remains outside this repository. Robot-level local pose
 generation is provided as a separate read-only service and never participates
 in hardware command safety.
 
+Camera capture is also isolated from actuator control. The optional
+[`bello-camera`](components/bello-camera) Python package uses GStreamer bindings
+to publish and receive low-latency RTP/H.264 without placing media work inside
+`bello-hardwared`.
+
 ## Workspace
 
 | Component | Role | Artifact |
 | --- | --- | --- |
+| [`bello-camera`](components/bello-camera) | GStreamer camera capture and RTP/H.264 send/receive | Pure-Python package and CLIs |
 | [`bello-hardwared`](components/bello-hardwared) | Production hardware ownership, control, safety, gRPC, and telemetry | `bello-hardwared` binary and narrow Rust library entrypoint |
 | [`bello-hardware-api`](components/bello-hardware-api) | Shared protobuf contract and generated tonic types | Rust library |
 | [`bello-hardware-client`](components/bello-hardware-client) | Robot/group/coordinate control and aggregated state; raw gRPC access is an explicit escape hatch | Rust library |
@@ -86,6 +92,12 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 buf format --diff --exit-code
 buf lint
+cd components/bello-camera
+ruff format --check .
+ruff check .
+mypy src/bello_camera tests
+pytest
+cd ../..
 cd components/bello-hardware-python
 ruff format --check .
 ruff check .

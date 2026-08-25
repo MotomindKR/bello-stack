@@ -1,0 +1,6 @@
+cameras:
+  - name: wrist
+    source: { type: test, pattern: smpte }
+    video: { width: 320, height: 240, fps: 30 }
+    encoder: { type: x264, bitrate_kbps: 1000 }
+    rtp: { host: 127.0.0.1, port: 5600 }
