@@ -254,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn bundled_deployments_compose_the_canonical_description() {
+    fn bundled_deployments_compose_their_canonical_descriptions() {
         let component = Path::new(env!("CARGO_MANIFEST_DIR"));
         let physical = Config::load_raw(component.join("config/bello.yaml")).unwrap();
         let vcan = Config::load_raw(component.join("config/bello-vcan.yaml")).unwrap();
@@ -276,8 +276,7 @@ mod tests {
                 .iter()
                 .map(|motor| motor.name.as_str())
                 .collect::<Vec<_>>(),
-            vcan
-                .motors
+            vcan.motors
                 .iter()
                 .map(|motor| motor.name.as_str())
                 .collect::<Vec<_>>()
@@ -298,6 +297,19 @@ mod tests {
             vcan.serial_devices[0].baud_rate
         );
         assert_ne!(physical.serial_devices[0].port, vcan.serial_devices[0].port);
+
+        let milly = Config::load_raw(component.join("config/milly.yaml")).unwrap();
+        let milly_vcan = Config::load_raw(component.join("config/milly-vcan.yaml")).unwrap();
+        assert_eq!(milly.motors.len(), 7);
+        assert_eq!(milly.motor_groups.len(), 1);
+        assert_eq!(milly.motor_groups[0].name, "arm");
+        assert_eq!(milly_vcan.motors.len(), 7);
+        assert_eq!(milly_vcan.motor_groups.len(), 1);
+        assert_eq!(milly.buses[0].name, "can0");
+        assert_eq!(milly.buses[0].interface, "can0");
+        assert_eq!(milly_vcan.buses[0].interface, "vcan0");
+        assert!(milly.serial_devices.is_empty());
+        assert!(milly_vcan.serial_devices.is_empty());
     }
 
     #[test]
@@ -340,7 +352,9 @@ mod tests {
             .model = "UNKNOWN".into();
         let mut deployment: DeploymentConfig =
             load_yaml(&component.join("config/bello-vcan.yaml")).unwrap();
-        deployment.enabled_groups.retain(|group| group != "upper_body");
+        deployment
+            .enabled_groups
+            .retain(|group| group != "upper_body");
 
         assert!(
             Config::compose(description, deployment, &description_path)

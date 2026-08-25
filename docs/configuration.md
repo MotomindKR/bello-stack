@@ -28,6 +28,9 @@ The maintained examples are:
 - [production hardware](../components/bello-hardwared/config/bello.yaml)
 - [full Bello vCAN deployment](../components/bello-hardwared/config/bello-vcan.yaml)
 - [canonical Bello hardware description](../descriptions/bello/hardware.yaml)
+- [Milly single-arm hardware](../components/bello-hardwared/config/milly.yaml)
+- [Milly single-arm vCAN deployment](../components/bello-hardwared/config/milly-vcan.yaml)
+- [canonical Milly hardware description](../descriptions/milly/hardware.yaml)
 
 The raw schema and defaults live in
 [`config/model.rs`](../components/bello-hardwared/src/config/model.rs). The

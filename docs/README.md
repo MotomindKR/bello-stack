@@ -71,6 +71,8 @@ remain:
   maintained example configurations.
 - [`descriptions/bello`](../descriptions/bello) for the canonical robot
   description, meshes, hardware topology, and their provenance boundary.
+- [`descriptions/milly`](../descriptions/milly) for the canonical Milly
+  single-arm description, hardware topology, and asset provenance.
 
 The project is greenfield. Documentation describes the current interface only;
 it does not preserve historical aliases or compatibility behavior.

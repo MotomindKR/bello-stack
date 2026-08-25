@@ -190,6 +190,7 @@ mod tests {
         for yaml in [
             include_str!("../config/vcan.yaml"),
             include_str!("../config/faults.yaml"),
+            include_str!("../config/milly-vcan.yaml"),
         ] {
             let config: Config = serde_yaml::from_str(yaml).unwrap();
             config.validate().unwrap();

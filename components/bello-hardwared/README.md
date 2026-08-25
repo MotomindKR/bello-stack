@@ -25,8 +25,8 @@ cargo run -p bello-hardwared -- \
 ```
 
 `--config` is required: hardwared never selects a deployment implicitly. The
-maintained physical deployment is this component's `config/bello.yaml`. It
-selects groups from
+maintained Bello physical deployment is this component's `config/bello.yaml`.
+It selects groups from
 [`descriptions/bello/hardware.yaml`](../../descriptions/bello/hardware.yaml)
 and maps that description's logical buses and serial devices to host names.
 Stable bitrate, host ID, sensor rate, and timeout settings remain in the
@@ -38,6 +38,12 @@ bitrate.
 The physical and vCAN configurations expose `lower_body` and `upper_body`.
 Each arm has six motors, and the sphere end effectors are fixed to the wrist
 links rather than assigned separate motor coordinates.
+
+The Milly profile is a seven-actuator single arm adapted from the canonical
+configuration in `motomind_platform`. Validate or run it with
+`config/milly.yaml`; `config/milly-vcan.yaml` binds the same stable hardware
+description to `vcan0` and pairs with the emulator's
+`config/milly-vcan.yaml`. Both expose one atomic `arm` control group.
 
 Visualization and recording are deliberately outside this process. External
 tools can subscribe to the daemon's read-only gRPC telemetry stream without
@@ -54,6 +60,8 @@ affecting hardware ownership.
   [`config/bello-vcan.yaml`](config/bello-vcan.yaml).
 - Bello motor identity and group membership live only in
   [`descriptions/bello/hardware.yaml`](../../descriptions/bello/hardware.yaml).
+- Milly motor identity and group membership live only in
+  [`descriptions/milly/hardware.yaml`](../../descriptions/milly/hardware.yaml).
 - RobStride protocol limits live only in
   [`descriptions/robstride/models.yaml`](../../descriptions/robstride/models.yaml).
 - The Rust library intentionally exposes only the `run` and `check` entrypoints;
