@@ -188,7 +188,7 @@ imus:
   - name: imu
     serial_device: imu_serial
     stale_timeout_ms: 500
-    output_rate_hz: 500
+    output_rate_hz: 200
 ```
 
 The deployment supplies only the host binding:
