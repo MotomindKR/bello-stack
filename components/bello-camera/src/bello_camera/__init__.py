@@ -1,6 +1,6 @@
 """Low-latency GStreamer camera transport."""
 
-from .config import CameraConfig, StreamConfig, load_config
+from .config import CameraConfig, StreamConfig, ViewConfig, load_config
 from .stream import CameraFrame, CameraReceiver, CameraStreamer
 
 __all__ = [
@@ -9,5 +9,6 @@ __all__ = [
     "CameraReceiver",
     "CameraStreamer",
     "StreamConfig",
+    "ViewConfig",
     "load_config",
 ]

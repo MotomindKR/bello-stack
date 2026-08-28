@@ -1,28 +1,31 @@
 from __future__ import annotations
 
-from .config import CameraConfig
+from .config import CameraConfig, SourceConfig
 
 
 def sender_pipeline(camera: CameraConfig) -> str:
     video = camera.video
-    source = camera.source
-    if source.type == "v4l2":
-        assert source.device is not None
-        caps = (
-            f"image/jpeg,width={video.width},height={video.height},"
-            f"framerate={video.fps}/1 ! jpegdec"
-            if source.format == "mjpeg"
-            else f"video/x-raw,width={video.width},height={video.height},framerate={video.fps}/1"
-        )
-        source_launch = f"v4l2src device={_quote(source.device)} do-timestamp=true ! {caps}"
-    elif source.type == "test":
-        source_launch = (
-            f"videotestsrc is-live=true pattern={_quote(source.pattern)} ! "
-            f"video/x-raw,width={video.width},height={video.height},framerate={video.fps}/1"
-        )
+    if len(camera.views) == 1:
+        source_launch = _source_launch(camera.views[0].source, camera)
     else:
-        assert source.launch is not None
-        source_launch = source.launch
+        pads = " ".join(
+            f"sink_{index}::xpos={index * video.width} sink_{index}::ypos=0 "
+            f"sink_{index}::width={video.width} sink_{index}::height={video.height}"
+            for index in range(len(camera.views))
+        )
+        branches = " ".join(
+            f"{_source_launch(view.source, camera)} ! "
+            "queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 ! "
+            "videoconvert ! "
+            f"video/x-raw,width={video.width},height={video.height},framerate={video.fps}/1 ! "
+            f"compose.sink_{index}"
+            for index, view in enumerate(camera.views)
+        )
+        source_launch = (
+            f"compositor name=compose background=black force-live=true {pads} "
+            f"{branches} compose. ! video/x-raw,width={camera.composite_width},"
+            f"height={video.height},framerate={video.fps}/1"
+        )
 
     encoder = camera.encoder
     if encoder.type == "x264":
@@ -50,6 +53,28 @@ def sender_pipeline(camera: CameraConfig) -> str:
     )
 
 
+def _source_launch(source: SourceConfig, camera: CameraConfig) -> str:
+    video = camera.video
+    if source.type == "v4l2":
+        assert source.device is not None
+        caps = (
+            f"image/jpeg,width={video.width},height={video.height},"
+            f"framerate={video.fps}/1 ! jpegdec"
+            if source.format == "mjpeg"
+            else f"video/x-raw,width={video.width},height={video.height},framerate={video.fps}/1"
+        )
+        source_launch = f"v4l2src device={_quote(source.device)} do-timestamp=true ! {caps}"
+    elif source.type == "test":
+        source_launch = (
+            f"videotestsrc is-live=true pattern={_quote(source.pattern)} ! "
+            f"video/x-raw,width={video.width},height={video.height},framerate={video.fps}/1"
+        )
+    else:
+        assert source.launch is not None
+        source_launch = source.launch
+    return source_launch
+
+
 def receiver_pipeline(camera: CameraConfig) -> str:
     caps = (
         "application/x-rtp,media=video,encoding-name=H264,clock-rate=90000,"
@@ -64,7 +89,7 @@ def receiver_pipeline(camera: CameraConfig) -> str:
             "h264parse",
             "avdec_h264",
             "videoconvert",
-            f"video/x-raw,format=RGB,width={camera.video.width},height={camera.video.height}",
+            f"video/x-raw,format=RGB,width={camera.composite_width},height={camera.video.height}",
             "appsink name=frames emit-signals=true max-buffers=1 drop=true sync=false",
         ]
     )

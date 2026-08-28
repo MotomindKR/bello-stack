@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-
 from bello_camera.config import load_config
 from bello_camera.pipeline import receiver_pipeline, sender_pipeline
 
@@ -37,3 +36,32 @@ cameras:
     )
     with pytest.raises(ValueError, match="unknown fields"):
         load_config(path)
+
+
+def test_three_views_share_one_composed_rtp_stream(tmp_path: Path) -> None:
+    path = tmp_path / "rig.yaml"
+    path.write_text(
+        """
+cameras:
+  - name: policy
+    views:
+      - { name: top, source: { type: test, pattern: smpte } }
+      - { name: left_wrist, source: { type: test, pattern: ball } }
+      - { name: right_wrist, source: { type: test, pattern: snow } }
+    video: { width: 224, height: 224, fps: 10 }
+    encoder: { type: x264, bitrate_kbps: 1500 }
+    rtp: { host: 127.0.0.1, port: 5600 }
+""",
+        encoding="utf-8",
+    )
+
+    camera = load_config(path).camera("policy")
+    sender = sender_pipeline(camera)
+    receiver = receiver_pipeline(camera)
+
+    assert camera.view_names == ("top", "left_wrist", "right_wrist")
+    assert camera.composite_width == 672
+    assert "compositor name=compose" in sender
+    assert "sink_2::xpos=448" in sender
+    assert sender.count("udpsink") == 1
+    assert "width=672,height=224" in receiver

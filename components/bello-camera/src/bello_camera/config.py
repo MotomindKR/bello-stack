@@ -18,6 +18,12 @@ class SourceConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class ViewConfig:
+    name: str
+    source: SourceConfig
+
+
+@dataclass(frozen=True, slots=True)
 class VideoConfig:
     width: int
     height: int
@@ -46,10 +52,30 @@ class RtpConfig:
 @dataclass(frozen=True, slots=True)
 class CameraConfig:
     name: str
-    source: SourceConfig
+    views: tuple[ViewConfig, ...]
     video: VideoConfig
     encoder: EncoderConfig
     rtp: RtpConfig
+    maximum_view_skew_ms: int = 100
+    maximum_view_age_ms: int = 150
+
+    @property
+    def source(self) -> SourceConfig:
+        if len(self.views) != 1:
+            raise ValueError("a composed camera rig does not have one source")
+        return self.views[0].source
+
+    @property
+    def view_names(self) -> tuple[str, ...]:
+        return tuple(view.name for view in self.views)
+
+    @property
+    def image_features(self) -> tuple[str, ...]:
+        return tuple(f"observation.images.{name}" for name in self.view_names)
+
+    @property
+    def composite_width(self) -> int:
+        return self.video.width * len(self.views)
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,17 +104,66 @@ def load_config(path: str | Path) -> StreamConfig:
 def _camera(value: object, index: int) -> CameraConfig:
     where = f"cameras[{index}]"
     raw = _mapping(value, where)
-    _only(raw, {"name", "source", "video", "encoder", "rtp"}, where)
+    _only(
+        raw,
+        {
+            "name",
+            "source",
+            "views",
+            "video",
+            "encoder",
+            "rtp",
+            "maximum_view_skew_ms",
+            "maximum_view_age_ms",
+        },
+        where,
+    )
     name = _text(raw.get("name"), f"{where}.name")
-    if not all(char.isascii() and (char.isalnum() or char in "_-") for char in name):
-        raise ValueError(f"{where}.name must contain only ASCII letters, digits, '_' or '-'")
+    _validate_name(name, f"{where}.name")
+    has_source, has_views = "source" in raw, "views" in raw
+    if has_source == has_views:
+        raise ValueError(f"{where} must contain exactly one of source or views")
+    views: tuple[ViewConfig, ...]
+    if has_source:
+        views = (ViewConfig(name, _source(raw.get("source"), f"{where}.source")),)
+    else:
+        raw_views = raw.get("views")
+        if not isinstance(raw_views, list) or not 1 <= len(raw_views) <= 3:
+            raise ValueError(f"{where}.views must contain one to three views")
+        views = tuple(_view(item, where, index) for index, item in enumerate(raw_views))
+        if len({view.name for view in views}) != len(views):
+            raise ValueError(f"{where}.views contains duplicate names")
+    maximum_view_skew_ms = _integer(
+        raw.get("maximum_view_skew_ms", 100), f"{where}.maximum_view_skew_ms"
+    )
+    maximum_view_age_ms = _integer(
+        raw.get("maximum_view_age_ms", 150), f"{where}.maximum_view_age_ms"
+    )
+    if maximum_view_skew_ms <= 0 or maximum_view_age_ms <= 0:
+        raise ValueError(f"{where} view timing limits must be positive")
     return CameraConfig(
         name,
-        _source(raw.get("source"), f"{where}.source"),
+        views,
         _video(raw.get("video"), f"{where}.video"),
         _encoder(raw.get("encoder"), f"{where}.encoder"),
         _rtp(raw.get("rtp"), f"{where}.rtp"),
+        maximum_view_skew_ms,
+        maximum_view_age_ms,
     )
+
+
+def _view(value: object, camera_where: str, index: int) -> ViewConfig:
+    where = f"{camera_where}.views[{index}]"
+    raw = _mapping(value, where)
+    _only(raw, {"name", "source"}, where)
+    name = _text(raw.get("name"), f"{where}.name")
+    _validate_name(name, f"{where}.name")
+    return ViewConfig(name, _source(raw.get("source"), f"{where}.source"))
+
+
+def _validate_name(value: str, where: str) -> None:
+    if not all(char.isascii() and (char.isalnum() or char in "_-") for char in value):
+        raise ValueError(f"{where} must contain only ASCII letters, digits, '_' or '-'")
 
 
 def _source(value: object, where: str) -> SourceConfig:

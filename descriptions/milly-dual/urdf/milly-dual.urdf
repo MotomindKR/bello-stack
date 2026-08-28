@@ -1,0 +1,83 @@
+<?xml version="1.0"?>
+<robot name="milly_dual_control">
+  <!--
+    Control-topology description for two side-by-side Milly arms. The nominal
+    0.60 m base separation is for identification and visualization only; this
+    model is not collision geometry and must not be used for collision safety.
+  -->
+  <link name="dual_milly_base"/>
+
+  <link name="left_base"/>
+  <joint name="left_mount" type="fixed">
+    <parent link="dual_milly_base"/><child link="left_base"/>
+    <origin xyz="0 0.30 0" rpy="0 0 0"/>
+  </joint>
+  <link name="left_link_1"/><link name="left_link_2"/><link name="left_link_3"/>
+  <link name="left_link_4"/><link name="left_link_5"/><link name="left_link_6"/>
+  <link name="left_gripper_link"/>
+  <joint name="left_joint_1" type="revolute">
+    <parent link="left_base"/><child link="left_link_1"/><axis xyz="0 0 1"/>
+    <limit lower="-2.62" upper="2.62" effort="30" velocity="20"/>
+  </joint>
+  <joint name="left_joint_2" type="revolute">
+    <parent link="left_link_1"/><child link="left_link_2"/><axis xyz="0 1 0"/>
+    <limit lower="0" upper="3.14" effort="30" velocity="20"/>
+  </joint>
+  <joint name="left_joint_3" type="revolute">
+    <parent link="left_link_2"/><child link="left_link_3"/><axis xyz="0 1 0"/>
+    <limit lower="0" upper="2.97" effort="30" velocity="20"/>
+  </joint>
+  <joint name="left_joint_4" type="revolute">
+    <parent link="left_link_3"/><child link="left_link_4"/><axis xyz="1 0 0"/>
+    <limit lower="-1.70" upper="1.70" effort="14" velocity="20"/>
+  </joint>
+  <joint name="left_joint_5" type="revolute">
+    <parent link="left_link_4"/><child link="left_link_5"/><axis xyz="0 1 0"/>
+    <limit lower="-1.72" upper="1.77" effort="14" velocity="20"/>
+  </joint>
+  <joint name="left_joint_6" type="revolute">
+    <parent link="left_link_5"/><child link="left_link_6"/><axis xyz="1 0 0"/>
+    <limit lower="-1.5" upper="1.5" effort="5.5" velocity="20"/>
+  </joint>
+  <joint name="left_gripper" type="revolute">
+    <parent link="left_link_6"/><child link="left_gripper_link"/><axis xyz="0 0 1"/>
+    <limit lower="-2.3" upper="0" effort="5.5" velocity="20"/>
+  </joint>
+
+  <link name="right_base"/>
+  <joint name="right_mount" type="fixed">
+    <parent link="dual_milly_base"/><child link="right_base"/>
+    <origin xyz="0 -0.30 0" rpy="0 0 0"/>
+  </joint>
+  <link name="right_link_1"/><link name="right_link_2"/><link name="right_link_3"/>
+  <link name="right_link_4"/><link name="right_link_5"/><link name="right_link_6"/>
+  <link name="right_gripper_link"/>
+  <joint name="right_joint_1" type="revolute">
+    <parent link="right_base"/><child link="right_link_1"/><axis xyz="0 0 1"/>
+    <limit lower="-2.62" upper="2.62" effort="30" velocity="20"/>
+  </joint>
+  <joint name="right_joint_2" type="revolute">
+    <parent link="right_link_1"/><child link="right_link_2"/><axis xyz="0 1 0"/>
+    <limit lower="0" upper="3.14" effort="30" velocity="20"/>
+  </joint>
+  <joint name="right_joint_3" type="revolute">
+    <parent link="right_link_2"/><child link="right_link_3"/><axis xyz="0 1 0"/>
+    <limit lower="0" upper="2.97" effort="30" velocity="20"/>
+  </joint>
+  <joint name="right_joint_4" type="revolute">
+    <parent link="right_link_3"/><child link="right_link_4"/><axis xyz="1 0 0"/>
+    <limit lower="-1.70" upper="1.70" effort="14" velocity="20"/>
+  </joint>
+  <joint name="right_joint_5" type="revolute">
+    <parent link="right_link_4"/><child link="right_link_5"/><axis xyz="0 1 0"/>
+    <limit lower="-1.72" upper="1.77" effort="14" velocity="20"/>
+  </joint>
+  <joint name="right_joint_6" type="revolute">
+    <parent link="right_link_5"/><child link="right_link_6"/><axis xyz="1 0 0"/>
+    <limit lower="-1.5" upper="1.5" effort="5.5" velocity="20"/>
+  </joint>
+  <joint name="right_gripper" type="revolute">
+    <parent link="right_link_6"/><child link="right_gripper_link"/><axis xyz="0 0 1"/>
+    <limit lower="-2.3" upper="0" effort="5.5" velocity="20"/>
+  </joint>
+</robot>

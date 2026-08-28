@@ -31,6 +31,9 @@ The maintained examples are:
 - [Milly single-arm hardware](../components/bello-hardwared/config/milly.yaml)
 - [Milly single-arm vCAN deployment](../components/bello-hardwared/config/milly-vcan.yaml)
 - [canonical Milly hardware description](../descriptions/milly/hardware.yaml)
+- [dual-Milly hardware](../components/bello-hardwared/config/milly-dual.yaml)
+- [dual-Milly vCAN deployment](../components/bello-hardwared/config/milly-dual-vcan.yaml)
+- [dual-Milly control description](../descriptions/milly-dual/hardware.yaml)
 
 The raw schema and defaults live in
 [`config/model.rs`](../components/bello-hardwared/src/config/model.rs). The

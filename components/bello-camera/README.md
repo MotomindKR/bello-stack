@@ -33,3 +33,10 @@ Use `config/test.yaml` for a camera-free SMPTE test stream. Policy consumers
 must call `CameraReceiver.latest(max_age_seconds=...)` and fail closed on stale
 video. RTP/UDP should run only on an isolated robot LAN or private VPN because
 it has no authentication, encryption, or delivery guarantee.
+
+A logical camera entry may replace `source` with an ordered `views` list containing one to
+three named sources. The sender composes those per-view frames horizontally, encodes them
+once, and the receiver reports a frame whose width is `video.width * len(views)`. View names
+must be unique. `maximum_view_skew_ms` and `maximum_view_age_ms` default to 100 and 150 ms;
+policy integrations should use the per-view capture identities to suppress metadata for an
+incomplete, skewed, or stale composition.
