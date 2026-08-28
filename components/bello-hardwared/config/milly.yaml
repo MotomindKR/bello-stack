@@ -3,7 +3,7 @@ description: ../../../descriptions/milly/hardware.yaml
 runtime:
   telemetry_capacity: 4096
   motor_velocity_filter:
-    cutoff_hz: 15.0
+    cutoff_hz: 10.0
   imu_filter:
     orientation_cutoff_hz: 10.0
     gyro_cutoff_hz: 10.0

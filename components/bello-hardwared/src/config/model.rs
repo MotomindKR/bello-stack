@@ -101,7 +101,7 @@ pub struct MotorVelocityFilterConfig {
 
 impl Default for MotorVelocityFilterConfig {
     fn default() -> Self {
-        Self { cutoff_hz: 15.0 }
+        Self { cutoff_hz: 10.0 }
     }
 }
 

@@ -73,7 +73,7 @@ coordinate of a complete differential transmission.
 runtime:
   telemetry_capacity: 4096
   motor_velocity_filter:
-    cutoff_hz: 15.0
+    cutoff_hz: 10.0
   imu_filter:
     orientation_cutoff_hz: 10.0
     gyro_cutoff_hz: 10.0
@@ -98,7 +98,7 @@ alpha = 1 - exp(-2 * pi * cutoff_hz * sample_interval)
 published = previous_published + alpha * (current - previous_published)
 ```
 
-The cutoff must be finite and positive and defaults to `15.0` Hz. Deriving the
+The cutoff must be finite and positive and defaults to `10.0` Hz. Deriving the
 coefficient from each receive interval keeps the physical cutoff stable when
 feedback timing varies. The first sample, and the first sample after a
 non-increasing timestamp or a gap longer than the motor group's feedback

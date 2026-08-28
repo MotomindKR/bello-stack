@@ -206,6 +206,11 @@ receive timestamps before either API samples or forwards it. Both APIs
 therefore expose the same filtered value. This does not replace the raw
 protocol value used internally for motor health and safety.
 
+IMU orientation, angular velocity, and linear acceleration in both telemetry
+events and state frames are likewise filtered before publication. Their
+independent timestamp-aware cutoffs are configured under `runtime.imu_filter`
+and default to 10 Hz.
+
 The telemetry ring is bounded by `runtime.telemetry_capacity`. A slow
 subscriber loses overwritten events rather than blocking hardware control. On
 lag, the stream forcibly emits a `HealthTelemetry` event for component

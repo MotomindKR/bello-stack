@@ -383,8 +383,8 @@ mod tests {
     }
 
     #[test]
-    fn canonical_motor_velocity_filter_uses_fifteen_hertz_cutoff() {
-        assert_eq!(canonical_topology().motor_velocity_filter.cutoff_hz, 15.0);
+    fn canonical_motor_velocity_filter_uses_ten_hertz_cutoff() {
+        assert_eq!(canonical_topology().motor_velocity_filter.cutoff_hz, 10.0);
     }
 
     #[test]
