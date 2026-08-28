@@ -652,6 +652,7 @@ dependencies = [
  "clap",
  "crossbeam-channel",
  "futures-core",
+ "nalgebra",
  "parking_lot",
  "robstride-protocol",
  "serde",

@@ -47,7 +47,12 @@ impl HardwareDaemon {
         let mut imu_workers = Vec::new();
         for (name, imu) in topology.imus() {
             let serial = serial_workers.handle(&imu.serial_device)?;
-            let worker = ImuWorker::start(imu.clone(), serial, telemetry.clone())?;
+            let worker = ImuWorker::start(
+                imu.clone(),
+                topology.imu_filter(),
+                serial,
+                telemetry.clone(),
+            )?;
             imus.insert(name.clone(), worker.handle.clone());
             imu_workers.push(worker);
         }

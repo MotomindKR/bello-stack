@@ -74,6 +74,10 @@ runtime:
   telemetry_capacity: 4096
   motor_velocity_filter:
     cutoff_hz: 15.0
+  imu_filter:
+    orientation_cutoff_hz: 10.0
+    gyro_cutoff_hz: 10.0
+    acceleration_cutoff_hz: 10.0
 ```
 
 `telemetry_capacity` is the capacity of the process-wide broadcast channel,
@@ -101,6 +105,21 @@ non-increasing timestamp or a gap longer than the motor group's feedback
 timeout, passes through unchanged. Filtering affects motor values published by
 `WatchTelemetry` and `GetStateFrame`; raw protocol feedback remains
 authoritative for internal motor health and safety checks.
+
+`imu_filter` applies independent timestamp-aware first-order low-pass filters
+to every parsed EBIMU sample before hardwared updates the latest-sample cache
+or publishes IMU telemetry. Orientation is interpolated on the quaternion
+manifold; angular velocity and linear acceleration are filtered componentwise.
+The coefficient uses the EBIMU device timestamp rather than the serial chunk
+receive time, so several records delivered in one operating-system read retain
+their original sample intervals.
+
+All three cutoffs default to `10.0` Hz. Each must be finite, positive, and below
+half the configured IMU output rate. The first sample passes through unchanged.
+A non-increasing device timestamp, a gap longer than 100 ms, or a serial
+reconnect resets the filter instead of blending across an invalid interval.
+This host filter is separate from the EBIMU's persistent onboard
+accelerometer-filter and vibration-cancellation settings.
 
 ### `grpc`
 

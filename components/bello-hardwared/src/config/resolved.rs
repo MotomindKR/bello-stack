@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::{Result, anyhow, bail};
 use bello_robot_description::RobotDescription;
 
-use super::{Config, MotorVelocityFilterConfig};
+use super::{Config, ImuFilterConfig, MotorVelocityFilterConfig};
 use crate::api::grpc::GrpcSpec;
 use crate::control::GroupSpec;
 use crate::domain::{BusName, GroupName, ImuName, MotorAddress, MotorName, SerialDeviceName};
@@ -24,6 +24,7 @@ pub(crate) struct ResolvedMotor {
 pub(crate) struct ResolvedTopology {
     telemetry_capacity: usize,
     motor_velocity_filter: MotorVelocityFilterConfig,
+    imu_filter: ImuFilterConfig,
     grpc: GrpcSpec,
     serial_devices: HashMap<SerialDeviceName, SerialSpec>,
     imus: HashMap<ImuName, ImuSpec>,
@@ -47,6 +48,21 @@ impl ResolvedTopology {
         {
             bail!("runtime.motor_velocity_filter.cutoff_hz must be finite and positive");
         }
+        for (name, cutoff_hz) in [
+            (
+                "orientation_cutoff_hz",
+                config.runtime.imu_filter.orientation_cutoff_hz,
+            ),
+            ("gyro_cutoff_hz", config.runtime.imu_filter.gyro_cutoff_hz),
+            (
+                "acceleration_cutoff_hz",
+                config.runtime.imu_filter.acceleration_cutoff_hz,
+            ),
+        ] {
+            if !cutoff_hz.is_finite() || cutoff_hz <= 0.0 {
+                bail!("runtime.imu_filter.{name} must be finite and positive");
+            }
+        }
         if config.robot_description.as_os_str().is_empty() {
             bail!("hardware configuration has no canonical robot description");
         }
@@ -69,6 +85,25 @@ impl ResolvedTopology {
         let mut claimed_serial_devices = HashSet::new();
         for raw in &config.imus {
             let spec = ImuSpec::try_from(raw)?;
+            let nyquist_hz = f64::from(raw.output_rate_hz) / 2.0;
+            for (name, cutoff_hz) in [
+                (
+                    "orientation_cutoff_hz",
+                    config.runtime.imu_filter.orientation_cutoff_hz,
+                ),
+                ("gyro_cutoff_hz", config.runtime.imu_filter.gyro_cutoff_hz),
+                (
+                    "acceleration_cutoff_hz",
+                    config.runtime.imu_filter.acceleration_cutoff_hz,
+                ),
+            ] {
+                if cutoff_hz >= nyquist_hz {
+                    bail!(
+                        "runtime.imu_filter.{name} must be below the Nyquist frequency {nyquist_hz} Hz for IMU {}",
+                        spec.name
+                    );
+                }
+            }
             if !serial_devices.contains_key(&spec.serial_device) {
                 bail!(
                     "IMU {} refers to unknown serial device {}",
@@ -176,6 +211,7 @@ impl ResolvedTopology {
         Ok(Self {
             telemetry_capacity: config.runtime.telemetry_capacity,
             motor_velocity_filter: config.runtime.motor_velocity_filter,
+            imu_filter: config.runtime.imu_filter,
             grpc,
             serial_devices,
             imus,
@@ -191,6 +227,10 @@ impl ResolvedTopology {
 
     pub(crate) fn motor_velocity_filter(&self) -> MotorVelocityFilterConfig {
         self.motor_velocity_filter
+    }
+
+    pub(crate) fn imu_filter(&self) -> ImuFilterConfig {
+        self.imu_filter
     }
 
     pub(crate) fn grpc(&self) -> &GrpcSpec {
@@ -345,6 +385,37 @@ mod tests {
     #[test]
     fn canonical_motor_velocity_filter_uses_fifteen_hertz_cutoff() {
         assert_eq!(canonical_topology().motor_velocity_filter.cutoff_hz, 15.0);
+    }
+
+    #[test]
+    fn imu_filter_cutoffs_are_validated() {
+        let component = concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml");
+        let mut config = Config::load_raw(component).unwrap();
+        config.runtime.imu_filter.gyro_cutoff_hz = 0.0;
+
+        let error = ResolvedTopology::resolve(config).err().unwrap().to_string();
+        assert!(
+            error.contains("runtime.imu_filter.gyro_cutoff_hz"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn imu_filter_cutoffs_must_be_below_sensor_nyquist_frequency() {
+        let component = concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml");
+        let mut config = Config::load_raw(component).unwrap();
+        config.runtime.imu_filter.acceleration_cutoff_hz = 100.0;
+
+        let error = ResolvedTopology::resolve(config).err().unwrap().to_string();
+        assert!(error.contains("Nyquist frequency 100 Hz"), "{error}");
+    }
+
+    #[test]
+    fn canonical_imu_filter_uses_ten_hertz_cutoffs() {
+        let filter = canonical_topology().imu_filter;
+        assert_eq!(filter.orientation_cutoff_hz, 10.0);
+        assert_eq!(filter.gyro_cutoff_hz, 10.0);
+        assert_eq!(filter.acceleration_cutoff_hz, 10.0);
     }
 
     #[test]
