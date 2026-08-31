@@ -1,30 +1,42 @@
 from __future__ import annotations
 
 from .config import CameraConfig, SourceConfig
+from .realsense import realsense_source_launch
 
 
 def sender_pipeline(camera: CameraConfig) -> str:
     video = camera.video
     if len(camera.views) == 1:
-        source_launch = _source_launch(camera.views[0].source, camera)
+        source_launch = _source_launch(
+            camera.views[0].source,
+            camera,
+            0,
+            preserve_capture_rate=False,
+        )
     else:
+        compositor_fps = max(video.fps, *(view.source.capture_fps for view in camera.views))
+        latency_ns = camera.compositor_latency_ms * 1_000_000
         pads = " ".join(
             f"sink_{index}::xpos={index * video.width} sink_{index}::ypos=0 "
             f"sink_{index}::width={video.width} sink_{index}::height={video.height}"
             for index in range(len(camera.views))
         )
         branches = " ".join(
-            f"{_source_launch(view.source, camera)} ! "
-            "queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 ! "
+            f"{_source_launch(view.source, camera, index, preserve_capture_rate=True)} ! "
+            "queue leaky=downstream max-size-buffers=1 max-size-bytes=0 max-size-time=0 ! "
             "videoconvert ! "
-            f"video/x-raw,width={video.width},height={video.height},framerate={video.fps}/1 ! "
+            f"video/x-raw,width={video.width},height={video.height} ! "
             f"compose.sink_{index}"
             for index, view in enumerate(camera.views)
         )
         source_launch = (
-            f"compositor name=compose background=black force-live=true {pads} "
+            f"compositor name=compose background=black force-live=true latency={latency_ns} "
+            f"{pads} "
             f"{branches} compose. ! video/x-raw,width={camera.composite_width},"
-            f"height={video.height},framerate={video.fps}/1"
+            f"height={video.height},framerate={compositor_fps}/1 ! "
+            "videorate drop-only=true ! "
+            f"video/x-raw,width={camera.composite_width},height={video.height},"
+            f"framerate={video.fps}/1"
         )
 
     encoder = camera.encoder
@@ -53,25 +65,42 @@ def sender_pipeline(camera: CameraConfig) -> str:
     )
 
 
-def _source_launch(source: SourceConfig, camera: CameraConfig) -> str:
+def _source_launch(
+    source: SourceConfig,
+    camera: CameraConfig,
+    view_index: int,
+    *,
+    preserve_capture_rate: bool,
+) -> str:
     video = camera.video
     if source.type == "v4l2":
         assert source.device is not None
+        output_fps = source.capture_fps if preserve_capture_rate else video.fps
         caps = (
             f"image/jpeg,width={video.width},height={video.height},"
-            f"framerate={video.fps}/1 ! jpegdec"
+            f"framerate={output_fps}/1 ! jpegdec"
             if source.format == "mjpeg"
-            else f"video/x-raw,width={video.width},height={video.height},framerate={video.fps}/1"
+            else f"video/x-raw,width={video.width},height={video.height},framerate={output_fps}/1"
         )
         source_launch = f"v4l2src device={_quote(source.device)} do-timestamp=true ! {caps}"
     elif source.type == "test":
+        output_fps = source.capture_fps if preserve_capture_rate else video.fps
         source_launch = (
             f"videotestsrc is-live=true pattern={_quote(source.pattern)} ! "
-            f"video/x-raw,width={video.width},height={video.height},framerate={video.fps}/1"
+            f"video/x-raw,width={video.width},height={video.height},framerate={output_fps}/1"
         )
-    else:
+    elif source.type == "custom":
         assert source.launch is not None
         source_launch = source.launch
+    else:
+        output_fps = source.capture_fps if preserve_capture_rate else video.fps
+        rate_launch = "" if preserve_capture_rate else "videorate drop-only=true ! "
+        source_launch = (
+            f"{realsense_source_launch(source, view_index)} ! "
+            f"{rate_launch}videoscale method=bilinear add-borders=true ! "
+            f"video/x-raw,width={video.width},height={video.height},"
+            f"pixel-aspect-ratio=1/1,framerate={output_fps}/1"
+        )
     return source_launch
 
 

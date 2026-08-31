@@ -105,3 +105,11 @@ without opening a GPU window.
 `config/milly.example.yaml` is the maintained fixed-root visualizer profile for
 the single-arm Milly hardware description. It connects to hardwared on
 localhost and exposes the atomic `arm` group with conservative editor gains.
+
+`config/milly-dual.example.yaml` is the equivalent fixed-root profile for two
+side-by-side Milly arms. It loads two complete copies of the canonical Milly
+visual and collision hierarchy and exposes the single atomic `dual_arm` group.
+Copy it to the ignored `config/milly-dual.yaml`, then set `hardware.endpoint`
+to the host running the dual-Milly hardware daemon. Regenerate the checked-in
+dual URDF after changing the single-arm description with
+`python3 descriptions/milly-dual/generate_urdf.py`.

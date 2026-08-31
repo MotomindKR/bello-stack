@@ -10,6 +10,7 @@ from numpy.typing import NDArray
 
 from .config import CameraConfig, StreamConfig
 from .pipeline import receiver_pipeline, sender_pipeline
+from .realsense import RealSenseAppSource, RealSenseError, create_realsense_sources
 
 
 class CameraError(RuntimeError):
@@ -67,7 +68,9 @@ class CameraStreamer:
     def __init__(self, config: StreamConfig):
         self._config = config
         self._gst: Any | None = None
-        self._pipelines: list[tuple[str, Any]] = []
+        self._pipelines: list[tuple[str, Any, list[RealSenseAppSource]]] = []
+        self._error: BaseException | None = None
+        self._lock = threading.Lock()
         self._closed = False
 
     def start(self) -> None:
@@ -76,10 +79,21 @@ class CameraStreamer:
         for camera in self._config.cameras:
             Gst, pipeline = _parse(sender_pipeline(camera))
             self._gst = Gst
+            try:
+                sources = create_realsense_sources(camera, Gst, pipeline, self._set_error)
+            except RealSenseError as error:
+                self.close()
+                raise CameraError(str(error)) from error
             if pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
                 self.close()
                 raise CameraError(f"failed to start camera {camera.name!r}")
-            self._pipelines.append((camera.name, pipeline))
+            self._pipelines.append((camera.name, pipeline, sources))
+            try:
+                for source in sources:
+                    source.start()
+            except RealSenseError as error:
+                self.close()
+                raise CameraError(str(error)) from error
 
     def poll(self, timeout_seconds: float = 0.1) -> None:
         if timeout_seconds < 0:
@@ -88,7 +102,11 @@ class CameraStreamer:
             raise CameraError("camera streamer is not started")
         Gst = self._gst
         timeout_ns = int(timeout_seconds * 1_000_000_000) // len(self._pipelines)
-        for name, pipeline in self._pipelines:
+        with self._lock:
+            error = self._error
+        if error is not None:
+            raise CameraError(f"camera streamer failed: {error}") from error
+        for name, pipeline, _ in self._pipelines:
             message = pipeline.get_bus().timed_pop_filtered(
                 timeout_ns, Gst.MessageType.ERROR | Gst.MessageType.EOS
             )
@@ -104,9 +122,17 @@ class CameraStreamer:
             return
         self._closed = True
         if self._gst is not None:
-            for _, pipeline in reversed(self._pipelines):
+            for _, _, sources in reversed(self._pipelines):
+                for source in reversed(sources):
+                    source.close()
+            for _, pipeline, _ in reversed(self._pipelines):
                 pipeline.set_state(self._gst.State.NULL)
         self._pipelines.clear()
+
+    def _set_error(self, error: BaseException) -> None:
+        with self._lock:
+            if self._error is None:
+                self._error = error
 
     def __enter__(self) -> CameraStreamer:
         self.start()

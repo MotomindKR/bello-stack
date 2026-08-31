@@ -15,6 +15,10 @@ class SourceConfig:
     format: str = "mjpeg"
     pattern: str = "smpte"
     launch: str | None = None
+    serial: str | None = None
+    capture_width: int = 640
+    capture_height: int = 480
+    capture_fps: int = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +62,7 @@ class CameraConfig:
     rtp: RtpConfig
     maximum_view_skew_ms: int = 100
     maximum_view_age_ms: int = 150
+    compositor_latency_ms: int = 0
 
     @property
     def source(self) -> SourceConfig:
@@ -115,6 +120,7 @@ def _camera(value: object, index: int) -> CameraConfig:
             "rtp",
             "maximum_view_skew_ms",
             "maximum_view_age_ms",
+            "compositor_latency_ms",
         },
         where,
     )
@@ -139,8 +145,13 @@ def _camera(value: object, index: int) -> CameraConfig:
     maximum_view_age_ms = _integer(
         raw.get("maximum_view_age_ms", 150), f"{where}.maximum_view_age_ms"
     )
+    compositor_latency_ms = _integer(
+        raw.get("compositor_latency_ms", 0), f"{where}.compositor_latency_ms"
+    )
     if maximum_view_skew_ms <= 0 or maximum_view_age_ms <= 0:
         raise ValueError(f"{where} view timing limits must be positive")
+    if not 0 <= compositor_latency_ms <= 5_000:
+        raise ValueError(f"{where}.compositor_latency_ms must be in 0..=5000")
     return CameraConfig(
         name,
         views,
@@ -149,6 +160,7 @@ def _camera(value: object, index: int) -> CameraConfig:
         _rtp(raw.get("rtp"), f"{where}.rtp"),
         maximum_view_skew_ms,
         maximum_view_age_ms,
+        compositor_latency_ms,
     )
 
 
@@ -168,7 +180,21 @@ def _validate_name(value: str, where: str) -> None:
 
 def _source(value: object, where: str) -> SourceConfig:
     raw = _mapping(value, where)
-    _only(raw, {"type", "device", "format", "pattern", "launch"}, where)
+    _only(
+        raw,
+        {
+            "type",
+            "device",
+            "format",
+            "pattern",
+            "launch",
+            "serial",
+            "capture_width",
+            "capture_height",
+            "capture_fps",
+        },
+        where,
+    )
     kind = _text(raw.get("type"), f"{where}.type")
     if kind == "v4l2":
         device = _text(raw.get("device"), f"{where}.device")
@@ -182,7 +208,24 @@ def _source(value: object, where: str) -> SourceConfig:
         return SourceConfig(kind, pattern=_text(raw.get("pattern", "smpte"), f"{where}.pattern"))
     if kind == "custom":
         return SourceConfig(kind, launch=_text(raw.get("launch"), f"{where}.launch"))
-    raise ValueError(f"{where}.type must be 'v4l2', 'test', or 'custom'")
+    if kind == "realsense":
+        serial_raw = raw.get("serial")
+        serial = None if serial_raw is None else _text(serial_raw, f"{where}.serial")
+        capture_width = _integer(raw.get("capture_width", 640), f"{where}.capture_width")
+        capture_height = _integer(raw.get("capture_height", 480), f"{where}.capture_height")
+        capture_fps = _integer(raw.get("capture_fps", 30), f"{where}.capture_fps")
+        if not 16 <= capture_width <= 8_192 or not 16 <= capture_height <= 8_192:
+            raise ValueError(f"{where} capture width and height must each be in 16..=8192")
+        if not 1 <= capture_fps <= 240:
+            raise ValueError(f"{where}.capture_fps must be in 1..=240")
+        return SourceConfig(
+            kind,
+            serial=serial,
+            capture_width=capture_width,
+            capture_height=capture_height,
+            capture_fps=capture_fps,
+        )
+    raise ValueError(f"{where}.type must be 'v4l2', 'test', 'custom', or 'realsense'")
 
 
 def _video(value: object, where: str) -> VideoConfig:

@@ -20,6 +20,11 @@ mod supervisor;
 
 pub(crate) use spec::BusSpec;
 
+// Keep several control ticks so a brief host scheduling delay cannot fault an
+// otherwise healthy CAN bus. Every batch still carries its original one-tick
+// expiry, so the transmit worker drops stale commands instead of replaying them.
+const CONTROL_QUEUE_TICKS_PER_GROUP: usize = 4;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CanFrame {
     pub id: u32,
@@ -248,8 +253,7 @@ impl BusHandle {
 }
 
 fn control_queue_capacity(topology: &ResolvedTopology, bus: &BusName) -> usize {
-    // Each group contributes at most one atomic batch to a bus per control tick.
-    topology
+    let groups_on_bus = topology
         .groups()
         .filter(|(_, group)| {
             group.motors.iter().any(|motor| {
@@ -258,8 +262,14 @@ fn control_queue_capacity(topology: &ResolvedTopology, bus: &BusName) -> usize {
                     .is_ok_and(|motor| &motor.spec.address.bus == bus)
             })
         })
-        .count()
+        .count();
+    control_queue_capacity_for_groups(groups_on_bus)
+}
+
+fn control_queue_capacity_for_groups(groups_on_bus: usize) -> usize {
+    groups_on_bus
         .max(1)
+        .saturating_mul(CONTROL_QUEUE_TICKS_PER_GROUP)
 }
 
 pub(crate) struct BusManager {
@@ -384,5 +394,12 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn control_queue_keeps_four_ticks_per_group() {
+        assert_eq!(control_queue_capacity_for_groups(0), 4);
+        assert_eq!(control_queue_capacity_for_groups(1), 4);
+        assert_eq!(control_queue_capacity_for_groups(2), 8);
     }
 }

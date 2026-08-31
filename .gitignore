@@ -10,3 +10,4 @@ dist/
 hardware-*.jsonl
 hardware-*.jsonl.html
 /components/bello-visualizer/config/bello.yaml
+/components/bello-visualizer/config/milly-dual.yaml

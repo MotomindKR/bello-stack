@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+
 from bello_camera.config import load_config
 from bello_camera.pipeline import receiver_pipeline, sender_pipeline
 
@@ -61,7 +62,56 @@ cameras:
 
     assert camera.view_names == ("top", "left_wrist", "right_wrist")
     assert camera.composite_width == 672
-    assert "compositor name=compose" in sender
+    assert camera.compositor_latency_ms == 0
+    assert "compositor name=compose background=black force-live=true latency=0" in sender
     assert "sink_2::xpos=448" in sender
+    assert "video/x-raw,width=672,height=224,framerate=30/1" in sender
+    assert "video/x-raw,width=672,height=224,framerate=10/1" in sender
     assert sender.count("udpsink") == 1
     assert "width=672,height=224" in receiver
+
+
+def test_realsense_source_is_validated_and_exposed_as_rgb_appsrc(tmp_path: Path) -> None:
+    path = tmp_path / "realsense.yaml"
+    path.write_text(
+        """
+cameras:
+  - name: policy
+    source:
+      type: realsense
+      serial: "219323071273"
+      capture_width: 640
+      capture_height: 480
+      capture_fps: 30
+    video: { width: 224, height: 224, fps: 10 }
+    encoder: { type: x264 }
+    rtp: { host: 127.0.0.1, port: 5600 }
+""",
+        encoding="utf-8",
+    )
+
+    camera = load_config(path).camera("policy")
+    sender = sender_pipeline(camera)
+
+    assert camera.source.serial == "219323071273"
+    assert "appsrc name=realsense_source_0" in sender
+    assert "video/x-raw,format=RGB,width=640,height=480,framerate=30/1" in sender
+    assert "video/x-raw,width=224,height=224,pixel-aspect-ratio=1/1,framerate=10/1" in sender
+
+
+def test_realsense_capture_dimensions_are_validated(tmp_path: Path) -> None:
+    path = tmp_path / "invalid-realsense.yaml"
+    path.write_text(
+        """
+cameras:
+  - name: policy
+    source: { type: realsense, capture_width: 0 }
+    video: { width: 224, height: 224, fps: 10 }
+    encoder: { type: x264 }
+    rtp: { host: 127.0.0.1, port: 5600 }
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="capture width and height"):
+        load_config(path)

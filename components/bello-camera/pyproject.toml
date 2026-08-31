@@ -13,6 +13,9 @@ license-files = ["LICENSE"]
 classifiers = ["Private :: Do Not Upload"]
 dependencies = ["numpy>=1.24", "PyYAML>=6,<7"]
 
+[project.optional-dependencies]
+realsense = ["pyrealsense2>=2.58,<3"]
+
 [project.scripts]
 bello-camera-stream = "bello_camera.cli:stream_main"
 bello-camera-receive = "bello_camera.cli:receive_main"
@@ -38,5 +41,5 @@ strict = true
 files = ["src/bello_camera", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["gi", "gi.*"]
+module = ["gi", "gi.*", "pyrealsense2"]
 ignore_missing_imports = true

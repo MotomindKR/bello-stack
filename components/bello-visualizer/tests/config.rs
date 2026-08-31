@@ -225,6 +225,65 @@ fn maintained_milly_example_configuration_loads_the_canonical_description() {
 }
 
 #[test]
+fn maintained_dual_milly_example_loads_both_arms_and_atomic_group() {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("config/milly-dual.example.yaml");
+    let config = VisualizerConfig::load(path).unwrap();
+    assert_eq!(config.hardware.endpoint, "http://127.0.0.1:50051");
+    assert!(matches!(config.root, RootConfig::Fixed { .. }));
+
+    let description = RobotDescription::load(&config.urdf).unwrap();
+    assert_eq!(description.name(), "milly_dual_control");
+    assert_eq!(description.root_link(), "dual_milly_base");
+    for (side, expected_y) in [("left", -0.30), ("right", 0.30)] {
+        for coordinate in [
+            "joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6", "gripper",
+        ] {
+            assert!(description.joint(&format!("{side}_{coordinate}")).is_some());
+        }
+        assert!(
+            !description
+                .link(&format!("{side}_base_link"))
+                .unwrap()
+                .visuals
+                .is_empty()
+        );
+        let mount = description.joint(&format!("{side}_mount")).unwrap();
+        assert_eq!(mount.parent, "dual_milly_base");
+        assert_eq!(mount.child, format!("{side}_base_link"));
+        assert!((mount.origin.translation.vector.y - expected_y).abs() < 1.0e-12);
+        let (_, _, yaw) = mount.origin.rotation.euler_angles();
+        assert!((yaw - std::f64::consts::FRAC_PI_2).abs() < 1.0e-12);
+    }
+    let visual_meshes = description
+        .links()
+        .flat_map(|link| &link.visuals)
+        .filter_map(|visual| match &visual.geometry {
+            Geometry::Mesh { path, .. } => Some(path),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(visual_meshes.len(), 278);
+    assert!(visual_meshes.iter().all(|path| path.is_file()));
+    assert_eq!(
+        visual_meshes
+            .iter()
+            .map(|path| path.as_path())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        139
+    );
+    assert_eq!(
+        config
+            .control_profiles
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["dual_arm"]
+    );
+}
+
+#[test]
 fn live_position_limits_are_intersected_with_direct_and_differential_urdf_limits() {
     let directory = tempdir().unwrap();
     let urdf = directory.path().join("limits.urdf");
