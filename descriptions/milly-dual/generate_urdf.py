@@ -16,9 +16,24 @@ DESCRIPTION_DIR = Path(__file__).resolve().parent
 SOURCE = DESCRIPTION_DIR.parent / "milly" / "urdf" / "milly.urdf"
 OUTPUT = DESCRIPTION_DIR / "urdf" / "milly-dual.urdf"
 # Arm labels follow the operator's head-on view of the +X-facing workcell:
-# world -Y is visual left and world +Y is visual right.
-SIDES = (("left", -0.30), ("right", 0.30))
+# world -Y is visual left and world +Y is visual right. The physical base
+# centers on the deployed dual-Milly fixture are 443 mm apart.
+SIDES = (("left", -0.2215), ("right", 0.2215))
 MOUNT_RPY = "0 0 1.5707963267948966"
+# The remounted D405 optical center was fitted against the table plane on
+# 2026-09-02. X includes the requested +40 mm longitudinal trial offset and Y
+# includes the measured 9 mm leftward offset from the arm midpoint.
+# The physical body has zero roll, faces the -X work area (yaw pi), and pitches
+# down about its local +Y. A separate optical child preserves the conventional
+# +X-right, +Y-down,
+# +Z-forward camera coordinates used by librealsense and WebXR projection.
+CENTER_D405_LONGITUDINAL_X = 0.040
+CENTER_D405_LATERAL_Y = -0.009
+CENTER_D405_HEIGHT = 0.35937731
+CENTER_D405_PITCH = 0.44660681555959347
+CENTER_D405_YAW = 3.141592653589793
+CENTER_D405_SIZE = (0.023, 0.042, 0.042)
+OPTICAL_FRAME_RPY = "-1.5707963267948966 0 -1.5707963267948966"
 
 
 def _prefix_names(element: ET.Element, side: str) -> None:
@@ -53,8 +68,49 @@ def _mount(side: str, y: float) -> ET.Element:
     joint = ET.Element("joint", {"name": f"{side}_mount", "type": "fixed"})
     ET.SubElement(joint, "parent", {"link": "dual_milly_base"})
     ET.SubElement(joint, "child", {"link": f"{side}_base_link"})
-    ET.SubElement(joint, "origin", {"xyz": f"0 {y:.2f} 0", "rpy": MOUNT_RPY})
+    ET.SubElement(joint, "origin", {"xyz": f"0 {y:.4f} 0", "rpy": MOUNT_RPY})
     return joint
+
+
+def _center_d405() -> tuple[ET.Element, ...]:
+    body = ET.Element("link", {"name": "center_d405_link"})
+    visual = ET.SubElement(body, "visual")
+    # Put the optical center at the link origin and draw the camera body behind
+    # the front/lens plane along conventional camera-link -X.
+    ET.SubElement(visual, "origin", {"xyz": "-0.0115 0 0", "rpy": "0 0 0"})
+    geometry = ET.SubElement(visual, "geometry")
+    ET.SubElement(
+        geometry,
+        "box",
+        {"size": " ".join(f"{value:.3f}" for value in CENTER_D405_SIZE)},
+    )
+    material = ET.SubElement(visual, "material", {"name": "center_d405_body"})
+    ET.SubElement(material, "color", {"rgba": "0.12 0.12 0.12 1"})
+
+    optical = ET.Element("link", {"name": "center_d405_color_optical_frame"})
+
+    mount = ET.Element("joint", {"name": "center_d405_mount", "type": "fixed"})
+    ET.SubElement(mount, "parent", {"link": "dual_milly_base"})
+    ET.SubElement(mount, "child", {"link": "center_d405_link"})
+    ET.SubElement(
+        mount,
+        "origin",
+        {
+            "xyz": (
+                f"{CENTER_D405_LONGITUDINAL_X:.3f} "
+                f"{CENTER_D405_LATERAL_Y:.3f} {CENTER_D405_HEIGHT:.8f}"
+            ),
+            "rpy": f"0 {CENTER_D405_PITCH:.17g} {CENTER_D405_YAW:.17g}",
+        },
+    )
+
+    optical_joint = ET.Element(
+        "joint", {"name": "center_d405_color_optical_joint", "type": "fixed"}
+    )
+    ET.SubElement(optical_joint, "parent", {"link": "center_d405_link"})
+    ET.SubElement(optical_joint, "child", {"link": "center_d405_color_optical_frame"})
+    ET.SubElement(optical_joint, "origin", {"xyz": "0 0 0", "rpy": OPTICAL_FRAME_RPY})
+    return body, optical, mount, optical_joint
 
 
 def render() -> str:
@@ -78,6 +134,12 @@ def render() -> str:
             robot.append(_clone(material, side))
 
     robot.append(ET.Element("link", {"name": "dual_milly_base"}))
+    robot.append(
+        ET.Comment(
+            " Center D405: table-plane calibrated height/pitch, zero roll, yaw pi into -X work area. "
+        )
+    )
+    robot.extend(_center_d405())
     for side, y in SIDES:
         robot.append(ET.Comment(f" {side.capitalize()} Milly arm. "))
         for link in source.findall("link"):

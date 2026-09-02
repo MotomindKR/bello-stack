@@ -8,6 +8,29 @@
     <color rgba="0.7 0.7 0.72 1" />
   </material>
   <link name="dual_milly_base" />
+  <!-- Center D405: table-plane calibrated height/pitch, zero roll, yaw pi into -X work area. -->
+  <link name="center_d405_link">
+    <visual>
+      <origin xyz="-0.0115 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.023 0.042 0.042" />
+      </geometry>
+      <material name="center_d405_body">
+        <color rgba="0.12 0.12 0.12 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="center_d405_color_optical_frame" />
+  <joint name="center_d405_mount" type="fixed">
+    <parent link="dual_milly_base" />
+    <child link="center_d405_link" />
+    <origin xyz="0.040 -0.009 0.35937731" rpy="0 0.44660681555959347 3.1415926535897931" />
+  </joint>
+  <joint name="center_d405_color_optical_joint" type="fixed">
+    <parent link="center_d405_link" />
+    <child link="center_d405_color_optical_frame" />
+    <origin xyz="0 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966" />
+  </joint>
   <!-- Left Milly arm. -->
   <link name="left_base_link">
     <inertial>
@@ -1381,7 +1404,7 @@
   <joint name="left_mount" type="fixed">
     <parent link="dual_milly_base" />
     <child link="left_base_link" />
-    <origin xyz="0 -0.30 0" rpy="0 0 1.5707963267948966" />
+    <origin xyz="0 -0.2215 0" rpy="0 0 1.5707963267948966" />
   </joint>
   <joint name="left_joint_1" type="revolute">
     <parent link="left_base_link" />
@@ -2814,7 +2837,7 @@
   <joint name="right_mount" type="fixed">
     <parent link="dual_milly_base" />
     <child link="right_base_link" />
-    <origin xyz="0 0.30 0" rpy="0 0 1.5707963267948966" />
+    <origin xyz="0 0.2215 0" rpy="0 0 1.5707963267948966" />
   </joint>
   <joint name="right_joint_1" type="revolute">
     <parent link="right_base_link" />

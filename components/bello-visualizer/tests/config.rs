@@ -235,7 +235,7 @@ fn maintained_dual_milly_example_loads_both_arms_and_atomic_group() {
     let description = RobotDescription::load(&config.urdf).unwrap();
     assert_eq!(description.name(), "milly_dual_control");
     assert_eq!(description.root_link(), "dual_milly_base");
-    for (side, expected_y) in [("left", -0.30), ("right", 0.30)] {
+    for (side, expected_y) in [("left", -0.2215), ("right", 0.2215)] {
         for coordinate in [
             "joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6", "gripper",
         ] {
@@ -255,6 +255,52 @@ fn maintained_dual_milly_example_loads_both_arms_and_atomic_group() {
         let (_, _, yaw) = mount.origin.rotation.euler_angles();
         assert!((yaw - std::f64::consts::FRAC_PI_2).abs() < 1.0e-12);
     }
+    let camera = description.link("center_d405_link").unwrap();
+    let camera_size = camera
+        .visuals
+        .iter()
+        .find_map(|visual| match &visual.geometry {
+            Geometry::Box { size } => Some(size),
+            _ => None,
+        })
+        .unwrap();
+    assert!((camera_size.x - 0.023).abs() < 1.0e-12);
+    assert!((camera_size.y - 0.042).abs() < 1.0e-12);
+    assert!((camera_size.z - 0.042).abs() < 1.0e-12);
+    assert!(
+        description
+            .link("center_d405_color_optical_frame")
+            .is_some()
+    );
+    let camera_mount = description.joint("center_d405_mount").unwrap();
+    assert_eq!(camera_mount.parent, "dual_milly_base");
+    assert_eq!(camera_mount.child, "center_d405_link");
+    assert!((camera_mount.origin.translation.vector.x - 0.040).abs() < 1.0e-12);
+    assert!((camera_mount.origin.translation.vector.y + 0.009).abs() < 1.0e-12);
+    assert!((camera_mount.origin.translation.vector.z - 0.35937731).abs() < 1.0e-12);
+    // Compare rotations directly: Euler extraction may represent yaw pi as
+    // negative pi even though the physical rotation is identical.
+    let expected_camera_rotation = nalgebra::UnitQuaternion::from_euler_angles(
+        0.0,
+        0.44660681555959347,
+        std::f64::consts::PI,
+    );
+    assert!(
+        camera_mount
+            .origin
+            .rotation
+            .angle_to(&expected_camera_rotation)
+            < 1.0e-12
+    );
+    let optical = description
+        .joint("center_d405_color_optical_joint")
+        .unwrap();
+    assert_eq!(optical.parent, "center_d405_link");
+    assert_eq!(optical.child, "center_d405_color_optical_frame");
+    let (optical_roll, optical_pitch, optical_yaw) = optical.origin.rotation.euler_angles();
+    assert!((optical_roll + std::f64::consts::FRAC_PI_2).abs() < 1.0e-12);
+    assert!(optical_pitch.abs() < 1.0e-12);
+    assert!((optical_yaw + std::f64::consts::FRAC_PI_2).abs() < 1.0e-12);
     let visual_meshes = description
         .links()
         .flat_map(|link| &link.visuals)
