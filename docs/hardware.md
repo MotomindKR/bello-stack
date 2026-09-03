@@ -273,9 +273,11 @@ and orchestration is in
 
 The serial layer opens the configured baud rate but does not change the EBIMU's
 stored baud setting; the two must already match. The sequence also does not set
-gyro/accelerometer range, accelerometer filtering, magnetometer operating mode,
-or calibration. A rejected command, missing acknowledgement, or failure to
-produce a valid stream triggers the reconnect path.
+gyro/accelerometer range, the EBIMU's persistent onboard accelerometer filter,
+magnetometer operating mode, vibration cancellation, or calibration. Hardwared
+separately applies the configured host IMU low-pass filter to every parsed
+sample. A rejected command, missing acknowledgement, or failure to produce a
+valid stream triggers the reconnect path.
 
 ### Wire schema and units
 
@@ -300,10 +302,14 @@ quaternion are rejected. Lines may span transport chunks. To bound memory after
 lost framing, more than 64 KiB without a newline clears the frame buffer and is
 reported as malformed input.
 
-Every valid sample is emitted individually at the received rate. Multiple IMUs
-remain distinct by name; their samples are neither averaged nor combined. The
-raw telemetry channel remains event-based; the IMU worker also retains one
-latest sample for complete `GetStateFrame` reads.
+Every valid sample is filtered and emitted individually at the received rate.
+The filter uses consecutive device timestamps, not serial-chunk receive times,
+and resets after timestamp discontinuities, gaps over 100 ms, and reconnects.
+Multiple IMUs remain distinct by name; their samples are neither averaged nor
+combined. The telemetry channel remains event-based; the IMU worker also
+retains one filtered latest sample for complete `GetStateFrame` reads. The
+cutoffs and validation contract are documented in
+[`configuration.md`](configuration.md#runtime).
 
 ### Health and reconnect
 

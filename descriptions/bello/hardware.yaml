@@ -24,7 +24,7 @@ imus:
   - name: imu
     serial_device: imu_serial
     stale_timeout_ms: 1000
-    output_rate_hz: 500
+    output_rate_hz: 200
 
 motors:
   - name: waist_yaw

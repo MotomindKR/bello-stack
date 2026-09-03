@@ -81,12 +81,14 @@ pub(crate) struct LogicalSerialDeviceConfig {
 pub struct RuntimeConfig {
     pub telemetry_capacity: usize,
     pub motor_velocity_filter: MotorVelocityFilterConfig,
+    pub imu_filter: ImuFilterConfig,
 }
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
             telemetry_capacity: 4096,
             motor_velocity_filter: MotorVelocityFilterConfig::default(),
+            imu_filter: ImuFilterConfig::default(),
         }
     }
 }
@@ -99,7 +101,25 @@ pub struct MotorVelocityFilterConfig {
 
 impl Default for MotorVelocityFilterConfig {
     fn default() -> Self {
-        Self { cutoff_hz: 15.0 }
+        Self { cutoff_hz: 10.0 }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ImuFilterConfig {
+    pub orientation_cutoff_hz: f64,
+    pub gyro_cutoff_hz: f64,
+    pub acceleration_cutoff_hz: f64,
+}
+
+impl Default for ImuFilterConfig {
+    fn default() -> Self {
+        Self {
+            orientation_cutoff_hz: 10.0,
+            gyro_cutoff_hz: 10.0,
+            acceleration_cutoff_hz: 10.0,
+        }
     }
 }
 

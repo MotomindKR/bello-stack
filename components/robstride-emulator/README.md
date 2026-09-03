@@ -29,6 +29,9 @@ cargo run -p robstride-emulator -- \
 Omitting `--config` selects this component's `config/vcan.yaml` regardless of
 the current directory. Run hardwared separately with its matching
 [`config/bello-vcan.yaml`](../bello-hardwared/config/bello-vcan.yaml).
+For the seven-actuator Milly profile, use `config/milly-vcan.yaml` here and
+[`config/milly-vcan.yaml`](../bello-hardwared/config/milly-vcan.yaml) in
+hardwared.
 
 ## Fault scenarios
 

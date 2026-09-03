@@ -15,6 +15,7 @@ bello-robot-description.workspace = true
 clap = { workspace = true, features = ["derive"] }
 crossbeam-channel.workspace = true
 futures-core.workspace = true
+nalgebra.workspace = true
 parking_lot.workspace = true
 robstride-protocol.workspace = true
 serde = { workspace = true, features = ["derive"] }

@@ -1,5 +1,7 @@
-use std::fs;
+use std::fs::{self, File};
+use std::io::BufReader;
 
+use bello_robot_description::Geometry;
 use bello_visualizer::RobotDescription;
 use bello_visualizer::config::{
     BoundedDefault, ConfigError, CoordinateLimits, GroupControlProfile, RootConfig,
@@ -179,6 +181,47 @@ fn maintained_bello_example_configuration_loads_the_canonical_description() {
             && profile.validity_ms == 500
             && profile.telemetry_staleness_ms == 200
     }));
+}
+
+#[test]
+fn maintained_milly_example_configuration_loads_the_canonical_description() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("config/milly.example.yaml");
+    let config = VisualizerConfig::load(path).unwrap();
+    assert_eq!(config.hardware.endpoint, "http://127.0.0.1:50051");
+    assert!(matches!(config.root, RootConfig::Fixed { .. }));
+
+    let description = RobotDescription::load(&config.urdf).unwrap();
+    assert_eq!(description.name(), "milly");
+    for coordinate in [
+        "joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6", "gripper",
+    ] {
+        assert!(description.joint(coordinate).is_some());
+    }
+    let visual_meshes = description
+        .links()
+        .flat_map(|link| &link.visuals)
+        .filter_map(|visual| match &visual.geometry {
+            Geometry::Mesh { path, .. } => Some(path),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(visual_meshes.len(), 139);
+    for path in visual_meshes {
+        let mesh = stl_io::read_stl(&mut BufReader::new(File::open(path).unwrap())).unwrap();
+        assert!(
+            !mesh.faces.is_empty(),
+            "empty Milly visual mesh: {}",
+            path.display()
+        );
+    }
+    assert_eq!(
+        config
+            .control_profiles
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["arm"]
+    );
 }
 
 #[test]

@@ -28,6 +28,9 @@ The maintained examples are:
 - [production hardware](../components/bello-hardwared/config/bello.yaml)
 - [full Bello vCAN deployment](../components/bello-hardwared/config/bello-vcan.yaml)
 - [canonical Bello hardware description](../descriptions/bello/hardware.yaml)
+- [Milly single-arm hardware](../components/bello-hardwared/config/milly.yaml)
+- [Milly single-arm vCAN deployment](../components/bello-hardwared/config/milly-vcan.yaml)
+- [canonical Milly hardware description](../descriptions/milly/hardware.yaml)
 
 The raw schema and defaults live in
 [`config/model.rs`](../components/bello-hardwared/src/config/model.rs). The
@@ -70,7 +73,11 @@ coordinate of a complete differential transmission.
 runtime:
   telemetry_capacity: 4096
   motor_velocity_filter:
-    cutoff_hz: 15.0
+    cutoff_hz: 10.0
+  imu_filter:
+    orientation_cutoff_hz: 10.0
+    gyro_cutoff_hz: 10.0
+    acceleration_cutoff_hz: 10.0
 ```
 
 `telemetry_capacity` is the capacity of the process-wide broadcast channel,
@@ -91,13 +98,28 @@ alpha = 1 - exp(-2 * pi * cutoff_hz * sample_interval)
 published = previous_published + alpha * (current - previous_published)
 ```
 
-The cutoff must be finite and positive and defaults to `15.0` Hz. Deriving the
+The cutoff must be finite and positive and defaults to `10.0` Hz. Deriving the
 coefficient from each receive interval keeps the physical cutoff stable when
 feedback timing varies. The first sample, and the first sample after a
 non-increasing timestamp or a gap longer than the motor group's feedback
 timeout, passes through unchanged. Filtering affects motor values published by
 `WatchTelemetry` and `GetStateFrame`; raw protocol feedback remains
 authoritative for internal motor health and safety checks.
+
+`imu_filter` applies independent timestamp-aware first-order low-pass filters
+to every parsed EBIMU sample before hardwared updates the latest-sample cache
+or publishes IMU telemetry. Orientation is interpolated on the quaternion
+manifold; angular velocity and linear acceleration are filtered componentwise.
+The coefficient uses the EBIMU device timestamp rather than the serial chunk
+receive time, so several records delivered in one operating-system read retain
+their original sample intervals.
+
+All three cutoffs default to `10.0` Hz. Each must be finite, positive, and below
+half the configured IMU output rate. The first sample passes through unchanged.
+A non-increasing device timestamp, a gap longer than 100 ms, or a serial
+reconnect resets the filter instead of blending across an invalid interval.
+This host filter is separate from the EBIMU's persistent onboard
+accelerometer-filter and vibration-cancellation settings.
 
 ### `grpc`
 
@@ -185,7 +207,7 @@ imus:
   - name: imu
     serial_device: imu_serial
     stale_timeout_ms: 500
-    output_rate_hz: 500
+    output_rate_hz: 200
 ```
 
 The deployment supplies only the host binding:

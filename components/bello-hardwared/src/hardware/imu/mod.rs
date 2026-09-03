@@ -7,15 +7,18 @@ use anyhow::{Result, bail};
 use parking_lot::RwLock;
 use tracing::{info, warn};
 
+use crate::config::ImuFilterConfig;
 use crate::domain::{ImuName, ImuTelemetry, TelemetryPayload};
 use crate::hardware::lifecycle::{DeviceLifecycle, DeviceState};
 use crate::hardware::serial::{SerialChunk, SerialHandle};
 use crate::telemetry::Telemetry;
 
 mod ebimu;
+mod filter;
 mod spec;
 
 use ebimu::{output_commands, parse_ascii_line};
+use filter::ImuLowPass;
 pub(crate) use spec::ImuSpec;
 use spec::POLL_PERIOD;
 
@@ -54,6 +57,7 @@ pub(crate) struct ImuWorker {
 impl ImuWorker {
     pub(crate) fn start(
         config: ImuSpec,
+        filter_config: ImuFilterConfig,
         serial: SerialHandle,
         telemetry: Telemetry,
     ) -> Result<Self> {
@@ -76,7 +80,14 @@ impl ImuWorker {
         let thread = thread::Builder::new().name(thread_name).spawn(move || {
             let run_stop = worker_stop.clone();
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_sensor(config, serial, worker_handle, run_stop, telemetry);
+                run_sensor(
+                    config,
+                    filter_config,
+                    serial,
+                    worker_handle,
+                    run_stop,
+                    telemetry,
+                );
             }));
             if result.is_err() {
                 worker_lifecycle.enter_fault("IMU worker panicked");
@@ -112,6 +123,7 @@ impl Drop for ImuWorker {
 
 fn run_sensor(
     config: ImuSpec,
+    filter_config: ImuFilterConfig,
     serial: SerialHandle,
     state: ImuHandle,
     stop: Arc<AtomicBool>,
@@ -121,6 +133,7 @@ fn run_sensor(
     let mut reconnect_requested_at = None;
     let mut last_valid = None;
     let mut frame_buffer = Vec::with_capacity(1024);
+    let mut filter = ImuLowPass::new(filter_config);
     state
         .lifecycle
         .mark_connecting(format!("waiting for serial device {}", serial.spec.name));
@@ -133,6 +146,7 @@ fn run_sensor(
                     configured_generation = None;
                     last_valid = None;
                     frame_buffer.clear();
+                    filter.reset();
                 }
                 thread::sleep(POLL_PERIOD);
                 continue;
@@ -148,6 +162,7 @@ fn run_sensor(
                 configured_generation = None;
                 last_valid = None;
                 frame_buffer.clear();
+                filter.reset();
             }
             thread::sleep(POLL_PERIOD);
             continue;
@@ -171,6 +186,7 @@ fn run_sensor(
             }
             configured_generation = Some(transport.transition_count);
             last_valid = Some(Instant::now());
+            filter.reset();
         }
 
         match serial.recv_timeout(POLL_PERIOD) {
@@ -181,7 +197,7 @@ fn run_sensor(
                             Ok(sample) => {
                                 last_valid = Some(sample.received);
                                 state.lifecycle.mark_online("valid IMU samples streaming");
-                                publish(&state, &telemetry, sample);
+                                publish(&state, &telemetry, filter.apply(sample));
                             }
                             Err(error) => report_parse_error(&state, &config, &error),
                         }
@@ -209,6 +225,7 @@ fn run_sensor(
             configured_generation = None;
             last_valid = None;
             frame_buffer.clear();
+            filter.reset();
         }
     }
 }

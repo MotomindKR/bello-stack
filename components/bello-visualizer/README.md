@@ -101,3 +101,7 @@ The minimal `config/vcan.yaml` and `config/vcan.urdf` pair is useful for a
 two-joint UI smoke test. The normal test suite covers configuration,
 transmission reconstruction, telemetry, command cadence, and lease cleanup
 without opening a GPU window.
+
+`config/milly.example.yaml` is the maintained fixed-root visualizer profile for
+the single-arm Milly hardware description. It connects to hardwared on
+localhost and exposes the atomic `arm` group with conservative editor gains.
