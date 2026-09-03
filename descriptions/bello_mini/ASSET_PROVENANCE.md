@@ -20,6 +20,12 @@ the right IR origin is 40 mm toward camera-right, and RGB is 10 mm toward
 camera-right and 2 mm forward of depth. Robot-state-publisher and the camera
 driver must not both publish the same sensor transforms.
 
+`imu_link` is a massless fixed identity child of `pelvis_link`. Its +X-forward,
++Y-left, +Z-up orientation exactly preserves original Bello's convention of
+using `pelvis_link` itself as the IMU frame. The STEP contains no reviewed IMU
+component or mounting datum, so the zero translation is nominal and should be
+replaced if a measured sensor location becomes available.
+
 `motor_topology.yaml` records the reviewed motor names, models, couplings, and
 logical joints. CAN IDs follow increasing kinematic-chain order: left/right
 arms use `31..37` / `41..47` on `can1`, waist yaw/roll use `51,52` on `can1`,

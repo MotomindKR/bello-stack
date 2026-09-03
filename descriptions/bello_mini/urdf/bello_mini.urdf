@@ -3,6 +3,7 @@
   <!--Joint ranges are provisional and must be hardware-validated before motion.-->
   <!--Astra Stereo S U3 sensor origins are nominal mechanical values: IR/depth is 2 mm behind the CAD front face; RGB is 2 mm forward of IR/depth. They are not factory-calibrated extrinsics.-->
   <!--Publish camera sensor TFs from this URDF or from the Orbbec driver, never from both sources simultaneously.-->
+  <!--imu_link is a nominal identity child of pelvis_link, matching the original Bello pelvis-frame IMU convention; no IMU CAD datum was found.-->
   <mujoco>
     <compiler fusestatic="false" inertiafromgeom="false" />
   </mujoco>
@@ -947,6 +948,12 @@
     <origin xyz="-3.2506871970247597e-08 -0.0055278223253084346 -0.064999999999990704" rpy="0 0 0" />
     <axis xyz="1 0 0" />
     <limit lower="-3.1415926535897931" upper="3.1415926535897931" effort="14" velocity="33" />
+  </joint>
+  <link name="imu_link" />
+  <joint name="imu_joint" type="fixed">
+    <parent link="pelvis_link" />
+    <child link="imu_link" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
   </joint>
   <link name="astra_mount_frame">
     <visual name="astra_mount_frame_visual">
