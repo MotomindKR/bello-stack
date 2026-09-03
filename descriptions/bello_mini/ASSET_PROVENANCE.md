@@ -32,15 +32,27 @@ a sensor-derived CAD datum.
 `motor_topology.yaml` records the reviewed motor names, models, couplings, and
 logical joints. CAN IDs follow increasing kinematic-chain order: left/right
 arms use `31..37` / `41..47` on `can1`, waist yaw/roll use `51,52` on `can1`,
-and left/right legs use `61..66` / `71..76` on `can0`.
+and left/right legs use `61..66` / `71..76` on `can0`. Arm IDs 35/45 are the
+left/right wrist-yaw motors and joints.
+
+The URDF joint limits are the designer-provided nominal ranges dated
+2026-09-03. The current review mapping treats the designer's positive direction
+as the left-side URDF positive direction, preserves pitch signs on the right,
+and mirrors right-side roll/yaw signs across the URDF `y=0` plane. This sign
+mapping and the correspondence between designer zero and URDF zero remain
+provisional pending visual and physical confirmation. The ankle pitch/roll
+limits are logical output envelopes, not independent limits for the coupled
+ankle motors; the corners of that rectangular envelope are not yet guaranteed
+reachable.
 
 The topology is intentionally marked `calibration_required`. Its geometric
 direction estimate is the alignment between each CAD motor-frame `+Z` axis and
 the reviewed joint `+` axis; RobStride documentation does not establish that
 STEP-frame `+Z` is protocol-positive. Live command directions and encoder zero
-offsets therefore remain null. Physical travel limits and ankle differential
-coefficients/signs also require bench validation. This is not a deployable
-`bello-hardwared` configuration until those blockers are resolved.
+offsets therefore remain null. Designer-provided travel limits still need
+physical-stop confirmation, and ankle differential coefficients/signs require
+bench validation. This is not a deployable `bello-hardwared` configuration
+until those blockers are resolved.
 
 The descriptions and meshes are proprietary. This repository does not grant
 permission to redistribute them. External distribution requires a separate

@@ -5,7 +5,8 @@ deployment_blockers:
 - RobStride command directions require raw encoder/low-current bench validation
 - encoder zero positions are uncalibrated
 - ankle differential coefficients/signs are unvalidated
-- joint travel limits are provisional and require physical stop checks
+- designer-provided left sign mapping and mirrored right signs require user review
+  and physical stop checks
 can_topology:
   logical_buses:
     can0: left and right legs
@@ -669,14 +670,14 @@ motors:
     command_direction: null
     encoder_zero_offset_rad: null
     status: can_assigned_direction_calibration_required
-- name: left_elbow_yaw_motor
+- name: left_wrist_yaw_motor
   cad_id: motor-27
   model: ROBSTRIDE_00
   side: left
-  station: elbow_yaw
+  station: wrist_yaw
   coupling: direct
   logical_joints:
-  - left_elbow_yaw_joint
+  - left_wrist_yaw_joint
   cad_center_urdf_world_m:
   - -0.014000220242106353
   - 0.20625012337978194
@@ -686,12 +687,12 @@ motors:
   - 0.0
   - 1.0
   logical_joint_axes_urdf:
-    left_elbow_yaw_joint:
+    left_wrist_yaw_joint:
     - 0.0
     - 0.0
     - 1.0
   cad_direction_inference:
-    reference_joint: left_elbow_yaw_joint
+    reference_joint: left_wrist_yaw_joint
     axis_dot: 1.0
     axis_alignment_sign: 1
     candidate_command_direction: 1
@@ -900,14 +901,14 @@ motors:
     command_direction: null
     encoder_zero_offset_rad: null
     status: can_assigned_direction_calibration_required
-- name: right_elbow_yaw_motor
+- name: right_wrist_yaw_motor
   cad_id: motor-21
   model: ROBSTRIDE_00
   side: right
-  station: elbow_yaw
+  station: wrist_yaw
   coupling: direct
   logical_joints:
-  - right_elbow_yaw_joint
+  - right_wrist_yaw_joint
   cad_center_urdf_world_m:
   - -0.01400022010588117
   - -0.20624987680914364
@@ -917,12 +918,12 @@ motors:
   - 0.0
   - 1.0
   logical_joint_axes_urdf:
-    right_elbow_yaw_joint:
+    right_wrist_yaw_joint:
     - 0.0
     - 0.0
     - 1.0
   cad_direction_inference:
-    reference_joint: right_elbow_yaw_joint
+    reference_joint: right_wrist_yaw_joint
     axis_dot: 1.0
     axis_alignment_sign: 1
     candidate_command_direction: 1
