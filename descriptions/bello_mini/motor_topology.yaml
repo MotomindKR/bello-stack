@@ -1,11 +1,28 @@
-schema_version: 1
+schema_version: 2
 robot: bello_mini
 deployment_status: calibration_required
 deployment_blockers:
-- CAN bus and IDs are unassigned
-- command directions and encoder zeros are uncalibrated
+- RobStride command directions require raw encoder/low-current bench validation
+- encoder zero positions are uncalibrated
 - ankle differential coefficients/signs are unvalidated
 - joint travel limits are provisional and require physical stop checks
+can_topology:
+  logical_buses:
+    can0: left and right legs
+    can1: waist and left/right arms
+  bitrate_bps: 1000000
+  id_policy: original Bello body ranges with IDs increasing along each kinematic chain;
+    waist yaw/roll use 51/52
+direction_inference_policy:
+  cad_positive_axis: motor occurrence local +Z transformed into the URDF frame
+  axis_alignment_sign: sign(dot(CAD positive motor axis, reviewed logical joint positive
+    axis))
+  candidate_command_direction: direct-drive geometric placeholder only, conditional
+    on RobStride raw positive matching CAD local +Z
+  protocol_limitation: RobStride documentation does not bind raw-positive rotation
+    to the STEP frame; hardware command_direction remains null until bench validation
+  differential_limitation: ankle alignment is a pitch-axis projection, not a standalone
+    motor direction or calibrated differential row
 motor_model_catalog:
   source:
     revision: 6ad12f50006273b7ea4eea88980f927d97c22f0d
@@ -46,6 +63,10 @@ motors:
   coupling: direct
   logical_joints:
   - waist_yaw_joint
+  cad_center_urdf_world_m:
+  - -0.010020192254591175
+  - 5.7800037364529726e-05
+  - -0.08676182733429552
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - 0.0
@@ -55,12 +76,18 @@ motors:
     - 0.0
     - 0.0
     - 1.0
+  cad_direction_inference:
+    reference_joint: waist_yaw_joint
+    axis_dot: 1.0
+    axis_alignment_sign: 1
+    candidate_command_direction: 1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can1
+    can_id: 51
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: waist_roll_motor
   cad_id: motor-01
   model: ROBSTRIDE_03
@@ -69,6 +96,10 @@ motors:
   coupling: direct
   logical_joints:
   - waist_roll_joint
+  cad_center_urdf_world_m:
+  - -0.029761827334295485
+  - 5.780003737772268e-05
+  - 0.021020192254600938
   cad_motor_frame_output_axis_urdf:
   - 1.0
   - 0.0
@@ -78,12 +109,18 @@ motors:
     - 1.0
     - 0.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: waist_roll_joint
+    axis_dot: 1.0
+    axis_alignment_sign: 1
+    candidate_command_direction: 1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can1
+    can_id: 52
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: left_hip_pitch_motor
   cad_id: motor-11
   model: ROBSTRIDE_04
@@ -92,6 +129,10 @@ motors:
   coupling: direct
   logical_joints:
   - left_hip_pitch_joint
+  cad_center_urdf_world_m:
+  - -0.010750012336122694
+  - 0.033596880771080403
+  - -0.17989504194127576
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - 1.0
@@ -101,12 +142,18 @@ motors:
     - 0.0
     - 1.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: left_hip_pitch_joint
+    axis_dot: 1.0
+    axis_alignment_sign: 1
+    candidate_command_direction: 1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can0
+    can_id: 61
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: left_hip_roll_motor
   cad_id: motor-05
   model: ROBSTRIDE_03
@@ -115,6 +162,10 @@ motors:
   coupling: direct
   logical_joints:
   - left_hip_roll_joint
+  cad_center_urdf_world_m:
+  - -0.02976182733422437
+  - 0.1295578000373739
+  - -0.20997980774539907
   cad_motor_frame_output_axis_urdf:
   - 1.0
   - 0.0
@@ -124,12 +175,18 @@ motors:
     - 1.0
     - 0.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: left_hip_roll_joint
+    axis_dot: 1.0
+    axis_alignment_sign: 1
+    candidate_command_direction: 1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can0
+    can_id: 62
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: left_hip_yaw_motor
   cad_id: motor-16
   model: ROBSTRIDE_03
@@ -138,6 +195,10 @@ motors:
   coupling: direct
   logical_joints:
   - left_hip_yaw_joint
+  cad_center_urdf_world_m:
+  - -0.010020192254520487
+  - 0.12955780003785392
+  - -0.3177618273342955
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - 0.0
@@ -147,12 +208,18 @@ motors:
     - 0.0
     - 0.0
     - 1.0
+  cad_direction_inference:
+    reference_joint: left_hip_yaw_joint
+    axis_dot: 1.0
+    axis_alignment_sign: 1
+    candidate_command_direction: 1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can0
+    can_id: 63
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: left_knee_motor
   cad_id: motor-14
   model: ROBSTRIDE_04
@@ -161,6 +228,10 @@ motors:
   coupling: direct
   logical_joints:
   - left_knee_joint
+  cad_center_urdf_world_m:
+  - 0.01945557041736332
+  - 0.12390311922927438
+  - -0.5356480693724831
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - -1.0
@@ -170,12 +241,18 @@ motors:
     - 0.0
     - 1.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: left_knee_joint
+    axis_dot: -1.0
+    axis_alignment_sign: -1
+    candidate_command_direction: -1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can0
+    can_id: 64
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: left_ankle_motor_1
   cad_id: motor-15
   model: ROBSTRIDE_02
@@ -185,6 +262,10 @@ motors:
   logical_joints:
   - left_ankle_pitch_joint
   - left_ankle_roll_joint
+  cad_center_urdf_world_m:
+  - 0.04509718101534346
+  - 0.12718330684899046
+  - -0.6451414453265935
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - -1.0
@@ -198,12 +279,18 @@ motors:
     - 1.0
     - 0.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: left_ankle_pitch_joint
+    axis_dot: -1.0
+    axis_alignment_sign: -1
+    candidate_command_direction: null
+    status: cad_pitch_projection_only_differential_unresolved
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can0
+    can_id: 65
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: left_ankle_motor_2
   cad_id: motor-13
   model: ROBSTRIDE_02
@@ -213,6 +300,10 @@ motors:
   logical_joints:
   - left_ankle_pitch_joint
   - left_ankle_roll_joint
+  cad_center_urdf_world_m:
+  - 0.0449985198181696
+  - 0.13181669315113076
+  - -0.732141578541289
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - 1.0
@@ -226,12 +317,18 @@ motors:
     - 1.0
     - 0.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: left_ankle_pitch_joint
+    axis_dot: 1.0
+    axis_alignment_sign: 1
+    candidate_command_direction: null
+    status: cad_pitch_projection_only_differential_unresolved
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can0
+    can_id: 66
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: right_hip_pitch_motor
   cad_id: motor-04
   model: ROBSTRIDE_04
@@ -240,6 +337,10 @@ motors:
   coupling: direct
   logical_joints:
   - right_hip_pitch_joint
+  cad_center_urdf_world_m:
+  - -0.009249987663856051
+  - -0.033596880771078586
+  - -0.17989504194127648
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - -1.0
@@ -249,12 +350,18 @@ motors:
     - 0.0
     - 1.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: right_hip_pitch_joint
+    axis_dot: -1.0
+    axis_alignment_sign: -1
+    candidate_command_direction: -1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can0
+    can_id: 71
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: right_hip_roll_motor
   cad_id: motor-06
   model: ROBSTRIDE_03
@@ -263,6 +370,10 @@ motors:
   coupling: direct
   logical_joints:
   - right_hip_roll_joint
+  cad_center_urdf_world_m:
+  - -0.029761827334346663
+  - -0.12944219996262601
+  - -0.20997980774539907
   cad_motor_frame_output_axis_urdf:
   - 1.0
   - 0.0
@@ -272,12 +383,18 @@ motors:
     - 1.0
     - 0.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: right_hip_roll_joint
+    axis_dot: 1.0
+    axis_alignment_sign: 1
+    candidate_command_direction: 1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can0
+    can_id: 72
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: right_hip_yaw_motor
   cad_id: motor-07
   model: ROBSTRIDE_03
@@ -286,6 +403,10 @@ motors:
   coupling: direct
   logical_joints:
   - right_hip_yaw_joint
+  cad_center_urdf_world_m:
+  - -0.010020192254651445
+  - -0.1294421999626361
+  - -0.3177618273342955
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - 0.0
@@ -295,12 +416,18 @@ motors:
     - 0.0
     - 0.0
     - 1.0
+  cad_direction_inference:
+    reference_joint: right_hip_yaw_joint
+    axis_dot: 1.0
+    axis_alignment_sign: 1
+    candidate_command_direction: 1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can0
+    can_id: 73
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: right_knee_motor
   cad_id: motor-09
   model: ROBSTRIDE_04
@@ -309,6 +436,10 @@ motors:
   coupling: direct
   logical_joints:
   - right_knee_joint
+  cad_center_urdf_world_m:
+  - 0.01945557041723158
+  - -0.13509688077121645
+  - -0.5356480693724864
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - -1.0
@@ -318,12 +449,18 @@ motors:
     - 0.0
     - 1.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: right_knee_joint
+    axis_dot: -1.0
+    axis_alignment_sign: -1
+    candidate_command_direction: -1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can0
+    can_id: 74
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: right_ankle_motor_1
   cad_id: motor-10
   model: ROBSTRIDE_02
@@ -333,6 +470,10 @@ motors:
   logical_joints:
   - right_ankle_pitch_joint
   - right_ankle_roll_joint
+  cad_center_urdf_world_m:
+  - 0.0450971810151986
+  - -0.13181669315150032
+  - -0.6451414453266001
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - -1.0
@@ -346,12 +487,18 @@ motors:
     - 1.0
     - 0.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: right_ankle_pitch_joint
+    axis_dot: -1.0
+    axis_alignment_sign: -1
+    candidate_command_direction: null
+    status: cad_pitch_projection_only_differential_unresolved
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can0
+    can_id: 75
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: right_ankle_motor_2
   cad_id: motor-08
   model: ROBSTRIDE_02
@@ -361,6 +508,10 @@ motors:
   logical_joints:
   - right_ankle_pitch_joint
   - right_ankle_roll_joint
+  cad_center_urdf_world_m:
+  - 0.04499851981801429
+  - -0.1271833068493601
+  - -0.7321415785412957
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - 1.0
@@ -374,12 +525,18 @@ motors:
     - 1.0
     - 0.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: right_ankle_pitch_joint
+    axis_dot: 1.0
+    axis_alignment_sign: 1
+    candidate_command_direction: null
+    status: cad_pitch_projection_only_differential_unresolved
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can0
+    can_id: 76
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: left_shoulder_pitch_motor
   cad_id: motor-02
   model: ROBSTRIDE_03
@@ -388,6 +545,10 @@ motors:
   coupling: direct
   logical_joints:
   - left_shoulder_pitch_joint
+  cad_center_urdf_world_m:
+  - -0.0100578000372072
+  - 0.08498817276000441
+  - 0.2490201922546009
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - 1.0
@@ -397,12 +558,18 @@ motors:
     - 0.0
     - 1.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: left_shoulder_pitch_joint
+    axis_dot: 1.0
+    axis_alignment_sign: 1
+    candidate_command_direction: 1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can1
+    can_id: 31
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: left_shoulder_roll_motor
   cad_id: motor-24
   model: ROBSTRIDE_03
@@ -411,6 +578,10 @@ motors:
   coupling: direct
   logical_joints:
   - left_shoulder_roll_joint
+  cad_center_urdf_world_m:
+  - 0.0011158816214890273
+  - 0.19220323685725904
+  - 0.22394392736602878
   cad_motor_frame_output_axis_urdf:
   - 1.0
   - 0.0
@@ -420,12 +591,18 @@ motors:
     - 1.0
     - 0.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: left_shoulder_roll_joint
+    axis_dot: 1.0
+    axis_alignment_sign: 1
+    candidate_command_direction: 1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can1
+    can_id: 32
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: left_shoulder_yaw_motor
   cad_id: motor-26
   model: ROBSTRIDE_06
@@ -434,6 +611,10 @@ motors:
   coupling: direct
   logical_joints:
   - left_shoulder_yaw_joint
+  cad_center_urdf_world_m:
+  - -0.010202885477433705
+  - 0.20624959388653105
+  - 0.13122691798320235
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - 0.0
@@ -443,12 +624,18 @@ motors:
     - 0.0
     - 0.0
     - 1.0
+  cad_direction_inference:
+    reference_joint: left_shoulder_yaw_joint
+    axis_dot: 1.0
+    axis_alignment_sign: 1
+    candidate_command_direction: 1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can1
+    can_id: 33
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: left_elbow_pitch_motor
   cad_id: motor-25
   model: ROBSTRIDE_06
@@ -457,6 +644,10 @@ motors:
   coupling: direct
   logical_joints:
   - left_elbow_pitch_joint
+  cad_center_urdf_world_m:
+  - -0.005202885477433387
+  - 0.21372308145188185
+  - 0.02649959313269278
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - -1.0
@@ -466,12 +657,18 @@ motors:
     - 0.0
     - 1.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: left_elbow_pitch_joint
+    axis_dot: -1.0
+    axis_alignment_sign: -1
+    candidate_command_direction: -1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can1
+    can_id: 34
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: left_elbow_yaw_motor
   cad_id: motor-27
   model: ROBSTRIDE_00
@@ -480,6 +677,10 @@ motors:
   coupling: direct
   logical_joints:
   - left_elbow_yaw_joint
+  cad_center_urdf_world_m:
+  - -0.014000220242106353
+  - 0.20625012337978194
+  - -0.06328812674947067
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - 0.0
@@ -489,12 +690,18 @@ motors:
     - 0.0
     - 0.0
     - 1.0
+  cad_direction_inference:
+    reference_joint: left_elbow_yaw_joint
+    axis_dot: 1.0
+    axis_alignment_sign: 1
+    candidate_command_direction: 1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can1
+    can_id: 35
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: left_wrist_pitch_motor
   cad_id: motor-28
   model: ROBSTRIDE_00
@@ -503,6 +710,10 @@ motors:
   coupling: direct
   logical_joints:
   - left_wrist_pitch_joint
+  cad_center_urdf_world_m:
+  - -0.013999780987410023
+  - 0.2007221452622396
+  - -0.1564001098286942
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - 1.0
@@ -512,12 +723,18 @@ motors:
     - 0.0
     - 1.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: left_wrist_pitch_joint
+    axis_dot: 1.0
+    axis_alignment_sign: 1
+    candidate_command_direction: 1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can1
+    can_id: 36
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: left_wrist_roll_motor
   cad_id: motor-23
   model: ROBSTRIDE_00
@@ -526,6 +743,10 @@ motors:
   coupling: direct
   logical_joints:
   - left_wrist_roll_joint
+  cad_center_urdf_world_m:
+  - -0.008472211443073288
+  - 0.20625015535486335
+  - -0.22140010982868472
   cad_motor_frame_output_axis_urdf:
   - -1.0
   - 0.0
@@ -535,12 +756,18 @@ motors:
     - 1.0
     - 0.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: left_wrist_roll_joint
+    axis_dot: -1.0
+    axis_alignment_sign: -1
+    candidate_command_direction: -1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can1
+    can_id: 37
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: right_shoulder_pitch_motor
   cad_id: motor-03
   model: ROBSTRIDE_03
@@ -549,6 +776,10 @@ motors:
   coupling: direct
   logical_joints:
   - right_shoulder_pitch_joint
+  cad_center_urdf_world_m:
+  - -0.009942199962562789
+  - -0.08498817276000441
+  - 0.24902019225460092
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - -1.0
@@ -558,12 +789,18 @@ motors:
     - 0.0
     - 1.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: right_shoulder_pitch_joint
+    axis_dot: -1.0
+    axis_alignment_sign: -1
+    candidate_command_direction: -1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can1
+    can_id: 41
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: right_shoulder_roll_motor
   cad_id: motor-18
   model: ROBSTRIDE_03
@@ -572,6 +809,10 @@ motors:
   coupling: direct
   logical_joints:
   - right_shoulder_roll_joint
+  cad_center_urdf_world_m:
+  - -0.021115885367439916
+  - -0.19220323699051858
+  - 0.22394392646438951
   cad_motor_frame_output_axis_urdf:
   - -1.0
   - 0.0
@@ -581,12 +822,18 @@ motors:
     - 1.0
     - 0.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: right_shoulder_roll_joint
+    axis_dot: -1.0
+    axis_alignment_sign: -1
+    candidate_command_direction: -1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can1
+    can_id: 42
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: right_shoulder_yaw_motor
   cad_id: motor-20
   model: ROBSTRIDE_06
@@ -595,6 +842,10 @@ motors:
   coupling: direct
   logical_joints:
   - right_shoulder_yaw_joint
+  cad_center_urdf_world_m:
+  - -0.009797114120273506
+  - -0.20624959244307123
+  - 0.13122691917626753
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - 0.0
@@ -604,12 +855,18 @@ motors:
     - 0.0
     - 0.0
     - 1.0
+  cad_direction_inference:
+    reference_joint: right_shoulder_yaw_joint
+    axis_dot: 1.0
+    axis_alignment_sign: 1
+    candidate_command_direction: 1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can1
+    can_id: 43
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: right_elbow_pitch_motor
   cad_id: motor-19
   model: ROBSTRIDE_06
@@ -618,6 +875,10 @@ motors:
   coupling: direct
   logical_joints:
   - right_elbow_pitch_joint
+  cad_center_urdf_world_m:
+  - -0.0052028853412081875
+  - -0.19877691873704378
+  - 0.026499593132692765
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - -1.0
@@ -627,12 +888,18 @@ motors:
     - 0.0
     - 1.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: right_elbow_pitch_joint
+    axis_dot: -1.0
+    axis_alignment_sign: -1
+    candidate_command_direction: -1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can1
+    can_id: 44
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: right_elbow_yaw_motor
   cad_id: motor-21
   model: ROBSTRIDE_00
@@ -641,6 +908,10 @@ motors:
   coupling: direct
   logical_joints:
   - right_elbow_yaw_joint
+  cad_center_urdf_world_m:
+  - -0.01400022010588117
+  - -0.20624987680914364
+  - -0.06328812674947067
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - 0.0
@@ -650,12 +921,18 @@ motors:
     - 0.0
     - 0.0
     - 1.0
+  cad_direction_inference:
+    reference_joint: right_elbow_yaw_joint
+    axis_dot: 1.0
+    axis_alignment_sign: 1
+    candidate_command_direction: 1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can1
+    can_id: 45
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: right_wrist_pitch_motor
   cad_id: motor-22
   model: ROBSTRIDE_00
@@ -664,6 +941,10 @@ motors:
   coupling: direct
   logical_joints:
   - right_wrist_pitch_joint
+  cad_center_urdf_world_m:
+  - -0.014000220240412859
+  - -0.20072201639391513
+  - -0.15640010982869415
   cad_motor_frame_output_axis_urdf:
   - 0.0
   - -1.0
@@ -673,12 +954,18 @@ motors:
     - 0.0
     - 1.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: right_wrist_pitch_joint
+    axis_dot: -1.0
+    axis_alignment_sign: -1
+    candidate_command_direction: -1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can1
+    can_id: 46
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 - name: right_wrist_roll_motor
   cad_id: motor-17
   model: ROBSTRIDE_00
@@ -687,6 +974,10 @@ motors:
   coupling: direct
   logical_joints:
   - right_wrist_roll_joint
+  cad_center_urdf_world_m:
+  - -0.019527854798492655
+  - -0.2062500903411281
+  - -0.2214001098286846
   cad_motor_frame_output_axis_urdf:
   - 1.0
   - 0.0
@@ -696,12 +987,18 @@ motors:
     - 1.0
     - 0.0
     - 0.0
+  cad_direction_inference:
+    reference_joint: right_wrist_roll_joint
+    axis_dot: 1.0
+    axis_alignment_sign: 1
+    candidate_command_direction: 1
+    status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: null
-    can_id: null
+    bus: can1
+    can_id: 47
     command_direction: null
     encoder_zero_offset_rad: null
-    status: calibration_required
+    status: can_assigned_direction_calibration_required
 differential_groups:
 - name: left_ankle_differential
   motors:

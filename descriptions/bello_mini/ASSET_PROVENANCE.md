@@ -21,10 +21,17 @@ camera-right and 2 mm forward of depth. Robot-state-publisher and the camera
 driver must not both publish the same sensor transforms.
 
 `motor_topology.yaml` records the reviewed motor names, models, couplings, and
-logical joints. It is intentionally marked `calibration_required`: CAN buses
-and IDs, command directions, encoder zero offsets, physical travel limits, and
-ankle differential coefficients/signs have not been bench-validated. It is not
-a deployable `bello-hardwared` configuration until those blockers are resolved.
+logical joints. CAN IDs follow increasing kinematic-chain order: left/right
+arms use `31..37` / `41..47` on `can1`, waist yaw/roll use `51,52` on `can1`,
+and left/right legs use `61..66` / `71..76` on `can0`.
+
+The topology is intentionally marked `calibration_required`. Its geometric
+direction estimate is the alignment between each CAD motor-frame `+Z` axis and
+the reviewed joint `+` axis; RobStride documentation does not establish that
+STEP-frame `+Z` is protocol-positive. Live command directions and encoder zero
+offsets therefore remain null. Physical travel limits and ankle differential
+coefficients/signs also require bench validation. This is not a deployable
+`bello-hardwared` configuration until those blockers are resolved.
 
 The descriptions and meshes are proprietary. This repository does not grant
 permission to redistribute them. External distribution requires a separate
