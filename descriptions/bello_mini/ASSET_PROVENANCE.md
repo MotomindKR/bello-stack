@@ -20,13 +20,14 @@ the right IR origin is 40 mm toward camera-right, and RGB is 10 mm toward
 camera-right and 2 mm forward of depth. Robot-state-publisher and the camera
 driver must not both publish the same sensor transforms.
 
-`imu_link` is a massless fixed child of `pelvis_link`. Its origin is the exact
-midpoint of the reviewed left/right hip-pitch joint origins in pelvis
-coordinates: `[-0.0099999999999894115, 0, -0.180000001143162]` m. Its identity
-rotation gives +X-forward, +Y-left, +Z-up and preserves original Bello's
-convention of using the pelvis orientation as the IMU orientation. The STEP
-contains no reviewed IMU component or mounting datum, so this midpoint is a
-nominal mounting location rather than a sensor-derived datum.
+`imu_link` is a massless fixed child of `pelvis_link`. Its origin is 50 mm below
+the exact midpoint of the reviewed left/right hip-pitch joint origins in pelvis
+coordinates: `[-0.0099999999999894115, 0, -0.230000001143162]` m. Bello Mini's
+pelvis axes are +X-forward, +Y-left, +Z-up, while original Bello's pelvis/IMU
+axes are +X-right, +Y-forward, +Z-up. The fixed joint therefore has yaw
+`-1.5707963267948966` rad so `imu_link` reproduces original Bello's IMU-axis
+convention. This pose is a user-specified nominal mounting location rather than
+a sensor-derived CAD datum.
 
 `motor_topology.yaml` records the reviewed motor names, models, couplings, and
 logical joints. CAN IDs follow increasing kinematic-chain order: left/right
