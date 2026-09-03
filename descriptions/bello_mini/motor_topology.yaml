@@ -1,0 +1,723 @@
+schema_version: 1
+robot: bello_mini
+deployment_status: calibration_required
+deployment_blockers:
+- CAN bus and IDs are unassigned
+- command directions and encoder zeros are uncalibrated
+- ankle differential coefficients/signs are unvalidated
+- joint travel limits are provisional and require physical stop checks
+motor_model_catalog:
+  source:
+    revision: 6ad12f50006273b7ea4eea88980f927d97c22f0d
+    specification_date: '2026-07-13'
+    url: https://github.com/RobStride/Product_Information
+  models:
+    ROBSTRIDE_00:
+      mass_kg: 0.31
+      mass_tolerance_kg: 0.003
+      peak_torque_nm: 14.0
+      maximum_speed_rad_s: 33.0
+    ROBSTRIDE_02:
+      mass_kg: 0.38
+      mass_tolerance_kg: 0.003
+      peak_torque_nm: 17.0
+      maximum_speed_rad_s: 44.0
+    ROBSTRIDE_03:
+      mass_kg: 0.9
+      mass_tolerance_kg: 0.02
+      peak_torque_nm: 60.0
+      maximum_speed_rad_s: 20.0
+    ROBSTRIDE_04:
+      mass_kg: 1.42
+      mass_tolerance_kg: 0.02
+      peak_torque_nm: 120.0
+      maximum_speed_rad_s: 15.0
+    ROBSTRIDE_06:
+      mass_kg: 0.621
+      mass_tolerance_kg: null
+      peak_torque_nm: 36.0
+      maximum_speed_rad_s: 50.0
+motors:
+- name: waist_yaw_motor
+  cad_id: motor-12
+  model: ROBSTRIDE_03
+  side: center
+  station: waist_yaw
+  coupling: direct
+  logical_joints:
+  - waist_yaw_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - 0.0
+  - 1.0
+  logical_joint_axes_urdf:
+    waist_yaw_joint:
+    - 0.0
+    - 0.0
+    - 1.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: waist_roll_motor
+  cad_id: motor-01
+  model: ROBSTRIDE_03
+  side: center
+  station: waist_roll
+  coupling: direct
+  logical_joints:
+  - waist_roll_joint
+  cad_motor_frame_output_axis_urdf:
+  - 1.0
+  - 0.0
+  - 0.0
+  logical_joint_axes_urdf:
+    waist_roll_joint:
+    - 1.0
+    - 0.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: left_hip_pitch_motor
+  cad_id: motor-11
+  model: ROBSTRIDE_04
+  side: left
+  station: hip_pitch
+  coupling: direct
+  logical_joints:
+  - left_hip_pitch_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - 1.0
+  - 0.0
+  logical_joint_axes_urdf:
+    left_hip_pitch_joint:
+    - 0.0
+    - 1.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: left_hip_roll_motor
+  cad_id: motor-05
+  model: ROBSTRIDE_03
+  side: left
+  station: hip_roll
+  coupling: direct
+  logical_joints:
+  - left_hip_roll_joint
+  cad_motor_frame_output_axis_urdf:
+  - 1.0
+  - 0.0
+  - 0.0
+  logical_joint_axes_urdf:
+    left_hip_roll_joint:
+    - 1.0
+    - 0.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: left_hip_yaw_motor
+  cad_id: motor-16
+  model: ROBSTRIDE_03
+  side: left
+  station: hip_yaw
+  coupling: direct
+  logical_joints:
+  - left_hip_yaw_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - 0.0
+  - 1.0
+  logical_joint_axes_urdf:
+    left_hip_yaw_joint:
+    - 0.0
+    - 0.0
+    - 1.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: left_knee_motor
+  cad_id: motor-14
+  model: ROBSTRIDE_04
+  side: left
+  station: knee
+  coupling: direct
+  logical_joints:
+  - left_knee_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - -1.0
+  - 0.0
+  logical_joint_axes_urdf:
+    left_knee_joint:
+    - 0.0
+    - 1.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: left_ankle_motor_1
+  cad_id: motor-15
+  model: ROBSTRIDE_02
+  side: left
+  station: ankle_differential_upper
+  coupling: differential
+  logical_joints:
+  - left_ankle_pitch_joint
+  - left_ankle_roll_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - -1.0
+  - 0.0
+  logical_joint_axes_urdf:
+    left_ankle_pitch_joint:
+    - 0.0
+    - 1.0
+    - 0.0
+    left_ankle_roll_joint:
+    - 1.0
+    - 0.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: left_ankle_motor_2
+  cad_id: motor-13
+  model: ROBSTRIDE_02
+  side: left
+  station: ankle_differential_lower
+  coupling: differential
+  logical_joints:
+  - left_ankle_pitch_joint
+  - left_ankle_roll_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - 1.0
+  - 0.0
+  logical_joint_axes_urdf:
+    left_ankle_pitch_joint:
+    - 0.0
+    - 1.0
+    - 0.0
+    left_ankle_roll_joint:
+    - 1.0
+    - 0.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: right_hip_pitch_motor
+  cad_id: motor-04
+  model: ROBSTRIDE_04
+  side: right
+  station: hip_pitch
+  coupling: direct
+  logical_joints:
+  - right_hip_pitch_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - -1.0
+  - 0.0
+  logical_joint_axes_urdf:
+    right_hip_pitch_joint:
+    - 0.0
+    - 1.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: right_hip_roll_motor
+  cad_id: motor-06
+  model: ROBSTRIDE_03
+  side: right
+  station: hip_roll
+  coupling: direct
+  logical_joints:
+  - right_hip_roll_joint
+  cad_motor_frame_output_axis_urdf:
+  - 1.0
+  - 0.0
+  - 0.0
+  logical_joint_axes_urdf:
+    right_hip_roll_joint:
+    - 1.0
+    - 0.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: right_hip_yaw_motor
+  cad_id: motor-07
+  model: ROBSTRIDE_03
+  side: right
+  station: hip_yaw
+  coupling: direct
+  logical_joints:
+  - right_hip_yaw_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - 0.0
+  - 1.0
+  logical_joint_axes_urdf:
+    right_hip_yaw_joint:
+    - 0.0
+    - 0.0
+    - 1.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: right_knee_motor
+  cad_id: motor-09
+  model: ROBSTRIDE_04
+  side: right
+  station: knee
+  coupling: direct
+  logical_joints:
+  - right_knee_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - -1.0
+  - 0.0
+  logical_joint_axes_urdf:
+    right_knee_joint:
+    - 0.0
+    - 1.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: right_ankle_motor_1
+  cad_id: motor-10
+  model: ROBSTRIDE_02
+  side: right
+  station: ankle_differential_upper
+  coupling: differential
+  logical_joints:
+  - right_ankle_pitch_joint
+  - right_ankle_roll_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - -1.0
+  - 0.0
+  logical_joint_axes_urdf:
+    right_ankle_pitch_joint:
+    - 0.0
+    - 1.0
+    - 0.0
+    right_ankle_roll_joint:
+    - 1.0
+    - 0.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: right_ankle_motor_2
+  cad_id: motor-08
+  model: ROBSTRIDE_02
+  side: right
+  station: ankle_differential_lower
+  coupling: differential
+  logical_joints:
+  - right_ankle_pitch_joint
+  - right_ankle_roll_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - 1.0
+  - 0.0
+  logical_joint_axes_urdf:
+    right_ankle_pitch_joint:
+    - 0.0
+    - 1.0
+    - 0.0
+    right_ankle_roll_joint:
+    - 1.0
+    - 0.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: left_shoulder_pitch_motor
+  cad_id: motor-02
+  model: ROBSTRIDE_03
+  side: left
+  station: shoulder_pitch
+  coupling: direct
+  logical_joints:
+  - left_shoulder_pitch_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - 1.0
+  - 0.0
+  logical_joint_axes_urdf:
+    left_shoulder_pitch_joint:
+    - 0.0
+    - 1.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: left_shoulder_roll_motor
+  cad_id: motor-24
+  model: ROBSTRIDE_03
+  side: left
+  station: shoulder_roll
+  coupling: direct
+  logical_joints:
+  - left_shoulder_roll_joint
+  cad_motor_frame_output_axis_urdf:
+  - 1.0
+  - 0.0
+  - 0.0
+  logical_joint_axes_urdf:
+    left_shoulder_roll_joint:
+    - 1.0
+    - 0.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: left_shoulder_yaw_motor
+  cad_id: motor-26
+  model: ROBSTRIDE_06
+  side: left
+  station: shoulder_yaw
+  coupling: direct
+  logical_joints:
+  - left_shoulder_yaw_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - 0.0
+  - 1.0
+  logical_joint_axes_urdf:
+    left_shoulder_yaw_joint:
+    - 0.0
+    - 0.0
+    - 1.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: left_elbow_pitch_motor
+  cad_id: motor-25
+  model: ROBSTRIDE_06
+  side: left
+  station: elbow_pitch
+  coupling: direct
+  logical_joints:
+  - left_elbow_pitch_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - -1.0
+  - 0.0
+  logical_joint_axes_urdf:
+    left_elbow_pitch_joint:
+    - 0.0
+    - 1.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: left_elbow_yaw_motor
+  cad_id: motor-27
+  model: ROBSTRIDE_00
+  side: left
+  station: elbow_yaw
+  coupling: direct
+  logical_joints:
+  - left_elbow_yaw_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - 0.0
+  - 1.0
+  logical_joint_axes_urdf:
+    left_elbow_yaw_joint:
+    - 0.0
+    - 0.0
+    - 1.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: left_wrist_pitch_motor
+  cad_id: motor-28
+  model: ROBSTRIDE_00
+  side: left
+  station: wrist_pitch
+  coupling: direct
+  logical_joints:
+  - left_wrist_pitch_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - 1.0
+  - 0.0
+  logical_joint_axes_urdf:
+    left_wrist_pitch_joint:
+    - 0.0
+    - 1.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: left_wrist_roll_motor
+  cad_id: motor-23
+  model: ROBSTRIDE_00
+  side: left
+  station: wrist_roll
+  coupling: direct
+  logical_joints:
+  - left_wrist_roll_joint
+  cad_motor_frame_output_axis_urdf:
+  - -1.0
+  - 0.0
+  - 0.0
+  logical_joint_axes_urdf:
+    left_wrist_roll_joint:
+    - 1.0
+    - 0.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: right_shoulder_pitch_motor
+  cad_id: motor-03
+  model: ROBSTRIDE_03
+  side: right
+  station: shoulder_pitch
+  coupling: direct
+  logical_joints:
+  - right_shoulder_pitch_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - -1.0
+  - 0.0
+  logical_joint_axes_urdf:
+    right_shoulder_pitch_joint:
+    - 0.0
+    - 1.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: right_shoulder_roll_motor
+  cad_id: motor-18
+  model: ROBSTRIDE_03
+  side: right
+  station: shoulder_roll
+  coupling: direct
+  logical_joints:
+  - right_shoulder_roll_joint
+  cad_motor_frame_output_axis_urdf:
+  - -1.0
+  - 0.0
+  - 0.0
+  logical_joint_axes_urdf:
+    right_shoulder_roll_joint:
+    - 1.0
+    - 0.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: right_shoulder_yaw_motor
+  cad_id: motor-20
+  model: ROBSTRIDE_06
+  side: right
+  station: shoulder_yaw
+  coupling: direct
+  logical_joints:
+  - right_shoulder_yaw_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - 0.0
+  - 1.0
+  logical_joint_axes_urdf:
+    right_shoulder_yaw_joint:
+    - 0.0
+    - 0.0
+    - 1.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: right_elbow_pitch_motor
+  cad_id: motor-19
+  model: ROBSTRIDE_06
+  side: right
+  station: elbow_pitch
+  coupling: direct
+  logical_joints:
+  - right_elbow_pitch_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - -1.0
+  - 0.0
+  logical_joint_axes_urdf:
+    right_elbow_pitch_joint:
+    - 0.0
+    - 1.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: right_elbow_yaw_motor
+  cad_id: motor-21
+  model: ROBSTRIDE_00
+  side: right
+  station: elbow_yaw
+  coupling: direct
+  logical_joints:
+  - right_elbow_yaw_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - 0.0
+  - 1.0
+  logical_joint_axes_urdf:
+    right_elbow_yaw_joint:
+    - 0.0
+    - 0.0
+    - 1.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: right_wrist_pitch_motor
+  cad_id: motor-22
+  model: ROBSTRIDE_00
+  side: right
+  station: wrist_pitch
+  coupling: direct
+  logical_joints:
+  - right_wrist_pitch_joint
+  cad_motor_frame_output_axis_urdf:
+  - 0.0
+  - -1.0
+  - 0.0
+  logical_joint_axes_urdf:
+    right_wrist_pitch_joint:
+    - 0.0
+    - 1.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+- name: right_wrist_roll_motor
+  cad_id: motor-17
+  model: ROBSTRIDE_00
+  side: right
+  station: wrist_roll
+  coupling: direct
+  logical_joints:
+  - right_wrist_roll_joint
+  cad_motor_frame_output_axis_urdf:
+  - 1.0
+  - 0.0
+  - 0.0
+  logical_joint_axes_urdf:
+    right_wrist_roll_joint:
+    - 1.0
+    - 0.0
+    - 0.0
+  hardware_binding:
+    bus: null
+    can_id: null
+    command_direction: null
+    encoder_zero_offset_rad: null
+    status: calibration_required
+differential_groups:
+- name: left_ankle_differential
+  motors:
+  - left_ankle_motor_1
+  - left_ankle_motor_2
+  logical_joints:
+  - left_ankle_pitch_joint
+  - left_ankle_roll_joint
+  motor_from_joint_coefficients: null
+  status: calibration_required
+- name: right_ankle_differential
+  motors:
+  - right_ankle_motor_1
+  - right_ankle_motor_2
+  logical_joints:
+  - right_ankle_pitch_joint
+  - right_ankle_roll_joint
+  motor_from_joint_coefficients: null
+  status: calibration_required
