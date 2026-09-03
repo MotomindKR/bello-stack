@@ -36,14 +36,15 @@ and left/right legs use `61..66` / `71..76` on `can0`. Arm IDs 35/45 are the
 left/right wrist-yaw motors and joints.
 
 The URDF joint limits are the designer-provided nominal ranges dated
-2026-09-03. The current review mapping treats the designer's positive direction
-as the left-side URDF positive direction, preserves pitch signs on the right,
-and mirrors right-side roll/yaw signs across the URDF `y=0` plane. This sign
-mapping and the correspondence between designer zero and URDF zero remain
-provisional pending visual and physical confirmation. The ankle pitch/roll
-limits are logical output envelopes, not independent limits for the coupled
-ankle motors; the corners of that rectangular envelope are not yet guaranteed
-reachable.
+2026-09-03. User visual review established that hip pitch, hip roll, shoulder
+roll, and elbow pitch use the opposite sign from the reported left-side
+convention when expressed on the Mini URDF axes; all other left-side signs keep
+the designer mapping. The right side is derived geometrically across the URDF
+`y=0` plane: pitch keeps the left URDF sign while roll/yaw reverse. Encoder-zero
+correspondence and physical stops remain pending validation. The ankle
+pitch/roll limits are logical output envelopes, not independent limits for the
+coupled ankle motors; the corners of that rectangular envelope are not yet
+guaranteed reachable.
 
 The topology is intentionally marked `calibration_required`. Its geometric
 direction estimate is the alignment between each CAD motor-frame `+Z` axis and

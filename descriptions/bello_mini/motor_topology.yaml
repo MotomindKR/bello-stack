@@ -5,8 +5,8 @@ deployment_blockers:
 - RobStride command directions require raw encoder/low-current bench validation
 - encoder zero positions are uncalibrated
 - ankle differential coefficients/signs are unvalidated
-- designer-provided left sign mapping and mirrored right signs require user review
-  and physical stop checks
+- joint-limit signs reflect user review; physical stops and encoder-zero correspondence
+  require validation
 can_topology:
   logical_buses:
     can0: left and right legs
