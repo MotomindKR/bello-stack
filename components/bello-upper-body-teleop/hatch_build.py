@@ -8,9 +8,9 @@ from typing import Any
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
 _PACKAGE_ASSET_DIRECTORY = Path("src/bello_upper_body_teleop/_assets")
-_URDF_NAME = "bello_full_body.urdf"
+_URDF_NAME = "bello.urdf"
 _PROVENANCE_NAME = "ASSET_PROVENANCE.md"
-_SOURCE_URDF = Path("descriptions/bello/full_body/urdf") / _URDF_NAME
+_SOURCE_URDF = Path("descriptions/bello/urdf") / _URDF_NAME
 _COMMIT_PATTERN = re.compile(r"^- Stack source commit: `([0-9a-f]{40})`$", re.MULTILINE)
 _DIGEST_PATTERN = re.compile(r"^- Embedded URDF SHA-256: `([0-9a-f]{64})`$", re.MULTILINE)
 

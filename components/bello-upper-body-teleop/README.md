@@ -61,7 +61,7 @@ unnecessary full turn from a nearby multi-turn reading.
 Offsets, directions, and action limits come from the previous
 `BelloJointTeleopControllerConfig`. At startup, an editable checkout parses the
 repository's single canonical robot description,
-`descriptions/bello/full_body/urdf/bello_full_body.urdf`, and intersects each
+`descriptions/bello/urdf/bello.urdf`, and intersects each
 teaching limit with that joint's URDF position range. It fails startup if that
 file is missing, malformed, or does not define a mapped revolute joint. Every
 sample is clamped to the resulting range, and target-frame construction rejects

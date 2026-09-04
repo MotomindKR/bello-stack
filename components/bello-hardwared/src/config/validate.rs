@@ -247,8 +247,8 @@ mod tests {
 
     fn parse(yaml: &str) -> Result<Config> {
         let mut config: Config = serde_yaml::from_str(yaml)?;
-        config.robot_description = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../descriptions/bello/full_body/urdf/bello_full_body.urdf");
+        config.robot_description =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../descriptions/bello/urdf/bello.urdf");
         ResolvedTopology::resolve(config.clone())?;
         Ok(config)
     }

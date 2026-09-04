@@ -16,24 +16,22 @@ if TYPE_CHECKING:
 _POSITION_SCALE_RADIANS = math.pi / 2048.0
 
 
-def _canonical_full_body_urdf() -> Traversable:
+def _canonical_bello_urdf() -> Traversable:
     component_root = Path(__file__).resolve().parents[2]
     stack_root = component_root.parents[1]
     if (stack_root / "Cargo.toml").is_file():
-        checkout_path = (
-            stack_root / "descriptions" / "bello" / "full_body" / "urdf" / "bello_full_body.urdf"
-        )
+        checkout_path = stack_root / "descriptions" / "bello" / "urdf" / "bello.urdf"
         if not checkout_path.is_file():
             raise RuntimeError(f"canonical Bello URDF is missing from checkout: {checkout_path}")
         return checkout_path
 
-    resource = files("bello_upper_body_teleop").joinpath("_assets/bello_full_body.urdf")
+    resource = files("bello_upper_body_teleop").joinpath("_assets/bello.urdf")
     if not resource.is_file():
         raise RuntimeError("installed teleop package does not contain the canonical Bello URDF")
     return resource
 
 
-_CANONICAL_FULL_BODY_URDF = _canonical_full_body_urdf()
+_CANONICAL_BELLO_URDF = _canonical_bello_urdf()
 
 
 def _load_revolute_joint_limits(urdf_path: Traversable) -> dict[str, tuple[float, float]]:
@@ -82,7 +80,7 @@ def _load_revolute_joint_limits(urdf_path: Traversable) -> dict[str, tuple[float
     return limits
 
 
-_CANONICAL_REVOLUTE_JOINT_LIMITS = _load_revolute_joint_limits(_CANONICAL_FULL_BODY_URDF)
+_CANONICAL_REVOLUTE_JOINT_LIMITS = _load_revolute_joint_limits(_CANONICAL_BELLO_URDF)
 
 
 @dataclass(frozen=True, slots=True)

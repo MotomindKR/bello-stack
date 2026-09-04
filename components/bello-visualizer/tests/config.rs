@@ -161,7 +161,7 @@ fn maintained_bello_example_configuration_loads_the_canonical_description() {
         RootConfig::Fixed { .. } => panic!("Bello vCAN must use runner PoseService"),
     }
     let description = RobotDescription::load(&config.urdf).unwrap();
-    assert_eq!(description.name(), "bello_full_body");
+    assert_eq!(description.name(), "bello");
     assert!(description.joint("left_hip_pitch_joint").is_some());
     assert!(
         description

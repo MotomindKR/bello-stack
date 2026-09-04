@@ -60,7 +60,7 @@ unused bus mappings, and incomplete description ownership are rejected.
 The hardware description must name its robot description:
 
 ```yaml
-robot_description: full_body/urdf/bello_full_body.urdf
+robot_description: urdf/bello.urdf
 ```
 
 That path resolves from the hardware-description file. Every controlled

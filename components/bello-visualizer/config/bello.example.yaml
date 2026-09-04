@@ -1,5 +1,5 @@
 # Canonical Bello description used by the local MuJoCo-backed vCAN emulator.
-urdf: ../../../descriptions/bello/full_body/urdf/bello_full_body.urdf
+urdf: ../../../descriptions/bello/urdf/bello.urdf
 hardware:
   endpoint: http://127.0.0.1:50051
   # endpoint: http://192.168.0.8:50051

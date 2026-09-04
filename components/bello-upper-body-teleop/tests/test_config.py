@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from bello_upper_body_teleop.config import (
-    _CANONICAL_FULL_BODY_URDF,
+    _CANONICAL_BELLO_URDF,
     UPPER_BODY_COORDINATES,
     UPPER_BODY_JOINTS,
     map_raw_positions,
@@ -72,7 +72,7 @@ def test_mapping_clamps_to_tighter_physical_limits() -> None:
 
 
 def test_effective_limits_never_exceed_canonical_urdf_limits() -> None:
-    with _CANONICAL_FULL_BODY_URDF.open("rb") as stream:
+    with _CANONICAL_BELLO_URDF.open("rb") as stream:
         root = ET.parse(stream).getroot()
     urdf_limits = {
         joint.attrib["name"]: (

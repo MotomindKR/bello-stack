@@ -97,8 +97,7 @@ pub fn write_canonical_lower_body(
 ) -> Result<CanonicalLowerBodyFixture> {
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
     let hardware_path = manifest.join("../../descriptions/bello/hardware.yaml");
-    let robot_description =
-        manifest.join("../../descriptions/bello/full_body/urdf/bello_full_body.urdf");
+    let robot_description = manifest.join("../../descriptions/bello/urdf/bello.urdf");
     let source = fs::read_to_string(&hardware_path)
         .with_context(|| format!("reading {}", hardware_path.display()))?;
     let identity: CanonicalHardware = serde_yaml::from_str(&source)?;

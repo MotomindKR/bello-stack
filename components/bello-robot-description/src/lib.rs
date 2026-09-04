@@ -1257,8 +1257,8 @@ mod tests {
 
     #[test]
     fn canonical_bello_urdf_loads_with_paired_arms_and_ankle_coordinates() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../descriptions/bello/full_body/urdf/bello_full_body.urdf");
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../descriptions/bello/urdf/bello.urdf");
         let description = RobotDescription::load(&path).unwrap();
         let model = description
             .kinematic_model(
