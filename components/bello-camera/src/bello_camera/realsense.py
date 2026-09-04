@@ -85,9 +85,13 @@ class RealSenseAppSource:
         self._thread: threading.Thread | None = None
         self._stopping = threading.Event()
 
-    def start(self) -> None:
-        if self._thread is not None:
-            raise RealSenseError(f"RealSense source {self._label!r} is already started")
+    def prepare(self) -> None:
+        """Open the device without starting the appsrc frame pump."""
+
+        if self._thread is not None or self._rs_pipeline is not None:
+            raise RealSenseError(f"RealSense source {self._label!r} is already prepared")
+        if self._stopping.is_set():
+            raise RealSenseError(f"RealSense source {self._label!r} is already closed")
         try:
             import pyrealsense2 as rs
         except ImportError as error:
@@ -97,12 +101,29 @@ class RealSenseAppSource:
             ) from error
         self._rs = rs
         self._open_device()
-        self._thread = threading.Thread(
+
+    def start(self) -> None:
+        """Start pumping frames from a device opened by :meth:`prepare`."""
+
+        if self._thread is not None:
+            raise RealSenseError(f"RealSense source {self._label!r} is already started")
+        if self._rs_pipeline is None:
+            raise RealSenseError(
+                f"RealSense source {self._label!r} must be prepared before it is started"
+            )
+        thread = threading.Thread(
             target=self._run,
             name=f"realsense-{self._label}",
             daemon=True,
         )
-        self._thread.start()
+        self._thread = thread
+        try:
+            thread.start()
+        except Exception as error:
+            self._thread = None
+            raise RealSenseError(
+                f"failed to start RealSense source {self._label!r} frame pump: {error}"
+            ) from error
 
     def close(self) -> None:
         self._stopping.set()

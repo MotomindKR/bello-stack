@@ -84,10 +84,18 @@ class CameraStreamer:
             except RealSenseError as error:
                 self.close()
                 raise CameraError(str(error)) from error
+            # Retain the sources before opening any device so close() can undo
+            # a partial multi-device prepare in reverse order.
+            self._pipelines.append((camera.name, pipeline, sources))
+            try:
+                for source in sources:
+                    source.prepare()
+            except RealSenseError as error:
+                self.close()
+                raise CameraError(str(error)) from error
             if pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
                 self.close()
                 raise CameraError(f"failed to start camera {camera.name!r}")
-            self._pipelines.append((camera.name, pipeline, sources))
             try:
                 for source in sources:
                     source.start()
