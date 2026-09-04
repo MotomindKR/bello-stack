@@ -33,6 +33,16 @@ CENTER_D405_HEIGHT = 0.35937731
 CENTER_D405_PITCH = 0.44660681555959347
 CENTER_D405_YAW = 3.141592653589793
 CENTER_D405_SIZE = (0.023, 0.042, 0.042)
+# Collision-only workcell geometry is deliberately expressed in the base frame,
+# independently of the pitched camera body. The keepout cube is centered on the
+# calibrated optical position. Its lower face defines the top of the support
+# post, whose lower face is the measured table plane at z=0.
+CENTER_D405_KEEPOUT_SIZE = (0.100, 0.100, 0.100)
+CENTER_D405_SUPPORT_POST_SIZE_XY = 0.040
+CENTER_D405_SUPPORT_POST_HEIGHT = (
+    CENTER_D405_HEIGHT - CENTER_D405_KEEPOUT_SIZE[2] / 2.0
+)
+CENTER_D405_SUPPORT_POST_CENTER_Z = CENTER_D405_SUPPORT_POST_HEIGHT / 2.0
 OPTICAL_FRAME_RPY = "-1.5707963267948966 0 -1.5707963267948966"
 
 
@@ -113,6 +123,68 @@ def _center_d405() -> tuple[ET.Element, ...]:
     return body, optical, mount, optical_joint
 
 
+def _fixed_collision_box(
+    *,
+    link_name: str,
+    joint_name: str,
+    collision_name: str,
+    center: tuple[float, float, float],
+    size: tuple[float, float, float],
+) -> tuple[ET.Element, ET.Element]:
+    link = ET.Element("link", {"name": link_name})
+    collision = ET.SubElement(link, "collision", {"name": collision_name})
+    ET.SubElement(collision, "origin", {"xyz": "0 0 0", "rpy": "0 0 0"})
+    geometry = ET.SubElement(collision, "geometry")
+    ET.SubElement(
+        geometry,
+        "box",
+        {"size": " ".join(f"{value:.9g}" for value in size)},
+    )
+
+    joint = ET.Element("joint", {"name": joint_name, "type": "fixed"})
+    ET.SubElement(joint, "parent", {"link": "dual_milly_base"})
+    ET.SubElement(joint, "child", {"link": link_name})
+    ET.SubElement(
+        joint,
+        "origin",
+        {
+            "xyz": " ".join(f"{value:.9g}" for value in center),
+            "rpy": "0 0 0",
+        },
+    )
+    return link, joint
+
+
+def _center_d405_collision_obstacles() -> tuple[ET.Element, ...]:
+    keepout = _fixed_collision_box(
+        link_name="center_d405_keepout_link",
+        joint_name="center_d405_keepout_joint",
+        collision_name="center_d405_keepout_collision",
+        center=(
+            CENTER_D405_LONGITUDINAL_X,
+            CENTER_D405_LATERAL_Y,
+            CENTER_D405_HEIGHT,
+        ),
+        size=CENTER_D405_KEEPOUT_SIZE,
+    )
+    support_post = _fixed_collision_box(
+        link_name="center_d405_support_post_link",
+        joint_name="center_d405_support_post_joint",
+        collision_name="center_d405_support_post_collision",
+        center=(
+            CENTER_D405_LONGITUDINAL_X,
+            CENTER_D405_LATERAL_Y,
+            CENTER_D405_SUPPORT_POST_CENTER_Z,
+        ),
+        size=(
+            CENTER_D405_SUPPORT_POST_SIZE_XY,
+            CENTER_D405_SUPPORT_POST_SIZE_XY,
+            CENTER_D405_SUPPORT_POST_HEIGHT,
+        ),
+    )
+    return (*keepout, *support_post)
+
+
 def render() -> str:
     source_bytes = SOURCE.read_bytes()
     source = ET.fromstring(source_bytes)
@@ -134,6 +206,12 @@ def render() -> str:
             robot.append(_clone(material, side))
 
     robot.append(ET.Element("link", {"name": "dual_milly_base"}))
+    robot.append(
+        ET.Comment(
+            " Collision-only D405 keepout and support post, fixed in the table/base frame. "
+        )
+    )
+    robot.extend(_center_d405_collision_obstacles())
     robot.append(
         ET.Comment(
             " Center D405: table-plane calibrated height/pitch, zero roll, yaw pi into -X work area. "

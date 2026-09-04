@@ -280,11 +280,8 @@ fn maintained_dual_milly_example_loads_both_arms_and_atomic_group() {
     assert!((camera_mount.origin.translation.vector.z - 0.35937731).abs() < 1.0e-12);
     // Compare rotations directly: Euler extraction may represent yaw pi as
     // negative pi even though the physical rotation is identical.
-    let expected_camera_rotation = nalgebra::UnitQuaternion::from_euler_angles(
-        0.0,
-        0.44660681555959347,
-        std::f64::consts::PI,
-    );
+    let expected_camera_rotation =
+        nalgebra::UnitQuaternion::from_euler_angles(0.0, 0.44660681555959347, std::f64::consts::PI);
     assert!(
         camera_mount
             .origin
@@ -301,6 +298,44 @@ fn maintained_dual_milly_example_loads_both_arms_and_atomic_group() {
     assert!((optical_roll + std::f64::consts::FRAC_PI_2).abs() < 1.0e-12);
     assert!(optical_pitch.abs() < 1.0e-12);
     assert!((optical_yaw + std::f64::consts::FRAC_PI_2).abs() < 1.0e-12);
+    for (link_name, joint_name, expected_center, expected_size) in [
+        (
+            "center_d405_keepout_link",
+            "center_d405_keepout_joint",
+            [0.040, -0.009, 0.35937731],
+            [0.100, 0.100, 0.100],
+        ),
+        (
+            "center_d405_support_post_link",
+            "center_d405_support_post_joint",
+            [0.040, -0.009, 0.154688655],
+            [0.040, 0.040, 0.30937731],
+        ),
+    ] {
+        let obstacle = description.link(link_name).unwrap();
+        assert!(
+            obstacle.visuals.is_empty(),
+            "{link_name} must remain collision-only"
+        );
+        assert_eq!(obstacle.collisions.len(), 1);
+        let collision = &obstacle.collisions[0];
+        assert!(collision.origin.translation.vector.norm() < 1.0e-12);
+        assert!(collision.origin.rotation.angle() < 1.0e-12);
+        let Geometry::Box { size } = &collision.geometry else {
+            panic!("{link_name} collision must be a box");
+        };
+        assert!((size.x - expected_size[0]).abs() < 1.0e-12);
+        assert!((size.y - expected_size[1]).abs() < 1.0e-12);
+        assert!((size.z - expected_size[2]).abs() < 1.0e-12);
+
+        let joint = description.joint(joint_name).unwrap();
+        assert_eq!(joint.parent, "dual_milly_base");
+        assert_eq!(joint.child, link_name);
+        assert!((joint.origin.translation.vector.x - expected_center[0]).abs() < 1.0e-12);
+        assert!((joint.origin.translation.vector.y - expected_center[1]).abs() < 1.0e-12);
+        assert!((joint.origin.translation.vector.z - expected_center[2]).abs() < 1.0e-12);
+        assert!(joint.origin.rotation.angle() < 1.0e-12);
+    }
     let visual_meshes = description
         .links()
         .flat_map(|link| &link.visuals)

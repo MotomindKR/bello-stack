@@ -8,6 +8,33 @@
     <color rgba="0.7 0.7 0.72 1" />
   </material>
   <link name="dual_milly_base" />
+  <!-- Collision-only D405 keepout and support post, fixed in the table/base frame. -->
+  <link name="center_d405_keepout_link">
+    <collision name="center_d405_keepout_collision">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.1 0.1 0.1" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="center_d405_keepout_joint" type="fixed">
+    <parent link="dual_milly_base" />
+    <child link="center_d405_keepout_link" />
+    <origin xyz="0.04 -0.009 0.35937731" rpy="0 0 0" />
+  </joint>
+  <link name="center_d405_support_post_link">
+    <collision name="center_d405_support_post_collision">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.04 0.04 0.30937731" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="center_d405_support_post_joint" type="fixed">
+    <parent link="dual_milly_base" />
+    <child link="center_d405_support_post_link" />
+    <origin xyz="0.04 -0.009 0.154688655" rpy="0 0 0" />
+  </joint>
   <!-- Center D405: table-plane calibrated height/pitch, zero roll, yaw pi into -X work area. -->
   <link name="center_d405_link">
     <visual>
