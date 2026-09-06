@@ -33,7 +33,7 @@ imus:
 motors:
   - name: waist_yaw_motor
     coordinate: waist_yaw_joint
-    bus: can1
+    bus: can0
     id: 51
     model: ROBSTRIDE_03
     direction: 1
@@ -50,7 +50,7 @@ motors:
       limit: clamp
       position_step: reject
     fault_damping_kd: 15.0
-  - { name: waist_roll_motor, coordinate: waist_roll_joint, bus: can1, id: 52, model: ROBSTRIDE_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
+  - { name: waist_roll_motor, coordinate: waist_roll_joint, bus: can0, id: 52, model: ROBSTRIDE_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
   - { name: left_hip_pitch_motor, coordinate: left_hip_pitch_joint, bus: can0, id: 61, model: ROBSTRIDE_04, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 40.0 }
   - { name: left_hip_roll_motor, coordinate: left_hip_roll_joint, bus: can0, id: 62, model: ROBSTRIDE_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
   - { name: left_hip_yaw_motor, coordinate: left_hip_yaw_joint, bus: can0, id: 63, model: ROBSTRIDE_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }

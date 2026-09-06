@@ -9,8 +9,8 @@ deployment_blockers:
   require validation
 can_topology:
   logical_buses:
-    can0: left and right legs
-    can1: waist and left/right arms
+    can0: waist and left/right legs
+    can1: left and right arms
   bitrate_bps: 1000000
   id_policy: original Bello body ranges with IDs increasing along each kinematic chain;
     waist yaw/roll use 51/52
@@ -84,7 +84,7 @@ motors:
     candidate_command_direction: 1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can1
+    bus: can0
     can_id: 51
     command_direction: null
     encoder_zero_offset_rad: null
@@ -117,7 +117,7 @@ motors:
     candidate_command_direction: 1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can1
+    bus: can0
     can_id: 52
     command_direction: null
     encoder_zero_offset_rad: null

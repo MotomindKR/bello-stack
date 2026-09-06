@@ -31,7 +31,7 @@ a sensor-derived CAD datum.
 
 `motor_topology.yaml` records the reviewed motor names, models, couplings, and
 logical joints. CAN IDs follow increasing kinematic-chain order: left/right
-arms use `31..37` / `41..47` on `can1`, waist yaw/roll use `51,52` on `can1`,
+arms use `31..37` / `41..47` on `can1`, waist yaw/roll use `51,52` on `can0`,
 and left/right legs use `61..66` / `71..76` on `can0`. Arm IDs 35/45 are the
 left/right wrist-yaw motors and joints.
 
