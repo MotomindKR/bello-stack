@@ -185,9 +185,9 @@ motors:
   hardware_binding:
     bus: can0
     can_id: 62
-    command_direction: null
+    command_direction: -1
     encoder_zero_offset_rad: null
-    status: can_assigned_direction_calibration_required
+    status: direction_confirmed_by_operator
 - name: left_hip_yaw_motor
   cad_id: motor-16
   model: ROBSTRIDE_03
