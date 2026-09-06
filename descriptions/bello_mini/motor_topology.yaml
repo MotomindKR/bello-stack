@@ -568,9 +568,9 @@ motors:
   hardware_binding:
     bus: can1
     can_id: 31
-    command_direction: null
+    command_direction: -1
     encoder_zero_offset_rad: null
-    status: can_assigned_direction_calibration_required
+    status: direction_confirmed_by_operator
 - name: left_shoulder_roll_motor
   cad_id: motor-24
   model: ROBSTRIDE_03
@@ -799,9 +799,9 @@ motors:
   hardware_binding:
     bus: can1
     can_id: 41
-    command_direction: null
+    command_direction: 1
     encoder_zero_offset_rad: null
-    status: can_assigned_direction_calibration_required
+    status: direction_confirmed_by_operator
 - name: right_shoulder_roll_motor
   cad_id: motor-18
   model: ROBSTRIDE_03
