@@ -50,9 +50,10 @@ The topology is intentionally marked `calibration_required`. Its geometric
 direction estimate is the alignment between each CAD motor-frame `+Z` axis and
 the reviewed joint `+` axis; RobStride documentation does not establish that
 STEP-frame `+Z` is protocol-positive. Operator review on 2026-09-06 confirmed
-command direction -1 for waist yaw, both hip roll motors, and left hip pitch,
-and +1 for right hip pitch. Other command directions and encoder zero offsets remain null in
-the topology. Designer-provided travel limits still need physical-stop
+command direction -1 for waist yaw, both hip roll motors, left hip pitch, and
+all four ankle motors, and +1 for right hip pitch. Other command directions
+and encoder zero offsets remain null in the topology. Designer-provided travel
+limits still need physical-stop
 confirmation, and ankle differential coefficients/signs require
 bench validation. This is not a deployable `bello-hardwared` configuration
 until those blockers are resolved.
@@ -63,7 +64,8 @@ motors join the legs in `lower_body`; both seven-motor arms form `upper_body`.
 Waist yaw, both hip roll motors, and left hip pitch use the confirmed direction -1;
 right hip pitch uses the operator-confirmed direction +1. Other direct-drive
 directions use the topology's CAD candidate signs, conditional on
-protocol-positive matching CAD motor-frame +Z. Ankle motor directions are +1.
+protocol-positive matching CAD motor-frame +Z. All four ankle motors use the
+operator-confirmed direction -1; ankle coupling still requires validation.
 The URDF now includes provisional unit differential transmissions on both sides:
 `motor_1 = pitch + roll`, `motor_2 = pitch - roll`, with zero offsets. These
 equations are simulation conventions, not measured linkage coefficients.

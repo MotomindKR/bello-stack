@@ -289,9 +289,9 @@ motors:
   hardware_binding:
     bus: can0
     can_id: 65
-    command_direction: null
+    command_direction: -1
     encoder_zero_offset_rad: null
-    status: can_assigned_direction_calibration_required
+    status: direction_confirmed_by_operator
 - name: left_ankle_motor_2
   cad_id: motor-13
   model: ROBSTRIDE_02
@@ -327,9 +327,9 @@ motors:
   hardware_binding:
     bus: can0
     can_id: 66
-    command_direction: null
+    command_direction: -1
     encoder_zero_offset_rad: null
-    status: can_assigned_direction_calibration_required
+    status: direction_confirmed_by_operator
 - name: right_hip_pitch_motor
   cad_id: motor-04
   model: ROBSTRIDE_04
@@ -497,9 +497,9 @@ motors:
   hardware_binding:
     bus: can0
     can_id: 75
-    command_direction: null
+    command_direction: -1
     encoder_zero_offset_rad: null
-    status: can_assigned_direction_calibration_required
+    status: direction_confirmed_by_operator
 - name: right_ankle_motor_2
   cad_id: motor-08
   model: ROBSTRIDE_02
@@ -535,9 +535,9 @@ motors:
   hardware_binding:
     bus: can0
     can_id: 76
-    command_direction: null
+    command_direction: -1
     encoder_zero_offset_rad: null
-    status: can_assigned_direction_calibration_required
+    status: direction_confirmed_by_operator
 - name: left_shoulder_pitch_motor
   cad_id: motor-02
   model: ROBSTRIDE_03
