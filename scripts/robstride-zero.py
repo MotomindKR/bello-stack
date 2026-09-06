@@ -19,6 +19,7 @@ CAN_RTR_FLAG = 0x40000000
 CAN_ERR_FLAG = 0x20000000
 CAN_FRAME = struct.Struct("=IB3x8s")
 
+COMM_DEVICE_ID = 0
 COMM_MOTOR_FEEDBACK = 2
 COMM_MOTOR_STOP = 4
 COMM_PARAM_READ = 17
@@ -184,10 +185,20 @@ class RobstrideConnection:
         self._exchange(
             COMM_DATA_SAVE,
             bytes(range(1, 9)),
-            lambda can_id, _payload: self._is_motor_response(
-                can_id, COMM_MOTOR_FEEDBACK
-            ),
+            self._is_save_response,
             "save acknowledgement",
+        )
+
+    def _is_save_response(self, can_id: int, payload: bytes) -> bool:
+        if len(payload) != 8:
+            return False
+        if self._is_motor_response(can_id, COMM_MOTOR_FEEDBACK):
+            return True
+        # The installed Mini firmware broadcasts its device ID after saving.
+        return (
+            comm_type(can_id) == COMM_DEVICE_ID
+            and data_field(can_id) == self.motor_id
+            and target_id(can_id) == 0xFE
         )
 
     def _is_motor_response(self, can_id: int, expected_type: int) -> bool:
