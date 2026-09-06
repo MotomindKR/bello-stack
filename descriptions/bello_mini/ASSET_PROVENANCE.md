@@ -51,8 +51,8 @@ direction estimate is the alignment between each CAD motor-frame `+Z` axis and
 the reviewed joint `+` axis; RobStride documentation does not establish that
 STEP-frame `+Z` is protocol-positive. Operator review on 2026-09-06 confirmed
 command direction -1 for waist yaw, both hip roll motors, left hip pitch,
-all four ankle motors, and left shoulder pitch, and +1 for right hip pitch
-and right shoulder pitch. Other command directions
+all four ankle motors, left shoulder pitch, and left wrist pitch, and +1 for
+right hip pitch, right shoulder pitch, and right wrist pitch. Other command directions
 and encoder zero offsets remain null in the topology. Designer-provided travel
 limits still need physical-stop
 confirmation, and ankle differential coefficients/signs require
@@ -63,8 +63,9 @@ until those blockers are resolved.
 motors, using the topology's exact names, models, buses, and CAN IDs. Both waist
 motors join the legs in `lower_body`; both seven-motor arms form `upper_body`.
 Waist yaw, both hip roll motors, and left hip pitch use the confirmed direction -1;
-right hip pitch uses the operator-confirmed direction +1. Shoulder pitch uses
-the operator-confirmed directions -1 on the left and +1 on the right. Other direct-drive
+right hip pitch uses the operator-confirmed direction +1. Shoulder pitch and
+wrist pitch use the operator-confirmed directions -1 on the left and +1 on the
+right. Other direct-drive
 directions use the topology's CAD candidate signs, conditional on
 protocol-positive matching CAD motor-frame +Z. All four ankle motors use the
 operator-confirmed direction -1; ankle coupling still requires validation.
