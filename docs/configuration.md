@@ -31,6 +31,19 @@ The maintained examples are:
 - [Milly single-arm hardware](../components/bello-hardwared/config/milly.yaml)
 - [Milly single-arm vCAN deployment](../components/bello-hardwared/config/milly-vcan.yaml)
 - [canonical Milly hardware description](../descriptions/milly/hardware.yaml)
+- [provisional Bello Mini physical bindings](../components/bello-hardwared/config/bello-mini.yaml)
+- [provisional Bello Mini vCAN deployment](../components/bello-hardwared/config/bello-mini-vcan.yaml)
+- [Bello Mini hardware description](../descriptions/bello_mini/hardware.yaml)
+
+Bello Mini exposes 28 motors in `lower_body` (legs and both waist axes) and
+`upper_body` (seven motors per arm). These profiles use provisional motor
+directions and ankle transmissions. See the
+[calibration assumptions](../descriptions/bello_mini/ASSET_PROVENANCE.md) before
+physical operation. The physical bindings use `can0`, `can1`, and the IMU's
+stable `/dev/serial/by-id/usb-1a86_USB_Single_Serial_5C93185491-if00` path;
+vCAN uses `vcan0`, `vcan1`, and `/dev/ttyIMU`. Both use 115200 baud to match the
+installed EBIMU, with 100 Hz output to fit the ASCII samples within the serial
+bandwidth. Update the physical serial binding for a different sensor adapter.
 
 The raw schema and defaults live in
 [`config/model.rs`](../components/bello-hardwared/src/config/model.rs). The

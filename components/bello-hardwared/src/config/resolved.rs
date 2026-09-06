@@ -331,6 +331,42 @@ mod tests {
         ResolvedTopology::load(concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml")).unwrap()
     }
 
+    #[test]
+    fn mini_profiles_resolve_all_motors_and_enforce_ankle_joint_limits() {
+        for filename in ["bello-mini.yaml", "bello-mini-vcan.yaml"] {
+            let topology = ResolvedTopology::load(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("config")
+                    .join(filename),
+            )
+            .unwrap();
+            assert_eq!(topology.motors.len(), 28);
+            assert_eq!(topology.groups.len(), 2);
+            let lower = &topology.groups[&GroupName::from("lower_body")];
+            let upper = &topology.groups[&GroupName::from("upper_body")];
+            assert_eq!(lower.motors.len(), 14);
+            assert_eq!(upper.motors.len(), 14);
+            assert_eq!(lower.mechanical.differential_count(), 2);
+            assert_eq!(upper.mechanical.differential_count(), 0);
+
+            for side in ["left", "right"] {
+                let first = MotorName::from(format!("{side}_ankle_motor_1"));
+                let second = MotorName::from(format!("{side}_ankle_motor_2"));
+                let mut commands = neutral_commands(lower);
+                assert!(lower.mechanical.validate_targets(&commands).is_ok());
+                // Individually valid motor targets can exceed the coupled pitch limit.
+                let target = 1.0;
+                assert!(topology.motors[&first].spec.limits.position_max > target);
+                assert!(topology.motors[&second].spec.limits.position_max > target);
+                commands.get_mut(&first).unwrap().position = target;
+                commands.get_mut(&second).unwrap().position = target;
+                let error = lower.mechanical.validate_targets(&commands).unwrap_err();
+                assert_eq!(error.violation, SafetyViolation::PositionLimit);
+                assert!(error.detail.contains(&format!("{side}_ankle_pitch_joint")));
+            }
+        }
+    }
+
     fn neutral_commands(group: &GroupSpec) -> HashMap<MotorName, ImpedanceCommand> {
         group
             .motors

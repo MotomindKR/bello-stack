@@ -55,6 +55,28 @@ physical-stop confirmation, and ankle differential coefficients/signs require
 bench validation. This is not a deployable `bello-hardwared` configuration
 until those blockers are resolved.
 
+`hardware.yaml` provides a provisional `bello-hardwared` profile for all 28
+motors, using the topology's exact names, models, buses, and CAN IDs. Both waist
+motors join the legs in `lower_body`; both seven-motor arms form `upper_body`.
+Direct-drive directions use the topology's CAD candidate signs, conditional on
+protocol-positive matching CAD motor-frame +Z. Ankle motor directions are +1.
+The URDF now includes provisional unit differential transmissions on both sides:
+`motor_1 = pitch + roll`, `motor_2 = pitch - roll`, with zero offsets. These
+equations are simulation conventions, not measured linkage coefficients.
+The physical calibration fields in `motor_topology.yaml` remain null.
+
+The component's `config/bello-mini.yaml` and `config/bello-mini-vcan.yaml` bind
+this description to physical and simulated transports respectively. Bus,
+health, damping, and control timing settings follow the existing Bello profile,
+with damping gains selected for Mini's motor models. The installed EBIMU uses
+115200 baud; output is set to 100 Hz to fit ASCII samples within that bandwidth.
+The physical binding identifies its USB adapter by serial number
+`5C93185491`. Hardwared does not support per-motor
+encoder offsets: physical encoder zeros must be aligned to the URDF convention
+before operation. Validate motor directions, encoder zeros, physical stops,
+and differential signs/reductions before using the physical bindings.
+`--check` validates the software configuration, not those physical assumptions.
+
 The descriptions and meshes are proprietary. This repository does not grant
 permission to redistribute them. External distribution requires a separate
 written agreement with the applicable rights holder.

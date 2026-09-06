@@ -49,6 +49,24 @@ Visualization and recording are deliberately outside this process. External
 tools can subscribe to the daemon's read-only gRPC telemetry stream without
 affecting hardware ownership.
 
+The provisional Bello Mini profiles are [`config/bello-mini.yaml`](config/bello-mini.yaml)
+for physical transport bindings and [`config/bello-mini-vcan.yaml`](config/bello-mini-vcan.yaml)
+for `vcan0`, `vcan1`, and `/dev/ttyIMU`. Both use
+[`descriptions/bello_mini/hardware.yaml`](../../descriptions/bello_mini/hardware.yaml)
+and expose 28 motors: 14 in `lower_body` (both legs and waist yaw/roll) and
+14 in `upper_body` (seven per arm). Validate without opening hardware:
+
+```sh
+cargo run -p bello-hardwared -- \
+  --check --config components/bello-hardwared/config/bello-mini-vcan.yaml
+```
+
+Mini directions and ankle transmissions are provisional simulation assumptions.
+Physical operation requires validated directions, encoder zeros, and ankle
+coupling; passing `--check` does not establish physical calibration. The
+[Mini provenance notes](../../descriptions/bello_mini/ASSET_PROVENANCE.md)
+record the assumptions and remaining calibration work.
+
 ## Interfaces
 
 - The protobuf contract is
