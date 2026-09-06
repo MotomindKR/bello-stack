@@ -152,9 +152,9 @@ motors:
   hardware_binding:
     bus: can0
     can_id: 61
-    command_direction: null
+    command_direction: -1
     encoder_zero_offset_rad: null
-    status: can_assigned_direction_calibration_required
+    status: direction_confirmed_by_operator
 - name: left_hip_roll_motor
   cad_id: motor-05
   model: ROBSTRIDE_03
