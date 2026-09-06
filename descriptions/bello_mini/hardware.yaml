@@ -36,7 +36,7 @@ motors:
     bus: can0
     id: 51
     model: ROBSTRIDE_03
-    direction: 1
+    direction: -1
     health: &motor_health
       safe_position_min: -12.57
       safe_position_max: 12.57

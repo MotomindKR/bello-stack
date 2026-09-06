@@ -49,8 +49,9 @@ guaranteed reachable.
 The topology is intentionally marked `calibration_required`. Its geometric
 direction estimate is the alignment between each CAD motor-frame `+Z` axis and
 the reviewed joint `+` axis; RobStride documentation does not establish that
-STEP-frame `+Z` is protocol-positive. Live command directions and encoder zero
-offsets therefore remain null. Designer-provided travel limits still need
+STEP-frame `+Z` is protocol-positive. Waist yaw's command direction is -1,
+confirmed by the operator on 2026-09-06. Other command directions and encoder
+zero offsets remain null in the topology. Designer-provided travel limits still need
 physical-stop confirmation, and ankle differential coefficients/signs require
 bench validation. This is not a deployable `bello-hardwared` configuration
 until those blockers are resolved.
@@ -58,12 +59,14 @@ until those blockers are resolved.
 `hardware.yaml` provides a provisional `bello-hardwared` profile for all 28
 motors, using the topology's exact names, models, buses, and CAN IDs. Both waist
 motors join the legs in `lower_body`; both seven-motor arms form `upper_body`.
-Direct-drive directions use the topology's CAD candidate signs, conditional on
-protocol-positive matching CAD motor-frame +Z. Ankle motor directions are +1.
+Waist yaw uses the operator-confirmed direction -1. Other direct-drive directions
+use the topology's CAD candidate signs, conditional on protocol-positive matching
+CAD motor-frame +Z. Ankle motor directions are +1.
 The URDF now includes provisional unit differential transmissions on both sides:
 `motor_1 = pitch + roll`, `motor_2 = pitch - roll`, with zero offsets. These
 equations are simulation conventions, not measured linkage coefficients.
-The physical calibration fields in `motor_topology.yaml` remain null.
+Physical calibration fields other than waist yaw's command direction remain
+null in `motor_topology.yaml`.
 
 The component's `config/bello-mini.yaml` and `config/bello-mini-vcan.yaml` bind
 this description to physical and simulated transports respectively. Bus,
