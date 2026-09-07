@@ -169,8 +169,9 @@ The Mini description remains provisional until encoder-zero and ankle-reduction
 calibration is complete.
 
 Both visualizer service endpoints default to localhost. When the providers run
-on another host, use TLS and append `--hardware-endpoint https://HOST:50051`
-and `--pose-endpoint https://HOST:50053`.
+on another host, use TLS and append `--hardware-endpoint https://HOST:50051`.
+Use `--pose-endpoint https://HOST:50053` for the full-Bello estimator or
+`--pose-endpoint https://HOST:50052` for the Mini MuJoCo emulator.
 
 If hardware or pose telemetry disconnects or becomes stale, the visualizer
 freezes the last root transform and shows the condition; root tracking never
