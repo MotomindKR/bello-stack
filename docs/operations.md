@@ -45,13 +45,13 @@ sudo scripts/setup-can.sh
 ```
 
 The script configures both canonical Bello interfaces, `can0` and `can1`, for
-classic CAN at 1 Mbit/s with a 100 ms automatic restart and a 32-frame transmit
+classic CAN at 1 Mbit/s with a 100 ms automatic restart and a 64-frame transmit
 queue. To configure one link manually instead:
 
 ```sh
 sudo ip link set can0 down
 sudo ip link set can0 type can bitrate 1000000 restart-ms 100
-sudo ip link set can0 txqueuelen 32
+sudo ip link set can0 txqueuelen 64
 sudo ip link set can0 up
 ip -details -statistics link show can0
 ```

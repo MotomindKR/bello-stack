@@ -3,7 +3,7 @@ set -euo pipefail
 
 readonly BITRATE=1000000
 readonly RESTART_MS=100
-readonly TX_QUEUE_LENGTH=32
+readonly TX_QUEUE_LENGTH=64
 readonly INTERFACES=(can0 can1)
 
 if (( $# != 0 )); then
