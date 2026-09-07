@@ -10,7 +10,8 @@ remote:
   deadzone: 0.1
 root:
   source: external_pose
-  endpoint: http://127.0.0.1:50053
+  # Ground-truth PoseService published by bello-run-emulator.
+  endpoint: http://127.0.0.1:50052
   reference_frame: odom
   tracked_frame: pelvis_link
   staleness_ms: 200

@@ -159,8 +159,10 @@ For Bello Mini vCAN, select both Mini profiles instead:
 ```sh
 cargo run -p bello-hardwared -- \
   --config components/bello-hardwared/config/bello-mini-vcan.yaml
+cp components/bello-visualizer/config/bello-mini.example.yaml \
+  components/bello-visualizer/config/bello-mini.yaml
 cargo run -p bello-visualizer -- \
-  --config components/bello-visualizer/config/bello-mini.example.yaml
+  --config components/bello-visualizer/config/bello-mini.yaml
 ```
 
 The Mini description remains provisional until encoder-zero and ankle-reduction

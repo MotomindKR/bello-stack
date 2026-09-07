@@ -30,9 +30,10 @@ This profile uses the reviewed Mini motor directions, while physical encoder
 zeros and ankle reductions remain calibration-gated.
 
 The local `bello.yaml` and `bello-mini.yaml` files are ignored by Git. Both
-examples use localhost for their hardware and pose clients and listen on port
-50054 for remote-command subscribers. Override the clients without editing the
-YAML when they run on another host:
+examples use localhost for their hardware clients and listen on port 50054 for
+remote-command subscribers. Bello uses the estimator on port 50053; the Mini
+vCAN profile uses `bello-run-emulator` ground truth on port 50052. Override the
+clients without editing the YAML when they run on another host:
 
 ```sh
 cargo run -p bello-visualizer -- \
