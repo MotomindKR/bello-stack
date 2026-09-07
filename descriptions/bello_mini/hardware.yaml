@@ -27,6 +27,8 @@ serial_devices:
 imus:
   - name: imu
     serial_device: imu_serial
+    source_frame: imu_sensor_link
+    output_frame: imu_link
     stale_timeout_ms: 1000
     output_rate_hz: 100
 

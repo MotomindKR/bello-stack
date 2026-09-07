@@ -195,6 +195,7 @@ fn run_sensor(
                     for (line, received) in lines {
                         match parse_serial_line(&line, received) {
                             Ok(sample) => {
+                                let sample = config.transform_sample(sample);
                                 last_valid = Some(sample.received);
                                 state.lifecycle.mark_online("valid IMU samples streaming");
                                 publish(&state, &telemetry, filter.apply(sample));
@@ -241,7 +242,13 @@ fn configure_device(config: &ImuSpec, serial: &SerialHandle, stop: &AtomicBool) 
         serial.send(command.clone().into_bytes(), stop)?;
         await_command_ack(serial, stop, &command)?;
     }
-    info!(imu=%config.name, serial=%serial.spec.name, "EBIMU configured");
+    info!(
+        imu=%config.name,
+        serial=%serial.spec.name,
+        source_frame=%config.source_frame,
+        output_frame=%config.output_frame,
+        "EBIMU configured"
+    );
     Ok(())
 }
 

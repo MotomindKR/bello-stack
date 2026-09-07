@@ -99,6 +99,8 @@ pub fn list(daemon: &HardwareDaemon) -> ListHardwareResponse {
             status: daemon
                 .imu(&imu.name)
                 .map(|handle| conversion::device_status(&handle.lifecycle.status())),
+            source_frame: imu.source_frame.clone(),
+            output_frame: imu.output_frame.clone(),
         })
         .collect();
     imus.sort_by(|left, right| left.name.cmp(&right.name));

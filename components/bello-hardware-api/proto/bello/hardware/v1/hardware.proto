@@ -125,6 +125,8 @@ message ImuInfo {
   string name = 1;
   string serial_device = 2;
   DeviceStatus status = 3;
+  string source_frame = 4;
+  string output_frame = 5;
 }
 
 message MotorLimits {

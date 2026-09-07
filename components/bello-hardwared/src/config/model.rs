@@ -419,6 +419,8 @@ impl FaultPolicyConfig {
 pub struct ImuConfig {
     pub name: String,
     pub serial_device: String,
+    pub source_frame: String,
+    pub output_frame: String,
     pub stale_timeout_ms: u64,
     pub output_rate_hz: u32,
 }
@@ -427,6 +429,8 @@ impl Default for ImuConfig {
         Self {
             name: "imu".into(),
             serial_device: "imu_serial".into(),
+            source_frame: String::new(),
+            output_frame: String::new(),
             stale_timeout_ms: 500,
             output_rate_hz: 500,
         }

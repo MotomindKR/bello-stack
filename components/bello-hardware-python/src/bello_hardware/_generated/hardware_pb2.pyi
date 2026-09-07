@@ -182,14 +182,18 @@ class SerialDeviceInfo(_message.Message):
     def __init__(self, name: _Optional[str] = ..., port: _Optional[str] = ..., baud_rate: _Optional[int] = ..., status: _Optional[_Union[DeviceStatus, _Mapping]] = ...) -> None: ...
 
 class ImuInfo(_message.Message):
-    __slots__ = ("name", "serial_device", "status")
+    __slots__ = ("name", "serial_device", "status", "source_frame", "output_frame")
     NAME_FIELD_NUMBER: _ClassVar[int]
     SERIAL_DEVICE_FIELD_NUMBER: _ClassVar[int]
     STATUS_FIELD_NUMBER: _ClassVar[int]
+    SOURCE_FRAME_FIELD_NUMBER: _ClassVar[int]
+    OUTPUT_FRAME_FIELD_NUMBER: _ClassVar[int]
     name: str
     serial_device: str
     status: DeviceStatus
-    def __init__(self, name: _Optional[str] = ..., serial_device: _Optional[str] = ..., status: _Optional[_Union[DeviceStatus, _Mapping]] = ...) -> None: ...
+    source_frame: str
+    output_frame: str
+    def __init__(self, name: _Optional[str] = ..., serial_device: _Optional[str] = ..., status: _Optional[_Union[DeviceStatus, _Mapping]] = ..., source_frame: _Optional[str] = ..., output_frame: _Optional[str] = ...) -> None: ...
 
 class MotorLimits(_message.Message):
     __slots__ = ("position_min", "position_max", "velocity_min", "velocity_max", "torque_min", "torque_max", "kp_min", "kp_max", "kd_min", "kd_max")

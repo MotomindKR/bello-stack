@@ -16,9 +16,11 @@ same robot, group, complete-frame, and renewed-session concepts over generated
 blocking gRPC bindings.
 
 The Rust client's `Robot` inventory exposes buses, serial devices, motors,
-groups, and IMUs with their initial status. Each motor also carries the daemon's
-resolved coordinate-space position, velocity, torque, `kp`, and `kd` command
-limits. `RobotStates` aggregates live motor,
+groups, and IMUs with their initial status. Each IMU identifies its physical
+`source_frame` and published `output_frame`; clients can reject a frame contract
+that does not match their observation model. Each motor also carries the
+daemon's resolved coordinate-space position, velocity, torque, `kp`, and `kd`
+command limits. `RobotStates` aggregates live motor,
 group, IMU, component-health, and command-policy telemetry; the visualizer uses
 these high-level interfaces rather than matching protobuf payloads itself.
 `RobotState::last_change()` identifies the exact aggregate entry changed by an
@@ -174,8 +176,9 @@ and [`conversion.rs`](../components/bello-hardwared/src/api/grpc/conversion.rs).
 ## Inventory and telemetry
 
 `ListHardware` returns buses, serial devices, IMUs, motors, and groups with
-typed current states. It is an inventory/status snapshot, not a copy of the
-local safety-policy YAML.
+typed current states. IMU inventory includes the configured source and output
+URDF frames. It is an inventory/status snapshot, not a copy of the local
+safety-policy YAML.
 
 `WatchTelemetryRequest` filters one shared event stream:
 

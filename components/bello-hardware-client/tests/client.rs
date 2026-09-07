@@ -162,6 +162,8 @@ impl HardwareService for FakeHardware {
             imus: vec![ImuInfo {
                 name: "test_imu".into(),
                 serial_device: "test_serial".into(),
+                source_frame: "imu_sensor_link".into(),
+                output_frame: "imu_link".into(),
                 status: Some(DeviceStatus {
                     state: DeviceState::Online as i32,
                     detail: "IMU online".into(),
@@ -1023,6 +1025,8 @@ async fn ergonomic_robot_api_hides_lease_stream_and_acknowledgement_workflow() {
     let imu = robot.imus().next().expect("configured IMU");
     assert_eq!(imu.name(), "test_imu");
     assert_eq!(imu.serial_device(), "test_serial");
+    assert_eq!(imu.source_frame(), "imu_sensor_link");
+    assert_eq!(imu.output_frame(), "imu_link");
 
     let initial = group
         .frame()

@@ -127,7 +127,13 @@ for serial in robot.serial_devices() {
     println!("{}: {} at {} baud", serial.name(), serial.port(), serial.baud_rate());
 }
 for imu in robot.imus() {
-    println!("{} uses {}", imu.name(), imu.serial_device());
+    println!(
+        "{} uses {} and publishes {} from {}",
+        imu.name(),
+        imu.serial_device(),
+        imu.output_frame(),
+        imu.source_frame(),
+    );
 }
 for motor in robot.motors() {
     println!(

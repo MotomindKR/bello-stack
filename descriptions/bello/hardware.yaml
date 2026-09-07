@@ -23,6 +23,8 @@ serial_devices:
 imus:
   - name: imu
     serial_device: imu_serial
+    source_frame: pelvis_link
+    output_frame: pelvis_link
     stale_timeout_ms: 1000
     output_rate_hz: 200
 

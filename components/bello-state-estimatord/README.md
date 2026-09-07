@@ -5,12 +5,13 @@ through `bello-hardware-client`, estimates a local tracked-frame pose with
 encoder-based stationary-foot constraints, and implements the existing
 `bello.pose.v1.PoseService`.
 
-`imu_frame` names the rigid URDF link whose axes and origin match the hardware
-IMU. The estimator runs its contact filter at that origin, then uses the URDF's
-fixed transform to publish the configured `tracked_frame` pose and twist. This
-keeps Bello's pelvis-aligned IMU and Bello Mini's offset, yawed IMU on the same
-explicit contract. A missing link, non-descendant link, or movable transform is
-rejected during configuration validation.
+`imu_frame` names the hardwared IMU `output_frame`. Hardwared has already
+rotated the physical sensor sample into those axes, while preserving the sensor
+origin. The estimator runs its contact filter at that origin, then uses the
+URDF's fixed transform to publish the configured `tracked_frame` pose and
+twist. This keeps Bello's pelvis-aligned IMU and Bello Mini's offset, yawed IMU
+on the same explicit contract. A missing link, non-descendant link, or movable
+transform is rejected during configuration validation.
 
 The daemon applies a quaternion SLERP low-pass filter to the EBIMU orientation
 and vector low-pass filters to angular velocity and linear acceleration. Their

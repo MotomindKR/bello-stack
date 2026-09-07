@@ -1367,5 +1367,23 @@ mod tests {
             UnitQuaternion::from_euler_angles(0.0, 0.0, -std::f64::consts::FRAC_PI_2);
         assert!((pelvis_from_imu.translation.vector - expected_translation).norm() < 1.0e-12);
         assert!(pelvis_from_imu.rotation.angle_to(&expected_rotation) < 1.0e-12);
+
+        let imu_from_sensor = description
+            .fixed_transform("imu_link", "imu_sensor_link")
+            .unwrap();
+        let sensor_rotation = UnitQuaternion::from_euler_angles(std::f64::consts::PI, 0.0, 0.0);
+        assert!(imu_from_sensor.translation.vector.norm() < 1.0e-12);
+        assert!(imu_from_sensor.rotation.angle_to(&sensor_rotation) < 1.0e-12);
+
+        let pelvis_from_sensor = description
+            .fixed_transform("pelvis_link", "imu_sensor_link")
+            .unwrap();
+        assert!((pelvis_from_sensor.translation.vector - expected_translation).norm() < 1.0e-12);
+        assert!(
+            pelvis_from_sensor
+                .rotation
+                .angle_to(&(expected_rotation * sensor_rotation))
+                < 1.0e-12
+        );
     }
 }

@@ -275,9 +275,10 @@ The serial layer opens the configured baud rate but does not change the EBIMU's
 stored baud setting; the two must already match. The sequence also does not set
 gyro/accelerometer range, the EBIMU's persistent onboard accelerometer filter,
 magnetometer operating mode, vibration cancellation, or calibration. Hardwared
-separately applies the configured host IMU low-pass filter to every parsed
-sample. A rejected command, missing acknowledgement, or failure to produce a
-valid stream triggers the reconnect path.
+rotates every parsed sample from its configured `source_frame` into its
+`output_frame` using the canonical URDF, then applies the configured host IMU
+low-pass filter. A rejected command, missing acknowledgement, or failure to
+produce a valid stream triggers the reconnect path.
 
 ### Wire schema and units
 
@@ -303,7 +304,11 @@ lost framing, more than 64 KiB without a newline clears the frame buffer and is
 reported as malformed input.
 
 Every valid sample is filtered and emitted individually at the received rate.
-The filter uses consecutive device timestamps, not serial-chunk receive times,
+The required source-to-output URDF frame rotation happens before filtering;
+both frames must have the same origin. Orientation is right-multiplied by the
+inverse fixed rotation, while angular velocity and acceleration are rotated as
+local vectors into the output frame. The filter uses consecutive device
+timestamps, not serial-chunk receive times,
 and resets after timestamp discontinuities, gaps over 100 ms, and reconnects.
 Multiple IMUs remain distinct by name; their samples are neither averaged nor
 combined. The telemetry channel remains event-based; the IMU worker also

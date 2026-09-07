@@ -138,6 +138,8 @@ class SerialDevice:
 class Imu:
     name: str
     serial_device: str
+    source_frame: str
+    output_frame: str
     status: DeviceStatus | None
 
 

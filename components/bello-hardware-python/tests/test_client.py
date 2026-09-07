@@ -40,6 +40,8 @@ def test_blocking_control_lifecycle_is_small(hardware_server: RunningServer) -> 
         group = robot.group("leg")
         assert group.coordinates == ("hip", "knee")
         assert group.motors[0].limits.torque_max == 60.0
+        assert robot.inventory.imus[0].source_frame == "imu_sensor_link"
+        assert robot.inventory.imus[0].output_frame == "imu_link"
 
         with group.control("pytest") as control:
             control.start(frame())

@@ -84,7 +84,7 @@ impl ResolvedTopology {
         let mut imus = HashMap::new();
         let mut claimed_serial_devices = HashSet::new();
         for raw in &config.imus {
-            let spec = ImuSpec::try_from(raw)?;
+            let spec = ImuSpec::resolve(raw, &robot_description)?;
             let nyquist_hz = f64::from(raw.output_rate_hz) / 2.0;
             for (name, cutoff_hz) in [
                 (

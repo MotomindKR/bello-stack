@@ -192,6 +192,8 @@ serial reader thread
   -> timestamped byte chunks
   -> IMU worker line framing
   -> EBIMU parse, unit conversion, quaternion normalization
+  -> canonical URDF source-frame to output-frame rotation
+  -> timestamp-aware orientation/vector filtering
   -> per-IMU latest sample
   -> one telemetry event per valid sample
 ```

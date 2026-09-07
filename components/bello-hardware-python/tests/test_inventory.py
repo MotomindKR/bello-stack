@@ -100,9 +100,21 @@ InventoryMutation = Callable[[proto.ListHardwareResponse], object]
             id="unknown-imu-serial-device",
         ),
         pytest.param(
+            lambda response: setattr(response.imus[0], "source_frame", ""),
+            "has no source frame",
+            id="empty-imu-source-frame",
+        ),
+        pytest.param(
+            lambda response: setattr(response.imus[0], "output_frame", ""),
+            "has no output frame",
+            id="empty-imu-output-frame",
+        ),
+        pytest.param(
             lambda response: response.imus.add(
                 name="second_imu",
                 serial_device="body_serial",
+                source_frame="second_sensor_link",
+                output_frame="second_imu_link",
             ),
             "assigned to more than one IMU",
             id="shared-imu-serial-device",
@@ -127,3 +139,12 @@ def test_inventory_rejects_inconsistent_physical_topology(
 
     with pytest.raises(InventoryError, match=message):
         Inventory(inventory_response)
+
+
+def test_inventory_exposes_imu_frame_contract(
+    inventory_response: proto.ListHardwareResponse,
+) -> None:
+    inventory = Inventory(inventory_response)
+
+    assert inventory.imus[0].source_frame == "imu_sensor_link"
+    assert inventory.imus[0].output_frame == "imu_link"

@@ -480,7 +480,7 @@ motor_groups:
     #[test]
     fn imu_must_reference_a_known_serial_device() {
         let text = format!(
-            "{PREFIX}\nimus:\n  - {{ name: imu_a, serial_device: missing }}\nmotor_groups:\n  - {{ name: group, motors: [motor_a, motor_b] }}\n"
+            "{PREFIX}\nimus:\n  - {{ name: imu_a, serial_device: missing, source_frame: pelvis_link, output_frame: pelvis_link }}\nmotor_groups:\n  - {{ name: group, motors: [motor_a, motor_b] }}\n"
         );
         assert!(
             parse(&text)
@@ -493,7 +493,7 @@ motor_groups:
     #[test]
     fn sensors_cannot_share_an_exclusive_serial_device() {
         let text = format!(
-            "serial_devices:\n  - {{ name: serial_a, port: /dev/null, baud_rate: 115200 }}\n{PREFIX}\nimus:\n  - {{ name: imu_a, serial_device: serial_a }}\n  - {{ name: imu_b, serial_device: serial_a }}\nmotor_groups:\n  - {{ name: group, motors: [motor_a, motor_b] }}\n"
+            "serial_devices:\n  - {{ name: serial_a, port: /dev/null, baud_rate: 115200 }}\n{PREFIX}\nimus:\n  - {{ name: imu_a, serial_device: serial_a, source_frame: pelvis_link, output_frame: pelvis_link }}\n  - {{ name: imu_b, serial_device: serial_a, source_frame: pelvis_link, output_frame: pelvis_link }}\nmotor_groups:\n  - {{ name: group, motors: [motor_a, motor_b] }}\n"
         );
         assert!(
             parse(&text)
@@ -525,7 +525,7 @@ motor_groups:
     #[test]
     fn physical_serial_port_cannot_be_declared_twice() {
         let text = format!(
-            "serial_devices:\n  - {{ name: first, port: /dev/ttyUSB0, baud_rate: 115200 }}\n  - {{ name: second, port: /dev/ttyUSB0, baud_rate: 115200 }}\n{PREFIX}\nimus:\n  - {{ name: imu_a, serial_device: first }}\n  - {{ name: imu_b, serial_device: second }}\nmotor_groups:\n  - {{ name: group, motors: [motor_a, motor_b] }}\n"
+            "serial_devices:\n  - {{ name: first, port: /dev/ttyUSB0, baud_rate: 115200 }}\n  - {{ name: second, port: /dev/ttyUSB0, baud_rate: 115200 }}\n{PREFIX}\nimus:\n  - {{ name: imu_a, serial_device: first, source_frame: pelvis_link, output_frame: pelvis_link }}\n  - {{ name: imu_b, serial_device: second, source_frame: pelvis_link, output_frame: pelvis_link }}\nmotor_groups:\n  - {{ name: group, motors: [motor_a, motor_b] }}\n"
         );
         let error = parse(&text).unwrap_err().to_string();
         assert!(
@@ -552,7 +552,7 @@ motor_groups:
     #[test]
     fn every_serial_device_must_own_a_sensor() {
         let text = format!(
-            "serial_devices:\n  - {{ name: used, port: /dev/ttyUSB0, baud_rate: 115200 }}\n  - {{ name: unused, port: /dev/ttyUSB1, baud_rate: 115200 }}\n{PREFIX}\nimus:\n  - {{ name: imu, serial_device: used }}\nmotor_groups:\n  - {{ name: group, motors: [motor_a, motor_b] }}\n"
+            "serial_devices:\n  - {{ name: used, port: /dev/ttyUSB0, baud_rate: 115200 }}\n  - {{ name: unused, port: /dev/ttyUSB1, baud_rate: 115200 }}\n{PREFIX}\nimus:\n  - {{ name: imu, serial_device: used, source_frame: pelvis_link, output_frame: pelvis_link }}\nmotor_groups:\n  - {{ name: group, motors: [motor_a, motor_b] }}\n"
         );
         let error = parse(&text).unwrap_err().to_string();
         assert!(

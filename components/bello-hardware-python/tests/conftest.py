@@ -80,7 +80,14 @@ def valid_inventory_response() -> proto.ListHardwareResponse:
                 baud_rate=921_600,
             )
         ],
-        imus=[proto.ImuInfo(name="body", serial_device="body_serial")],
+        imus=[
+            proto.ImuInfo(
+                name="body",
+                serial_device="body_serial",
+                source_frame="imu_sensor_link",
+                output_frame="imu_link",
+            )
+        ],
     )
 
 

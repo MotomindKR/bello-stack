@@ -219,6 +219,8 @@ serial_devices:
 imus:
   - name: imu
     serial_device: imu_serial
+    source_frame: pelvis_link
+    output_frame: pelvis_link
     stale_timeout_ms: 500
     output_rate_hz: 200
 ```
@@ -236,6 +238,15 @@ through completion; it is also the OS read timeout.
 The current EBIMU driver requires exclusive ownership: every configured serial
 device is assigned to exactly one IMU, and every IMU names an existing serial
 device. An unused serial entry or two sensors sharing one entry is rejected.
+
+`source_frame` names the URDF link whose axes match the parsed EBIMU sample.
+`output_frame` names the frame exposed through hardwared telemetry and state
+frames. Both fields are required. The source must be rigidly attached below the
+output frame, and their origins must coincide; hardwared applies the URDF
+rotation but cannot compensate linear acceleration for a displaced origin. The
+rotation is applied to orientation, angular velocity, and linear acceleration
+before host filtering or publication. Set both names to the same link for an
+identity transform.
 
 `output_rate_hz` is in `1..=1000` and must divide 1000 exactly because the
 device accepts an integer-millisecond interval. Consequently, the accepted

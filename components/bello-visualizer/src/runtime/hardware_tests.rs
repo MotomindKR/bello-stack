@@ -448,6 +448,8 @@ fn inventory() -> proto::ListHardwareResponse {
             name: IMU.into(),
             serial_device: SERIAL.into(),
             status: Some(online("IMU online", 6)),
+            source_frame: "imu_sensor_link".into(),
+            output_frame: "imu_link".into(),
         }],
     }
 }

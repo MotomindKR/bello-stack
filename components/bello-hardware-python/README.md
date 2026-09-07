@@ -80,7 +80,14 @@ with Robot.connect("http://127.0.0.1:50051") as robot:
         print(motor.name, "coordinate=", motor.coordinate, "torque=", motor.limits.torque_max)
 
     for imu in robot.inventory.imus:
-        print("IMU:", imu.name)
+        print(
+            "IMU:",
+            imu.name,
+            "source_frame=",
+            imu.source_frame,
+            "output_frame=",
+            imu.output_frame,
+        )
 ```
 
 The inventory is fetched and validated when `Robot.connect` returns. This
@@ -89,6 +96,10 @@ robot topology in the Python application. Inconsistent bus or serial
 references, unused transports, duplicate physical addresses, invalid CAN IDs,
 unsupported Robstride models, and invalid device metadata fail the connection
 instead of producing a partially usable client.
+
+Each IMU inventory entry declares its raw sensor frame and the output frame in
+which the daemon publishes orientation, angular velocity, and linear
+acceleration. Consumers should reject an output frame they do not expect.
 
 The default endpoint is `http://127.0.0.1:50051`, so this is also valid:
 

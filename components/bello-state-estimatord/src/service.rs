@@ -205,8 +205,26 @@ fn validate_inventory(
     if !missing.is_empty() {
         bail!("hardware inventory is missing estimator coordinates {missing:?}");
     }
-    if !robot.imus().any(|imu| imu.name() == config.imu) {
-        bail!("hardware inventory has no IMU {:?}", config.imu);
+    let imu_output_frame = robot
+        .imus()
+        .find(|imu| imu.name() == config.imu)
+        .map(|imu| imu.output_frame());
+    validate_imu_output_frame(&config.imu, &config.imu_frame, imu_output_frame)?;
+    Ok(())
+}
+
+fn validate_imu_output_frame(
+    imu_name: &str,
+    expected: &str,
+    actual: Option<&str>,
+) -> anyhow::Result<()> {
+    let Some(actual) = actual else {
+        bail!("hardware inventory has no IMU {imu_name:?}");
+    };
+    if actual != expected {
+        bail!(
+            "hardware IMU {imu_name:?} publishes output frame {actual:?}, estimator expects {expected:?}"
+        );
     }
     Ok(())
 }
@@ -482,6 +500,22 @@ mod tests {
         ] {
             check(&config.join(name)).unwrap_or_else(|error| panic!("{name}: {error:#}"));
         }
+    }
+
+    #[test]
+    fn imu_output_frame_must_match_estimator_input_frame() {
+        validate_imu_output_frame("imu", "imu_link", Some("imu_link")).unwrap();
+
+        let mismatch =
+            validate_imu_output_frame("imu", "imu_link", Some("pelvis_link")).unwrap_err();
+        assert!(
+            mismatch
+                .to_string()
+                .contains("publishes output frame \"pelvis_link\", estimator expects \"imu_link\"")
+        );
+
+        let missing = validate_imu_output_frame("imu", "imu_link", None).unwrap_err();
+        assert!(missing.to_string().contains("has no IMU \"imu\""));
     }
 
     #[tokio::test]

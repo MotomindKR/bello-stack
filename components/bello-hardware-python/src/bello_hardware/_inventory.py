@@ -102,6 +102,10 @@ class Inventory:
 
         claimed_serial_devices: set[str] = set()
         for item in response.imus:
+            if not item.source_frame.strip():
+                raise InventoryError(f"IMU {item.name!r} has no source frame")
+            if not item.output_frame.strip():
+                raise InventoryError(f"IMU {item.name!r} has no output frame")
             if item.serial_device not in serial_devices:
                 raise InventoryError(
                     f"IMU {item.name!r} references unknown serial device {item.serial_device!r}"
@@ -131,7 +135,13 @@ class Inventory:
             for item in response.serial_devices
         )
         self.imus = tuple(
-            Imu(item.name, item.serial_device, _optional_status(item, "status"))
+            Imu(
+                item.name,
+                item.serial_device,
+                item.source_frame,
+                item.output_frame,
+                _optional_status(item, "status"),
+            )
             for item in response.imus
         )
 

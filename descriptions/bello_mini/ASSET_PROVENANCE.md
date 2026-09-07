@@ -29,6 +29,15 @@ axes are +X-right, +Y-forward, +Z-up. The fixed joint therefore has yaw
 convention. This pose is a user-specified nominal mounting location rather than
 a sensor-derived CAD datum.
 
+`imu_sensor_link` is a coincident fixed child of `imu_link` and represents the
+installed EBIMU's raw axes. Its roll is `3.141592653589793` rad: the sensor is
+mounted upside down about logical +X. The hardware description declares
+`imu_sensor_link` as the source and `imu_link` as the output, so hardwared
+applies this fixed rotation before filtering or publishing samples. Keeping the
+logical link separate preserves the policy and state-estimator frame contract.
+The roll axis is inferred from the installed orientation and should be
+confirmed with deliberate forward and lateral tilt checks before armed use.
+
 `motor_topology.yaml` records the reviewed motor names, models, couplings, and
 logical joints. CAN IDs follow increasing kinematic-chain order: left/right
 arms use `31..37` / `41..47` on `can1`, waist yaw/roll use `51,52` on `can0`,
@@ -80,6 +89,8 @@ this description to physical and simulated transports respectively. Bus,
 health, damping, and control timing settings follow the existing Bello profile,
 with damping gains selected for Mini's motor models. The installed EBIMU uses
 115200 baud; output is set to 100 Hz to fit ASCII samples within that bandwidth.
+The MuJoCo emulator samples `imu_sensor_link`, so the vCAN path exercises the
+same hardwared source-to-output rotation as physical hardware.
 The physical binding identifies its USB adapter by serial number
 `5C93185491`. Hardwared does not support per-motor
 encoder offsets: physical encoder zeros must be aligned to the URDF convention

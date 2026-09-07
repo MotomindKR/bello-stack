@@ -240,6 +240,8 @@ impl SerialDevice {
 pub struct Imu {
     pub(crate) name: String,
     pub(crate) serial_device: String,
+    pub(crate) source_frame: String,
+    pub(crate) output_frame: String,
     pub(crate) initial_status: Option<DeviceStatus>,
 }
 
@@ -250,6 +252,14 @@ impl Imu {
 
     pub fn serial_device(&self) -> &str {
         &self.serial_device
+    }
+
+    pub fn source_frame(&self) -> &str {
+        &self.source_frame
+    }
+
+    pub fn output_frame(&self) -> &str {
+        &self.output_frame
     }
 
     pub fn initial_status(&self) -> Option<&DeviceStatus> {
@@ -466,9 +476,14 @@ impl Inventory {
 
         let mut imus = BTreeMap::new();
         for imu in response.imus {
-            if imu.name.trim().is_empty() || imu.serial_device.trim().is_empty() {
+            if imu.name.trim().is_empty()
+                || imu.serial_device.trim().is_empty()
+                || imu.source_frame.trim().is_empty()
+                || imu.output_frame.trim().is_empty()
+            {
                 return Err(Error::InvalidInventory(
-                    "IMU name and serial device must be non-empty".into(),
+                    "IMU name, serial device, source frame, and output frame must be non-empty"
+                        .into(),
                 ));
             }
             if !serial_devices.contains_key(&imu.serial_device) {
@@ -480,6 +495,8 @@ impl Inventory {
             let resolved = Imu {
                 name: imu.name,
                 serial_device: imu.serial_device,
+                source_frame: imu.source_frame,
+                output_frame: imu.output_frame,
                 initial_status: imu.status.map(Into::into),
             };
             let name = resolved.name.clone();
@@ -559,6 +576,8 @@ mod tests {
                 name: "body".into(),
                 serial_device: "imu_serial".into(),
                 status: None,
+                source_frame: "imu_sensor_link".into(),
+                output_frame: "imu_link".into(),
             }],
         }
     }
@@ -579,6 +598,8 @@ mod tests {
         );
         assert_eq!(inventory.serial_devices["imu_serial"].baud_rate(), 921_600);
         assert_eq!(inventory.imus["body"].serial_device(), "imu_serial");
+        assert_eq!(inventory.imus["body"].source_frame(), "imu_sensor_link");
+        assert_eq!(inventory.imus["body"].output_frame(), "imu_link");
     }
 
     #[test]
@@ -605,6 +626,23 @@ mod tests {
         assert!(matches!(
             Inventory::from_proto(unknown_serial),
             Err(Error::InvalidInventory(detail)) if detail.contains("unknown serial device")
+        ));
+    }
+
+    #[test]
+    fn rejects_missing_imu_frames() {
+        let mut missing_source = inventory();
+        missing_source.imus[0].source_frame.clear();
+        assert!(matches!(
+            Inventory::from_proto(missing_source),
+            Err(Error::InvalidInventory(detail)) if detail.contains("source frame")
+        ));
+
+        let mut missing_output = inventory();
+        missing_output.imus[0].output_frame.clear();
+        assert!(matches!(
+            Inventory::from_proto(missing_output),
+            Err(Error::InvalidInventory(detail)) if detail.contains("output frame")
         ));
     }
 
