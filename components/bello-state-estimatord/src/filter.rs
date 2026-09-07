@@ -437,6 +437,7 @@ mod tests {
             hardware_endpoint: "http://127.0.0.1:50051".into(),
             listen: "127.0.0.1:50053".parse().unwrap(),
             imu: "imu".into(),
+            imu_frame: "pelvis".into(),
             reference_frame: "odom".into(),
             tracked_frame: "pelvis".into(),
             planar: false,

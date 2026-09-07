@@ -300,12 +300,14 @@ stale samples freeze the last display transform and do not affect command or
 safety logic.
 
 [`bello-state-estimatord`](../components/bello-state-estimatord) is the
-maintained local provider for Bello. It consumes the high-level
+maintained local provider for Bello and Bello Mini. It consumes the high-level
 `bello-hardware-client`, uses the EBIMU quaternion for orientation, and applies
-encoder/URDF stationary-foot corrections to IMU-propagated translation. It
-implements this existing RPC directly; clients do not submit estimates and no
-second estimator-specific service exists. The service publishes pose, linear
-velocity, filtered local angular velocity, source time, sequence, frame names,
-and age. Filter covariance and contact internals remain private implementation
-details. The canonical physical and emulator configurations low-pass angular
-velocity at 15 Hz.
+encoder/URDF stationary-foot corrections to IMU-propagated translation. The
+configured `imu_frame` must be rigidly attached below `tracked_frame`; the
+estimator runs at the IMU origin and uses that URDF transform to publish the
+requested tracked-frame pose and twist. It implements this existing RPC
+directly; clients do not submit estimates and no second estimator-specific
+service exists. The service publishes pose, linear velocity, filtered local
+angular velocity, source time, sequence, frame names, and age. Filter covariance
+and contact internals remain private implementation details. The canonical
+physical and emulator configurations low-pass angular velocity at 15 Hz.

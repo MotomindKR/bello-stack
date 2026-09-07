@@ -1,0 +1,25 @@
+# Contact-aided local pose estimator for physical Bello Mini hardware.
+urdf: ../../../descriptions/bello_mini/urdf/bello_mini.urdf
+hardware_endpoint: http://127.0.0.1:50051
+listen: 0.0.0.0:50053
+imu: imu
+imu_frame: imu_link
+reference_frame: odom
+tracked_frame: pelvis_link
+planar: true
+ground_height_m: 0.0
+left_foot: left_ankle_roll_link
+right_foot: right_ankle_roll_link
+imu_stale_ms: 20
+motor_stale_ms: 50
+orientation_lpf_cutoff_hz: 20.0
+gyro_lpf_cutoff_hz: 15.0
+acceleration_lpf_cutoff_hz: 25.0
+contact_height_full_m: 0.015
+contact_height_zero_m: 0.06
+contact_motion_full_mps: 0.10
+contact_motion_zero_mps: 0.60
+contact_world_speed_full_mps: 0.10
+contact_world_speed_zero_mps: 0.50
+contact_probability_rise_ms: 80
+contact_probability_fall_ms: 20

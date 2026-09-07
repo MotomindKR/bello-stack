@@ -70,6 +70,14 @@ RUST_LOG=info cargo run -p bello-hardwared -- \
   --config components/bello-hardwared/config/bello.yaml
 ```
 
+Select `bello-mini.yaml` in both component config directories for physical
+Bello Mini. Once hardwared is ready, start its pose estimator separately:
+
+```sh
+RUST_LOG=info cargo run -p bello-state-estimatord -- \
+  --config components/bello-state-estimatord/config/bello-mini.yaml
+```
+
 The process binds gRPC before opening hardware, so address conflicts fail
 without partially starting devices. Wait for the `Bello hardware daemon ready`
 log, then use `ListHardware` and health telemetry to inspect the buses, serial
@@ -143,7 +151,7 @@ grpcurl -plaintext \
 ```
 
 When the configured SocketCAN, IMU, hardware, and pose providers are available,
-start hardwared and the visualizer in separate terminals:
+start each process in a separate terminal:
 
 ```sh
 cargo run -p bello-hardwared -- \
@@ -159,6 +167,8 @@ For Bello Mini vCAN, select both Mini profiles instead:
 ```sh
 cargo run -p bello-hardwared -- \
   --config components/bello-hardwared/config/bello-mini-vcan.yaml
+cargo run -p bello-state-estimatord -- \
+  --config components/bello-state-estimatord/config/bello-mini-vcan.yaml
 cp components/bello-visualizer/config/bello-mini.example.yaml \
   components/bello-visualizer/config/bello-mini.yaml
 cargo run -p bello-visualizer -- \
@@ -170,8 +180,9 @@ calibration is complete.
 
 Both visualizer service endpoints default to localhost. When the providers run
 on another host, use TLS and append `--hardware-endpoint https://HOST:50051`.
-Use `--pose-endpoint https://HOST:50053` for the full-Bello estimator or
-`--pose-endpoint https://HOST:50052` for the Mini MuJoCo emulator.
+Use `--pose-endpoint https://HOST:50053` for either estimator. Mini's default
+visualizer profile instead uses MuJoCo ground truth on port 50052 until that
+override is supplied.
 
 If hardware or pose telemetry disconnects or becomes stale, the visualizer
 freezes the last root transform and shows the condition; root tracking never

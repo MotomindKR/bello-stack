@@ -3,6 +3,7 @@ urdf: ../../../descriptions/bello/urdf/bello.urdf
 hardware_endpoint: http://127.0.0.1:50051
 listen: 0.0.0.0:50053
 imu: imu
+imu_frame: pelvis_link
 reference_frame: odom
 tracked_frame: pelvis_link
 planar: true

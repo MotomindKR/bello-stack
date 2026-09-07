@@ -14,6 +14,7 @@ pub struct EstimatorConfig {
     pub listen: SocketAddr,
     #[serde(default = "default_imu")]
     pub imu: String,
+    pub imu_frame: String,
     #[serde(default = "default_reference_frame")]
     pub reference_frame: String,
     #[serde(default = "default_base")]
@@ -68,6 +69,7 @@ impl EstimatorConfig {
         for (name, text) in [
             ("hardware_endpoint", value.hardware_endpoint.as_str()),
             ("imu", value.imu.as_str()),
+            ("imu_frame", value.imu_frame.as_str()),
             ("reference_frame", value.reference_frame.as_str()),
             ("tracked_frame", value.tracked_frame.as_str()),
             ("left_foot", value.left_foot.as_str()),

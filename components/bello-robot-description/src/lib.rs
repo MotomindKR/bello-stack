@@ -140,9 +140,9 @@ pub struct CoordinateState {
 
 #[derive(Clone, Copy, Debug)]
 pub struct FootKinematics {
-    /// Contact point relative to the pelvis, expressed in pelvis coordinates.
+    /// Contact point relative to the kinematic base, in base coordinates.
     pub position: Vector3<f64>,
-    /// Contact-point velocity with the pelvis held fixed, in pelvis coordinates.
+    /// Contact-point velocity with the kinematic base fixed, in base coordinates.
     pub relative_velocity: Vector3<f64>,
 }
 
@@ -241,6 +241,28 @@ impl RobotDescription {
             .into_iter()
             .flatten()
             .filter_map(|name| self.joints.get(name))
+    }
+
+    /// Return `base_from_target` when `target` is rigidly attached below `base`.
+    pub fn fixed_transform(&self, base: &str, target: &str) -> anyhow::Result<Isometry3<f64>> {
+        if !self.links.contains_key(base) {
+            bail!("URDF has no link {base:?}");
+        }
+        if !self.links.contains_key(target) {
+            bail!("URDF has no link {target:?}");
+        }
+        let path = path_to(&self.joints, base, target)?;
+        let mut transform = Isometry3::identity();
+        for joint in path {
+            if joint.kind != JointKind::Fixed {
+                bail!(
+                    "link {target:?} is not rigidly attached to {base:?}: joint {:?} is movable",
+                    joint.name
+                );
+            }
+            transform *= joint.origin;
+        }
+        Ok(transform)
     }
 
     pub fn transmissions(&self) -> &[DifferentialTransmission] {
@@ -1064,6 +1086,7 @@ mod tests {
   <link name="right_foot">
     <collision><geometry><box size="0.2 0.2 0.2"/></geometry></collision>
   </link>
+  <link name="imu"/>
   <joint name="left_joint" type="revolute">
     <origin xyz="0 0 -1"/>
     <parent link="pelvis"/><child link="left_foot"/><axis xyz="0 1 0"/>
@@ -1072,6 +1095,10 @@ mod tests {
   <joint name="right_fixed" type="fixed">
     <origin xyz="0.2 0 -1"/>
     <parent link="pelvis"/><child link="right_foot"/>
+  </joint>
+  <joint name="imu_fixed" type="fixed">
+    <origin xyz="0.1 -0.2 0.3" rpy="0 0 -1.5707963267948966"/>
+    <parent link="pelvis"/><child link="imu"/>
   </joint>
 </robot>
 "#;
@@ -1239,6 +1266,23 @@ mod tests {
     }
 
     #[test]
+    fn fixed_link_transform_is_resolved_and_movable_paths_are_rejected() {
+        let description = load_description_text(SIMPLE_URDF).unwrap();
+        let pelvis_from_imu = description.fixed_transform("pelvis", "imu").unwrap();
+        assert!(
+            (pelvis_from_imu.translation.vector - Vector3::new(0.1, -0.2, 0.3)).norm() < 1.0e-12
+        );
+        let expected = UnitQuaternion::from_euler_angles(0.0, 0.0, -std::f64::consts::FRAC_PI_2);
+        assert!(pelvis_from_imu.rotation.angle_to(&expected) < 1.0e-12);
+
+        let error = description
+            .fixed_transform("pelvis", "left_foot")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("is movable"), "{error}");
+    }
+
+    #[test]
     fn incomplete_differential_is_rejected() {
         let text = SIMPLE_URDF.replace(
             "</robot>",
@@ -1308,5 +1352,20 @@ mod tests {
                 .unwrap();
             assert_eq!((right.lower, right.upper), (left.lower, left.upper));
         }
+    }
+
+    #[test]
+    fn canonical_bello_mini_imu_transform_matches_its_frame_contract() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../descriptions/bello_mini/urdf/bello_mini.urdf");
+        let description = RobotDescription::load(&path).unwrap();
+        let pelvis_from_imu = description
+            .fixed_transform("pelvis_link", "imu_link")
+            .unwrap();
+        let expected_translation = Vector3::new(-0.01, 0.0, -0.230000001143162);
+        let expected_rotation =
+            UnitQuaternion::from_euler_angles(0.0, 0.0, -std::f64::consts::FRAC_PI_2);
+        assert!((pelvis_from_imu.translation.vector - expected_translation).norm() < 1.0e-12);
+        assert!(pelvis_from_imu.rotation.angle_to(&expected_rotation) < 1.0e-12);
     }
 }

@@ -10,6 +10,7 @@ use bello_pose_api::pose_service_server::{PoseService, PoseServiceServer};
 use bello_pose_api::{
     AngularVelocity, LinearVelocity, Orientation, Translation, WatchPoseRequest, WatchPoseResponse,
 };
+use bello_robot_description::RobotDescription;
 use futures_core::Stream;
 use nalgebra::{Quaternion, UnitQuaternion, Vector3};
 use tokio::net::TcpListener;
@@ -22,7 +23,7 @@ use crate::alignment::{CoordinateHistory, source_time_ns};
 use crate::config::EstimatorConfig;
 use crate::filter::{ContactFilter, PoseEstimate};
 use crate::imu_filter::ImuLowPass;
-use crate::model::KinematicModel;
+use crate::model::{ImuFrameTransform, KinematicModel};
 
 #[derive(Clone, Debug)]
 struct StampedPose {
@@ -85,7 +86,7 @@ impl PoseService for PoseServer {
 }
 
 pub async fn run(path: &Path) -> anyhow::Result<()> {
-    let (config, model) = load(path)?;
+    let (config, model, imu_frame) = load(path)?;
     let listen = config.listen;
     let listener = TcpListener::bind(listen)
         .await
@@ -117,6 +118,7 @@ pub async fn run(path: &Path) -> anyhow::Result<()> {
         robot,
         config,
         model,
+        imu_frame,
         pose_sender,
         monitor_shutdown_receiver,
     ));
@@ -173,15 +175,16 @@ pub fn check(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn load(path: &Path) -> anyhow::Result<(EstimatorConfig, KinematicModel)> {
+fn load(path: &Path) -> anyhow::Result<(EstimatorConfig, KinematicModel, ImuFrameTransform)> {
     let config = EstimatorConfig::load(path)?;
-    let model = KinematicModel::load(
-        &config.urdf,
+    let description = RobotDescription::load(&config.urdf)?;
+    let model = description.kinematic_model(
         &config.tracked_frame,
         &config.left_foot,
         &config.right_foot,
     )?;
-    Ok((config, model))
+    let tracked_from_imu = description.fixed_transform(&config.tracked_frame, &config.imu_frame)?;
+    Ok((config, model, ImuFrameTransform::new(tracked_from_imu)))
 }
 
 fn validate_inventory(
@@ -212,6 +215,7 @@ async fn monitor_hardware(
     robot: Robot,
     config: EstimatorConfig,
     model: KinematicModel,
+    imu_frame: ImuFrameTransform,
     poses: watch::Sender<Option<StampedPose>>,
     mut shutdown: watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
@@ -322,7 +326,7 @@ async fn monitor_hardware(
             continue;
         };
         let feet = match model.feet(&coordinates.values) {
-            Ok(feet) => feet,
+            Ok(feet) => imu_frame.feet_in_imu(feet),
             Err(error) => {
                 warn!(%error, "discarding invalid kinematic sample");
                 continue;
@@ -371,11 +375,21 @@ async fn monitor_hardware(
             last_diagnostics = Instant::now();
         }
         if let Some(pose) = pose {
+            let tracked = imu_frame.tracked_state(
+                pose.position,
+                pose.orientation,
+                pose.linear_velocity,
+                angular_velocity,
+            );
             sequence = sequence.saturating_add(1);
             poses.send_replace(Some(StampedPose {
                 sequence,
-                pose,
-                angular_velocity_local: angular_velocity,
+                pose: PoseEstimate {
+                    position: tracked.position,
+                    orientation: tracked.orientation,
+                    linear_velocity: tracked.linear_velocity,
+                },
+                angular_velocity_local: tracked.angular_velocity_local,
                 produced: Instant::now(),
                 source_age: imu.sample_age,
                 sample_monotonic_ns: imu_source_ns,
@@ -456,6 +470,19 @@ fn response_for(
 mod tests {
     use super::*;
     use tokio_stream::StreamExt;
+
+    #[test]
+    fn maintained_estimator_profiles_validate() {
+        let config = Path::new(env!("CARGO_MANIFEST_DIR")).join("config");
+        for name in [
+            "bello.yaml",
+            "bello-vcan.yaml",
+            "bello-mini.yaml",
+            "bello-mini-vcan.yaml",
+        ] {
+            check(&config.join(name)).unwrap_or_else(|error| panic!("{name}: {error:#}"));
+        }
+    }
 
     #[tokio::test]
     async fn watch_pose_rejects_wrong_frames_and_streams_latest_pose() {

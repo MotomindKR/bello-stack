@@ -1,9 +1,16 @@
 # bello-state-estimatord
 
 `bello-state-estimatord` reads direction-corrected motor and EBIMU telemetry
-through `bello-hardware-client`, estimates the local `odom_from_pelvis`
-transform with encoder-based stationary-foot constraints, and implements the
-existing `bello.pose.v1.PoseService`.
+through `bello-hardware-client`, estimates a local tracked-frame pose with
+encoder-based stationary-foot constraints, and implements the existing
+`bello.pose.v1.PoseService`.
+
+`imu_frame` names the rigid URDF link whose axes and origin match the hardware
+IMU. The estimator runs its contact filter at that origin, then uses the URDF's
+fixed transform to publish the configured `tracked_frame` pose and twist. This
+keeps Bello's pelvis-aligned IMU and Bello Mini's offset, yawed IMU on the same
+explicit contract. A missing link, non-descendant link, or movable transform is
+rejected during configuration validation.
 
 The daemon applies a quaternion SLERP low-pass filter to the EBIMU orientation
 and vector low-pass filters to angular velocity and linear acceleration. Their
@@ -64,9 +71,21 @@ cargo run -p bello-state-estimatord -- \
   --config components/bello-state-estimatord/config/bello.yaml
 ```
 
-For the full vCAN emulator use `bello-vcan.yaml`. The PoseService listens on
-`127.0.0.1:50053`; consumers request `odom` as the reference frame and
-`pelvis_link` as the tracked frame.
+For physical Bello Mini, select its profile explicitly:
+
+```sh
+cargo run -p bello-state-estimatord -- \
+  --config components/bello-state-estimatord/config/bello-mini.yaml
+```
+
+For vCAN use `bello-vcan.yaml` or `bello-mini-vcan.yaml` to match the emulated
+robot. The supplied profiles bind PoseService on `0.0.0.0:50053`; local
+consumers connect to `127.0.0.1:50053` and request `odom` as the reference frame
+and `pelvis_link` as the tracked frame.
+
+The Mini profile uses the nominal IMU pose and ankle differential reductions in
+the canonical URDF. Validate those values, encoder zeros, and motor directions
+on supported hardware before relying on contact odometry.
 
 The estimator has no separate estimator API and accepts no pose submissions.
 Its only public output is `PoseService::WatchPose`; covariance and contact
