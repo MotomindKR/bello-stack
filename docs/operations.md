@@ -181,8 +181,8 @@ calibration is complete.
 Both visualizer service endpoints default to localhost. When the providers run
 on another host, use TLS and append `--hardware-endpoint https://HOST:50051`.
 Use `--pose-endpoint https://HOST:50053` for either estimator. Mini's default
-visualizer profile instead uses MuJoCo ground truth on port 50052 until that
-override is supplied.
+visualizer profile uses that estimator endpoint; MuJoCo ground truth stays
+available on port 50052 for estimator comparison.
 
 If hardware or pose telemetry disconnects or becomes stale, the visualizer
 freezes the last root transform and shows the condition; root tracking never

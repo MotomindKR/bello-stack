@@ -197,12 +197,12 @@ fn maintained_bello_mini_example_configuration_loads_the_canonical_description()
             staleness_ms,
             ..
         } => {
-            assert_eq!(endpoint, "http://127.0.0.1:50052");
+            assert_eq!(endpoint, "http://127.0.0.1:50053");
             assert_eq!(reference_frame, "odom");
             assert_eq!(tracked_frame, "pelvis_link");
             assert_eq!(*staleness_ms, 200);
         }
-        RootConfig::Fixed { .. } => panic!("Bello Mini vCAN must use emulator PoseService"),
+        RootConfig::Fixed { .. } => panic!("Bello Mini must use estimator PoseService"),
     }
     let description = RobotDescription::load(&config.urdf).unwrap();
     assert_eq!(description.name(), "bello_mini");

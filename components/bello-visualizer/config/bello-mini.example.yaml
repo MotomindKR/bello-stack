@@ -1,4 +1,4 @@
-# Provisional Bello Mini description for the local MuJoCo-backed vCAN emulator.
+# Provisional Bello Mini profile using contact-aided pelvis odometry.
 # Physical encoder zeros and ankle reductions still require calibration.
 urdf: ../../../descriptions/bello_mini/urdf/bello_mini.urdf
 hardware:
@@ -10,8 +10,8 @@ remote:
   deadzone: 0.1
 root:
   source: external_pose
-  # Ground-truth PoseService published by bello-run-emulator.
-  endpoint: http://127.0.0.1:50052
+  # PoseService published by bello-state-estimatord.
+  endpoint: http://127.0.0.1:50053
   reference_frame: odom
   tracked_frame: pelvis_link
   staleness_ms: 200

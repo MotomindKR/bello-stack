@@ -497,10 +497,11 @@ it uses the reviewed motor directions while encoder zeros and ankle reductions
 remain calibration-gated.
 Copy the full-size example to the ignored local `config/bello.yaml`, or the
 Mini example to the ignored local `config/bello-mini.yaml`. Their hardware
-endpoints default to localhost. Full Bello uses the estimator PoseService on
-port 50053; Mini vCAN uses the MuJoCo emulator's ground truth on port 50052. Use
-`--hardware-endpoint` and `--pose-endpoint` to redirect those services without
-editing the YAML. The latter is valid only with `root.source: external_pose`.
+endpoints default to localhost. Both use the matching estimator PoseService on
+port 50053; MuJoCo ground truth remains available separately on port 50052.
+Use `--hardware-endpoint` and `--pose-endpoint` to redirect those services
+without editing the YAML. The latter is valid only with
+`root.source: external_pose`.
 The adjacent [`config/vcan.yaml`](../components/bello-visualizer/config/vcan.yaml)
 and `vcan.urdf` are a minimal two-joint UI fixture.
 
