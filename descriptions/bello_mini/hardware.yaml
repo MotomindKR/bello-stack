@@ -45,7 +45,7 @@ motors:
       safe_position_max: 12.57
       feedback_position_tolerance: 0.4
       temperature_warning_c: 60.0
-      maximum_temperature_c: 80.0
+      maximum_temperature_c: 95.0
       temperature_recovery_c: 75.0
       temperature_recovery_duration_ms: 2000
     command_policy: &command_policy
