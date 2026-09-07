@@ -154,6 +154,18 @@ cargo run -p bello-visualizer -- \
   --config components/bello-visualizer/config/bello.yaml
 ```
 
+For Bello Mini vCAN, select both Mini profiles instead:
+
+```sh
+cargo run -p bello-hardwared -- \
+  --config components/bello-hardwared/config/bello-mini-vcan.yaml
+cargo run -p bello-visualizer -- \
+  --config components/bello-visualizer/config/bello-mini.example.yaml
+```
+
+The Mini description remains provisional until encoder-zero and ankle-reduction
+calibration is complete.
+
 Both visualizer service endpoints default to localhost. When the providers run
 on another host, use TLS and append `--hardware-endpoint https://HOST:50051`
 and `--pose-endpoint https://HOST:50053`.

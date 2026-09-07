@@ -1,0 +1,27 @@
+# Provisional Bello Mini description for the local MuJoCo-backed vCAN emulator.
+# Physical encoder zeros and ankle reductions still require calibration.
+urdf: ../../../descriptions/bello_mini/urdf/bello_mini.urdf
+hardware:
+  endpoint: http://127.0.0.1:50051
+remote:
+  listen: 0.0.0.0:50054
+  controller_index: 0
+  poll_hz: 60
+  deadzone: 0.1
+root:
+  source: external_pose
+  endpoint: http://127.0.0.1:50053
+  reference_frame: odom
+  tracked_frame: pelvis_link
+  staleness_ms: 200
+refresh_hz: 60
+
+control_profiles:
+  lower_body:
+    command_rate_hz: 50
+    validity_ms: 500
+    telemetry_staleness_ms: 200
+  upper_body:
+    command_rate_hz: 50
+    validity_ms: 500
+    telemetry_staleness_ms: 200

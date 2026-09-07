@@ -184,6 +184,50 @@ fn maintained_bello_example_configuration_loads_the_canonical_description() {
 }
 
 #[test]
+fn maintained_bello_mini_example_configuration_loads_the_canonical_description() {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("config/bello-mini.example.yaml");
+    let config = VisualizerConfig::load(path).unwrap();
+    assert_eq!(config.hardware.endpoint, "http://127.0.0.1:50051");
+    match &config.root {
+        RootConfig::ExternalPose {
+            endpoint,
+            reference_frame,
+            tracked_frame,
+            staleness_ms,
+            ..
+        } => {
+            assert_eq!(endpoint, "http://127.0.0.1:50053");
+            assert_eq!(reference_frame, "odom");
+            assert_eq!(tracked_frame, "pelvis_link");
+            assert_eq!(*staleness_ms, 200);
+        }
+        RootConfig::Fixed { .. } => panic!("Bello Mini vCAN must use runner PoseService"),
+    }
+    let description = RobotDescription::load(&config.urdf).unwrap();
+    assert_eq!(description.name(), "bello_mini");
+    assert!(description.joint("waist_roll_joint").is_some());
+    assert!(
+        description
+            .transmission_for_coordinate("left_ankle_motor_1")
+            .is_some()
+    );
+    assert_eq!(
+        config
+            .control_profiles
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["lower_body", "upper_body"]
+    );
+    assert!(config.control_profiles.values().all(|profile| {
+        profile.command_rate_hz == 50.0
+            && profile.validity_ms == 500
+            && profile.telemetry_staleness_ms == 200
+    }));
+}
+
+#[test]
 fn maintained_milly_example_configuration_loads_the_canonical_description() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("config/milly.example.yaml");
     let config = VisualizerConfig::load(path).unwrap();
