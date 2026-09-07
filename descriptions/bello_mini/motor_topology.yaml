@@ -4,7 +4,9 @@ deployment_status: calibration_required
 deployment_blockers:
 - RobStride command directions require raw encoder/low-current bench validation
 - encoder zero positions are uncalibrated
-- ankle differential coefficients/signs are unvalidated
+- ankle differential reduction magnitudes are unvalidated
+- corrected ankle differential signs/order require supported feedback and low-amplitude
+  command validation
 - joint-limit signs reflect user review; physical stops and encoder-zero correspondence
   require validation
 can_topology:
@@ -22,8 +24,8 @@ direction_inference_policy:
     on RobStride raw positive matching CAD local +Z
   protocol_limitation: RobStride documentation does not bind raw-positive rotation
     to the STEP frame; hardware command_direction remains null until bench validation
-  differential_limitation: ankle alignment is a pitch-axis projection, not a standalone
-    motor direction or calibrated differential row
+  differential_limitation: CAD ankle alignment does not determine the differential;
+    the recorded normalized row comes from operator observation, not measured reductions
 motor_model_catalog:
   source:
     revision: 6ad12f50006273b7ea4eea88980f927d97c22f0d
@@ -1000,6 +1002,8 @@ motors:
     command_direction: null
     encoder_zero_offset_rad: null
     status: can_assigned_direction_calibration_required
+# Matrices use the listed motor rows and logical-joint columns. They encode a
+# normalized sign/order candidate, not measured reduction magnitudes.
 differential_groups:
 - name: left_ankle_differential
   motors:
@@ -1008,8 +1012,10 @@ differential_groups:
   logical_joints:
   - left_ankle_pitch_joint
   - left_ankle_roll_joint
-  motor_from_joint_coefficients: null
-  status: calibration_required
+  motor_from_joint_coefficients:
+  - [-1.0, 1.0]
+  - [1.0, 1.0]
+  status: normalized_signs_and_order_inferred_from_operator_observation_validation_required
 - name: right_ankle_differential
   motors:
   - right_ankle_motor_1
@@ -1017,5 +1023,7 @@ differential_groups:
   logical_joints:
   - right_ankle_pitch_joint
   - right_ankle_roll_joint
-  motor_from_joint_coefficients: null
-  status: calibration_required
+  motor_from_joint_coefficients:
+  - [-1.0, 1.0]
+  - [1.0, 1.0]
+  status: normalized_signs_and_order_inferred_from_operator_observation_validation_required

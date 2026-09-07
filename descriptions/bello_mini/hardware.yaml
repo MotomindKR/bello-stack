@@ -1,7 +1,8 @@
 # Provisional Bello Mini profile; physical calibration is still required.
 # Identity and CAD direction candidates come from motor_topology.yaml.
 # Direct directions assume protocol-positive matches CAD motor-frame +Z.
-# Ankle directions are +1 with the URDF's provisional unit differential.
+# All four ankle directions are operator-confirmed -1; the URDF owns their
+# observation-derived differential candidate.
 # Encoder zeros must match URDF zero; hardwared has no encoder-offset setting.
 # Transport, health, and control policy defaults follow the Bello profile.
 robot_description: urdf/bello_mini.urdf

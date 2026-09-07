@@ -62,11 +62,12 @@ cargo run -p bello-hardwared -- \
   --check --config components/bello-hardwared/config/bello-mini-vcan.yaml
 ```
 
-Mini directions and ankle transmissions are provisional simulation assumptions.
-Physical operation requires validated directions, encoder zeros, and ankle
-coupling; passing `--check` does not establish physical calibration. The
-[Mini provenance notes](../../descriptions/bello_mini/ASSET_PROVENANCE.md)
-record the assumptions and remaining calibration work.
+Mini includes operator-confirmed directions and an observation-derived ankle
+sign/order candidate. Physical operation still requires validation of the
+remaining directions, encoder zeros, physical stops, corrected ankle mapping,
+and differential reduction magnitudes; passing `--check` does not establish
+physical calibration. The [Mini provenance notes](../../descriptions/bello_mini/ASSET_PROVENANCE.md)
+record the evidence and remaining calibration work.
 
 ## Interfaces
 

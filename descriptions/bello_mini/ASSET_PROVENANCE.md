@@ -61,12 +61,18 @@ the reviewed joint `+` axis; RobStride documentation does not establish that
 STEP-frame `+Z` is protocol-positive. Operator review on 2026-09-06 confirmed
 command direction -1 for waist yaw, both hip roll motors, left hip pitch,
 all four ankle motors, left shoulder pitch, and left wrist pitch, and +1 for
-right hip pitch, right shoulder pitch, and right wrist pitch. Other command directions
-and encoder zero offsets remain null in the topology. Designer-provided travel
-limits still need physical-stop
-confirmation, and ankle differential coefficients/signs require
-bench validation. This is not a deployable `bello-hardwared` configuration
-until those blockers are resolved.
+right hip pitch, right shoulder pitch, and right wrist pitch. On 2026-09-07 the
+operator reported on both feet that, under the old mapping, toe-up reconstructed
+as positive roll and positive physical roll reconstructed as toe-down (positive
+URDF pitch). With Mini's +X-forward, +Y-left axes, this supports the same
+normalized sign/order candidate used by Bello: `motor_1 = -pitch + roll` and
+`motor_2 = pitch + roll`. Supported feedback-delta and low-amplitude command
+tests must confirm the corrected mapping before armed use. Other command
+directions and encoder zero offsets remain null in the topology.
+Designer-provided travel limits still need physical-stop confirmation, and the
+ankle differential reduction magnitudes still require bench validation. This is
+not a deployable `bello-hardwared` configuration until those blockers are
+resolved.
 
 `hardware.yaml` provides a provisional `bello-hardwared` profile for all 28
 motors, using the topology's exact names, models, buses, and CAN IDs. Both waist
@@ -77,12 +83,13 @@ wrist pitch use the operator-confirmed directions -1 on the left and +1 on the
 right. Other direct-drive
 directions use the topology's CAD candidate signs, conditional on
 protocol-positive matching CAD motor-frame +Z. All four ankle motors use the
-operator-confirmed direction -1; ankle coupling still requires validation.
-The URDF now includes provisional unit differential transmissions on both sides:
-`motor_1 = pitch + roll`, `motor_2 = pitch - roll`, with zero offsets. These
-equations are simulation conventions, not measured linkage coefficients.
-Physical calibration fields other than these operator-confirmed command
-directions remain null in `motor_topology.yaml`.
+operator-confirmed direction -1. The URDF includes the observation-derived ankle
+differential sign/order candidate on both sides:
+`motor_1 = -pitch + roll`, `motor_2 = pitch + roll`, with provisional unit
+reductions and zero offsets. The normalized coefficient matrices are recorded
+in `motor_topology.yaml`; their magnitudes are not measured linkage reductions.
+Physical calibration fields other than the confirmed command directions and
+ankle sign/order observations remain null.
 
 The component's `config/bello-mini.yaml` and `config/bello-mini-vcan.yaml` bind
 this description to physical and simulated transports respectively. Bus,
@@ -94,8 +101,9 @@ same hardwared source-to-output rotation as physical hardware.
 The physical binding identifies its USB adapter by serial number
 `5C93185491`. Hardwared does not support per-motor
 encoder offsets: physical encoder zeros must be aligned to the URDF convention
-before operation. Validate motor directions, encoder zeros, physical stops,
-and differential signs/reductions before using the physical bindings.
+before operation. Validate the corrected ankle sign/order, remaining motor
+directions, encoder zeros, physical stops, and differential reduction magnitudes
+before using the physical bindings.
 `--check` validates the software configuration, not those physical assumptions.
 
 The descriptions and meshes are proprietary. This repository does not grant

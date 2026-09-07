@@ -354,11 +354,20 @@ mod tests {
                 let second = MotorName::from(format!("{side}_ankle_motor_2"));
                 let mut commands = neutral_commands(lower);
                 assert!(lower.mechanical.validate_targets(&commands).is_ok());
-                // Individually valid motor targets can exceed the coupled pitch limit.
+                // Equal motor coordinates produce pure roll and can exceed its limit.
                 let target = 1.0;
                 assert!(topology.motors[&first].spec.limits.position_max > target);
                 assert!(topology.motors[&second].spec.limits.position_max > target);
                 commands.get_mut(&first).unwrap().position = target;
+                commands.get_mut(&second).unwrap().position = target;
+                let error = lower.mechanical.validate_targets(&commands).unwrap_err();
+                assert_eq!(error.violation, SafetyViolation::PositionLimit);
+                assert!(error.detail.contains(&format!("{side}_ankle_roll_joint")));
+
+                // Opposite coordinates produce positive pitch with motor 2 leading.
+                let mut commands = neutral_commands(lower);
+                assert!(topology.motors[&first].spec.limits.position_min < -target);
+                commands.get_mut(&first).unwrap().position = -target;
                 commands.get_mut(&second).unwrap().position = target;
                 let error = lower.mechanical.validate_targets(&commands).unwrap_err();
                 assert_eq!(error.violation, SafetyViolation::PositionLimit);

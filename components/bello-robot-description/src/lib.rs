@@ -1386,4 +1386,59 @@ mod tests {
                 < 1.0e-12
         );
     }
+
+    #[test]
+    fn canonical_bello_mini_ankles_match_operator_observed_axes() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../descriptions/bello_mini/urdf/bello_mini.urdf");
+        let description = RobotDescription::load(&path).unwrap();
+
+        for side in ["left", "right"] {
+            let transmission = description
+                .transmissions()
+                .iter()
+                .find(|item| item.name == format!("{side}_ankle_differential"))
+                .unwrap();
+            assert_eq!(
+                transmission.coordinates,
+                [
+                    format!("{side}_ankle_motor_1"),
+                    format!("{side}_ankle_motor_2"),
+                ]
+            );
+            assert_eq!(
+                transmission.joints,
+                [
+                    format!("{side}_ankle_roll_joint"),
+                    format!("{side}_ankle_pitch_joint"),
+                ]
+            );
+            assert_eq!(transmission.joint_reduction, [1.0, -1.0]);
+
+            let resolved = transmission
+                .resolve(&BTreeMap::from([
+                    (
+                        format!("{side}_ankle_motor_1"),
+                        CoordinateState {
+                            position: -0.2,
+                            velocity: -0.4,
+                        },
+                    ),
+                    (
+                        format!("{side}_ankle_motor_2"),
+                        CoordinateState {
+                            position: 0.4,
+                            velocity: 0.8,
+                        },
+                    ),
+                ]))
+                .unwrap();
+            assert_eq!(resolved[0].0, format!("{side}_ankle_roll_joint"));
+            assert!((resolved[0].1.position - 0.1).abs() < 1.0e-12);
+            assert!((resolved[0].1.velocity - 0.2).abs() < 1.0e-12);
+            assert_eq!(resolved[1].0, format!("{side}_ankle_pitch_joint"));
+            assert!((resolved[1].1.position - 0.3).abs() < 1.0e-12);
+            assert!((resolved[1].1.velocity - 0.6).abs() < 1.0e-12);
+        }
+    }
 }
