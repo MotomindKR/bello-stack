@@ -5,7 +5,10 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use crossbeam_channel::{Receiver, Sender, bounded, select_biased};
-use socketcan::{CanFrame as WireFrame, CanSocket, EmbeddedFrame, ExtendedId, Frame, Socket};
+use socketcan::id::CAN_EFF_FLAG;
+use socketcan::{
+    CanFrame as WireFrame, CanSocket, EmbeddedFrame, ExtendedId, Frame, Socket, SocketOptions,
+};
 use tracing::{error, warn};
 
 use super::{
@@ -70,6 +73,14 @@ fn open_sockets(spec: &BusSpec) -> Result<(CanSocket, CanSocket)> {
             spec.name, spec.interface
         )
     })?;
+    reader
+        .set_filters(&[(CAN_EFF_FLAG, CAN_EFF_FLAG)])
+        .with_context(|| {
+            format!(
+                "restricting SocketCAN reader {} ({}) to extended frames",
+                spec.name, spec.interface
+            )
+        })?;
     reader.set_read_timeout(Duration::from_millis(100))?;
     Ok((writer, reader))
 }
@@ -301,6 +312,9 @@ fn run_rx(
 }
 
 fn decode_received(bus: &BusName, wire: &WireFrame) -> Option<ReceivedFrame> {
+    if !wire.is_extended() {
+        return None;
+    }
     Some(ReceivedFrame {
         bus: bus.clone(),
         frame: CanFrame {
@@ -521,6 +535,13 @@ mod tests {
     fn short_can_payload_is_rejected() {
         let id = ExtendedId::new(1).unwrap();
         let wire = WireFrame::new(id, &[1, 2, 3]).unwrap();
+        assert!(decode_received(&BusName::from("can"), &wire).is_none());
+    }
+
+    #[test]
+    fn standard_can_frame_is_not_routed_to_robstride() {
+        let id = socketcan::StandardId::new(0x27).unwrap();
+        let wire = WireFrame::new(id, &[0x01, 1, 2, 3, 4, 5, 6]).unwrap();
         assert!(decode_received(&BusName::from("can"), &wire).is_none());
     }
 }

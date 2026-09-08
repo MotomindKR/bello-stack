@@ -37,8 +37,10 @@ and
 
 The session then owns two worker threads:
 
-- RX blocks on SocketCAN, accepts only eight-byte frames, timestamps them, and
-  publishes them to one process-wide bounded frame queue of 8192 entries.
+- RX installs a kernel filter for extended-ID frames, blocks on SocketCAN,
+  accepts only eight-byte frames, timestamps them, and publishes them to one
+  process-wide bounded frame queue of 8192 entries. Standard-ID devices can
+  share the physical bus without entering the Robstride receive path.
 - TX is event-driven. It wakes when a batch arrives; it does not spin at a
   separately configured CAN frequency.
 

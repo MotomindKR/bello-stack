@@ -46,11 +46,22 @@ sudo scripts/setup-can.sh
 
 The script configures both canonical Bello interfaces, `can0` and `can1`, for
 classic CAN at 1 Mbit/s with a 100 ms automatic restart and a 64-frame transmit
-queue. To configure one link manually instead:
+queue. Its normal mode takes both interfaces down before configuring them; do
+not run it while hardwared or the robot is operating. Inspect the existing
+configuration without changing either interface with:
+
+```sh
+scripts/setup-can.sh --check
+```
+
+The read-only check requires both interfaces to be up, use classic-CAN MTU 16,
+have CAN FD disabled, and report a 1 Mbit/s nominal bitrate. A standard-ID hand
+controller may share `can1` without changing this link configuration. To
+configure one link manually instead:
 
 ```sh
 sudo ip link set can0 down
-sudo ip link set can0 type can bitrate 1000000 restart-ms 100
+sudo ip link set can0 type can bitrate 1000000 restart-ms 100 fd off
 sudo ip link set can0 txqueuelen 64
 sudo ip link set can0 up
 ip -details -statistics link show can0
