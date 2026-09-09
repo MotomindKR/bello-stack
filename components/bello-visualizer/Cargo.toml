@@ -17,7 +17,8 @@ clap = { workspace = true, features = ["derive"] }
 crossbeam-channel.workspace = true
 futures-core.workspace = true
 gilrs.workspace = true
-kiss3d = { version = "0.45", features = ["egui"] }
+# Remove the fork pin after https://github.com/dimforge/kiss3d/issues/400 is released.
+kiss3d = { git = "https://github.com/gmmyung/kiss3d.git", rev = "3bf15c6775263be2f4969e4c0f4e4bdf22fc15d3", features = ["egui"] }
 nalgebra.workspace = true
 parking_lot.workspace = true
 rfd = "0.15"

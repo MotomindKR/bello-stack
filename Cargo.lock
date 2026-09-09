@@ -2550,8 +2550,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 [[package]]
 name = "kiss3d"
 version = "0.45.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fc470707c8ad8c9283fd75c8e9b5057f1bcee6b24eb64ba239481ba37b39ef2"
+source = "git+https://github.com/gmmyung/kiss3d.git?rev=3bf15c6775263be2f4969e4c0f4e4bdf22fc15d3#3bf15c6775263be2f4969e4c0f4e4bdf22fc15d3"
 dependencies = [
  "bitflags 2.13.1",
  "bytemuck",
@@ -2582,8 +2581,7 @@ dependencies = [
 [[package]]
 name = "kiss3d-macro"
 version = "0.36.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5a36382c6543d11c3ce4928eff122001a9fd3fc0096c305beb5ed2486cc0d72"
+source = "git+https://github.com/gmmyung/kiss3d.git?rev=3bf15c6775263be2f4969e4c0f4e4bdf22fc15d3#3bf15c6775263be2f4969e4c0f4e4bdf22fc15d3"
 dependencies = [
  "proc-macro2",
  "quote",

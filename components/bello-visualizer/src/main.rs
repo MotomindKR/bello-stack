@@ -72,6 +72,10 @@ async fn run() -> anyhow::Result<()> {
     let mut editors = BTreeMap::<String, GroupEditor>::new();
 
     let mut window = Window::new(&format!("Bello visualizer — {}", description.name())).await;
+    // Kiss3d currently defaults to a 2048px, 16-layer depth/color shadow atlas,
+    // which consumes roughly 512 MiB on unified-memory Macs. A 1024px atlas is
+    // ample for the robot view while reducing the steady GPU allocation to one quarter.
+    window.set_shadow_resolution(1024);
     window.set_background_color(Color::new(0.035, 0.045, 0.06, 1.0));
     window.set_ambient(0.4);
     window.set_ambient_color(Color::new(0.85, 0.9, 1.0, 1.0));
