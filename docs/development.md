@@ -26,7 +26,7 @@ nix develop
 
 The shell places Cargo artifacts under
 `${XDG_CACHE_HOME:-$HOME/.cache}/bello-stack/cargo-target`, keeping the repository
-and Nix source snapshots small. The workspace declares Rust 1.96 as its minimum
+and Nix source snapshots small. The workspace declares Rust 1.95 as its minimum
 supported version; the concrete Nix inputs are pinned by
 [`flake.lock`](../flake.lock). See [`flake.nix`](../flake.nix) and
 [`.envrc`](../.envrc).
