@@ -147,6 +147,7 @@ pub struct Policy {
     session: Session,
     pub metadata: PolicyMetadata,
     pub reference_motion: Option<Vec<u8>>,
+    pub physics_xml: Vec<u8>,
 }
 
 fn validate_graph(session: &Session, metadata: &PolicyMetadata) -> Result<()> {
@@ -202,6 +203,11 @@ impl Policy {
         metadata.validate()?;
         metadata.require_source(source)?;
         validate_graph(&session, &metadata)?;
+        let mut physics_xml = Vec::new();
+        archive
+            .by_name("physics.xml")
+            .context("deployment bundle is missing physics.xml")?
+            .read_to_end(&mut physics_xml)?;
         let reference_motion = if metadata.task == "motion_tracking" {
             let mut bytes = Vec::new();
             archive
@@ -216,6 +222,7 @@ impl Policy {
             session,
             metadata,
             reference_motion,
+            physics_xml,
         })
     }
 

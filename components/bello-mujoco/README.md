@@ -16,6 +16,8 @@ Other build environments must set `MUJOCO_INCLUDE_DIR`, `MUJOCO_LIB_DIR`, and a
 loader path for the same MuJoCo installation. Header/library version mismatches
 fail at initialization. The caller supplies compiled MJCF and the canonical
 hardware-to-actuator mapping; this crate does not compile or repackage URDFs.
+`Simulation::from_xml` consumes the deployment bundle's `physics.xml` bytes
+directly, with no Python, temporary extraction, or visual assets.
 
 The tested adapter boundary covers protocol commands, native physics, motor
 feedback, and stop/disable behavior. SocketCAN process orchestration, IMU serial
