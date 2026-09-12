@@ -171,6 +171,7 @@ impl ControlSession {
             Err(error) => return Err(self.rollback_start(error).await),
         };
 
+        self.state = ControlState::Uncertain;
         let actual = match self
             .lease
             .start(self.options.command_validity, initial)
@@ -196,6 +197,7 @@ impl ControlSession {
                 .open_command_stream(CommandStreamOptions::default())
                 .await?,
         );
+        self.state = ControlState::Uncertain;
         let actual = match self
             .lease
             .start(self.options.command_validity, initial)
