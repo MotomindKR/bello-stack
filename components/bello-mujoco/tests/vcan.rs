@@ -77,10 +77,15 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
     yaml["pose"]["listen"] = address.to_string().into();
     let mut file = tempfile::NamedTempFile::new().unwrap();
     serde_yaml::to_writer(&mut file, &yaml).unwrap();
+    let operator = nix::pty::openpty(None, None).unwrap();
+    let mut operator_input = File::from(operator.master);
+    let mut process_log = tempfile::tempfile().unwrap();
     let mut process = Process(
         Command::new(env!("CARGO_BIN_EXE_bello-mujoco"))
             .args(["run", "--config"])
             .arg(file.path())
+            .stdin(File::from(operator.slave))
+            .stderr(process_log.try_clone().unwrap())
             .spawn()
             .unwrap(),
     );
@@ -166,6 +171,17 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
         .unwrap()
         .unwrap();
     assert!(b.sequence > a.sequence && b.sample_monotonic_ns > a.sample_monotonic_ns);
+    if config.torso_guide.is_some() {
+        // Both lines arrive together: stdio prefetch must not swallow the reset.
+        operator_input.write_all(b"\n\n").unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        use std::io::{Seek, SeekFrom};
+        process_log.seek(SeekFrom::Start(0)).unwrap();
+        let mut text = String::new();
+        process_log.read_to_string(&mut text).unwrap();
+        assert!(text.contains("Torso guide released."), "{text}");
+        assert!(text.contains("Torso guide reset; motors disarmed."), "{text}");
+    }
     nix::sys::signal::kill(
         nix::unistd::Pid::from_raw(process.0.id() as i32),
         nix::sys::signal::Signal::SIGTERM,

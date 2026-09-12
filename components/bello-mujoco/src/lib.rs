@@ -201,6 +201,56 @@ mod tests {
     }
 
     #[test]
+    fn affine_servo_matches_split_mit_actuators_through_saturation() {
+        let mut affine = Simulation::from_xml(
+            br#"<mujoco>
+          <option gravity="0 0 0" timestep=".0025" integrator="implicitfast"/>
+          <worldbody><body><joint name="q" axis="0 1 0"/><geom size=".1"/></body></worldbody>
+          <actuator><general joint="q"/></actuator>
+        </mujoco>"#,
+        )
+        .unwrap();
+        let mut split = Simulation::from_xml(
+            br#"<mujoco>
+          <option gravity="0 0 0" timestep=".0025" integrator="implicitfast"/>
+          <worldbody><body><joint name="q" axis="0 1 0" actuatorfrcrange="-2 2"/>
+          <geom size=".1"/></body></worldbody>
+          <actuator><position joint="q" kp="12"/><velocity joint="q" kv=".4"/>
+          <motor joint="q"/></actuator>
+        </mujoco>"#,
+        )
+        .unwrap();
+        for step in 0..1000 {
+            let phase = step as f64 * 0.013;
+            let position = phase.sin();
+            let velocity = phase.cos() * 0.2;
+            let torque = (phase * 0.7).sin() * 3.;
+            affine
+                .set_impedance(
+                    0,
+                    ControlCommand {
+                        position,
+                        velocity,
+                        torque,
+                        kp: 12.,
+                        kd: 0.4,
+                        ..Default::default()
+                    },
+                    2.,
+                )
+                .unwrap();
+            split
+                .data
+                .ctrl_mut()
+                .copy_from_slice(&[position, velocity, torque]);
+            affine.step();
+            split.step();
+            assert!((affine.data.qpos()[0] - split.data.qpos()[0]).abs() < 1e-10);
+            assert!((affine.data.qvel()[0] - split.data.qvel()[0]).abs() < 1e-10);
+        }
+    }
+
+    #[test]
     fn native_tendons_report_motor_coordinates() {
         let simulation = simulation();
         assert!((simulation.actuator_state(0).unwrap().0 - 0.3).abs() < 1e-12);
