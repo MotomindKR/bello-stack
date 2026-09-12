@@ -1,0 +1,18 @@
+[package]
+name = "bello-mujoco"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+robstride-protocol.workspace = true
+robstride-emulator = { path = "../robstride-emulator" }
+
+[build-dependencies]
+bindgen = "0.72"
+
+[dev-dependencies]
+tempfile.workspace = true

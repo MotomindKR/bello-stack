@@ -26,7 +26,8 @@
             pkgs.stdenv.cc.cc.lib
           ];
           runtimeLibraries =
-            visualizerRuntimeLibraries ++ pythonWheelRuntimeLibraries;
+            visualizerRuntimeLibraries ++ pythonWheelRuntimeLibraries
+            ++ [ pkgs.mujoco pkgs.onnxruntime ];
         in {
           default = pkgs.mkShell {
             packages = with pkgs; [
@@ -41,6 +42,8 @@
               can-utils
               iproute2
               buf
+              mujoco
+              onnxruntime
               (python3.withPackages (python: with python; [
                 grpcio
                 grpcio-tools
@@ -51,6 +54,10 @@
               ruff
             ] ++ visualizerRuntimeLibraries;
             RUST_BACKTRACE = "1";
+            MUJOCO_INCLUDE_DIR = "${pkgs.lib.getDev pkgs.mujoco}/include";
+            MUJOCO_LIB_DIR = "${pkgs.lib.getLib pkgs.mujoco}/lib";
+            LIBCLANG_PATH = "${pkgs.lib.getLib pkgs.llvmPackages.libclang}/lib";
+            ORT_DYLIB_PATH = "${pkgs.lib.getLib pkgs.onnxruntime}/lib/libonnxruntime.so";
             # Keep Cargo artifacts outside this non-Git path flake. Otherwise Nix
             # copies target/ into every source snapshot before entering the shell.
             shellHook = ''

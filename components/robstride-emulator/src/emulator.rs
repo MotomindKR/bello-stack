@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::time::Duration;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, ensure};
 use robstride_protocol::{
     ControlCommand, Feedback, Frame, MotorParams, Request, feedback_frame, frame_target,
     parse_control, parse_request,
@@ -19,6 +19,13 @@ const MAX_FEEDBACK_FRAMES_PER_ADVANCE: usize = 8_192;
 pub struct ScheduledFrame {
     pub delay: Duration,
     pub frame: Frame,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct MotorState {
+    pub position: f64,
+    pub velocity: f64,
+    pub torque: f64,
 }
 
 #[derive(Clone, Debug)]
@@ -218,6 +225,44 @@ impl Emulator {
     }
 
     pub fn advance(&mut self, elapsed: Duration) -> Vec<ScheduledFrame> {
+        for actuator in self.actuators.values_mut() {
+            actuator.step(elapsed, &self.dynamics);
+        }
+        self.advance_feedback(elapsed)
+    }
+
+    pub fn command(&self, motor_id: u8) -> Result<Option<ControlCommand>> {
+        let actuator = self
+            .actuators
+            .get(&motor_id)
+            .ok_or_else(|| anyhow!("unknown motor {motor_id}"))?;
+        Ok(if actuator.enabled && actuator.impedance_mode {
+            actuator.command
+        } else {
+            None
+        })
+    }
+
+    pub fn set_motor_state(&mut self, motor_id: u8, state: MotorState) -> Result<()> {
+        ensure!(
+            [state.position, state.velocity, state.torque]
+                .iter()
+                .all(|v| v.is_finite()),
+            "nonfinite motor feedback"
+        );
+        let actuator = self
+            .actuators
+            .get_mut(&motor_id)
+            .ok_or_else(|| anyhow!("unknown motor {motor_id}"))?;
+        actuator.position = state.position;
+        actuator.velocity = state.velocity;
+        actuator.torque = state.torque;
+        Ok(())
+    }
+
+    /// Schedule protocol feedback after an external physics engine updates motor state.
+    /// Does not advance the simplified first-order actuator dynamics.
+    pub fn advance_feedback(&mut self, elapsed: Duration) -> Vec<ScheduledFrame> {
         self.elapsed += elapsed;
         while self
             .events
@@ -235,10 +280,6 @@ impl Emulator {
                 actuator.apply(event.action);
             }
         }
-        for actuator in self.actuators.values_mut() {
-            actuator.step(elapsed, &self.dynamics);
-        }
-
         let mut due = Vec::new();
         let mut reports = Vec::new();
         let mut feedback_steps = 0_usize;
