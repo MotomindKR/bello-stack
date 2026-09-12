@@ -1,31 +1,20 @@
-//! Minimal ownership wrappers over the installed MuJoCo C API.
-//! Bindings are generated from that installation's headers, not a second physics version.
+//! Headless MuJoCo 3.12.0 physics through mujoco-rs.
 
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::marker::PhantomData;
 use std::path::Path;
-use std::ptr::NonNull;
 use std::rc::Rc;
 
 use anyhow::{Context, Result, ensure};
+use mujoco_rs::prelude::{MjData, MjModel, MjtObj};
 use robstride_protocol::ControlCommand;
 
 pub mod robstride;
 
-#[allow(
-    non_camel_case_types,
-    non_snake_case,
-    non_upper_case_globals,
-    dead_code,
-    clippy::approx_constant
-)]
-pub mod ffi {
-    include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
-}
+pub use mujoco_rs::mujoco_c as ffi;
 
 pub struct Simulation {
-    model: NonNull<ffi::mjModel>,
-    data: NonNull<ffi::mjData>,
+    data: MjData<Box<MjModel>>,
     // Model/data access stays on one simulation thread.
     _thread: PhantomData<Rc<()>>,
 }
@@ -40,109 +29,59 @@ pub struct BodyState {
 
 impl Simulation {
     pub fn load(path: &Path) -> Result<Self> {
-        ensure!(
-            unsafe { ffi::mj_version() } == ffi::mjVERSION_HEADER as i32,
-            "loaded MuJoCo library does not match the build headers"
-        );
-        let filename = CString::new(path.to_str().context("model path is not UTF-8")?)?;
-        let mut error = [0_i8; 2048];
-        let model = unsafe {
-            ffi::mj_loadXML(
-                filename.as_ptr(),
-                std::ptr::null(),
-                error.as_mut_ptr(),
-                error.len() as i32,
-            )
-        };
-        let model = NonNull::new(model).with_context(|| {
-            format!(
-                "MuJoCo load: {}",
-                unsafe { CStr::from_ptr(error.as_ptr()) }.to_string_lossy()
-            )
-        })?;
-        Self::from_model(model)
+        Self::check_version()?;
+        CString::new(path.to_str().context("model path is not UTF-8")?)?;
+        Self::from_model(MjModel::from_xml(path)?)
     }
 
-    /// Compile the self-contained physics.xml member without extracting files.
+    /// Compile self-contained model XML without Python or file extraction.
     pub fn from_xml(xml: &[u8]) -> Result<Self> {
-        ensure!(
-            unsafe { ffi::mj_version() } == ffi::mjVERSION_HEADER as i32,
-            "loaded MuJoCo library does not match the build headers"
-        );
-        let xml = CString::new(xml)?;
-        let mut error = [0_i8; 2048];
-        let spec = NonNull::new(unsafe {
-            ffi::mj_parseXMLString(
-                xml.as_ptr(),
-                std::ptr::null(),
-                error.as_mut_ptr(),
-                error.len() as i32,
-            )
-        })
-        .with_context(|| {
-            format!(
-                "MuJoCo XML: {}",
-                unsafe { CStr::from_ptr(error.as_ptr()) }.to_string_lossy()
-            )
-        })?;
-        let model = unsafe { ffi::mj_compile(spec.as_ptr(), std::ptr::null()) };
-        let model = NonNull::new(model).with_context(|| {
-            format!(
-                "MuJoCo compile: {}",
-                unsafe { CStr::from_ptr(ffi::mjs_getError(spec.as_ptr())) }.to_string_lossy()
-            )
-        });
-        unsafe {
-            ffi::mj_deleteSpec(spec.as_ptr());
-        }
-        Self::from_model(model?)
+        Self::check_version()?;
+        Self::from_model(MjModel::from_xml_string(std::str::from_utf8(xml)?)?)
     }
 
-    fn from_model(model: NonNull<ffi::mjModel>) -> Result<Self> {
-        let Some(data) = NonNull::new(unsafe { ffi::mj_makeData(model.as_ptr()) }) else {
-            unsafe {
-                ffi::mj_deleteModel(model.as_ptr());
-            }
-            anyhow::bail!("MuJoCo data allocation failed");
-        };
+    fn check_version() -> Result<()> {
+        ensure!(
+            unsafe { ffi::mj_version() } == ffi::mjVERSION_HEADER as i32,
+            "loaded MuJoCo library must match the pinned 3.12.0 bindings"
+        );
+        Ok(())
+    }
+
+    fn from_model(model: MjModel) -> Result<Self> {
         Ok(Self {
-            model,
-            data,
+            data: MjData::try_new(Box::new(model))?,
             _thread: PhantomData,
         })
     }
 
     pub fn model(&self) -> &ffi::mjModel {
-        unsafe { self.model.as_ref() }
+        self.data.model().ffi()
     }
     pub fn data(&self) -> &ffi::mjData {
-        unsafe { self.data.as_ref() }
+        self.data.ffi()
     }
     pub fn step(&mut self) {
-        unsafe {
-            ffi::mj_step(self.model.as_ptr(), self.data.as_ptr());
-        }
+        self.data.step();
     }
     pub fn forward(&mut self) {
-        unsafe {
-            ffi::mj_forward(self.model.as_ptr(), self.data.as_ptr());
-        }
+        self.data.forward();
     }
 
     pub fn reset_home(&mut self) -> Result<()> {
-        let id = self.id(ffi::mjtObj__mjOBJ_KEY as i32, "home")?;
-        unsafe {
-            ffi::mj_resetDataKeyframe(self.model.as_ptr(), self.data.as_ptr(), id);
-        }
+        let id = self.id(MjtObj::mjOBJ_KEY, "home")?;
+        self.data.reset_keyframe(id as usize)?;
         self.forward();
         Ok(())
     }
 
-    pub fn id(&self, kind: i32, name: &str) -> Result<i32> {
-        let name = CString::new(name)?;
-        let id = unsafe { ffi::mj_name2id(self.model.as_ptr(), kind, name.as_ptr()) };
-        ensure!(id >= 0, "model object is missing: {:?}", name);
-        Ok(id)
+    pub fn id(&self, kind: MjtObj, name: &str) -> Result<i32> {
+        CString::new(name)?;
+        self.data
+            .model()
+            .name_to_id(kind, name)
+            .map(|id| id as i32)
+            .with_context(|| format!("model object is missing: {name}"))
     }
 
     pub fn actuator_state(&self, id: usize) -> Result<(f64, f64, f64)> {
@@ -159,20 +98,10 @@ impl Simulation {
 
     pub fn body_state(&self, id: usize) -> Result<BodyState> {
         ensure!(id < self.model().nbody as usize, "body index out of range");
-        let mut world = [0.; 6];
-        let mut local = [0.; 6];
+        // XBODY matches xpos/xquat, not the offset/rotated inertial frame.
+        let world = self.data.object_velocity(MjtObj::mjOBJ_XBODY, id, false);
+        let local = self.data.object_velocity(MjtObj::mjOBJ_XBODY, id, true);
         unsafe {
-            // XBODY matches xpos/xquat, not the offset/rotated inertial frame.
-            for (velocity, local_frame) in [(&mut world, 0), (&mut local, 1)] {
-                ffi::mj_objectVelocity(
-                    self.model.as_ptr(),
-                    self.data.as_ptr(),
-                    ffi::mjtObj__mjOBJ_XBODY as i32,
-                    id as i32,
-                    velocity.as_mut_ptr(),
-                    local_frame,
-                );
-            }
             Ok(BodyState {
                 position: std::array::from_fn(|axis| *self.data().xpos.add(3 * id + axis)),
                 orientation_wxyz: std::array::from_fn(|axis| *self.data().xquat.add(4 * id + axis)),
@@ -183,7 +112,7 @@ impl Simulation {
     }
 
     pub fn sensor<const N: usize>(&self, name: &str) -> Result<[f64; N]> {
-        let id = self.id(ffi::mjtObj__mjOBJ_SENSOR as i32, name)? as usize;
+        let id = self.id(MjtObj::mjOBJ_SENSOR, name)? as usize;
         unsafe {
             ensure!(
                 *self.model().sensor_dim.add(id) as usize == N,
@@ -224,10 +153,11 @@ impl Simulation {
             "invalid motor command"
         );
         unsafe {
-            let model = self.model.as_mut();
+            // Only existing servo parameters change; model topology and sizes stay fixed.
+            let model = self.data.model_mut().ffi_mut();
             // Native affine servos retain MuJoCo's implicit damping treatment.
-            *model.actuator_gaintype.add(id) = ffi::mjtGain__mjGAIN_FIXED as i32;
-            *model.actuator_biastype.add(id) = ffi::mjtBias__mjBIAS_AFFINE as i32;
+            *model.actuator_gaintype.add(id) = ffi::mjtGain::mjGAIN_FIXED as i32;
+            *model.actuator_biastype.add(id) = ffi::mjtBias::mjBIAS_AFFINE as i32;
             *model.actuator_gainprm.add(id * ffi::mjNGAIN as usize) = kp;
             *model.actuator_biasprm.add(id * ffi::mjNBIAS as usize) = torque + kd * velocity;
             *model.actuator_biasprm.add(id * ffi::mjNBIAS as usize + 1) = -kp;
@@ -236,18 +166,9 @@ impl Simulation {
             *model.actuator_forcelimited.add(id) = true;
             *model.actuator_forcerange.add(id * 2) = -torque_limit;
             *model.actuator_forcerange.add(id * 2 + 1) = torque_limit;
-            *self.data.as_mut().ctrl.add(id) = position;
+            self.data.ctrl_mut()[id] = position;
         }
         Ok(())
-    }
-}
-
-impl Drop for Simulation {
-    fn drop(&mut self) {
-        unsafe {
-            ffi::mj_deleteData(self.data.as_ptr());
-            ffi::mj_deleteModel(self.model.as_ptr());
-        }
     }
 }
 
@@ -278,6 +199,62 @@ mod tests {
         let simulation = simulation();
         assert!((simulation.actuator_state(0).unwrap().0 - 0.3).abs() < 1e-12);
         assert!((simulation.actuator_state(1).unwrap().0 - 0.1).abs() < 1e-12);
+    }
+
+    #[test]
+    fn tendon_velocity_and_force_follow_the_same_transmission() {
+        let mut simulation = simulation();
+        simulation.data.qvel_mut().copy_from_slice(&[0.4, -0.2]);
+        for (id, torque) in [(0, 2.), (1, 1.)] {
+            simulation
+                .set_impedance(
+                    id,
+                    ControlCommand {
+                        torque,
+                        ..Default::default()
+                    },
+                    3.,
+                )
+                .unwrap();
+        }
+        simulation.forward();
+        assert!((simulation.actuator_state(0).unwrap().1 - 0.2).abs() < 1e-12);
+        assert!((simulation.actuator_state(1).unwrap().1 - 0.6).abs() < 1e-12);
+        // q_motor = J q_joint, hence joint torque = J^T motor torque.
+        assert_eq!(simulation.data.qfrc_actuator(), &[3., 1.]);
+    }
+
+    #[test]
+    fn native_urdf_can_be_compiled_and_exported_as_mjcf() {
+        use mujoco_rs::prelude::MjSpec;
+        let directory = tempfile::tempdir().unwrap();
+        let mut urdf = tempfile::NamedTempFile::new_in(&directory).unwrap();
+        urdf.write_all(
+            br#"<robot name="synthetic">
+          <link name="base"/>
+          <link name="pendulum">
+            <inertial><origin xyz="0 0 -.2"/><mass value="1"/>
+              <inertia ixx=".1" iyy=".1" izz=".1" ixy="0" ixz="0" iyz="0"/>
+            </inertial>
+          </link>
+          <joint name="hinge" type="revolute">
+            <parent link="base"/><child link="pendulum"/><axis xyz="0 1 0"/>
+            <limit lower="-1" upper="1" effort="3" velocity="2"/>
+          </joint>
+        </robot>"#,
+        )
+        .unwrap();
+        let mut spec = MjSpec::from_xml(urdf.path()).unwrap();
+        let model = spec.compile().unwrap();
+        let output = directory.path().join("model.xml");
+        spec.save_xml(&output).unwrap();
+        let from_urdf = Simulation::load(urdf.path()).unwrap();
+        let mut from_mjcf = Simulation::load(&output).unwrap();
+        assert_eq!(model.nv(), 1);
+        assert_eq!(from_urdf.model().nv, from_mjcf.model().nv);
+        assert_eq!(from_urdf.model().nu, 0);
+        from_mjcf.step();
+        assert!(from_mjcf.data().time > 0.);
     }
 
     #[test]
@@ -318,7 +295,7 @@ mod tests {
         let mut sim = Simulation::load(file.path()).unwrap();
         sim.reset_home().unwrap();
         let state = sim
-            .body_state(sim.id(ffi::mjtObj__mjOBJ_BODY as i32, "link").unwrap() as usize)
+            .body_state(sim.id(MjtObj::mjOBJ_BODY, "link").unwrap() as usize)
             .unwrap();
         for (actual, expected) in [
             (state.position, [0., 0., 1.]),

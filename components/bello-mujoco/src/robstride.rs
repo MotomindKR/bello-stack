@@ -46,7 +46,7 @@ impl RobstrideSimulation {
                 let name = coordinates
                     .get(&motor.id)
                     .context("motor coordinate is missing")?;
-                let actuator = simulation.id(ffi::mjtObj__mjOBJ_ACTUATOR as i32, name)? as usize;
+                let actuator = simulation.id(ffi::mjtObj::mjOBJ_ACTUATOR, name)? as usize;
                 ensure!(
                     assigned.insert(actuator),
                     "MuJoCo actuator {name} is mapped more than once"

@@ -6,7 +6,6 @@ members = [
   "components/bello-hardware-e2e",
   "components/bello-hardwared",
   "components/bello-pose-api",
-  "components/bello-policy",
   "components/bello-mujoco",
   "components/bello-remote-api",
   "components/bello-robot-description",
