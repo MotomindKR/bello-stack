@@ -5,7 +5,7 @@
   <!--Publish camera sensor TFs from this URDF or from the Orbbec driver, never from both sources simultaneously.-->
   <!--imu_link is the published logical IMU frame; imu_sensor_link is the coincident physical EBIMU frame and records its upside-down mounting.-->
   <mujoco>
-    <compiler fusestatic="false" inertiafromgeom="false" />
+    <compiler fusestatic="false" inertiafromgeom="false" discardvisual="false" strippath="false" />
   </mujoco>
   <material name="center_links">
     <color rgba="0.32 0.36 0.42 1" />
