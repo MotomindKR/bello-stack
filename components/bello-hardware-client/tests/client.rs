@@ -1299,7 +1299,10 @@ async fn ergonomic_control_never_retries_after_a_rejected_running_command() {
         Err(Error::InvalidSessionState { .. })
     ));
 
-    control.stop().await.expect("uncertain control can still request damping");
+    control
+        .stop()
+        .await
+        .expect("uncertain control can still request damping");
     assert_eq!(control.state(), bello_hardware_client::ControlState::Damped);
     control.shutdown().await.expect("clean up control");
     server.stop().await;
