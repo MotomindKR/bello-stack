@@ -1,0 +1,21 @@
+model: bello.yaml
+bus_interfaces: {can0: vcan0, can1: vcan1}
+feedback_rate_hz: 100
+temperature_c: 25
+command_latency_seconds: 0.01
+motor_kp_scale: 1.0
+motor_kd_scale: 1.0
+imu:
+  name: imu
+  device: /dev/ttyIMU-mujoco
+  rate_hz: 200
+  orientation_std_radians: 0.005
+  acceleration_std_mps2: 0.1
+  seed: 0
+pose:
+  listen: 0.0.0.0:50052
+  reference_frame: odom
+  tracked_frame: pelvis_link
+  rate_hz: 100
+torso_guide: {body: torso_link, drop_limit_m: 0.05}
+fault_events: {}

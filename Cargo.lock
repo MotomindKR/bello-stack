@@ -673,16 +673,27 @@ name = "bello-mujoco"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-stream",
+ "bello-pose-api",
  "bello-robot-description",
  "clap",
+ "futures-core",
  "mujoco-rs",
+ "nalgebra",
+ "nix 0.29.0",
+ "rand",
+ "rand_distr",
  "robstride-emulator",
  "robstride-protocol",
  "roxmltree",
  "serde",
  "serde_json",
  "serde_yaml_ng",
+ "socketcan",
  "tempfile",
+ "tokio",
+ "tokio-stream",
+ "tonic",
  "xmltree",
 ]
 
@@ -4126,6 +4137,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand_distr"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a8615d50dcf34fa31f7ab52692afec947c4dd0ab803cc87cb3b0b4570ff7463"
+dependencies = [
+ "num-traits",
+ "rand",
+]
+
+[[package]]
 name = "range-alloc"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5215,6 +5236,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

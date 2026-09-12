@@ -21,6 +21,8 @@ pub struct ModelConfig {
     pub initial_root_quaternion: [f64; 4],
     pub initial_joint_positions: BTreeMap<String, f64>,
     pub neighbor_exclusion_depth: usize,
+    #[serde(default)]
+    pub torso_guide: Option<crate::guide::Config>,
 }
 
 impl ModelConfig {
@@ -67,7 +69,7 @@ pub struct Imu {
     pub output_frame: String,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Coordinate {
     pub actuator: usize,
     // q_motor = native tendon length + this constant, derived from URDF offsets.
@@ -79,6 +81,7 @@ pub struct RobotModel {
     pub hardware: Hardware,
     pub coordinates: BTreeMap<String, Coordinate>,
     pub root_body: String,
+    pub guide: Option<crate::guide::Guide>,
 }
 
 pub fn build(config: &ModelConfig, export: Option<&Path>) -> Result<RobotModel> {
@@ -245,7 +248,7 @@ pub fn build(config: &ModelConfig, export: Option<&Path>) -> Result<RobotModel> 
         .with_name("floor")
         .with_type(MjtGeom::mjGEOM_PLANE)
         .with_size([5., 5., 0.1])
-        .with_friction([0.8, 0.005, 0.0001]);
+        .with_friction([1.0, 0.005, 0.0001]);
     let mut offsets = BTreeMap::new();
     let mut covered = BTreeSet::new();
     for motor in &hardware.motors {
@@ -346,12 +349,21 @@ pub fn build(config: &ModelConfig, export: Option<&Path>) -> Result<RobotModel> 
             .context("compiled joint missing")?;
         qpos[model.jnt_qposadr()[id] as usize] = *position;
     }
+    if let Some(guide) = &config.torso_guide {
+        crate::guide::add(&mut spec, guide)?;
+        qpos.push(0.);
+    }
     let key = spec.add_key();
     key.set_name("home")?;
     key.set_qpos(&qpos);
     let mut simulation = Simulation::from_model(spec.compile()?)?;
     simulation.reset_home()?;
     validate_home(&simulation)?;
+    let guide = config
+        .torso_guide
+        .as_ref()
+        .map(|c| crate::guide::Guide::bind(&mut simulation, c))
+        .transpose()?;
     let coordinates = offsets
         .into_iter()
         .map(|(name, offset)| {
@@ -367,6 +379,7 @@ pub fn build(config: &ModelConfig, export: Option<&Path>) -> Result<RobotModel> 
         hardware,
         coordinates,
         root_body: description.root_link().into(),
+        guide,
     })
 }
 
@@ -412,6 +425,29 @@ fn export_physics(spec: &MjSpec, simulation: &Simulation, path: &Path) -> Result
         Ok(())
     }
     visit(&mut xml, simulation.data.model())?;
+    if let Some(equalities) = xml.get_mut_child("equality") {
+        for child in &mut equalities.children {
+            let xmltree::XMLNode::Element(weld) = child else {
+                continue;
+            };
+            if weld.name != "weld" {
+                continue;
+            }
+            let name = weld.attributes.get("name").context("unnamed weld")?;
+            let id = simulation.id(MjtObj::mjOBJ_EQUALITY, name)? as usize;
+            let values = simulation.data.model().eq_data()[id];
+            weld.attributes.insert(
+                "relpose".into(),
+                values[3..10]
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
+            weld.attributes
+                .insert("active".into(), simulation.data.eq_active()[id].to_string());
+        }
+    }
     xml.write_with_config(
         std::fs::File::create(path)?,
         xmltree::EmitterConfig::new().perform_indent(true),
@@ -536,6 +572,7 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
                     ("pitch".into(), -0.1),
                 ]),
                 neighbor_exclusion_depth: 2,
+                torso_guide: None,
             },
         )
     }
@@ -593,6 +630,37 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
                 assert!((x - y).abs() < 1e-14);
             }
         }
+    }
+
+    #[test]
+    fn torso_guide_limits_drop_releases_and_reinitializes() {
+        let (dir, mut config) = fixture();
+        config.torso_guide = Some(crate::guide::Config {
+            body: "base".into(),
+            drop_limit_m: 0.05,
+        });
+        let export = dir.path().join("guided.xml");
+        let mut robot = build(&config, Some(&export)).unwrap();
+        let reloaded = MjModel::from_xml(&export).unwrap();
+        assert!(reloaded.eq_active0()[0]);
+        let body = robot.simulation.id(MjtObj::mjOBJ_BODY, "base").unwrap() as usize;
+        for _ in 0..1000 {
+            robot.simulation.step();
+        }
+        robot.simulation.forward();
+        let pose = robot.simulation.body_state(body).unwrap();
+        assert!(pose.position[0].abs() < 0.001 && pose.position[1].abs() < 0.001);
+        assert!(pose.position[2] > 0.94 && pose.position[2] < 0.96);
+        let guide = robot.guide.as_mut().unwrap();
+        guide.release(&mut robot.simulation);
+        for _ in 0..100 {
+            robot.simulation.step();
+        }
+        robot.simulation.forward();
+        assert!(robot.simulation.body_state(body).unwrap().position[2] < pose.position[2] - 0.03);
+        robot.simulation.reset_home().unwrap();
+        guide.initialize(&mut robot.simulation).unwrap();
+        assert!((robot.simulation.body_state(body).unwrap().position[2] - 1.).abs() < 1e-12);
     }
 
     #[test]

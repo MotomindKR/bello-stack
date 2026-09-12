@@ -8,12 +8,13 @@ use robstride_emulator::config::Config;
 use robstride_emulator::emulator::{Emulator, MotorState, ScheduledFrame};
 use robstride_protocol::{Frame, MotorParams};
 
-use crate::{Simulation, ffi};
+use crate::{Simulation, model::Coordinate};
 
 struct Binding {
     motor: u8,
     actuator: usize,
     torque_limit: f64,
+    offset: f64,
 }
 
 struct Bus {
@@ -24,32 +25,35 @@ struct Bus {
 pub struct RobstrideSimulation {
     pub simulation: Simulation,
     buses: BTreeMap<String, Bus>,
+    gains: [f64; 2],
 }
 
 impl RobstrideSimulation {
-    /// Coordinates map CAN IDs to already-compiled MuJoCo actuator names.
+    /// Coordinates map CAN IDs to compiled actuators and URDF zero offsets.
     /// The caller derives that mapping from the canonical hardware description.
     pub fn new(
         simulation: Simulation,
-        configs: Vec<(Config, BTreeMap<u8, String>)>,
+        configs: Vec<(Config, BTreeMap<u8, Coordinate>)>,
     ) -> Result<Self> {
         let mut buses = BTreeMap::new();
         let mut assigned = BTreeSet::new();
-        for (config, coordinates) in configs {
+        for (mut config, coordinates) in configs {
             config.validate()?;
             ensure!(
                 coordinates.len() == config.actuators.len(),
                 "incomplete bus coordinate mapping"
             );
             let mut bindings = Vec::new();
-            for motor in &config.actuators {
-                let name = coordinates
+            for motor in &mut config.actuators {
+                let coordinate = coordinates
                     .get(&motor.id)
                     .context("motor coordinate is missing")?;
-                let actuator = simulation.id(ffi::mjtObj::mjOBJ_ACTUATOR, name)? as usize;
+                let actuator = coordinate.actuator;
+                ensure!(coordinate.offset.is_finite(), "invalid motor zero offset");
+                motor.initial_position = simulation.actuator_state(actuator)?.0 + coordinate.offset;
                 ensure!(
                     assigned.insert(actuator),
-                    "MuJoCo actuator {name} is mapped more than once"
+                    "MuJoCo actuator {actuator} is mapped more than once"
                 );
                 let params = MotorParams::for_model(&motor.model, motor.direction)
                     .context("unsupported motor")?;
@@ -61,6 +65,7 @@ impl RobstrideSimulation {
                     motor: motor.id,
                     actuator,
                     torque_limit: params.torque_max,
+                    offset: coordinate.offset,
                 });
             }
             let name = config.interface.clone();
@@ -81,7 +86,20 @@ impl RobstrideSimulation {
             assigned.len() == simulation.model().nu as usize,
             "every MuJoCo actuator must have exactly one motor binding"
         );
-        Ok(Self { simulation, buses })
+        Ok(Self {
+            simulation,
+            buses,
+            gains: [1., 1.],
+        })
+    }
+
+    pub fn set_gain_scales(&mut self, kp: f64, kd: f64) -> Result<()> {
+        ensure!(
+            [kp, kd].iter().all(|v| v.is_finite() && *v >= 0.),
+            "invalid motor gain scale"
+        );
+        self.gains = [kp, kd];
+        Ok(())
     }
 
     pub fn handle(&mut self, bus: &str, frame: Frame) -> Result<()> {
@@ -96,7 +114,10 @@ impl RobstrideSimulation {
     pub fn step(&mut self) -> Result<Vec<(String, ScheduledFrame)>> {
         for bus in self.buses.values() {
             for binding in &bus.bindings {
-                let command = bus.protocol.command(binding.motor)?.unwrap_or_default();
+                let mut command = bus.protocol.command(binding.motor)?.unwrap_or_default();
+                command.position -= binding.offset;
+                command.kp *= self.gains[0];
+                command.kd *= self.gains[1];
                 self.simulation
                     .set_impedance(binding.actuator, command, binding.torque_limit)?;
             }
@@ -112,7 +133,7 @@ impl RobstrideSimulation {
                 bus.protocol.set_motor_state(
                     binding.motor,
                     MotorState {
-                        position,
+                        position: position + binding.offset,
                         velocity,
                         torque,
                     },
@@ -126,6 +147,33 @@ impl RobstrideSimulation {
             );
         }
         Ok(feedback)
+    }
+
+    /// Reset physics and disarm protocol state before accepting fresh operator control.
+    pub fn reset_home(&mut self) -> Result<()> {
+        self.simulation.reset_home()?;
+        for bus in self.buses.values_mut() {
+            bus.protocol.disarm();
+            for binding in &bus.bindings {
+                self.simulation.set_impedance(
+                    binding.actuator,
+                    Default::default(),
+                    binding.torque_limit,
+                )?;
+                let (position, velocity, torque) =
+                    self.simulation.actuator_state(binding.actuator)?;
+                bus.protocol.set_motor_state(
+                    binding.motor,
+                    MotorState {
+                        position: position + binding.offset,
+                        velocity,
+                        torque,
+                    },
+                )?;
+            }
+        }
+        self.simulation.forward();
+        Ok(())
     }
 }
 
@@ -159,7 +207,22 @@ mod tests {
 
     #[test]
     fn native_physics_drives_wire_feedback_and_stop_removes_torque() {
-        let mapping = BTreeMap::from([(1, "a".into()), (2, "b".into())]);
+        let mapping = BTreeMap::from([
+            (
+                1,
+                Coordinate {
+                    actuator: 0,
+                    offset: 0.2,
+                },
+            ),
+            (
+                2,
+                Coordinate {
+                    actuator: 1,
+                    offset: -0.3,
+                },
+            ),
+        ]);
         let mut runtime =
             RobstrideSimulation::new(crate::tests::simulation(), vec![(config(), mapping)])
                 .unwrap();
@@ -183,7 +246,7 @@ mod tests {
         let frames = runtime.step().unwrap();
         let wire = parse_feedback(&frames[0].1.frame, params).unwrap();
         let native = runtime.simulation.actuator_state(0).unwrap();
-        assert!((wire.position - native.0).abs() < 0.001);
+        assert!((wire.position - native.0 - 0.2).abs() < 0.001);
         assert!((wire.torque - native.2).abs() < 0.01);
         assert_eq!(wire.mode_status, 2);
         assert!(native.2.abs() <= params.torque_max);
@@ -196,7 +259,22 @@ mod tests {
 
     #[test]
     fn duplicate_actuator_ownership_fails_before_stepping() {
-        let mapping = BTreeMap::from([(1, "a".into()), (2, "a".into())]);
+        let mapping = BTreeMap::from([
+            (
+                1,
+                Coordinate {
+                    actuator: 0,
+                    offset: 0.,
+                },
+            ),
+            (
+                2,
+                Coordinate {
+                    actuator: 0,
+                    offset: 0.,
+                },
+            ),
+        ]);
         assert!(
             RobstrideSimulation::new(crate::tests::simulation(), vec![(config(), mapping)])
                 .is_err()

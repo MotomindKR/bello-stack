@@ -41,6 +41,10 @@ pub fn frame_target(frame: &Frame) -> u8 {
     frame.id as u8
 }
 
+pub fn is_control_frame(frame: &Frame) -> bool {
+    matches!(CommType::from_id(frame.id), Some(CommType::MotorControl))
+}
+
 pub(crate) fn frame(kind: CommType, field: u16, target: u8) -> Frame {
     Frame {
         id: build_can_id(kind, field, target),

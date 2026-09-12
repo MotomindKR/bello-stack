@@ -140,6 +140,15 @@ pub struct Emulator {
 }
 
 impl Emulator {
+    /// Clear active control without rewinding transport time or fault schedules.
+    pub fn disarm(&mut self) {
+        for actuator in self.actuators.values_mut() {
+            actuator.enabled = false;
+            actuator.command = None;
+            actuator.torque = 0.0;
+        }
+    }
+
     pub fn new(config: Config) -> Result<Self> {
         config.validate()?;
         let mut actuators = BTreeMap::new();
