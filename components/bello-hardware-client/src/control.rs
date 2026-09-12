@@ -157,6 +157,7 @@ impl ControlSession {
         self.require_state(ControlState::Ready, "start")?;
         let initial = initial.into_commands(self.group.name())?;
         self.check_renewal()?;
+        self.state = ControlState::Uncertain;
         let actual = GroupState::from_wire(self.lease.enable().await?);
         self.expect_state("enable", GroupState::Damped, actual)?;
         self.state = ControlState::Damped;
@@ -243,8 +244,11 @@ impl ControlSession {
 
     /// Stops periodic control and leaves the group damped under the current lease.
     pub async fn stop(&mut self) -> Result<(), Error> {
-        self.require_state(ControlState::Running, "stop")?;
+        if !matches!(self.state, ControlState::Running | ControlState::Uncertain) {
+            return Err(self.invalid_state("stop"));
+        }
         self.command_stream.take();
+        self.state = ControlState::Uncertain;
         let actual = GroupState::from_wire(self.lease.stop().await?);
         self.expect_state("stop", GroupState::Damped, actual)?;
         self.state = ControlState::Damped;
