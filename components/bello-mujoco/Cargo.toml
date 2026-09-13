@@ -25,6 +25,7 @@ tonic.workspace = true
 futures-core.workspace = true
 async-stream.workspace = true
 bello-pose-api.workspace = true
+tempfile.workspace = true
 
 robstride-protocol.workspace = true
 robstride-emulator = { path = "../robstride-emulator" }
@@ -33,6 +34,4 @@ mujoco-rs = { version = "=6.0.1", default-features = false }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 socketcan.workspace = true
-
-[dev-dependencies]
-tempfile.workspace = true
+khronos-egl = { version = "6", features = ["dynamic"] }

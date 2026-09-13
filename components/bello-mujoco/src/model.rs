@@ -126,6 +126,14 @@ pub struct RobotModel {
 }
 
 pub fn build(config: &ModelConfig, export: Option<&Path>) -> Result<RobotModel> {
+    build_model(config, export, false)
+}
+
+pub(crate) fn build_visual(config: &ModelConfig) -> Result<RobotModel> {
+    build_model(config, None, true)
+}
+
+fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Result<RobotModel> {
     Simulation::check_version()?;
     ensure!(
         config.timestep_seconds.is_finite() && config.timestep_seconds > 0.,
@@ -265,20 +273,22 @@ pub fn build(config: &ModelConfig, export: Option<&Path>) -> Result<RobotModel> 
         }
     }
     let payload_mass = add_payloads(&mut spec, &config.payloads)?;
+    ensure!(
+        spec.geom_iter().all(
+            |g| g.type_() != MjtGeom::mjGEOM_MESH || (g.contype() == 0 && g.conaffinity() == 0)
+        ),
+        "robot collisions must use primitives"
+    );
     while let Some(geom) = spec
         .geom_iter_mut()
-        .find(|g| g.contype() == 0 && g.conaffinity() == 0)
+        .find(|g| !visuals && g.contype() == 0 && g.conaffinity() == 0)
     {
         // The iterator is dropped and this is the only live handle to the element.
         unsafe {
             geom.delete()?;
         }
     }
-    ensure!(
-        spec.geom_iter().all(|g| g.type_() != MjtGeom::mjGEOM_MESH),
-        "robot collisions must use primitives"
-    );
-    while let Some(mesh) = spec.mesh_iter_mut().next() {
+    while let Some(mesh) = spec.mesh_iter_mut().find(|_| !visuals) {
         // All mesh geoms were removed; there are no other live handles.
         unsafe {
             mesh.delete()?;
@@ -618,6 +628,42 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
                 torso_guide: None,
             },
         )
+    }
+
+    #[test]
+    fn retaining_visuals_preserves_joints_and_inertias() {
+        let (_dir, config) = fixture();
+        let urdf = config.hardware.parent().unwrap().join("robot.urdf");
+        let mut xml = xmltree::Element::parse(std::fs::File::open(&urdf).unwrap()).unwrap();
+        let mut extension = xmltree::Element::new("mujoco");
+        let mut compiler = xmltree::Element::new("compiler");
+        compiler
+            .attributes
+            .insert("discardvisual".into(), "false".into());
+        compiler
+            .attributes
+            .insert("inertiafromgeom".into(), "false".into());
+        extension.children.push(xmltree::XMLNode::Element(compiler));
+        xml.children.push(xmltree::XMLNode::Element(extension));
+        let visual = xmltree::Element::parse(
+            b"<visual><geometry><box size='.08 .07 .06'/></geometry></visual>".as_slice(),
+        )
+        .unwrap();
+        xml.get_mut_child("link")
+            .unwrap()
+            .children
+            .push(xmltree::XMLNode::Element(visual));
+        xml.write(std::fs::File::create(&urdf).unwrap()).unwrap();
+        let physics = build(&config, None).unwrap().simulation;
+        let visual = build_visual(&config).unwrap().simulation;
+        let a = physics.data.model();
+        let b = visual.data.model();
+        assert_eq!(a.ngeom() + 1, b.ngeom());
+        assert_eq!(a.body_mass(), b.body_mass());
+        assert_eq!(a.body_inertia(), b.body_inertia());
+        assert_eq!(a.jnt_qposadr(), b.jnt_qposadr());
+        assert_eq!(a.jnt_axis(), b.jnt_axis());
+        assert_eq!(physics.data.qpos(), visual.data.qpos());
     }
 
     #[test]

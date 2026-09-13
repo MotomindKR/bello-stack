@@ -19,3 +19,4 @@ pose:
   rate_hz: 100
 torso_guide: {body: torso_link, drop_limit_m: 0.05}
 fault_events: {}
+video: null

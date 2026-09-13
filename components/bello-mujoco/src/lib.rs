@@ -16,6 +16,7 @@ pub mod pose;
 pub mod robstride;
 pub mod runtime;
 mod transport;
+pub mod video;
 
 pub use mujoco_rs::mujoco_c as ffi;
 

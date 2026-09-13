@@ -678,6 +678,7 @@ dependencies = [
  "bello-robot-description",
  "clap",
  "futures-core",
+ "khronos-egl",
  "mujoco-rs",
  "nalgebra",
  "nix 0.29.0",

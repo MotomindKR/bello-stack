@@ -11,6 +11,11 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Render a native emulator recording using Linux software Mesa.
+    Render {
+        #[arg(long)]
+        recording: PathBuf,
+    },
     Check {
         #[arg(long)]
         config: PathBuf,
@@ -27,6 +32,15 @@ enum Command {
 
 fn main() -> Result<()> {
     let (config, export_physics) = match Args::parse().command {
+        Command::Render { recording } => {
+            // The renderer starts here before any threads or graphics libraries.
+            unsafe {
+                std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "true");
+                std::env::set_var("GALLIUM_DRIVER", "llvmpipe");
+                std::env::set_var("LP_NUM_THREADS", "2");
+            }
+            return bello_mujoco::video::render(&recording);
+        }
         Command::Check {
             config,
             export_physics,

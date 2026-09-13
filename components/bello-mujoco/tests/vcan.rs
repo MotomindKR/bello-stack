@@ -75,6 +75,16 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
     }
     yaml["imu"]["device"] = device.to_string_lossy().into_owned().into();
     yaml["pose"]["listen"] = address.to_string().into();
+    let recording = tempfile::tempdir().unwrap();
+    let video_path = recording.path().join("emulator.mp4");
+    yaml["video"] = serde_yaml::to_value(serde_json::json!({
+        "output": video_path, "width": 320, "height": 240, "fps": 20,
+        "max_seconds": 10., "render_timeout_seconds": 15.,
+        "camera": {"body": config.pose.tracked_frame, "distance_m": 3.,
+            "azimuth_degrees": 135., "elevation_degrees": -14.,
+            "lookat_offset_m": [0., 0., 0.]}
+    }))
+    .unwrap();
     let mut file = tempfile::NamedTempFile::new().unwrap();
     serde_yaml::to_writer(&mut file, &yaml).unwrap();
     let operator = nix::pty::openpty(None, None).unwrap();
@@ -180,7 +190,12 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
         let mut text = String::new();
         process_log.read_to_string(&mut text).unwrap();
         assert!(text.contains("Torso guide released."), "{text}");
-        assert!(text.contains("Torso guide reset; motors disarmed."), "{text}");
+        assert!(
+            text.contains("Torso guide reset; motors disarmed."),
+            "{text}"
+        );
+        operator_input.write_all(b"\n").unwrap();
+        tokio::time::sleep(Duration::from_millis(200)).await;
     }
     nix::sys::signal::kill(
         nix::unistd::Pid::from_raw(process.0.id() as i32),
@@ -190,11 +205,25 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
     let start = Instant::now();
     loop {
         if let Some(status) = process.0.try_wait().unwrap() {
-            assert!(status.success());
+            use std::io::{Seek, SeekFrom};
+            process_log.seek(SeekFrom::Start(0)).unwrap();
+            let mut log = String::new();
+            process_log.read_to_string(&mut log).unwrap();
+            assert!(status.success(), "{log}");
+            assert!(log.contains("llvmpipe"), "{log}");
+            assert!(video_path.metadata().unwrap().len() > 1000);
+            if let Ok(directory) = std::env::var("BELLO_TEST_VIDEO_ARTIFACT_DIR") {
+                std::fs::create_dir_all(&directory).unwrap();
+                std::fs::copy(
+                    &video_path,
+                    std::path::Path::new(&directory).join("emulator.mp4"),
+                )
+                .unwrap();
+            }
             break;
         }
         assert!(
-            start.elapsed() < Duration::from_secs(2),
+            start.elapsed() < Duration::from_secs(20),
             "native emulator did not exit"
         );
         tokio::time::sleep(Duration::from_millis(10)).await;

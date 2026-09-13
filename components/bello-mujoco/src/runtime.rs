@@ -34,6 +34,7 @@ pub struct Config {
     pub pose: PoseConfig,
     pub torso_guide: Option<guide::Config>,
     pub fault_events: BTreeMap<String, Vec<ScheduledEvent>>,
+    pub video: Option<crate::video::Config>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -178,6 +179,10 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
     );
     model_config.torso_guide = config.torso_guide;
     let robot = model::build(&model_config, None)?;
+    let mut video = config
+        .video
+        .map(|config| crate::video::Capture::new(config, &robot.simulation))
+        .transpose()?;
     ensure!(
         config
             .bus_interfaces
@@ -364,6 +369,12 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
             sample.specific_force +=
                 Vector3::new(gaussian(), gaussian(), gaussian()) * config.imu.acceleration_std_mps2;
             serial.update(&sample)?;
+            if let Some(video) = &mut video {
+                video.sample(
+                    &physics.simulation,
+                    guide.as_ref().is_none_or(|g| !g.active),
+                )?;
+            }
             if now >= next_pose {
                 sequence += 1;
                 pose_tx.send_replace(pose::sample(
@@ -393,8 +404,17 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
         server.abort();
     }
     runtime.shutdown_timeout(Duration::from_secs(1));
+    drop(endpoints);
+    drop(serial);
+    let video_result = video
+        .map(|video| video.finish(&model_config, &physics.simulation))
+        .transpose();
+    if let Err(error) = &video_result {
+        eprintln!("Video failed: {error:#}");
+    }
     result?;
     service_result.context("pose service did not shut down")???;
+    video_result?;
     eprintln!("Native emulator stopped; all endpoints closed.");
     Ok(())
 }
