@@ -34,6 +34,14 @@ the profile to `bello.yaml` for Bello. `--export-physics PATH` writes an optiona
 inspection MJCF; neither model construction nor simulation requires an artifact.
 URDF transmission offsets are represented separately from native tendon lengths.
 
+Model profiles optionally accept `payloads`, a list of `{frame, mass_kg, radius_m}`.
+Each entry adds a spherical payload inertia at an existing inertial-free frame;
+the radius describes the payload mass distribution and adds no collision geometry.
+The builder rejects missing frames, duplicate entries, nonpositive dimensions,
+or attempts to replace a body's existing inertia. Empty lists add no payload.
+Use two entries for symmetric carried masses. Payloads are model settings,
+independent of policy bundles, and are included in exported physics.
+
 `Simulation::load` and `Simulation::from_xml` remain low-level native loaders;
 loading a URDF alone does not create its differential transmissions.
 

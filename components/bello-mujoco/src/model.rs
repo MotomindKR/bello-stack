@@ -22,7 +22,48 @@ pub struct ModelConfig {
     pub initial_joint_positions: BTreeMap<String, f64>,
     pub neighbor_exclusion_depth: usize,
     #[serde(default)]
+    pub payloads: Vec<Payload>,
+    #[serde(default)]
     pub torso_guide: Option<crate::guide::Config>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Payload {
+    pub frame: String,
+    pub mass_kg: f64,
+    pub radius_m: f64,
+}
+
+fn add_payloads(spec: &mut MjSpec, payloads: &[Payload]) -> Result<f64> {
+    let mut frames = BTreeSet::new();
+    let mut mass = 0.;
+    for payload in payloads {
+        ensure!(frames.insert(&payload.frame), "duplicate payload frame");
+        ensure!(
+            payload.mass_kg.is_finite()
+                && payload.mass_kg > 0.
+                && payload.radius_m.is_finite()
+                && payload.radius_m > 0.,
+            "invalid payload mass/radius"
+        );
+        let body = spec
+            .body_mut(&payload.frame)
+            .context("payload frame is missing")?;
+        ensure!(body.mass() == 0., "payload frame must be inertial-free");
+        let inertia = 0.4 * payload.mass_kg * payload.radius_m.powi(2);
+        ensure!(
+            inertia.is_finite() && inertia > 0.,
+            "invalid payload inertia"
+        );
+        body.set_explicitinertial(true);
+        body.set_mass(payload.mass_kg);
+        body.with_ipos([0.; 3])
+            .with_iquat([1., 0., 0., 0.])
+            .with_inertia([inertia; 3]);
+        mass += payload.mass_kg;
+    }
+    Ok(mass)
 }
 
 impl ModelConfig {
@@ -223,6 +264,7 @@ pub fn build(config: &ModelConfig, export: Option<&Path>) -> Result<RobotModel> 
             }
         }
     }
+    let payload_mass = add_payloads(&mut spec, &config.payloads)?;
     while let Some(geom) = spec
         .geom_iter_mut()
         .find(|g| g.contype() == 0 && g.conaffinity() == 0)
@@ -339,8 +381,8 @@ pub fn build(config: &ModelConfig, export: Option<&Path>) -> Result<RobotModel> 
     }
     let model = spec.compile()?;
     ensure!(
-        (model.body_mass().iter().sum::<f64>() - source_mass).abs() < 1e-9,
-        "native compilation changed URDF mass"
+        (model.body_mass().iter().sum::<f64>() - source_mass - payload_mass).abs() < 1e-9,
+        "native compilation changed URDF plus payload mass"
     );
     let mut qpos = model.qpos0().to_vec();
     for (name, position) in &config.initial_joint_positions {
@@ -572,9 +614,43 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
                     ("pitch".into(), -0.1),
                 ]),
                 neighbor_exclusion_depth: 2,
+                payloads: Vec::new(),
                 torso_guide: None,
             },
         )
+    }
+
+    #[test]
+    fn payload_adds_mass_at_its_frame_without_replacing_robot_inertia() {
+        let (dir, mut config) = fixture();
+        config.payloads.push(Payload {
+            frame: "imu".into(),
+            mass_kg: 0.7,
+            radius_m: 0.04,
+        });
+        let xml = dir.path().join("payload.xml");
+        let robot = build(&config, Some(&xml)).unwrap();
+        let model = robot.simulation.data.model();
+        let frame = model.name_to_id(MjtObj::mjOBJ_BODY, "imu").unwrap();
+        assert!((model.body_mass()[frame] - 0.7).abs() < 1e-12);
+        assert_eq!(model.body_ipos()[frame], [0.; 3]);
+        for value in model.body_inertia()[frame] {
+            assert!((value - 0.4 * 0.7 * 0.04_f64.powi(2)).abs() < 1e-12);
+        }
+        let reloaded = MjModel::from_xml(&xml).unwrap();
+        assert_eq!(reloaded.body_mass()[frame], model.body_mass()[frame]);
+        config.payloads[0].frame = "base".into();
+        assert!(
+            build(&config, None)
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("inertial-free")
+        );
+        config.payloads[0].frame = "missing".into();
+        assert!(build(&config, None).is_err());
+        config.payloads[0].mass_kg = -1.;
+        assert!(build(&config, None).is_err());
     }
 
     #[test]
