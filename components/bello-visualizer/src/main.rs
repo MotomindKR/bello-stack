@@ -433,7 +433,7 @@ fn orientation_indicator(context: &kiss3d::egui::Context, camera: &OrbitCamera3d
                 let direction = project_world_axis(view_rotation, axis);
                 let end = origin + kiss3d::egui::vec2(direction.x, direction.y) * 34.0;
                 ui.painter()
-                    .line_segment([origin, end], kiss3d::egui::Stroke::new(3.0, color));
+                    .line_segment([origin, end], kiss3d::egui::Stroke::new(3.0_f32, color));
                 ui.painter().circle_filled(end, 3.5, color);
                 let label_offset = if direction.length_squared() > 0.01 {
                     direction.normalize() * 9.0

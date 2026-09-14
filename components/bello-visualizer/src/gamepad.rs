@@ -94,24 +94,24 @@ fn stick(ui: &mut egui::Ui, label: &str, x: f64, y: f64, mapping: &str, color: C
     let center = rect.center() + egui::vec2(0.0, -2.0);
     let radius = 53.0;
     painter.circle_filled(center, radius, Color32::from_black_alpha(75));
-    painter.circle_stroke(center, radius, Stroke::new(1.5, Color32::from_gray(95)));
+    painter.circle_stroke(center, radius, Stroke::new(1.5_f32, Color32::from_gray(95)));
     painter.line_segment(
         [
             center - Vec2::new(radius, 0.0),
             center + Vec2::new(radius, 0.0),
         ],
-        Stroke::new(1.0, Color32::from_gray(65)),
+        Stroke::new(1.0_f32, Color32::from_gray(65)),
     );
     painter.line_segment(
         [
             center - Vec2::new(0.0, radius),
             center + Vec2::new(0.0, radius),
         ],
-        Stroke::new(1.0, Color32::from_gray(65)),
+        Stroke::new(1.0_f32, Color32::from_gray(65)),
     );
     let position =
         center + egui::vec2(x.clamp(-1.0, 1.0) as f32, -y.clamp(-1.0, 1.0) as f32) * (radius - 8.0);
-    painter.line_segment([center, position], Stroke::new(3.0, color));
+    painter.line_segment([center, position], Stroke::new(3.0_f32, color));
     painter.circle_filled(position, 8.0, color);
     painter.text(
         rect.center_bottom() - egui::vec2(0.0, 1.0),
@@ -135,7 +135,7 @@ fn signed_bar(ui: &mut egui::Ui, label: &str, value: f64) {
                 egui::pos2(center_x, rect.top()),
                 egui::pos2(center_x, rect.bottom()),
             ],
-            Stroke::new(1.0, Color32::from_gray(110)),
+            Stroke::new(1.0_f32, Color32::from_gray(110)),
         );
         let value = value.clamp(-1.0, 1.0) as f32;
         let end_x = center_x + value * rect.width() * 0.5;
