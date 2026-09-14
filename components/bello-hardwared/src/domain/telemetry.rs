@@ -60,6 +60,7 @@ pub struct ComponentHealth {
 pub enum TelemetryPayload {
     Motor(MotorTelemetry),
     Imu(ImuTelemetry),
+    PowerBoard(crate::hardware::power_board::PowerTelemetry),
     Group(GroupTelemetry),
     CommandPolicy(CommandPolicyTelemetry),
     Health(ComponentHealth),

@@ -650,6 +650,7 @@ dependencies = [
  "bello-hardware-api",
  "bello-robot-description",
  "clap",
+ "cog-protocol",
  "crossbeam-channel",
  "futures-core",
  "nalgebra",
@@ -677,6 +678,7 @@ dependencies = [
  "bello-pose-api",
  "bello-robot-description",
  "clap",
+ "cog-protocol",
  "futures-core",
  "khronos-egl",
  "mujoco-rs",
@@ -1030,6 +1032,14 @@ dependencies = [
  "serde",
  "termcolor",
  "unicode-width",
+]
+
+[[package]]
+name = "cog-protocol"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
 ]
 
 [[package]]

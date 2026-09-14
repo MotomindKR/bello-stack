@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+  "components/cog-protocol",
   "components/bello-hardware-api",
   "components/bello-hardware-client",
   "components/bello-hardware-e2e",
@@ -23,6 +24,7 @@ license-file = "LICENSE"
 publish = false
 
 [workspace.dependencies]
+cog-protocol = { path = "components/cog-protocol" }
 anyhow = "1"
 async-stream = "0.3"
 bello-hardware-api = { path = "components/bello-hardware-api" }

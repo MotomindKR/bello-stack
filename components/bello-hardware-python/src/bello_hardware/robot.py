@@ -15,6 +15,7 @@ from ._generated import hardware_pb2_grpc
 from ._inventory import Inventory, MotorGroup
 from .errors import BelloError, RobotCleanupError, rpc_error
 from .frames import RobotStateReader
+from .power import PowerBoardReader
 from .tls import TlsCredentials
 from .types import Motor
 
@@ -95,6 +96,11 @@ class Robot:
             groups=groups,
             imus=imus,
         )
+
+    def power(self, *, boards: tuple[str, ...] = ()) -> PowerBoardReader:
+        """Read board telemetry without changing control state or owning a UART."""
+        self._ensure_open()
+        return PowerBoardReader(self, boards)
 
     def close(self) -> None:
         with self._lifecycle:

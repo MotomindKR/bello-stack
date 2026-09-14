@@ -1,5 +1,8 @@
 # bello-visualizer
 
+The **Power** diagnostics tab displays COG battery, rail and board status
+telemetry from hardwared. See [power-board integration](../../docs/power_board.md).
+
 `bello-visualizer` is the native Kiss3d + egui monitor and command UI for
 `bello-hardwared`. It renders the repository's URDF description, follows live
 motor and IMU telemetry, reconstructs differential ankle joints, can command

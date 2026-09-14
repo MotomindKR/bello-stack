@@ -102,6 +102,7 @@ impl HardwareService for FakeHardware {
         _: Request<ListHardwareRequest>,
     ) -> Result<Response<ListHardwareResponse>, Status> {
         Ok(Response::new(ListHardwareResponse {
+            power_boards: vec![],
             buses: vec![BusInfo {
                 name: "test_bus".into(),
                 interface: "vcan-test".into(),

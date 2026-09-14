@@ -1,5 +1,8 @@
 # Configuration
 
+For opt-in COG serial telemetry and emulated power UARTs, see
+[Power-board telemetry](power_board.md).
+
 [Documentation index](README.md)
 
 `bello-hardwared` reads a deployment YAML and the hardware description it

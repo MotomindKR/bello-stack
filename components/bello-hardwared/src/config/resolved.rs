@@ -7,9 +7,11 @@ use bello_robot_description::RobotDescription;
 use super::{Config, ImuFilterConfig, MotorVelocityFilterConfig};
 use crate::api::grpc::GrpcSpec;
 use crate::control::GroupSpec;
+use crate::domain::PowerBoardName;
 use crate::domain::{BusName, GroupName, ImuName, MotorAddress, MotorName, SerialDeviceName};
 use crate::hardware::can::BusSpec;
 use crate::hardware::imu::ImuSpec;
+use crate::hardware::power_board::PowerBoardSpec;
 use crate::hardware::robstride::MotorSpec;
 use crate::hardware::serial::SerialSpec;
 use crate::mechanics::{MechanicalEnvelope, apply_coordinate_limits};
@@ -28,6 +30,7 @@ pub(crate) struct ResolvedTopology {
     grpc: GrpcSpec,
     serial_devices: HashMap<SerialDeviceName, SerialSpec>,
     imus: HashMap<ImuName, ImuSpec>,
+    power_boards: HashMap<PowerBoardName, PowerBoardSpec>,
     buses: HashMap<BusName, BusSpec>,
     motors: HashMap<MotorName, ResolvedMotor>,
     groups: HashMap<GroupName, GroupSpec>,
@@ -119,6 +122,26 @@ impl ResolvedTopology {
             }
             if imus.insert(spec.name.clone(), spec).is_some() {
                 bail!("duplicate IMU name {}", raw.name);
+            }
+        }
+        let mut power_boards = HashMap::new();
+        for raw in &config.power_boards {
+            let spec = PowerBoardSpec::try_from(raw)?;
+            if !serial_devices.contains_key(&spec.serial_device) {
+                bail!(
+                    "power board {} refers to unknown serial device {}",
+                    spec.name,
+                    spec.serial_device
+                );
+            }
+            if !claimed_serial_devices.insert(spec.serial_device.clone()) {
+                bail!(
+                    "serial device {} is assigned to more than one sensor",
+                    spec.serial_device
+                );
+            }
+            if power_boards.insert(spec.name.clone(), spec).is_some() {
+                bail!("duplicate power board name {}", raw.name);
             }
         }
         if let Some(unused) = serial_devices
@@ -215,6 +238,7 @@ impl ResolvedTopology {
             grpc,
             serial_devices,
             imus,
+            power_boards,
             buses,
             motors,
             groups,
@@ -243,6 +267,10 @@ impl ResolvedTopology {
 
     pub(crate) fn imus(&self) -> impl Iterator<Item = (&ImuName, &ImuSpec)> {
         self.imus.iter()
+    }
+
+    pub(crate) fn power_boards(&self) -> impl Iterator<Item = (&PowerBoardName, &PowerBoardSpec)> {
+        self.power_boards.iter()
     }
 
     pub(crate) fn motor(&self, name: &MotorName) -> Result<&ResolvedMotor> {

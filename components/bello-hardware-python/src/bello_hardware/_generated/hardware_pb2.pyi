@@ -256,18 +256,158 @@ class ListHardwareRequest(_message.Message):
     def __init__(self) -> None: ...
 
 class ListHardwareResponse(_message.Message):
-    __slots__ = ("buses", "motors", "groups", "serial_devices", "imus")
+    __slots__ = ("buses", "motors", "groups", "serial_devices", "imus", "power_boards")
     BUSES_FIELD_NUMBER: _ClassVar[int]
     MOTORS_FIELD_NUMBER: _ClassVar[int]
     GROUPS_FIELD_NUMBER: _ClassVar[int]
     SERIAL_DEVICES_FIELD_NUMBER: _ClassVar[int]
     IMUS_FIELD_NUMBER: _ClassVar[int]
+    POWER_BOARDS_FIELD_NUMBER: _ClassVar[int]
     buses: _containers.RepeatedCompositeFieldContainer[BusInfo]
     motors: _containers.RepeatedCompositeFieldContainer[MotorInfo]
     groups: _containers.RepeatedCompositeFieldContainer[GroupInfo]
     serial_devices: _containers.RepeatedCompositeFieldContainer[SerialDeviceInfo]
     imus: _containers.RepeatedCompositeFieldContainer[ImuInfo]
-    def __init__(self, buses: _Optional[_Iterable[_Union[BusInfo, _Mapping]]] = ..., motors: _Optional[_Iterable[_Union[MotorInfo, _Mapping]]] = ..., groups: _Optional[_Iterable[_Union[GroupInfo, _Mapping]]] = ..., serial_devices: _Optional[_Iterable[_Union[SerialDeviceInfo, _Mapping]]] = ..., imus: _Optional[_Iterable[_Union[ImuInfo, _Mapping]]] = ...) -> None: ...
+    power_boards: _containers.RepeatedCompositeFieldContainer[PowerBoardInfo]
+    def __init__(self, buses: _Optional[_Iterable[_Union[BusInfo, _Mapping]]] = ..., motors: _Optional[_Iterable[_Union[MotorInfo, _Mapping]]] = ..., groups: _Optional[_Iterable[_Union[GroupInfo, _Mapping]]] = ..., serial_devices: _Optional[_Iterable[_Union[SerialDeviceInfo, _Mapping]]] = ..., imus: _Optional[_Iterable[_Union[ImuInfo, _Mapping]]] = ..., power_boards: _Optional[_Iterable[_Union[PowerBoardInfo, _Mapping]]] = ...) -> None: ...
+
+class PowerBoardInfo(_message.Message):
+    __slots__ = ("name", "serial_device", "profile", "stale_timeout_ms", "sync_period_ms", "status")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    SERIAL_DEVICE_FIELD_NUMBER: _ClassVar[int]
+    PROFILE_FIELD_NUMBER: _ClassVar[int]
+    STALE_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
+    SYNC_PERIOD_MS_FIELD_NUMBER: _ClassVar[int]
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    serial_device: str
+    profile: str
+    stale_timeout_ms: int
+    sync_period_ms: int
+    status: DeviceStatus
+    def __init__(self, name: _Optional[str] = ..., serial_device: _Optional[str] = ..., profile: _Optional[str] = ..., stale_timeout_ms: _Optional[int] = ..., sync_period_ms: _Optional[int] = ..., status: _Optional[_Union[DeviceStatus, _Mapping]] = ...) -> None: ...
+
+class PowerVoltageCurrent(_message.Message):
+    __slots__ = ("voltage_v", "current_a")
+    VOLTAGE_V_FIELD_NUMBER: _ClassVar[int]
+    CURRENT_A_FIELD_NUMBER: _ClassVar[int]
+    voltage_v: float
+    current_a: float
+    def __init__(self, voltage_v: _Optional[float] = ..., current_a: _Optional[float] = ...) -> None: ...
+
+class PowerBattery(_message.Message):
+    __slots__ = ("voltage_v", "current_a", "soc_percent")
+    VOLTAGE_V_FIELD_NUMBER: _ClassVar[int]
+    CURRENT_A_FIELD_NUMBER: _ClassVar[int]
+    SOC_PERCENT_FIELD_NUMBER: _ClassVar[int]
+    voltage_v: float
+    current_a: float
+    soc_percent: float
+    def __init__(self, voltage_v: _Optional[float] = ..., current_a: _Optional[float] = ..., soc_percent: _Optional[float] = ...) -> None: ...
+
+class PowerGpi(_message.Message):
+    __slots__ = ("bits", "second_bits")
+    BITS_FIELD_NUMBER: _ClassVar[int]
+    SECOND_BITS_FIELD_NUMBER: _ClassVar[int]
+    bits: int
+    second_bits: int
+    def __init__(self, bits: _Optional[int] = ..., second_bits: _Optional[int] = ...) -> None: ...
+
+class PowerFlags(_message.Message):
+    __slots__ = ("bits", "active_names")
+    BITS_FIELD_NUMBER: _ClassVar[int]
+    ACTIVE_NAMES_FIELD_NUMBER: _ClassVar[int]
+    bits: int
+    active_names: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, bits: _Optional[int] = ..., active_names: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class PowerIwc(_message.Message):
+    __slots__ = ("info", "warning", "critical")
+    INFO_FIELD_NUMBER: _ClassVar[int]
+    WARNING_FIELD_NUMBER: _ClassVar[int]
+    CRITICAL_FIELD_NUMBER: _ClassVar[int]
+    info: PowerFlags
+    warning: PowerFlags
+    critical: PowerFlags
+    def __init__(self, info: _Optional[_Union[PowerFlags, _Mapping]] = ..., warning: _Optional[_Union[PowerFlags, _Mapping]] = ..., critical: _Optional[_Union[PowerFlags, _Mapping]] = ...) -> None: ...
+
+class PowerLegacyFault(_message.Message):
+    __slots__ = ("alarm", "fault")
+    ALARM_FIELD_NUMBER: _ClassVar[int]
+    FAULT_FIELD_NUMBER: _ClassVar[int]
+    alarm: PowerFlags
+    fault: PowerFlags
+    def __init__(self, alarm: _Optional[_Union[PowerFlags, _Mapping]] = ..., fault: _Optional[_Union[PowerFlags, _Mapping]] = ...) -> None: ...
+
+class PowerEnvironment(_message.Message):
+    __slots__ = ("temperature_c", "pressure_pa")
+    TEMPERATURE_C_FIELD_NUMBER: _ClassVar[int]
+    PRESSURE_PA_FIELD_NUMBER: _ClassVar[int]
+    temperature_c: float
+    pressure_pa: float
+    def __init__(self, temperature_c: _Optional[float] = ..., pressure_pa: _Optional[float] = ...) -> None: ...
+
+class PowerLocalRails(_message.Message):
+    __slots__ = ("rail_20v0", "rail_5v0", "rail_3v3")
+    RAIL_20V0_FIELD_NUMBER: _ClassVar[int]
+    RAIL_5V0_FIELD_NUMBER: _ClassVar[int]
+    RAIL_3V3_FIELD_NUMBER: _ClassVar[int]
+    rail_20v0: PowerVoltageCurrent
+    rail_5v0: PowerVoltageCurrent
+    rail_3v3: PowerVoltageCurrent
+    def __init__(self, rail_20v0: _Optional[_Union[PowerVoltageCurrent, _Mapping]] = ..., rail_5v0: _Optional[_Union[PowerVoltageCurrent, _Mapping]] = ..., rail_3v3: _Optional[_Union[PowerVoltageCurrent, _Mapping]] = ...) -> None: ...
+
+class PowerEncoder(_message.Message):
+    __slots__ = ("left_rpm", "right_rpm")
+    LEFT_RPM_FIELD_NUMBER: _ClassVar[int]
+    RIGHT_RPM_FIELD_NUMBER: _ClassVar[int]
+    left_rpm: float
+    right_rpm: float
+    def __init__(self, left_rpm: _Optional[float] = ..., right_rpm: _Optional[float] = ...) -> None: ...
+
+class PowerBoardSample(_message.Message):
+    __slots__ = ("sequence", "sample_age_ms", "stale", "battery", "gpi", "iwc", "legacy_fault", "environment", "local_rails", "motor_rail", "tick_count", "encoder")
+    SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    SAMPLE_AGE_MS_FIELD_NUMBER: _ClassVar[int]
+    STALE_FIELD_NUMBER: _ClassVar[int]
+    BATTERY_FIELD_NUMBER: _ClassVar[int]
+    GPI_FIELD_NUMBER: _ClassVar[int]
+    IWC_FIELD_NUMBER: _ClassVar[int]
+    LEGACY_FAULT_FIELD_NUMBER: _ClassVar[int]
+    ENVIRONMENT_FIELD_NUMBER: _ClassVar[int]
+    LOCAL_RAILS_FIELD_NUMBER: _ClassVar[int]
+    MOTOR_RAIL_FIELD_NUMBER: _ClassVar[int]
+    TICK_COUNT_FIELD_NUMBER: _ClassVar[int]
+    ENCODER_FIELD_NUMBER: _ClassVar[int]
+    sequence: int
+    sample_age_ms: int
+    stale: bool
+    battery: PowerBattery
+    gpi: PowerGpi
+    iwc: PowerIwc
+    legacy_fault: PowerLegacyFault
+    environment: PowerEnvironment
+    local_rails: PowerLocalRails
+    motor_rail: PowerVoltageCurrent
+    tick_count: int
+    encoder: PowerEncoder
+    def __init__(self, sequence: _Optional[int] = ..., sample_age_ms: _Optional[int] = ..., stale: _Optional[bool] = ..., battery: _Optional[_Union[PowerBattery, _Mapping]] = ..., gpi: _Optional[_Union[PowerGpi, _Mapping]] = ..., iwc: _Optional[_Union[PowerIwc, _Mapping]] = ..., legacy_fault: _Optional[_Union[PowerLegacyFault, _Mapping]] = ..., environment: _Optional[_Union[PowerEnvironment, _Mapping]] = ..., local_rails: _Optional[_Union[PowerLocalRails, _Mapping]] = ..., motor_rail: _Optional[_Union[PowerVoltageCurrent, _Mapping]] = ..., tick_count: _Optional[int] = ..., encoder: _Optional[_Union[PowerEncoder, _Mapping]] = ...) -> None: ...
+
+class PowerBoardTelemetry(_message.Message):
+    __slots__ = ("board_name", "connection_generation", "status", "samples", "invalid_frames", "unknown_frames")
+    BOARD_NAME_FIELD_NUMBER: _ClassVar[int]
+    CONNECTION_GENERATION_FIELD_NUMBER: _ClassVar[int]
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    SAMPLES_FIELD_NUMBER: _ClassVar[int]
+    INVALID_FRAMES_FIELD_NUMBER: _ClassVar[int]
+    UNKNOWN_FRAMES_FIELD_NUMBER: _ClassVar[int]
+    board_name: str
+    connection_generation: int
+    status: DeviceStatus
+    samples: _containers.RepeatedCompositeFieldContainer[PowerBoardSample]
+    invalid_frames: int
+    unknown_frames: int
+    def __init__(self, board_name: _Optional[str] = ..., connection_generation: _Optional[int] = ..., status: _Optional[_Union[DeviceStatus, _Mapping]] = ..., samples: _Optional[_Iterable[_Union[PowerBoardSample, _Mapping]]] = ..., invalid_frames: _Optional[int] = ..., unknown_frames: _Optional[int] = ...) -> None: ...
 
 class AcquireLeaseRequest(_message.Message):
     __slots__ = ("group", "client_name", "requested_duration_ms")
@@ -438,20 +578,24 @@ class StreamCommandsResponse(_message.Message):
     def __init__(self, group: _Optional[str] = ..., sequence: _Optional[int] = ..., result: _Optional[_Union[CommandResult, str]] = ..., detail: _Optional[str] = ..., state: _Optional[_Union[GroupState, str]] = ...) -> None: ...
 
 class WatchTelemetryRequest(_message.Message):
-    __slots__ = ("groups", "include_motors", "include_imu", "include_health", "imus", "include_command_policy_events")
+    __slots__ = ("groups", "include_motors", "include_imu", "include_health", "imus", "include_command_policy_events", "include_power_boards", "power_boards")
     GROUPS_FIELD_NUMBER: _ClassVar[int]
     INCLUDE_MOTORS_FIELD_NUMBER: _ClassVar[int]
     INCLUDE_IMU_FIELD_NUMBER: _ClassVar[int]
     INCLUDE_HEALTH_FIELD_NUMBER: _ClassVar[int]
     IMUS_FIELD_NUMBER: _ClassVar[int]
     INCLUDE_COMMAND_POLICY_EVENTS_FIELD_NUMBER: _ClassVar[int]
+    INCLUDE_POWER_BOARDS_FIELD_NUMBER: _ClassVar[int]
+    POWER_BOARDS_FIELD_NUMBER: _ClassVar[int]
     groups: _containers.RepeatedScalarFieldContainer[str]
     include_motors: bool
     include_imu: bool
     include_health: bool
     imus: _containers.RepeatedScalarFieldContainer[str]
     include_command_policy_events: bool
-    def __init__(self, groups: _Optional[_Iterable[str]] = ..., include_motors: _Optional[bool] = ..., include_imu: _Optional[bool] = ..., include_health: _Optional[bool] = ..., imus: _Optional[_Iterable[str]] = ..., include_command_policy_events: _Optional[bool] = ...) -> None: ...
+    include_power_boards: bool
+    power_boards: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, groups: _Optional[_Iterable[str]] = ..., include_motors: _Optional[bool] = ..., include_imu: _Optional[bool] = ..., include_health: _Optional[bool] = ..., imus: _Optional[_Iterable[str]] = ..., include_command_policy_events: _Optional[bool] = ..., include_power_boards: _Optional[bool] = ..., power_boards: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class MotorTelemetry(_message.Message):
     __slots__ = ("group", "motor_name", "position", "velocity", "torque", "temperature", "fault_bits", "mode_status", "feedback_age_ms")
@@ -562,20 +706,22 @@ class HealthTelemetry(_message.Message):
     def __init__(self, component: _Optional[str] = ..., device_status: _Optional[_Union[DeviceStatus, _Mapping]] = ..., dropped_events: _Optional[int] = ...) -> None: ...
 
 class WatchTelemetryResponse(_message.Message):
-    __slots__ = ("monotonic_ns", "motor", "imu", "group", "health", "command_policy")
+    __slots__ = ("monotonic_ns", "motor", "imu", "group", "health", "command_policy", "power_board")
     MONOTONIC_NS_FIELD_NUMBER: _ClassVar[int]
     MOTOR_FIELD_NUMBER: _ClassVar[int]
     IMU_FIELD_NUMBER: _ClassVar[int]
     GROUP_FIELD_NUMBER: _ClassVar[int]
     HEALTH_FIELD_NUMBER: _ClassVar[int]
     COMMAND_POLICY_FIELD_NUMBER: _ClassVar[int]
+    POWER_BOARD_FIELD_NUMBER: _ClassVar[int]
     monotonic_ns: int
     motor: MotorTelemetry
     imu: ImuTelemetry
     group: GroupTelemetry
     health: HealthTelemetry
     command_policy: CommandPolicyTelemetry
-    def __init__(self, monotonic_ns: _Optional[int] = ..., motor: _Optional[_Union[MotorTelemetry, _Mapping]] = ..., imu: _Optional[_Union[ImuTelemetry, _Mapping]] = ..., group: _Optional[_Union[GroupTelemetry, _Mapping]] = ..., health: _Optional[_Union[HealthTelemetry, _Mapping]] = ..., command_policy: _Optional[_Union[CommandPolicyTelemetry, _Mapping]] = ...) -> None: ...
+    power_board: PowerBoardTelemetry
+    def __init__(self, monotonic_ns: _Optional[int] = ..., motor: _Optional[_Union[MotorTelemetry, _Mapping]] = ..., imu: _Optional[_Union[ImuTelemetry, _Mapping]] = ..., group: _Optional[_Union[GroupTelemetry, _Mapping]] = ..., health: _Optional[_Union[HealthTelemetry, _Mapping]] = ..., command_policy: _Optional[_Union[CommandPolicyTelemetry, _Mapping]] = ..., power_board: _Optional[_Union[PowerBoardTelemetry, _Mapping]] = ...) -> None: ...
 
 class GetStateFrameRequest(_message.Message):
     __slots__ = ("groups", "imus")

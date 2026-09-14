@@ -174,6 +174,9 @@ pub fn telemetry_event(
 ) -> proto::WatchTelemetryResponse {
     let transport_age_ms = observed_monotonic_ns.saturating_sub(value.monotonic_ns) / 1_000_000;
     let payload = match value.payload {
+        TelemetryPayload::PowerBoard(value) => {
+            proto::watch_telemetry_response::Payload::PowerBoard(super::power_board::convert(value))
+        }
         TelemetryPayload::Motor(value) => {
             proto::watch_telemetry_response::Payload::Motor(proto::MotorTelemetry {
                 group: value.group.to_string(),

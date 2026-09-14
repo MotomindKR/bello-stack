@@ -19,6 +19,20 @@ from .errors import (
     RpcError,
 )
 from .frames import RobotStateReader
+from .power import (
+    PowerBattery,
+    PowerBoardReader,
+    PowerBoardSnapshot,
+    PowerEncoder,
+    PowerEnvironment,
+    PowerFlags,
+    PowerGpi,
+    PowerIwc,
+    PowerLegacyFault,
+    PowerLocalRails,
+    PowerSample,
+    VoltageCurrent,
+)
 from .robot import Robot
 from .tls import TlsCredentials
 from .types import (
@@ -34,6 +48,7 @@ from .types import (
     Imu,
     Motor,
     MotorLimits,
+    PowerBoard,
     Quaternion,
     SerialDevice,
     StateFrameGroup,
@@ -71,6 +86,18 @@ __all__ = [
     "Motor",
     "MotorGroup",
     "MotorLimits",
+    "PowerBattery",
+    "PowerBoard",
+    "PowerBoardReader",
+    "PowerBoardSnapshot",
+    "PowerEncoder",
+    "PowerEnvironment",
+    "PowerFlags",
+    "PowerGpi",
+    "PowerIwc",
+    "PowerLegacyFault",
+    "PowerLocalRails",
+    "PowerSample",
     "ProtocolError",
     "Quaternion",
     "Robot",
@@ -83,4 +110,5 @@ __all__ = [
     "StateFrameMotor",
     "TlsCredentials",
     "Vector3",
+    "VoltageCurrent",
 ]

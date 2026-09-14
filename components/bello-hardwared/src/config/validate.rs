@@ -34,7 +34,7 @@ impl Config {
     }
 
     fn compose(
-        description: HardwareDescription,
+        mut description: HardwareDescription,
         deployment: DeploymentConfig,
         description_path: &Path,
     ) -> Result<Self> {
@@ -189,6 +189,49 @@ impl Config {
             })
             .collect();
 
+        // Validate all declared board ownership, including disabled boards.
+        let mut board_names = HashSet::new();
+        let mut claimed_serial: HashSet<_> = description
+            .imus
+            .iter()
+            .map(|imu| imu.serial_device.clone())
+            .collect();
+        for board in &description.power_boards {
+            crate::hardware::power_board::PowerBoardSpec::try_from(board)?;
+            if !board_names.insert(board.name.clone())
+                || !claimed_serial.insert(board.serial_device.clone())
+            {
+                bail!("duplicate power board name or serial device ownership");
+            }
+            if !description
+                .serial_devices
+                .iter()
+                .any(|serial| serial.name == board.serial_device)
+            {
+                bail!(
+                    "power board {} references unknown serial device",
+                    board.name
+                );
+            }
+        }
+        let enabled_boards: HashSet<_> = deployment.enabled_power_boards.iter().cloned().collect();
+        if enabled_boards.len() != deployment.enabled_power_boards.len()
+            || !enabled_boards.is_subset(&board_names)
+        {
+            bail!("enabled_power_boards contains duplicate or unknown board names");
+        }
+        let disabled_serial: HashSet<_> = description
+            .power_boards
+            .iter()
+            .filter(|b| !enabled_boards.contains(&b.name))
+            .map(|b| b.serial_device.clone())
+            .collect();
+        description
+            .power_boards
+            .retain(|b| enabled_boards.contains(&b.name));
+        description
+            .serial_devices
+            .retain(|s| !disabled_serial.contains(&s.name));
         let described_serial: HashSet<String> = description
             .serial_devices
             .iter()
@@ -225,6 +268,7 @@ impl Config {
             grpc: deployment.grpc,
             serial_devices,
             imus: description.imus,
+            power_boards: description.power_boards,
             buses,
             motors,
             motor_groups,
@@ -292,11 +336,28 @@ mod tests {
             );
             assert_ne!(physical_bus.interface, vcan_bus.interface);
         }
+        let physical_imu = physical
+            .serial_devices
+            .iter()
+            .find(|s| s.name == "imu_serial")
+            .unwrap();
+        let vcan_imu = vcan
+            .serial_devices
+            .iter()
+            .find(|s| s.name == "imu_serial")
+            .unwrap();
+        assert_eq!(physical_imu.baud_rate, vcan_imu.baud_rate);
+        assert_ne!(physical_imu.port, vcan_imu.port);
+        assert!(physical.power_boards.is_empty());
+        assert_eq!(vcan.power_boards.len(), 1);
         assert_eq!(
-            physical.serial_devices[0].baud_rate,
-            vcan.serial_devices[0].baud_rate
+            vcan.serial_devices
+                .iter()
+                .find(|s| s.name == "power_board_serial")
+                .unwrap()
+                .port,
+            "/dev/ttyPOWER"
         );
-        assert_ne!(physical.serial_devices[0].port, vcan.serial_devices[0].port);
 
         let milly = Config::load_raw(component.join("config/milly.yaml")).unwrap();
         let milly_vcan = Config::load_raw(component.join("config/milly-vcan.yaml")).unwrap();

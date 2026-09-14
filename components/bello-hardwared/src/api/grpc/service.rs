@@ -232,6 +232,24 @@ impl HardwareGrpc {
     }
 
     fn validate_telemetry_selectors(&self, request: &WatchTelemetryRequest) -> Result<(), Status> {
+        if !request.include_power_boards && !request.power_boards.is_empty() {
+            return Err(Status::invalid_argument(
+                "power board selectors require include_power_boards=true",
+            ));
+        }
+        for board in &request.power_boards {
+            if board.trim().is_empty()
+                || self
+                    .daemon
+                    .topology
+                    .power_boards()
+                    .all(|(name, _)| name.as_str() != board)
+            {
+                return Err(Status::invalid_argument(format!(
+                    "unknown telemetry power board {board:?}"
+                )));
+            }
+        }
         for group in &request.groups {
             if group.trim().is_empty() {
                 return Err(Status::invalid_argument(
@@ -289,6 +307,8 @@ impl HardwareGrpc {
             include_health: false,
             imus: request.imus.clone(),
             include_command_policy_events: false,
+            include_power_boards: false,
+            power_boards: Vec::new(),
         })
     }
 }

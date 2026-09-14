@@ -39,6 +39,7 @@ macro_rules! string_id {
 string_id!(BusName);
 string_id!(GroupName);
 string_id!(ImuName);
+string_id!(PowerBoardName);
 string_id!(MotorName);
 string_id!(SerialDeviceName);
 

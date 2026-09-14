@@ -31,6 +31,7 @@ pub struct Config {
     pub motor_kp_scale: f64,
     pub motor_kd_scale: f64,
     pub imu: ImuConfig,
+    pub power_board: Option<crate::power_board::Config>,
     pub pose: PoseConfig,
     pub torso_guide: Option<guide::Config>,
     pub fault_events: BTreeMap<String, Vec<ScheduledEvent>>,
@@ -65,6 +66,13 @@ impl Config {
             .context("config has no parent")?
             .join(&config.model)
             .canonicalize()?;
+        if let Some(power) = &config.power_board {
+            power.validate()?;
+            ensure!(
+                power.device != config.imu.device,
+                "IMU and power UART must be distinct"
+            );
+        }
         for (name, value) in [
             ("latency", config.command_latency_seconds),
             ("orientation noise", config.imu.orientation_std_radians),
@@ -213,6 +221,16 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
         .simulation
         .id(crate::ffi::mjtObj::mjOBJ_BODY, &config.pose.tracked_frame)?
         as usize;
+    if let Some(power) = &config.power_board {
+        ensure!(
+            robot
+                .hardware
+                .power_boards
+                .iter()
+                .any(|b| b.name == power.name && b.profile == cog_protocol::Profile::Agx),
+            "emulated power board must name a canonical AGX board"
+        );
+    }
     let mut buses = Vec::new();
     let mut endpoints = BTreeMap::new();
     for bus in &robot.hardware.logical_buses {
@@ -251,6 +269,10 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
     let mut guide = robot.guide;
     let mut serial =
         ebimu::Serial::open(&config.imu.device, config.imu.rate_hz, config.temperature_c)?;
+    let mut power_serial = config
+        .power_board
+        .map(crate::power_board::Serial::open)
+        .transpose()?;
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -369,6 +391,9 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
             sample.specific_force +=
                 Vector3::new(gaussian(), gaussian(), gaussian()) * config.imu.acceleration_std_mps2;
             serial.update(&sample)?;
+            if let Some(power) = &mut power_serial {
+                power.update(epoch.elapsed())?;
+            }
             if let Some(video) = &mut video {
                 video.sample(
                     &physics.simulation,
@@ -406,6 +431,7 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
     runtime.shutdown_timeout(Duration::from_secs(1));
     drop(endpoints);
     drop(serial);
+    drop(power_serial);
     let video_result = video
         .map(|video| video.finish(&model_config, &physics.simulation))
         .transpose();

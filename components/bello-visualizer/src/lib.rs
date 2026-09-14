@@ -4,6 +4,7 @@ pub mod config;
 pub mod diagnostics;
 pub mod editor;
 pub mod gamepad;
+mod power_ui;
 pub mod remote;
 pub mod runtime;
 pub mod scene;

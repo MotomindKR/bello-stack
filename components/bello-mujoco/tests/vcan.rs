@@ -58,6 +58,14 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
     socket.set_nonblocking(true).unwrap();
     let pty = nix::pty::openpty(None, None).unwrap();
     let device = nix::unistd::ttyname(&pty.slave).unwrap();
+    let power_pty = nix::pty::openpty(None, None).unwrap();
+    let power_device = nix::unistd::ttyname(&power_pty.slave).unwrap();
+    let mut power_peer = File::from(power_pty.master);
+    nix::fcntl::fcntl(
+        power_peer.as_raw_fd(),
+        nix::fcntl::FcntlArg::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
+    )
+    .unwrap();
     let mut serial = File::from(pty.master);
     nix::fcntl::fcntl(
         serial.as_raw_fd(),
@@ -74,6 +82,9 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
         yaml["bus_interfaces"][bus.as_str()] = interface.clone().into();
     }
     yaml["imu"]["device"] = device.to_string_lossy().into_owned().into();
+    if config.power_board.is_some() {
+        yaml["power_board"]["device"] = power_device.to_string_lossy().into_owned().into();
+    }
     yaml["pose"]["listen"] = address.to_string().into();
     let recording = tempfile::tempdir().unwrap();
     let video_path = recording.path().join("emulator.mp4");
@@ -126,10 +137,23 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
         .write_frame(&CanFrame::new(ExtendedId::new(request.id).unwrap(), &request.data).unwrap())
         .unwrap();
     let mut feedback_count = 0;
+    let mut power_parser = cog_protocol::Framer::default();
+    let mut power_kinds = std::collections::BTreeSet::new();
+    power_peer.write_all(b"sync\r\n").unwrap();
     let mut serial_bytes = Vec::new();
     let deadline = Instant::now() + Duration::from_secs(1);
     while Instant::now() < deadline {
         let mut bytes = [0; 4096];
+        match power_peer.read(&mut bytes) {
+            Ok(n) => {
+                for &byte in &bytes[..n] {
+                    if let Some(frame) = power_parser.push(byte, cog_protocol::Profile::Agx) {
+                        power_kinds.insert(frame.unwrap().kind);
+                    }
+                }
+            }
+            Err(e) => assert_eq!(e.kind(), std::io::ErrorKind::WouldBlock),
+        }
         match serial.read(&mut bytes) {
             Ok(n) => serial_bytes.extend_from_slice(&bytes[..n]),
             Err(e) => assert_eq!(e.kind(), std::io::ErrorKind::WouldBlock),
@@ -157,6 +181,9 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
     assert!(feedback_count > 10, "missing active CAN feedback");
+    if config.power_board.is_some() {
+        assert_eq!(power_kinds, [1, 2, 3, 5, 6, 7, 8].into_iter().collect());
+    }
     let text = std::str::from_utf8(&serial_bytes).unwrap();
     assert!(text.contains("<ok>"));
     let records: Vec<_> = text

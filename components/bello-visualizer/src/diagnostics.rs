@@ -1,3 +1,4 @@
+use crate::power_ui::power_ui;
 use std::time::Duration;
 
 use bello_hardware_client::{DeviceState, GroupState};
@@ -17,6 +18,7 @@ enum DiagnosticsTab {
     Motors,
     Groups,
     Imus,
+    Power,
     Events,
 }
 
@@ -55,6 +57,7 @@ impl DiagnosticsUi {
                     ui.selectable_value(&mut self.tab, DiagnosticsTab::Motors, "Motors");
                     ui.selectable_value(&mut self.tab, DiagnosticsTab::Groups, "Groups");
                     ui.selectable_value(&mut self.tab, DiagnosticsTab::Imus, "IMUs");
+                    ui.selectable_value(&mut self.tab, DiagnosticsTab::Power, "Power");
                     ui.selectable_value(&mut self.tab, DiagnosticsTab::Events, "Events");
                 });
                 ui.separator();
@@ -64,6 +67,7 @@ impl DiagnosticsUi {
                     DiagnosticsTab::Motors => motors_ui(ui, snapshot),
                     DiagnosticsTab::Groups => groups_ui(ui, snapshot),
                     DiagnosticsTab::Imus => imus_ui(ui, snapshot),
+                    DiagnosticsTab::Power => power_ui(ui, snapshot),
                     DiagnosticsTab::Events => self.events_ui(ui, snapshot),
                 }
             });

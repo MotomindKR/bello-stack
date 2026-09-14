@@ -125,7 +125,7 @@ InventoryMutation = Callable[[proto.ListHardwareResponse], object]
                 port="/dev/ttyUSB1",
                 baud_rate=115_200,
             ),
-            "not assigned to an IMU",
+            "not assigned to a sensor",
             id="unused-serial-device",
         ),
     ],

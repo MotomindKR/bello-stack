@@ -1,16 +1,11 @@
 //! EBIMU UART encoding. Physics samples stay in the physical sensor frame.
 use crate::Simulation;
+use crate::transport::Uart;
 use anyhow::{Result, ensure};
 use nalgebra::{Quaternion, UnitQuaternion, Vector3};
-use nix::sys::termios::{SetArg, cfmakeraw, tcgetattr, tcsetattr};
-use std::collections::VecDeque;
-use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
 const GRAVITY: f64 = 9.80665;
-const MAX_PENDING: usize = 16_384;
 
 pub struct Sample {
     pub time: f64,
@@ -274,60 +269,30 @@ impl Encoder {
 }
 
 pub struct Serial {
-    file: File,
+    uart: Uart,
     encoder: Encoder,
-    pending: VecDeque<u8>,
 }
 
 impl Serial {
     pub fn open(path: &Path, rate: f64, temperature: f64) -> Result<Self> {
-        let encoder = Encoder::new(rate, temperature)?;
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .custom_flags(nix::libc::O_NOCTTY | nix::libc::O_NONBLOCK)
-            .open(path)?;
-        let mut settings = tcgetattr(&file)?;
-        cfmakeraw(&mut settings);
-        tcsetattr(&file, SetArg::TCSANOW, &settings)?;
         Ok(Self {
-            file,
-            encoder,
-            pending: VecDeque::new(),
+            uart: Uart::open(path)?,
+            encoder: Encoder::new(rate, temperature)?,
         })
     }
-
     pub fn update(&mut self, sample: &Sample) -> Result<()> {
         let mut buffer = [0; 4096];
-        let count = match self.file.read(&mut buffer) {
-            Ok(n) => n,
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => 0,
-            Err(e) => return Err(e.into()),
-        };
-        self.pending
-            .extend(self.encoder.update(sample, &buffer[..count]));
-        ensure!(
-            self.pending.len() <= MAX_PENDING,
-            "EBIMU serial peer is not consuming output"
-        );
-        while !self.pending.is_empty() {
-            let (bytes, _) = self.pending.as_slices();
-            match self.file.write(bytes) {
-                Ok(0) => anyhow::bail!("EBIMU serial write returned zero"),
-                Ok(n) => {
-                    self.pending.drain(..n);
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-                Err(e) => return Err(e.into()),
-            }
-        }
-        Ok(())
+        let count = self.uart.read(&mut buffer)?;
+        self.uart
+            .write(&self.encoder.update(sample, &buffer[..count]))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs::File;
+    use std::io::{Read, Write};
     use std::os::fd::AsRawFd;
 
     fn sample() -> Sample {

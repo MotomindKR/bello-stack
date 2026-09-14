@@ -17,6 +17,7 @@ grpc:
   maximum_lease_ms: 5000
 
 bus_interfaces: { can0: vcan0, can1: vcan1 }
-serial_ports: { imu_serial: /dev/ttyIMU }
+serial_ports: { imu_serial: /dev/ttyIMU, power_board_serial: /dev/ttyPOWER }
+enabled_power_boards: [power_board]
 
 enabled_groups: [lower_body, upper_body]

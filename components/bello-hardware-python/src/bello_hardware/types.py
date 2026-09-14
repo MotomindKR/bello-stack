@@ -144,6 +144,16 @@ class Imu:
 
 
 @dataclass(frozen=True, slots=True)
+class PowerBoard:
+    name: str
+    serial_device: str
+    profile: str
+    stale_timeout_ms: int
+    sync_period_ms: int
+    status: DeviceStatus | None
+
+
+@dataclass(frozen=True, slots=True)
 class CoordinateTarget:
     """One hybrid impedance target, expressed in SI units."""
 

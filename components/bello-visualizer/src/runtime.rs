@@ -176,6 +176,7 @@ pub struct DisplaySnapshot {
     pub motors: BTreeMap<String, DisplayMotor>,
     pub groups: BTreeMap<String, DisplayGroup>,
     pub imus: BTreeMap<String, DisplayImu>,
+    pub power_boards: BTreeMap<String, bello_hardware_client::PowerBoardSnapshot>,
     pub health: BTreeMap<String, DisplayHealth>,
     pub events: Vec<DiagnosticEvent>,
     pub telemetry_dropped_total: u64,
@@ -198,6 +199,7 @@ impl Default for DisplaySnapshot {
             motors: BTreeMap::new(),
             groups: BTreeMap::new(),
             imus: BTreeMap::new(),
+            power_boards: BTreeMap::new(),
             health: BTreeMap::new(),
             events: Vec::new(),
             telemetry_dropped_total: 0,
@@ -232,6 +234,7 @@ struct RawHardware {
     groups: BTreeMap<String, DisplayGroup>,
     group_received: BTreeMap<String, Instant>,
     imus: BTreeMap<String, RawImu>,
+    power_boards: BTreeMap<String, bello_hardware_client::PowerBoardSnapshot>,
     health: BTreeMap<String, DisplayHealth>,
     events: VecDeque<DiagnosticEvent>,
     telemetry_dropped_total: u64,
@@ -964,6 +967,7 @@ async fn publish_hardware(
                     (name.clone(), value)
                 }).collect();
                 display.health = raw.health.clone();
+                display.power_boards = raw.power_boards.clone();
                 display.events = raw.events.iter().cloned().collect();
                 display.telemetry_dropped_total = raw.telemetry_dropped_total;
                 display.events_evicted = raw.events_evicted;
@@ -1011,6 +1015,7 @@ fn mark_hardware_disconnected(raw: &RwLock<RawHardware>, warning: impl Into<Stri
         );
     }
     raw.connected = false;
+    raw.power_boards.clear();
     raw.warning = Some(warning);
     for motor in raw.motors.values_mut() {
         motor.value.feedback_current_connection = false;
@@ -1261,6 +1266,9 @@ fn apply_robot_state(raw: &mut RawHardware, state: &bello_hardware_client::Robot
     };
     let now = Instant::now();
     match change {
+        RobotStateChange::PowerBoard(board) => {
+            raw.power_boards.insert(board.board.clone(), board.clone());
+        }
         RobotStateChange::Motor(motor) => {
             let Some(target) = raw.motors.get_mut(&motor.coordinate) else {
                 push_event(

@@ -6,6 +6,7 @@ use tonic::Status;
 mod command_stream;
 mod conversion;
 mod inventory;
+mod power_board;
 mod service;
 mod spec;
 mod state_frame;

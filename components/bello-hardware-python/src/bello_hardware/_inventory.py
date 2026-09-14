@@ -18,6 +18,7 @@ from .types import (
     Imu,
     Motor,
     MotorLimits,
+    PowerBoard,
     SerialDevice,
 )
 
@@ -115,10 +116,31 @@ class Inventory:
                     f"serial device {item.serial_device!r} is assigned to more than one IMU"
                 )
             claimed_serial_devices.add(item.serial_device)
+        _index_unique_names(response.power_boards, "power board")
+        for board in response.power_boards:
+            if (
+                board.serial_device not in serial_devices
+                or board.serial_device in claimed_serial_devices
+            ):
+                raise InventoryError("invalid power board serial ownership")
+            if board.profile not in ("agx", "nano_nx") or board.stale_timeout_ms <= 0:
+                raise InventoryError("invalid power board profile or freshness limit")
+            claimed_serial_devices.add(board.serial_device)
+        self.power_boards = tuple(
+            PowerBoard(
+                b.name,
+                b.serial_device,
+                b.profile,
+                b.stale_timeout_ms,
+                b.sync_period_ms,
+                _optional_status(b, "status"),
+            )
+            for b in response.power_boards
+        )
         unused_serial_devices = sorted(set(serial_devices) - claimed_serial_devices)
         if unused_serial_devices:
             raise InventoryError(
-                f"serial devices are not assigned to an IMU: {unused_serial_devices}"
+                f"serial devices are not assigned to a sensor: {unused_serial_devices}"
             )
 
         self.buses = tuple(

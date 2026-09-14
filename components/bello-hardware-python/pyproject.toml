@@ -12,8 +12,8 @@ license = "LicenseRef-Proprietary"
 license-files = ["LICENSE"]
 classifiers = ["Private :: Do Not Upload"]
 dependencies = [
-  "grpcio>=1.81,<2",
-  "protobuf>=6.33.5,<8",
+  "grpcio>=1.83,<2",
+  "protobuf>=7.35.1,<8",
 ]
 
 [tool.hatch.build.targets.wheel]

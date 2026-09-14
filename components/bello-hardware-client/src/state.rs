@@ -98,6 +98,7 @@ pub struct CommandPolicySnapshot {
 pub enum RobotStateChange {
     Motor(MotorSnapshot),
     Imu(ImuSnapshot),
+    PowerBoard(crate::PowerBoardSnapshot),
     Group(GroupSnapshot),
     Health(HealthSnapshot),
     CommandPolicy(CommandPolicySnapshot),
@@ -131,6 +132,7 @@ pub struct RobotState {
     motors: BTreeMap<String, MotorSnapshot>,
     groups: BTreeMap<String, GroupSnapshot>,
     imus: BTreeMap<String, ImuSnapshot>,
+    power_boards: BTreeMap<String, crate::PowerBoardSnapshot>,
     health: BTreeMap<String, HealthSnapshot>,
     command_policies: BTreeMap<(String, CommandPolicySlot), CommandPolicySnapshot>,
     last_change: Option<RobotStateChange>,
@@ -145,6 +147,7 @@ impl RobotState {
             motors: BTreeMap::new(),
             groups: BTreeMap::new(),
             imus: BTreeMap::new(),
+            power_boards: BTreeMap::new(),
             health: BTreeMap::new(),
             command_policies: BTreeMap::new(),
             last_change: None,
@@ -248,7 +251,12 @@ impl RobotState {
         self.imus.values()
     }
 
+    pub fn power_boards(&self) -> impl Iterator<Item = &crate::PowerBoardSnapshot> {
+        self.power_boards.values()
+    }
+
     fn clear_after_reconnect(&mut self) {
+        self.power_boards.clear();
         self.generation = self.generation.saturating_add(1);
         self.monotonic_ns = 0;
         self.motors.clear();
@@ -262,6 +270,19 @@ impl RobotState {
     fn apply(&mut self, event: crate::TelemetryEvent) -> Result<(), Error> {
         self.monotonic_ns = event.monotonic_ns;
         match event.payload {
+            Payload::PowerBoard(value) => {
+                let board = self
+                    .robot
+                    .inner
+                    .inventory
+                    .power_boards
+                    .get(&value.board_name)
+                    .ok_or_else(|| Error::Protocol("unknown power board".into()))?;
+                let snapshot = crate::PowerBoardSnapshot::decode(value, board, event.monotonic_ns)?;
+                self.power_boards
+                    .insert(snapshot.board.clone(), snapshot.clone());
+                self.last_change = Some(RobotStateChange::PowerBoard(snapshot));
+            }
             Payload::Motor(motor) => {
                 let configured = self
                     .robot
@@ -516,6 +537,7 @@ fn state_filter() -> TelemetryFilter {
     TelemetryFilter::default()
         .include_motors(true)
         .include_imu(true)
+        .include_power_boards(true)
         .include_health(true)
         .include_command_policy_events(true)
 }

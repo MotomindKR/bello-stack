@@ -284,6 +284,7 @@ pub(crate) struct Inventory {
     pub(crate) coordinates: BTreeMap<String, String>,
     pub(crate) serial_devices: BTreeMap<String, SerialDevice>,
     pub(crate) imus: BTreeMap<String, Imu>,
+    pub(crate) power_boards: BTreeMap<String, crate::PowerBoard>,
 }
 
 impl Inventory {
@@ -506,6 +507,33 @@ impl Inventory {
                 )));
             }
         }
+        let mut power_boards = BTreeMap::new();
+        let mut claimed: std::collections::BTreeSet<_> =
+            imus.values().map(|imu| imu.serial_device.clone()).collect();
+        for board in response.power_boards {
+            if board.name.trim().is_empty()
+                || !serial_devices.contains_key(&board.serial_device)
+                || !claimed.insert(board.serial_device.clone())
+                || !matches!(board.profile.as_str(), "agx" | "nano_nx")
+                || board.stale_timeout_ms == 0
+            {
+                return Err(Error::InvalidInventory(
+                    "invalid power board or serial ownership".into(),
+                ));
+            }
+            let name = board.name.clone();
+            let value = crate::PowerBoard {
+                name: board.name,
+                serial_device: board.serial_device,
+                profile: board.profile,
+                stale_timeout: std::time::Duration::from_millis(board.stale_timeout_ms),
+                sync_period: std::time::Duration::from_millis(board.sync_period_ms),
+                initial_status: board.status.map(Into::into),
+            };
+            if power_boards.insert(name, value).is_some() {
+                return Err(Error::InvalidInventory("duplicate power board".into()));
+            }
+        }
         Ok(Self {
             buses,
             groups,
@@ -513,6 +541,7 @@ impl Inventory {
             coordinates,
             serial_devices,
             imus,
+            power_boards,
         })
     }
 }
@@ -523,6 +552,7 @@ mod tests {
 
     fn inventory() -> proto::ListHardwareResponse {
         proto::ListHardwareResponse {
+            power_boards: vec![],
             buses: vec![proto::BusInfo {
                 name: "can0".into(),
                 interface: "vcan0".into(),

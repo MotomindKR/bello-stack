@@ -1,6 +1,59 @@
 use anyhow::Result;
 use robstride_protocol::Frame;
 
+/// Shared nonblocking UART transport for emulated sensors, with bounded output.
+pub(crate) struct Uart {
+    file: std::fs::File,
+    pending: std::collections::VecDeque<u8>,
+}
+
+impl Uart {
+    pub(crate) fn open(path: &std::path::Path) -> Result<Self> {
+        use nix::sys::termios::{SetArg, cfmakeraw, tcgetattr, tcsetattr};
+        use std::os::unix::fs::OpenOptionsExt;
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(nix::libc::O_NOCTTY | nix::libc::O_NONBLOCK)
+            .open(path)?;
+        let mut settings = tcgetattr(&file)?;
+        cfmakeraw(&mut settings);
+        tcsetattr(&file, SetArg::TCSANOW, &settings)?;
+        Ok(Self {
+            file,
+            pending: Default::default(),
+        })
+    }
+    pub(crate) fn read(&mut self, buffer: &mut [u8]) -> Result<usize> {
+        use std::io::Read;
+        match self.file.read(buffer) {
+            Ok(n) => Ok(n),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(0),
+            Err(e) => Err(e.into()),
+        }
+    }
+    pub(crate) fn write(&mut self, bytes: &[u8]) -> Result<()> {
+        use std::io::Write;
+        anyhow::ensure!(
+            self.pending.len() + bytes.len() <= 16384,
+            "emulated UART peer is not consuming output"
+        );
+        self.pending.extend(bytes);
+        while !self.pending.is_empty() {
+            let (bytes, _) = self.pending.as_slices();
+            match self.file.write(bytes) {
+                Ok(0) => anyhow::bail!("emulated UART write returned zero"),
+                Ok(n) => {
+                    self.pending.drain(..n);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(target_os = "linux")]
 pub struct CanEndpoint(socketcan::CanSocket);
 

@@ -76,6 +76,10 @@ impl Robot {
         self.inner.inventory.imus.values()
     }
 
+    pub fn power_boards(&self) -> impl ExactSizeIterator<Item = &crate::PowerBoard> {
+        self.inner.inventory.power_boards.values()
+    }
+
     /// Opens an aggregated stream of the latest robot state.
     pub async fn states(&self) -> Result<RobotStates, Error> {
         self.states_with(StateStreamOptions::default()).await

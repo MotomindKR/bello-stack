@@ -17,6 +17,8 @@ pub struct TelemetryFilter {
     include_health: bool,
     imus: Vec<String>,
     include_command_policy_events: bool,
+    include_power_boards: bool,
+    power_boards: Vec<String>,
 }
 
 impl TelemetryFilter {
@@ -29,6 +31,8 @@ impl TelemetryFilter {
             include_health: true,
             imus: Vec::new(),
             include_command_policy_events: true,
+            include_power_boards: true,
+            power_boards: Vec::new(),
         }
     }
 
@@ -65,6 +69,14 @@ impl TelemetryFilter {
     }
 
     fn validate(&self) -> Result<(), Error> {
+        if !self.include_power_boards && !self.power_boards.is_empty() {
+            return Err(Error::InvalidArgument(
+                "power board selectors require power telemetry".into(),
+            ));
+        }
+        for name in &self.power_boards {
+            require_nonempty(name, "power board selector")?;
+        }
         for group in &self.groups {
             require_nonempty(group, "telemetry group selector")?;
         }
@@ -87,7 +99,23 @@ impl TelemetryFilter {
             include_health: self.include_health,
             imus: self.imus,
             include_command_policy_events: self.include_command_policy_events,
+            include_power_boards: self.include_power_boards,
+            power_boards: self.power_boards,
         }
+    }
+}
+
+impl TelemetryFilter {
+    pub fn include_power_boards(mut self, include: bool) -> Self {
+        self.include_power_boards = include;
+        self
+    }
+    pub fn selected_power_boards(
+        mut self,
+        names: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        self.power_boards = names.into_iter().map(Into::into).collect();
+        self
     }
 }
 

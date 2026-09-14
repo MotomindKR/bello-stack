@@ -168,6 +168,92 @@ message ListHardwareResponse {
   repeated GroupInfo groups = 3;
   repeated SerialDeviceInfo serial_devices = 4;
   repeated ImuInfo imus = 5;
+  repeated PowerBoardInfo power_boards = 6;
+}
+
+message PowerBoardInfo {
+  string name = 1;
+  string serial_device = 2;
+  string profile = 3;
+  uint64 stale_timeout_ms = 4;
+  uint64 sync_period_ms = 5;
+  DeviceStatus status = 6;
+}
+
+message PowerVoltageCurrent {
+  double voltage_v = 1;
+  double current_a = 2;
+}
+
+message PowerBattery {
+  double voltage_v = 1;
+  double current_a = 2;
+  optional double soc_percent = 3;
+}
+
+message PowerGpi {
+  uint32 bits = 1;
+  optional uint32 second_bits = 2;
+}
+
+message PowerFlags {
+  uint32 bits = 1;
+  repeated string active_names = 2;
+}
+
+message PowerIwc {
+  PowerFlags info = 1;
+  PowerFlags warning = 2;
+  PowerFlags critical = 3;
+}
+
+message PowerLegacyFault {
+  PowerFlags alarm = 1;
+  PowerFlags fault = 2;
+}
+
+message PowerEnvironment {
+  double temperature_c = 1;
+  double pressure_pa = 2;
+}
+
+message PowerLocalRails {
+  PowerVoltageCurrent rail_20v0 = 1;
+  PowerVoltageCurrent rail_5v0 = 2;
+  PowerVoltageCurrent rail_3v3 = 3;
+}
+
+message PowerEncoder {
+  double left_rpm = 1;
+  double right_rpm = 2;
+}
+
+// Each packet type is sampled independently. Absence is unknown, never zero.
+message PowerBoardSample {
+  uint32 sequence = 1;
+  uint64 sample_age_ms = 2;
+  bool stale = 3;
+  oneof reading {
+    PowerBattery battery = 4;
+    PowerGpi gpi = 5;
+    PowerIwc iwc = 6;
+    PowerLegacyFault legacy_fault = 7;
+    PowerEnvironment environment = 8;
+    PowerLocalRails local_rails = 9;
+    PowerVoltageCurrent motor_rail = 10;
+    uint32 tick_count = 11;
+    PowerEncoder encoder = 12;
+  }
+}
+
+// Bounded latest-value snapshot; a new serial session clears all old readings.
+message PowerBoardTelemetry {
+  string board_name = 1;
+  uint64 connection_generation = 2;
+  DeviceStatus status = 3;
+  repeated PowerBoardSample samples = 4;
+  uint64 invalid_frames = 5;
+  uint64 unknown_frames = 6;
 }
 
 message AcquireLeaseRequest {
@@ -284,6 +370,8 @@ message WatchTelemetryRequest {
   bool include_health = 4;
   repeated string imus = 5;
   bool include_command_policy_events = 6;
+  bool include_power_boards = 7;
+  repeated string power_boards = 8;
 }
 
 message MotorTelemetry {
@@ -357,6 +445,7 @@ message WatchTelemetryResponse {
     GroupTelemetry group = 4;
     HealthTelemetry health = 5;
     CommandPolicyTelemetry command_policy = 6;
+    PowerBoardTelemetry power_board = 7;
   }
 }
 

@@ -85,6 +85,14 @@ pub struct Hardware {
     pub logical_buses: Vec<Bus>,
     pub motors: Vec<Motor>,
     pub imus: Vec<Imu>,
+    #[serde(default)]
+    pub power_boards: Vec<PowerBoard>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PowerBoard {
+    pub name: String,
+    pub profile: cog_protocol::Profile,
 }
 
 #[derive(Debug, Deserialize)]

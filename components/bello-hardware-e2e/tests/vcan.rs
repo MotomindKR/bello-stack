@@ -173,6 +173,8 @@ async fn canonical_lower_body_enforces_coupled_ankle_limits_over_two_buses() -> 
             include_health: false,
             imus: Vec::new(),
             include_command_policy_events: true,
+            include_power_boards: false,
+            power_boards: vec![],
         })
         .await?
         .into_inner();
@@ -622,6 +624,8 @@ async fn grpc_can_latency_distribution() -> Result<()> {
             include_health: false,
             imus: Vec::new(),
             include_command_policy_events: false,
+            include_power_boards: false,
+            power_boards: vec![],
         })
         .await?
         .into_inner();

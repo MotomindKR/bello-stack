@@ -14,6 +14,7 @@ mod error;
 mod frame;
 mod inventory;
 mod lease;
+mod power;
 mod robot;
 mod state;
 mod telemetry;
@@ -28,6 +29,9 @@ pub use error::Error;
 pub use frame::{CommandFrame, CommandFrameBuilder, CoordinateTarget};
 pub use inventory::{Bus, DeviceStatus, Imu, Motor, MotorLimits, SerialDevice};
 pub(crate) use lease::{GroupLease, LeaseDuration};
+pub use power::{
+    PowerBoard, PowerBoardSnapshot, PowerFlags, PowerReading, PowerSample, VoltageCurrent,
+};
 pub use robot::{MotorGroup, Robot};
 pub use state::{
     CommandPolicySnapshot, GroupSnapshot, HealthSnapshot, ImuSnapshot, MotorSnapshot, Quaternion,

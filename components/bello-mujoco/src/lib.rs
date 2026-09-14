@@ -13,6 +13,7 @@ pub mod ebimu;
 pub mod guide;
 pub mod model;
 pub mod pose;
+pub mod power_board;
 pub mod robstride;
 pub mod runtime;
 mod transport;

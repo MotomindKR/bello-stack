@@ -7,6 +7,21 @@ use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(crate) struct PowerBoardConfig {
+    pub name: String,
+    pub serial_device: String,
+    pub profile: crate::hardware::power_board::protocol::Profile,
+    pub sync_period_ms: Option<u64>,
+    #[serde(default = "default_power_stale_timeout")]
+    pub stale_timeout_ms: u64,
+}
+
+fn default_power_stale_timeout() -> u64 {
+    3000
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct Config {
     #[serde(skip)]
     pub(crate) robot_description: PathBuf,
@@ -18,6 +33,8 @@ pub(crate) struct Config {
     pub serial_devices: Vec<SerialDeviceConfig>,
     #[serde(default)]
     pub imus: Vec<ImuConfig>,
+    #[serde(default)]
+    pub power_boards: Vec<PowerBoardConfig>,
     pub buses: Vec<BusConfig>,
     pub motors: Vec<MotorConfig>,
     pub motor_groups: Vec<GroupConfig>,
@@ -36,6 +53,8 @@ pub(crate) struct DeploymentConfig {
     #[serde(default)]
     pub serial_ports: HashMap<String, String>,
     pub enabled_groups: Vec<String>,
+    #[serde(default)]
+    pub enabled_power_boards: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -47,6 +66,8 @@ pub(crate) struct HardwareDescription {
     pub serial_devices: Vec<LogicalSerialDeviceConfig>,
     #[serde(default)]
     pub imus: Vec<ImuConfig>,
+    #[serde(default)]
+    pub power_boards: Vec<PowerBoardConfig>,
     pub motors: Vec<MotorConfig>,
     pub motor_groups: Vec<GroupConfig>,
 }

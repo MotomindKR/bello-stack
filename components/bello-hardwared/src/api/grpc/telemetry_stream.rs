@@ -87,6 +87,14 @@ fn selected(filter: &WatchTelemetryRequest, payload: &TelemetryPayload) -> bool 
                         .any(|group| group == value.group.as_str()))
         }
         TelemetryPayload::Health(_) => filter.include_health,
+        TelemetryPayload::PowerBoard(value) => {
+            filter.include_power_boards
+                && (filter.power_boards.is_empty()
+                    || filter
+                        .power_boards
+                        .iter()
+                        .any(|name| name == value.name.as_str()))
+        }
     }
 }
 

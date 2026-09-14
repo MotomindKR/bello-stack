@@ -9,12 +9,14 @@ use tokio::sync::watch;
 
 use crate::config::ResolvedTopology;
 use crate::control::{GroupHandle, GroupWorker, LifecycleAction, Transition};
+use crate::domain::PowerBoardName;
 use crate::domain::{
     BusName, CommandBatch, CommandError, GroupName, ImuName, MotorName, SerialDeviceName,
 };
 use crate::hardware::can::BusManager;
 use crate::hardware::imu::{ImuHandle, ImuWorker};
 use crate::hardware::lifecycle::DeviceStatus;
+use crate::hardware::power_board::PowerBoardWorker;
 use crate::hardware::robstride::MotorManager;
 use crate::hardware::robstride::TimedFeedback;
 use crate::hardware::serial::SerialManager;
@@ -33,6 +35,7 @@ pub struct HardwareDaemon {
     pub(crate) imus: HashMap<ImuName, ImuHandle>,
     group_workers: Mutex<Vec<GroupWorker>>,
     imu_workers: Vec<ImuWorker>,
+    pub(crate) power_workers: HashMap<PowerBoardName, PowerBoardWorker>,
     motor_workers: MotorManager,
     bus_workers: BusManager,
     serial_workers: SerialManager,
@@ -56,6 +59,14 @@ impl HardwareDaemon {
             imus.insert(name.clone(), worker.handle.clone());
             imu_workers.push(worker);
         }
+        let mut power_workers = HashMap::new();
+        for (name, board) in topology.power_boards() {
+            let serial = serial_workers.handle(&board.serial_device)?;
+            power_workers.insert(
+                name.clone(),
+                PowerBoardWorker::start(board.clone(), serial, telemetry.clone())?,
+            );
+        }
         let mut groups = HashMap::new();
         let mut group_workers = Vec::new();
         for (name, group) in topology.groups() {
@@ -77,6 +88,7 @@ impl HardwareDaemon {
             imus,
             group_workers: Mutex::new(group_workers),
             imu_workers,
+            power_workers,
             motor_workers,
             bus_workers,
             serial_workers,
@@ -288,5 +300,9 @@ impl Drop for HardwareDaemon {
             worker.request_stop();
         }
         self.imu_workers.clear();
+        for worker in self.power_workers.values() {
+            worker.request_stop();
+        }
+        self.power_workers.clear();
     }
 }

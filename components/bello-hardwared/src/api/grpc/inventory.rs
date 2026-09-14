@@ -105,11 +105,28 @@ pub fn list(daemon: &HardwareDaemon) -> ListHardwareResponse {
         .collect();
     imus.sort_by(|left, right| left.name.cmp(&right.name));
 
+    let mut power_boards: Vec<_> = topology
+        .power_boards()
+        .map(|(name, spec)| bello_hardware_api::PowerBoardInfo {
+            name: name.to_string(),
+            serial_device: spec.serial_device.to_string(),
+            profile: spec.profile.name().into(),
+            stale_timeout_ms: spec.stale_timeout.as_millis() as u64,
+            sync_period_ms: spec.sync_period.as_millis() as u64,
+            status: daemon
+                .power_workers
+                .get(name)
+                .map(|worker| conversion::device_status(&worker.lifecycle.status())),
+        })
+        .collect();
+    power_boards.sort_by(|a, b| a.name.cmp(&b.name));
+
     ListHardwareResponse {
         buses,
         motors,
         groups,
         serial_devices,
         imus,
+        power_boards,
     }
 }

@@ -389,18 +389,34 @@ fn inventory() -> proto::ListHardwareResponse {
         transition_count,
     };
     proto::ListHardwareResponse {
+        power_boards: vec![proto::PowerBoardInfo {
+            name: "power".into(),
+            serial_device: "power_serial".into(),
+            profile: "agx".into(),
+            stale_timeout_ms: 3000,
+            sync_period_ms: 1000,
+            status: Some(online("power online", 1)),
+        }],
         buses: vec![proto::BusInfo {
             name: BUS.into(),
             interface: "vcan42".into(),
             host_id: 127,
             status: Some(online("bus online", 2)),
         }],
-        serial_devices: vec![proto::SerialDeviceInfo {
-            name: SERIAL.into(),
-            port: "/dev/ttyTEST0".into(),
-            baud_rate: 921_600,
-            status: Some(online("serial online", 3)),
-        }],
+        serial_devices: vec![
+            proto::SerialDeviceInfo {
+                name: "power_serial".into(),
+                port: "/dev/ttyPOWER".into(),
+                baud_rate: 921600,
+                status: Some(online("power UART", 1)),
+            },
+            proto::SerialDeviceInfo {
+                name: SERIAL.into(),
+                port: "/dev/ttyTEST0".into(),
+                baud_rate: 921_600,
+                status: Some(online("serial online", 3)),
+            },
+        ],
         groups: vec![proto::GroupInfo {
             name: GROUP.into(),
             control_rate_hz: 250.0,
@@ -486,6 +502,29 @@ fn isolation_inventory() -> proto::ListHardwareResponse {
 }
 
 fn telemetry(filter: &proto::WatchTelemetryRequest) -> Vec<proto::WatchTelemetryResponse> {
+    let power = response(Payload::PowerBoard(proto::PowerBoardTelemetry {
+        board_name: "power".into(),
+        connection_generation: 1,
+        status: Some(proto::DeviceStatus {
+            state: proto::DeviceState::Online as i32,
+            detail: "COG online".into(),
+            transition_count: 1,
+        }),
+        samples: vec![proto::PowerBoardSample {
+            sequence: 7,
+            sample_age_ms: 20,
+            stale: false,
+            reading: Some(proto::power_board_sample::Reading::Battery(
+                proto::PowerBattery {
+                    voltage_v: 48.5,
+                    current_a: -1.25,
+                    soc_percent: Some(73.0),
+                },
+            )),
+        }],
+        invalid_frames: 2,
+        unknown_frames: 0,
+    }));
     let mut events = vec![response(Payload::Group(proto::GroupTelemetry {
         group: GROUP.into(),
         state: proto::GroupState::Running as i32,
@@ -495,6 +534,9 @@ fn telemetry(filter: &proto::WatchTelemetryRequest) -> Vec<proto::WatchTelemetry
         detail: String::new(),
         cause: proto::GroupCause::Unspecified as i32,
     }))];
+    if filter.include_power_boards {
+        events.push(power);
+    }
     if filter.include_motors {
         events.extend([
             response(Payload::Motor(proto::MotorTelemetry {
@@ -625,6 +667,7 @@ async fn monitor_publishes_complete_equal_timestamp_state_freezes_and_reconnects
                 .get(IMU)
                 .is_some_and(|imu| imu.sample_available)
             && display.health.contains_key(&format!("can/{BUS}"))
+            && display.power_boards.contains_key("power")
             && display
                 .events
                 .iter()
@@ -642,6 +685,16 @@ async fn monitor_publishes_complete_equal_timestamp_state_freezes_and_reconnects
             Some(DeviceState::Degraded)
         );
         assert_eq!(display.serial_devices[SERIAL].baud_rate, 921_600);
+        let power = &display.power_boards["power"];
+        assert_eq!(power.samples.len(), 1);
+        assert!(matches!(
+            power.samples[0].reading,
+            bello_hardware_client::PowerReading::Battery {
+                voltage_v: 48.5,
+                current_a: -1.25,
+                soc_percent: Some(73.0)
+            }
+        ));
 
         let hip = &display.motors[COORDINATE_A];
         assert_eq!(hip.motor, MOTOR_A);
@@ -706,6 +759,7 @@ async fn monitor_publishes_complete_equal_timestamp_state_freezes_and_reconnects
         let filter = &recorded.telemetry_requests[0];
         assert!(filter.include_motors);
         assert!(filter.include_imu);
+        assert!(filter.include_power_boards);
         assert!(filter.include_health);
         assert!(filter.include_command_policy_events);
     }
@@ -718,6 +772,7 @@ async fn monitor_publishes_complete_equal_timestamp_state_freezes_and_reconnects
     {
         let display = latest.read();
         assert!(display.hardware_warning.is_some());
+        assert!(display.power_boards.is_empty());
         assert_eq!(display.motors[COORDINATE_A].position, frozen_hip);
         assert!(display.motors[COORDINATE_A].feedback_available);
         assert!(!display.motors[COORDINATE_A].feedback_current_connection);

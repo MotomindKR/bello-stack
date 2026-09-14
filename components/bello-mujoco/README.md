@@ -1,5 +1,9 @@
 # Native MuJoCo runtime
 
+The maintained emulator profiles also expose a synthetic AGX COG power board.
+Create the power UART pair alongside the IMU pair; see
+[power-board configuration and limitations](../../docs/power_board.md).
+
 The headless physics adapter uses `mujoco-rs` and the existing
 `robstride-emulator`/`robstride-protocol` engine. It does not implement a second
 ankle conversion: native joint/tendon transmissions supply motor coordinates.
