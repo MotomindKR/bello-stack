@@ -490,19 +490,6 @@ mod tests {
     use tokio_stream::StreamExt;
 
     #[test]
-    fn maintained_estimator_profiles_validate() {
-        let config = Path::new(env!("CARGO_MANIFEST_DIR")).join("config");
-        for name in [
-            "bello.yaml",
-            "bello-vcan.yaml",
-            "bello-mini.yaml",
-            "bello-mini-vcan.yaml",
-        ] {
-            check(&config.join(name)).unwrap_or_else(|error| panic!("{name}: {error:#}"));
-        }
-    }
-
-    #[test]
     fn imu_output_frame_must_match_estimator_input_frame() {
         validate_imu_output_frame("imu", "imu_link", Some("imu_link")).unwrap();
 

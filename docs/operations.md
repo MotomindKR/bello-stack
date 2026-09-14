@@ -179,7 +179,7 @@ For Bello Mini vCAN, select both Mini profiles instead:
 cargo run -p bello-hardwared -- \
   --config components/bello-hardwared/config/bello-mini-vcan.yaml
 cargo run -p bello-state-estimatord -- \
-  --config components/bello-state-estimatord/config/bello-mini-vcan.yaml
+  --config components/bello-state-estimatord/config/bello-mini.yaml
 cp components/bello-visualizer/config/bello-mini.example.yaml \
   components/bello-visualizer/config/bello-mini.yaml
 cargo run -p bello-visualizer -- \

@@ -70,7 +70,7 @@ remain:
   [`config/bello-vcan.yaml`](../components/bello-hardwared/config/bello-vcan.yaml) for
   maintained example configurations.
 - [`bello-state-estimatord/config`](../components/bello-state-estimatord/config)
-  for the explicit Bello and Bello Mini physical/vCAN pose-estimator profiles.
+  for the transport-independent Bello and Bello Mini pose-estimator profiles.
 - [`descriptions/bello`](../descriptions/bello) for the canonical robot
   description, meshes, hardware topology, and their provenance boundary.
 - [`descriptions/milly`](../descriptions/milly) for the canonical Milly

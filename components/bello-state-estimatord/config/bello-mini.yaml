@@ -1,4 +1,4 @@
-# Contact-aided local pose estimator for physical Bello Mini hardware.
+# Contact-aided local pose estimator for Bello Mini, independent of hardware transport.
 urdf: ../../../descriptions/bello_mini/urdf/bello_mini.urdf
 hardware_endpoint: http://127.0.0.1:50051
 listen: 0.0.0.0:50053

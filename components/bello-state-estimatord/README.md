@@ -62,25 +62,26 @@ with:
 
 ```sh
 RUST_LOG=bello_state_estimatord=debug cargo run -p bello-state-estimatord -- \
-  --config components/bello-state-estimatord/config/bello-vcan.yaml
+  --config components/bello-state-estimatord/config/bello.yaml
 ```
 
-Run the physical configuration after `bello-hardwared` is online:
+Run the robot's configuration after `bello-hardwared` is online:
 
 ```sh
 cargo run -p bello-state-estimatord -- \
   --config components/bello-state-estimatord/config/bello.yaml
 ```
 
-For physical Bello Mini, select its profile explicitly:
+For Bello Mini, select its profile explicitly:
 
 ```sh
 cargo run -p bello-state-estimatord -- \
   --config components/bello-state-estimatord/config/bello-mini.yaml
 ```
 
-For vCAN use `bello-vcan.yaml` or `bello-mini-vcan.yaml` to match the emulated
-robot. The supplied profiles bind PoseService on `0.0.0.0:50053`; local
+Use the same robot profile for physical hardware and emulation: the estimator
+consumes gRPC telemetry and does not select CAN or serial transports. The
+supplied profiles bind PoseService on `0.0.0.0:50053`; local
 consumers connect to `127.0.0.1:50053` and request `odom` as the reference frame
 and `pelvis_link` as the tracked frame.
 
