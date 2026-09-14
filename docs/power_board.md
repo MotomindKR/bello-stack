@@ -17,8 +17,11 @@ are rejected. Unknown flag bits retain explicit names and their raw mask.
 ## Physical deployment
 
 Bello and Mini descriptions declare `power_board` on `power_board_serial`.
-Physical deployments leave it disabled until the actual board/profile/port
-are verified. Add both entries to your local deployment:
+The Mini physical deployment enables it on the verified AGX Orin UART
+`/dev/ttyTHS1` at 921600 baud. Stop any existing COG monitor on that port
+before starting hardwared; hardwared now owns telemetry and the sync heartbeat.
+The original Bello physical deployment still leaves it disabled. To enable
+it on another deployment, verify the board/profile/port and add both entries:
 
 ```yaml
 enabled_power_boards: [power_board]

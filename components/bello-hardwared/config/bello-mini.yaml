@@ -17,6 +17,10 @@ grpc:
   maximum_lease_ms: 5000
 
 bus_interfaces: { can0: can0, can1: can1 }
-serial_ports: { imu_serial: /dev/serial/by-id/usb-1a86_USB_Single_Serial_5C93185491-if00 }
+serial_ports:
+  imu_serial: /dev/serial/by-id/usb-1a86_USB_Single_Serial_5C93185491-if00
+  power_board_serial: /dev/ttyTHS1
+
+enabled_power_boards: [power_board]
 
 enabled_groups: [lower_body, upper_body]
