@@ -36,11 +36,6 @@ impl ImuLowPass {
         }
     }
 
-    pub(crate) fn reset(&mut self) {
-        self.previous_source_ns = None;
-        self.filtered = None;
-    }
-
     pub(crate) fn update(
         &mut self,
         source_ns: u64,

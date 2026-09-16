@@ -5,6 +5,16 @@ through `bello-hardware-client`, estimates a local tracked-frame pose with
 encoder-based stationary-foot constraints, and implements the existing
 `bello.pose.v1.PoseService`.
 
+Hardwared may start later or restart independently. The pose service stays up,
+retries connection/telemetry transport failures and stream closure with bounded
+backoff, and reloads/validates the inventory on each connection. No poses are
+produced during an outage; new subscribers do not receive cached poses older
+than `imu_stale_ms`. On recovery, fresh aligned motor/IMU data resumes the same
+pose sequence without integrating outage time. Existing odometry is preserved,
+so movement while telemetry is missing cannot be reconstructed. Invalid local
+configuration, incompatible inventory/frames, and non-transport errors still
+fail explicitly.
+
 `imu_frame` names the hardwared IMU `output_frame`. Hardwared has already
 rotated the physical sensor sample into those axes, while preserving the sensor
 origin. The estimator runs its contact filter at that origin, then uses the
@@ -65,7 +75,7 @@ RUST_LOG=bello_state_estimatord=debug cargo run -p bello-state-estimatord -- \
   --config components/bello-state-estimatord/config/bello.yaml
 ```
 
-Run the robot's configuration after `bello-hardwared` is online:
+Run the robot's configuration; `bello-hardwared` may start before or after it:
 
 ```sh
 cargo run -p bello-state-estimatord -- \

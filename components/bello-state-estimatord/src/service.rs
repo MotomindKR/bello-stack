@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, bail};
-use bello_hardware_client::{Robot, RobotStateChange};
+use bello_hardware_client::{Error as HardwareError, Robot, RobotStateChange, StateStreamOptions};
 use bello_pose_api::pose_service_server::{PoseService, PoseServiceServer};
 use bello_pose_api::{
     AngularVelocity, LinearVelocity, Orientation, Translation, WatchPoseRequest, WatchPoseResponse,
@@ -40,6 +40,7 @@ struct PoseServer {
     reference_frame: Arc<str>,
     tracked_frame: Arc<str>,
     poses: watch::Receiver<Option<StampedPose>>,
+    maximum_age: Duration,
 }
 
 #[tonic::async_trait]
@@ -66,12 +67,14 @@ impl PoseService for PoseServer {
         let reference_frame = self.reference_frame.clone();
         let tracked_frame = self.tracked_frame.clone();
         let mut poses = self.poses.clone();
+        let maximum_age = self.maximum_age;
         let stream = async_stream::try_stream! {
             let mut last_sequence = None;
             loop {
                 let current = poses.borrow_and_update().clone();
                 if let Some(sample) = current
                     && last_sequence != Some(sample.sequence)
+                    && sample.source_age.saturating_add(sample.produced.elapsed()) <= maximum_age
                 {
                     last_sequence = Some(sample.sequence);
                     yield response_for(&reference_frame, &tracked_frame, sample);
@@ -91,16 +94,12 @@ pub async fn run(path: &Path) -> anyhow::Result<()> {
     let listener = TcpListener::bind(listen)
         .await
         .with_context(|| format!("bind pose service to {listen}"))?;
-    let robot = Robot::connect(config.hardware_endpoint.clone())
-        .await
-        .with_context(|| format!("connect to hardware at {}", config.hardware_endpoint))?;
-    validate_inventory(&robot, &config, &model)?;
-
     let (pose_sender, pose_receiver) = watch::channel(None);
     let pose_server = PoseServer {
         reference_frame: Arc::from(config.reference_frame.as_str()),
         tracked_frame: Arc::from(config.tracked_frame.as_str()),
         poses: pose_receiver,
+        maximum_age: config.imu_stale(),
     };
     let (server_shutdown, server_shutdown_receiver) = oneshot::channel();
     let mut server = tokio::spawn(async move {
@@ -115,7 +114,6 @@ pub async fn run(path: &Path) -> anyhow::Result<()> {
 
     let (monitor_shutdown, monitor_shutdown_receiver) = watch::channel(false);
     let mut monitor = tokio::spawn(monitor_hardware(
-        robot,
         config,
         model,
         imu_frame,
@@ -177,6 +175,8 @@ pub fn check(path: &Path) -> anyhow::Result<()> {
 
 fn load(path: &Path) -> anyhow::Result<(EstimatorConfig, KinematicModel, ImuFrameTransform)> {
     let config = EstimatorConfig::load(path)?;
+    tonic::transport::Endpoint::from_shared(config.hardware_endpoint.clone())
+        .context("invalid hardware endpoint")?;
     let description = RobotDescription::load(&config.urdf)?;
     let model = description.kinematic_model(
         &config.tracked_frame,
@@ -230,53 +230,119 @@ fn validate_imu_output_frame(
 }
 
 async fn monitor_hardware(
-    robot: Robot,
     config: EstimatorConfig,
     model: KinematicModel,
     imu_frame: ImuFrameTransform,
     poses: watch::Sender<Option<StampedPose>>,
     mut shutdown: watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
-    let mut states = robot.states().await.context("open hardware state stream")?;
     let mut filter = ContactFilter::new(&config);
+    let mut sequence = 0_u64;
+    let mut retry_delay = Duration::from_millis(200);
+    loop {
+        if *shutdown.borrow() {
+            return Ok(());
+        }
+        let previous_sequence = sequence;
+        let session = async {
+            let robot = tokio::time::timeout(
+                Duration::from_secs(3),
+                Robot::connect(config.hardware_endpoint.clone()),
+            )
+            .await
+            .map_err(|_| {
+                HardwareError::Rpc(Status::deadline_exceeded("hardware connection timed out"))
+            })??;
+            validate_inventory(&robot, &config, &model)?;
+            consume_hardware(
+                robot,
+                &config,
+                &model,
+                &imu_frame,
+                &poses,
+                &mut filter,
+                &mut sequence,
+            )
+            .await
+        };
+        let result = tokio::select! {
+            result = session => result,
+            _ = shutdown.changed() => return Ok(()),
+        };
+        poses.send_replace(None);
+        if let Err(error) = &result
+            && !retryable_hardware_error(error)
+        {
+            return result;
+        }
+        if sequence != previous_sequence {
+            retry_delay = Duration::from_millis(200);
+        }
+        warn!(error = ?result.err(), ?retry_delay, "hardware telemetry unavailable; keeping pose service alive and reconnecting");
+        tokio::select! {
+            _ = tokio::time::sleep(retry_delay) => {},
+            _ = shutdown.changed() => return Ok(()),
+        }
+        retry_delay = (retry_delay * 2).min(Duration::from_secs(5));
+    }
+}
+
+fn retryable_hardware_error(error: &anyhow::Error) -> bool {
+    match error.downcast_ref::<HardwareError>() {
+        Some(HardwareError::Transport(_)) => true,
+        Some(HardwareError::Rpc(status)) => matches!(
+            status.code(),
+            tonic::Code::Unavailable
+                | tonic::Code::Cancelled
+                | tonic::Code::DeadlineExceeded
+                | tonic::Code::Unknown
+        ),
+        _ => false,
+    }
+}
+
+async fn consume_hardware(
+    robot: Robot,
+    config: &EstimatorConfig,
+    model: &KinematicModel,
+    imu_frame: &ImuFrameTransform,
+    poses: &watch::Sender<Option<StampedPose>>,
+    filter: &mut ContactFilter,
+    sequence: &mut u64,
+) -> anyhow::Result<()> {
+    let mut states = tokio::time::timeout(
+        Duration::from_secs(3),
+        robot.states_with(StateStreamOptions::default().reconnect_on_unavailable(false)),
+    )
+    .await
+    .map_err(|_| HardwareError::Rpc(Status::deadline_exceeded("open hardware stream timed out")))?
+    .context("open hardware state stream")?;
+    info!("hardware telemetry connected; preserving pose and discarding outage time");
     let mut imu_low_pass = ImuLowPass::new(
         config.orientation_lpf_cutoff_hz,
         config.gyro_lpf_cutoff_hz,
         config.acceleration_lpf_cutoff_hz,
     );
     let mut coordinate_history = CoordinateHistory::default();
-    let mut generation = None;
     let mut previous_imu_ns = None;
     let mut previous_motor_epoch = None;
-    let mut sequence = 0_u64;
     let mut last_diagnostics = Instant::now();
 
     loop {
-        let state = tokio::select! {
-            changed = states.changed() => match changed.context("read hardware state stream")? {
-                Some(state) => state,
-                None => bail!("hardware state stream ended"),
-            },
-            changed = shutdown.changed() => {
-                if changed.is_err() || *shutdown.borrow() {
-                    return Ok(());
-                }
-                continue;
-            }
+        let state = match tokio::time::timeout(
+            config
+                .imu_stale()
+                .max(config.motor_stale())
+                .max(Duration::from_secs(1)),
+            states.changed(),
+        )
+        .await
+        .map_err(|_| HardwareError::Rpc(Status::deadline_exceeded("hardware telemetry stalled")))?
+        .context("read hardware state stream")?
+        {
+            Some(state) => state,
+            None => return Ok(()),
         };
-        if generation != Some(state.generation()) {
-            generation = Some(state.generation());
-            previous_imu_ns = None;
-            previous_motor_epoch = None;
-            imu_low_pass.reset();
-            coordinate_history.clear();
-            if state.generation() != 0 {
-                warn!(
-                    generation = state.generation(),
-                    "hardware telemetry reconnected; preserving pose and discarding outage time"
-                );
-            }
-        }
         let imu = match state.last_change() {
             Some(RobotStateChange::Motor(motor)) => {
                 if model
@@ -399,9 +465,9 @@ async fn monitor_hardware(
                 pose.linear_velocity,
                 angular_velocity,
             );
-            sequence = sequence.saturating_add(1);
+            *sequence = sequence.saturating_add(1);
             poses.send_replace(Some(StampedPose {
-                sequence,
+                sequence: *sequence,
                 pose: PoseEstimate {
                     position: tracked.position,
                     orientation: tracked.orientation,
@@ -485,6 +551,10 @@ fn response_for(
 }
 
 #[cfg(test)]
+#[path = "service_tests.rs"]
+mod reconnect_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use tokio_stream::StreamExt;
@@ -512,6 +582,7 @@ mod tests {
             reference_frame: Arc::from("odom"),
             tracked_frame: Arc::from("pelvis"),
             poses: receiver,
+            maximum_age: Duration::from_secs(1),
         };
         let wrong = server
             .watch_pose(Request::new(WatchPoseRequest {

@@ -98,10 +98,6 @@ pub struct AlignedCoordinates {
 }
 
 impl CoordinateHistory {
-    pub fn clear(&mut self) {
-        self.timelines.clear();
-    }
-
     pub fn observe(
         &mut self,
         coordinate: &str,
