@@ -61,7 +61,7 @@ motors:
       temperature_recovery_duration_ms: 2000
     command_policy: &command_policy
       maximum_position_step: 2.0
-      limit: clamp
+      limit: reject
       position_step: reject
     fault_damping_kd: 15.0
   - { name: waist_roll_motor, coordinate: waist_roll_joint, bus: can0, id: 52, model: ROBSTRIDE_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }

@@ -29,7 +29,7 @@ motors:
       temperature_recovery_duration_ms: 2000
     command_policy: &command_policy
       maximum_position_step: 3.0
-      limit: clamp
+      limit: reject
       position_step: fault
     fault_damping_kd: 10.0
 

@@ -113,7 +113,6 @@ fn command_check(value: CommandPolicyCheck) -> i32 {
 
 fn command_behavior(value: CommandBehavior) -> i32 {
     (match value {
-        CommandBehavior::Clamp => proto::CommandBehavior::Clamp,
         CommandBehavior::Reject => proto::CommandBehavior::Reject,
         CommandBehavior::Fault => proto::CommandBehavior::Fault,
     }) as i32

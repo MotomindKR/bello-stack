@@ -318,7 +318,7 @@ motors:
       temperature_recovery_duration_ms: 2000
     command_policy:
       maximum_position_step: 0.5
-      limit: clamp
+      limit: reject
       position_step: fault
     fault_damping_kd: 10.0
 ```
@@ -358,8 +358,10 @@ motor must stay at or below `temperature_recovery_c` continuously for
 `temperature_recovery_duration_ms` before its device fault clears. The group
 fault remains latched until explicit recovery.
 
-Scalar `limit` and `position_step` policy behavior values are `clamp`, `reject`,
-and `fault`. Scalar limits apply to position, velocity, and feedforward torque.
+Scalar `limit` and `position_step` policy behavior values are `reject` and
+`fault`. Hardwared never repairs targets. Scalar limits apply to position,
+velocity, and feedforward torque. Clients must constrain their requests before
+submission, including coupled-joint bounds and maximum position steps.
 Finite `kp` and `kd` values are passed through without a hardwared gain guard;
 the Robstride Type-1 encoder saturates them to the model's representable range.
 

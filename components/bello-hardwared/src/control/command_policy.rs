@@ -78,7 +78,7 @@ pub(crate) fn coupled_limit_behavior<'a>(
 }
 
 pub(crate) fn check_command(
-    mut command: ImpedanceCommand,
+    command: ImpedanceCommand,
     position_reference: Option<PositionReference>,
     motor: &MotorSpec,
 ) -> CommandPolicyReport {
@@ -108,38 +108,33 @@ pub(crate) fn check_command(
     let limits = [
         (
             SafetyViolation::PositionLimit,
-            &mut command.position,
+            command.position,
             motor.limits.position_min,
             motor.limits.position_max,
         ),
         (
             SafetyViolation::VelocityLimit,
-            &mut command.velocity,
+            command.velocity,
             motor.limits.velocity_min,
             motor.limits.velocity_max,
         ),
         (
             SafetyViolation::TorqueLimit,
-            &mut command.torque,
+            command.torque,
             motor.limits.torque_min,
             motor.limits.torque_max,
         ),
     ];
     for (violation, value, minimum, maximum) in limits {
-        if !(minimum..=maximum).contains(value) {
-            let original = *value;
+        if !(minimum..=maximum).contains(&value) {
             let behavior = motor.command_policy.limit;
-            let modified = behavior == CommandBehavior::Clamp;
-            if modified {
-                *value = value.clamp(minimum, maximum);
-            }
             issues.push(CommandPolicyIssue {
                 check: CommandPolicyCheck::CommandLimit,
                 behavior,
                 violation,
-                detail: format!("command value {original} outside [{minimum}, {maximum}]"),
-                command_modified: modified,
-                command_rejected: !modified,
+                detail: format!("command value {value} outside [{minimum}, {maximum}]"),
+                command_modified: false,
+                command_rejected: true,
             });
         }
     }
@@ -149,14 +144,6 @@ pub(crate) fn check_command(
         let delta = command.position - reference_position;
         if delta.abs() > motor.command_policy.maximum_position_step {
             let behavior = motor.command_policy.position_step;
-            let modified = behavior == CommandBehavior::Clamp;
-            if modified {
-                command.position = reference_position
-                    + delta.clamp(
-                        -motor.command_policy.maximum_position_step,
-                        motor.command_policy.maximum_position_step,
-                    );
-            }
             issues.push(CommandPolicyIssue {
                 check: CommandPolicyCheck::PositionStep,
                 behavior,
@@ -166,8 +153,8 @@ pub(crate) fn check_command(
                     reference.description(),
                     motor.command_policy.maximum_position_step
                 ),
-                command_modified: modified,
-                command_rejected: !modified,
+                command_modified: false,
+                command_rejected: true,
             });
         }
     }
@@ -192,9 +179,8 @@ mod tests {
     }
 
     #[test]
-    fn warning_limit_can_clamp_and_continue() {
-        let mut motor = motor();
-        motor.command_policy.limit = CommandBehavior::Clamp;
+    fn position_limit_rejects_without_modification() {
+        let motor = motor();
         let report = check_command(
             ImpedanceCommand {
                 position: motor.limits.position_max + 1.0,
@@ -203,13 +189,13 @@ mod tests {
             None,
             &motor,
         );
-        assert_eq!(report.command.position, motor.limits.position_max);
-        assert!(report.issues[0].command_modified);
-        assert!(!report.issues[0].command_rejected);
+        assert_eq!(report.command.position, motor.limits.position_max + 1.0);
+        assert!(!report.issues[0].command_modified);
+        assert!(report.issues[0].command_rejected);
     }
 
     #[test]
-    fn feedforward_torque_remains_clamped() {
+    fn feedforward_torque_rejects_without_modification() {
         let motor = motor();
         let report = check_command(
             ImpedanceCommand {
@@ -219,22 +205,16 @@ mod tests {
             None,
             &motor,
         );
-        assert_eq!(report.command.torque, motor.limits.torque_max);
+        assert_eq!(report.command.torque, motor.limits.torque_max + 1.0);
         assert_eq!(report.issues[0].violation, SafetyViolation::TorqueLimit);
-        assert!(report.issues[0].command_modified);
-        assert!(!report.issues[0].command_rejected);
+        assert!(!report.issues[0].command_modified);
+        assert!(report.issues[0].command_rejected);
     }
 
     #[test]
     fn coupled_limit_faults_if_any_affected_motor_requests_fault() {
         let first = MotorCommandPolicy::default();
         let mut second = first.clone();
-        assert_eq!(
-            coupled_limit_behavior([&first, &second]),
-            CommandBehavior::Reject
-        );
-
-        second.limit = CommandBehavior::Clamp;
         assert_eq!(
             coupled_limit_behavior([&first, &second]),
             CommandBehavior::Reject

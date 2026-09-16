@@ -56,7 +56,7 @@ motors:
       temperature_recovery_duration_ms: 2000
     command_policy: &command_policy
       maximum_position_step: 2.0
-      limit: clamp
+      limit: reject
       position_step: reject
     fault_damping_kd: 40.0
   - { name: left_hip_pitch, coordinate: left_hip_pitch_joint, bus: can0, id: 61, model: ROBSTRIDE_04, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 40.0 }

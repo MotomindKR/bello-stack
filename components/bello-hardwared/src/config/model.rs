@@ -346,7 +346,6 @@ fn default_fault_damping_kd() -> f64 {
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum CommandBehavior {
-    Clamp,
     Reject,
     Fault,
 }
