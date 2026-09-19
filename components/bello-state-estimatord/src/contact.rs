@@ -105,7 +105,16 @@ impl ContactManager {
             let world_speed_probability = self.world_speed_probability(world_speeds[index]);
             let world_speed_factor =
                 1.0 - world_speed_reliability * (1.0 - world_speed_probability);
-            let target = kinematic_probability * world_speed_factor;
+            let height_probability = descending_smoothstep(
+                heights[index] - minimum_height,
+                self.model.height_full,
+                self.model.height_zero,
+            );
+            // A trusted opposite stance foot makes world velocity informative.
+            // Body-relative vertical motion alone is not swing evidence in a squat.
+            let motion_probability = (1.0 - world_speed_reliability) * kinematic_probability
+                + world_speed_reliability * height_probability;
+            let target = motion_probability * world_speed_factor;
 
             let state = &mut self.feet[index];
             let time_constant = if target >= state.probability {
@@ -206,7 +215,7 @@ mod tests {
         let fading = contacts.update(
             [0.0, 0.0],
             [1.0, 1.0],
-            [0.0, 0.0],
+            [1.0, 1.0],
             Duration::from_millis(20),
         );
         assert!(fading.iter().all(|contact| contact.active));
@@ -219,7 +228,7 @@ mod tests {
         let released = contacts.update(
             [0.0, 0.0],
             [1.0, 1.0],
-            [0.0, 0.0],
+            [1.0, 1.0],
             Duration::from_millis(40),
         );
         assert!(released.iter().all(|contact| !contact.active));
@@ -277,5 +286,36 @@ mod tests {
         }
 
         assert_eq!(contacts.active(), [true, true]);
+    }
+
+    #[test]
+    fn stationary_world_feet_remain_contacts_during_body_vertical_motion() {
+        let mut contacts = manager();
+        contacts.initialize([0.0, 0.0], [0.0, 0.0]);
+        for _ in 0..100 {
+            contacts.update(
+                [0.0, 0.0],
+                [0.8, 0.8],
+                [0.0, 0.0],
+                Duration::from_millis(10),
+            );
+        }
+        assert_eq!(contacts.probabilities(), [1.0, 1.0]);
+        assert_eq!(contacts.active(), [true, true]);
+    }
+
+    #[test]
+    fn moving_world_feet_cannot_validate_each_other_as_stationary() {
+        let mut contacts = manager();
+        contacts.initialize([0.0, 0.0], [0.0, 0.0]);
+        for _ in 0..10 {
+            contacts.update(
+                [0.0, 0.0],
+                [0.8, 0.8],
+                [0.8, 0.8],
+                Duration::from_millis(10),
+            );
+        }
+        assert_eq!(contacts.active(), [false, false]);
     }
 }

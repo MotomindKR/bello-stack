@@ -409,7 +409,8 @@ async fn consume_hardware(
         ) else {
             continue;
         };
-        let feet = match model.feet(&coordinates.values) {
+        let up_in_tracked = imu_frame.tracked_orientation(orientation).inverse() * Vector3::z();
+        let feet = match model.feet(&coordinates.values, up_in_tracked) {
             Ok(feet) => imu_frame.feet_in_imu(feet),
             Err(error) => {
                 warn!(%error, "discarding invalid kinematic sample");

@@ -75,6 +75,7 @@ pub struct ContactFilter {
     planar: bool,
     ground_height: f64,
     initialized: bool,
+    support_points: [Vector3<f64>; 2],
 }
 
 impl ContactFilter {
@@ -86,6 +87,7 @@ impl ContactFilter {
             planar: config.planar,
             ground_height: config.ground_height_m,
             initialized: false,
+            support_points: [Vector3::zeros(); 2],
         }
     }
 
@@ -154,6 +156,7 @@ impl ContactFilter {
             }
         }
         self.initialized = true;
+        self.support_points = feet.map(|foot| foot.support_in_foot);
         PoseEstimate {
             position: base_position,
             orientation,
@@ -276,6 +279,13 @@ impl ContactFilter {
             if contacts[index].active && contacts[index].changed {
                 self.set_contact_position(index, self.position() + relative[index]);
                 self.reset_contact_covariance(index);
+            } else if contacts[index].active {
+                // Moving from sole center to toe/heel changes the tracked material
+                // point, not the base pose. Move its anchor by the same amount.
+                let shift = rotation
+                    * feet[index].foot_orientation
+                    * (feet[index].support_in_foot - self.support_points[index]);
+                self.set_contact_position(index, self.contact_position(index) + shift);
             }
             if contacts[index].active {
                 if self.planar {
@@ -291,6 +301,7 @@ impl ContactFilter {
             diagnostics[index].active = contacts[index].active;
             diagnostics[index].changed = contacts[index].changed;
         }
+        self.support_points = feet.map(|foot| foot.support_in_foot);
         Ok(ContactCorrection {
             pose: PoseEstimate {
                 position: self.position(),
@@ -465,12 +476,53 @@ mod tests {
             FootKinematics {
                 position: Vector3::new(0.0, 0.1, -0.8),
                 relative_velocity: Vector3::zeros(),
+                ..FootKinematics::default()
             },
             FootKinematics {
                 position: Vector3::new(0.0, -0.1, -0.8),
                 relative_velocity: Vector3::zeros(),
+                ..FootKinematics::default()
             },
         ]
+    }
+
+    #[test]
+    fn changing_support_material_point_does_not_translate_the_base() {
+        let mut configuration = config();
+        configuration.planar = true;
+        let mut filter = ContactFilter::new(&configuration);
+        let orientation = UnitQuaternion::from_euler_angles(0.0, 0.0, 0.7);
+        let original = filter.initialize(orientation, Vector3::zeros(), feet());
+        let mut changed = feet();
+        let foot_rotation = UnitQuaternion::from_euler_angles(0.0, 0.0, -0.3);
+        for foot in &mut changed {
+            foot.foot_orientation = foot_rotation;
+            foot.support_in_foot = Vector3::new(0.12, 0.0, 0.0);
+            foot.position += foot_rotation * foot.support_in_foot;
+        }
+        let corrected = filter
+            .correct_contacts(
+                orientation,
+                Vector3::zeros(),
+                changed,
+                Duration::from_millis(10),
+            )
+            .unwrap();
+        assert!((corrected.pose.position - original.position).norm() < 1.0e-12);
+        assert!(corrected.pose.linear_velocity.norm() < 1.0e-12);
+        let mut centered = feet();
+        for foot in &mut centered {
+            foot.foot_orientation = foot_rotation;
+        }
+        let restored = filter
+            .correct_contacts(
+                orientation,
+                Vector3::zeros(),
+                centered,
+                Duration::from_millis(10),
+            )
+            .unwrap();
+        assert!((restored.pose.position - original.position).norm() < 1.0e-12);
     }
 
     #[test]
@@ -654,5 +706,43 @@ mod tests {
         }
 
         assert_eq!(filter.contacts.active(), [true, true]);
+    }
+
+    #[test]
+    fn planted_feet_constrain_height_through_repeated_squats() {
+        let mut cfg = config();
+        cfg.planar = true;
+        let mut filter = ContactFilter::new(&cfg);
+        filter.initialize(UnitQuaternion::identity(), Vector3::zeros(), feet());
+        let dt = 0.005;
+        let frequency = std::f64::consts::PI;
+        for step in 1..=1600 {
+            let phase = step as f64 * dt * frequency;
+            let height = 0.8 - 0.15 * (1.0 - phase.cos());
+            let velocity = -0.15 * frequency * phase.sin();
+            let acceleration = -0.15 * frequency * frequency * phase.cos();
+            let mut planted = feet();
+            for foot in &mut planted {
+                foot.position.z = -height;
+                foot.relative_velocity.z = -velocity;
+            }
+            filter
+                .propagate(
+                    UnitQuaternion::identity(),
+                    Vector3::new(0.0, 0.0, acceleration + 0.02),
+                    Duration::from_secs_f64(dt),
+                )
+                .unwrap();
+            let correction = filter
+                .correct_contacts(
+                    UnitQuaternion::identity(),
+                    Vector3::zeros(),
+                    planted,
+                    Duration::from_secs_f64(dt),
+                )
+                .unwrap();
+            assert!((correction.pose.position.z - height).abs() < 0.01);
+            assert!(correction.contacts.iter().all(|c| c.probability > 0.95));
+        }
     }
 }

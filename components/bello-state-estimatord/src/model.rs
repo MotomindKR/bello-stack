@@ -29,7 +29,13 @@ impl ImuFrameTransform {
                 .transform_point(&foot.position.into())
                 .coords,
             relative_velocity: imu_from_tracked.rotation * foot.relative_velocity,
+            support_in_foot: foot.support_in_foot,
+            foot_orientation: imu_from_tracked.rotation * foot.foot_orientation,
         })
+    }
+
+    pub fn tracked_orientation(&self, world_from_imu: UnitQuaternion<f64>) -> UnitQuaternion<f64> {
+        world_from_imu * self.tracked_from_imu.rotation.inverse()
     }
 
     /// Convert an IMU-origin estimate to the configured tracked-frame origin.
@@ -45,7 +51,7 @@ impl ImuFrameTransform {
         let angular_velocity_world = world_from_imu * angular_velocity_imu;
         TrackedFrameState {
             position: imu_position + imu_to_tracked_world,
-            orientation: world_from_imu * imu_from_tracked.rotation,
+            orientation: self.tracked_orientation(world_from_imu),
             linear_velocity: imu_linear_velocity
                 + angular_velocity_world.cross(&imu_to_tracked_world),
             angular_velocity_local: self.tracked_from_imu.rotation * angular_velocity_imu,
@@ -73,10 +79,13 @@ mod tests {
             FootKinematics {
                 position: Vector3::new(0.2, 0.1, -0.5),
                 relative_velocity: Vector3::new(1.0, 2.0, 3.0),
+                support_in_foot: Vector3::new(0.12, 0.0, -0.02),
+                foot_orientation: UnitQuaternion::from_euler_angles(0.0, 0.4, 0.0),
             },
             FootKinematics {
                 position: Vector3::zeros(),
                 relative_velocity: Vector3::zeros(),
+                ..FootKinematics::default()
             },
         ]);
         let expected_position = transform
@@ -84,6 +93,10 @@ mod tests {
             .inverse_transform_point(&Vector3::new(0.2, 0.1, -0.5).into())
             .coords;
         assert!((feet[0].position - expected_position).norm() < 1.0e-12);
+        assert_eq!(feet[0].support_in_foot, Vector3::new(0.12, 0.0, -0.02));
+        let expected_rotation = transform.tracked_from_imu.rotation.inverse()
+            * UnitQuaternion::from_euler_angles(0.0, 0.4, 0.0);
+        assert!(feet[0].foot_orientation.angle_to(&expected_rotation) < 1.0e-12);
         assert!(
             (transform.tracked_from_imu.rotation * feet[0].relative_velocity
                 - Vector3::new(1.0, 2.0, 3.0))

@@ -138,18 +138,22 @@ pub struct CoordinateState {
     pub velocity: f64,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct FootKinematics {
     /// Contact point relative to the kinematic base, in base coordinates.
     pub position: Vector3<f64>,
     /// Contact-point velocity with the kinematic base fixed, in base coordinates.
     pub relative_velocity: Vector3<f64>,
+    /// Selected material point, in foot-link coordinates.
+    pub support_in_foot: Vector3<f64>,
+    /// Rotation from the foot link into the kinematic base.
+    pub foot_orientation: UnitQuaternion<f64>,
 }
 
 #[derive(Clone, Debug)]
 struct FootPath {
     joints: Vec<Joint>,
-    support_in_foot: Vector3<f64>,
+    collisions: Vec<GeometryInstance>,
 }
 
 #[derive(Clone, Debug)]
@@ -405,20 +409,18 @@ impl KinematicModel {
         let right_path = path_to(joints, base, right_foot)?;
         let feet = [
             FootPath {
-                support_in_foot: support_point(
+                collisions: support_geometry(
                     description
                         .link(left_foot)
                         .with_context(|| format!("URDF has no link {left_foot:?}"))?,
-                    &left_path,
                 )?,
                 joints: left_path,
             },
             FootPath {
-                support_in_foot: support_point(
+                collisions: support_geometry(
                     description
                         .link(right_foot)
                         .with_context(|| format!("URDF has no link {right_foot:?}"))?,
-                    &right_path,
                 )?,
                 joints: right_path,
             },
@@ -457,7 +459,13 @@ impl KinematicModel {
     pub fn feet(
         &self,
         coordinates: &BTreeMap<String, CoordinateState>,
+        up_in_base: Vector3<f64>,
     ) -> anyhow::Result<[FootKinematics; 2]> {
+        if !up_in_base.iter().all(|value| value.is_finite())
+            || (up_in_base.norm_squared() - 1.0).abs() > 1.0e-6
+        {
+            bail!("foot support up direction must be a finite unit vector");
+        }
         for (name, value) in coordinates {
             if !value.position.is_finite() || !value.velocity.is_finite() {
                 bail!("coordinate {name:?} is non-finite");
@@ -489,8 +497,8 @@ impl KinematicModel {
             }
         }
         Ok([
-            evaluate_foot(&self.feet[0], &joint_states)?,
-            evaluate_foot(&self.feet[1], &joint_states)?,
+            evaluate_foot(&self.feet[0], &joint_states, up_in_base)?,
+            evaluate_foot(&self.feet[1], &joint_states, up_in_base)?,
         ])
     }
 }
@@ -498,6 +506,7 @@ impl KinematicModel {
 fn evaluate_foot(
     foot: &FootPath,
     states: &BTreeMap<String, JointState>,
+    up_in_base: Vector3<f64>,
 ) -> anyhow::Result<FootKinematics> {
     let mut transform = Isometry3::identity();
     let mut columns = Vec::new();
@@ -530,9 +539,9 @@ fn evaluate_foot(
             }
         }
     }
-    let position = transform
-        .transform_point(&foot.support_in_foot.into())
-        .coords;
+    let support_in_foot =
+        support_point(&foot.collisions, transform.rotation.inverse() * up_in_base);
+    let position = transform.transform_point(&support_in_foot.into()).coords;
     let mut relative_velocity = Vector3::zeros();
     for (kind, origin, axis, velocity) in columns {
         let column = match kind {
@@ -545,6 +554,8 @@ fn evaluate_foot(
     Ok(FootKinematics {
         position,
         relative_velocity,
+        support_in_foot,
+        foot_orientation: transform.rotation,
     })
 }
 
@@ -917,75 +928,57 @@ fn ordered_members(
         .collect())
 }
 
-fn support_point(link: &Link, path: &[Joint]) -> anyhow::Result<Vector3<f64>> {
-    let mut candidates = Vec::new();
-    for collision in &link.collisions {
-        match &collision.geometry {
-            Geometry::Box { size } => {
-                let size = size / 2.0;
-                for x in [-size.x, size.x] {
-                    for y in [-size.y, size.y] {
-                        for z in [-size.z, size.z] {
-                            candidates.push(
-                                collision
-                                    .origin
-                                    .transform_point(&nalgebra::Point3::new(x, y, z))
-                                    .coords,
-                            );
-                        }
-                    }
-                }
-            }
-            Geometry::Cylinder { radius, length } => {
-                let half = length / 2.0;
-                for z in [-half, half] {
-                    for index in 0..16 {
-                        let angle = std::f64::consts::TAU * index as f64 / 16.0;
-                        candidates.push(
-                            collision
-                                .origin
-                                .transform_point(&nalgebra::Point3::new(
-                                    radius * angle.cos(),
-                                    radius * angle.sin(),
-                                    z,
-                                ))
-                                .coords,
-                        );
-                    }
-                }
-            }
-            Geometry::Sphere { radius } => {
-                candidates.push(
-                    collision
-                        .origin
-                        .transform_point(&nalgebra::Point3::new(0.0, 0.0, -*radius))
-                        .coords,
-                );
-            }
-            Geometry::Mesh { .. } => {}
-        }
-    }
-    if candidates.is_empty() {
+fn support_geometry(link: &Link) -> anyhow::Result<Vec<GeometryInstance>> {
+    let collisions = link
+        .collisions
+        .iter()
+        .filter(|collision| !matches!(collision.geometry, Geometry::Mesh { .. }))
+        .cloned()
+        .collect::<Vec<_>>();
+    if collisions.is_empty() {
         bail!(
             "foot link {:?} has no primitive collision geometry",
             link.name
         );
     }
-    let zero_transform = path.iter().fold(Isometry3::identity(), |transform, joint| {
-        transform * joint.origin
-    });
-    let minimum = candidates
-        .iter()
-        .map(|point| zero_transform.transform_point(&(*point).into()).z)
-        .fold(f64::INFINITY, f64::min);
-    let lowest = candidates
-        .iter()
-        .filter(|point| {
-            (zero_transform.transform_point(&(**point).into()).z - minimum).abs() <= 1.0e-7
-        })
-        .copied()
-        .collect::<Vec<_>>();
-    Ok(lowest.iter().copied().sum::<Vector3<f64>>() / lowest.len() as f64)
+    Ok(collisions)
+}
+
+/// Lowest material point on the collision primitives; ties use their centroid.
+fn support_point(collisions: &[GeometryInstance], up_in_foot: Vector3<f64>) -> Vector3<f64> {
+    let mut minimum = f64::INFINITY;
+    let mut sum = Vector3::zeros();
+    let mut count = 0;
+    for collision in collisions {
+        let down = collision.origin.rotation.inverse() * -up_in_foot;
+        let sign = down.map(|value| {
+            if value.abs() < 1.0e-10 {
+                0.0
+            } else {
+                value.signum()
+            }
+        });
+        let local = match &collision.geometry {
+            Geometry::Box { size } => sign.component_mul(size) * 0.5,
+            Geometry::Cylinder { radius, length } => {
+                let radial = down.xy().try_normalize(1.0e-10).unwrap_or_default() * *radius;
+                Vector3::new(radial.x, radial.y, sign.z * length * 0.5)
+            }
+            Geometry::Sphere { radius } => down * *radius,
+            Geometry::Mesh { .. } => continue,
+        };
+        let point = collision.origin.transform_point(&local.into()).coords;
+        let height = up_in_foot.dot(&point);
+        if height < minimum - 1.0e-7 {
+            minimum = height;
+            sum = point;
+            count = 1;
+        } else if (height - minimum).abs() <= 1.0e-7 {
+            sum += point;
+            count += 1;
+        }
+    }
+    sum / count as f64
 }
 
 fn parse_origin(node: Node<'_, '_>) -> anyhow::Result<Isometry3<f64>> {
@@ -1251,18 +1244,95 @@ mod tests {
         let model = load_text(SIMPLE_URDF).unwrap();
         assert_eq!(model.required_coordinates(), &["left_joint"]);
         let feet = model
-            .feet(&BTreeMap::from([(
-                "left_joint".into(),
-                CoordinateState {
-                    position: 0.0,
-                    velocity: 2.0,
-                },
-            )]))
+            .feet(
+                &BTreeMap::from([(
+                    "left_joint".into(),
+                    CoordinateState {
+                        position: 0.0,
+                        velocity: 2.0,
+                    },
+                )]),
+                Vector3::z(),
+            )
             .unwrap();
         assert!((feet[0].position - Vector3::new(0.0, 0.0, -1.1)).norm() < 1.0e-12);
         assert!((feet[0].relative_velocity - Vector3::new(-0.2, 0.0, 0.0)).norm() < 1.0e-12);
         assert!((feet[1].position - Vector3::new(0.2, 0.0, -1.1)).norm() < 1.0e-12);
         assert!(feet[1].relative_velocity.norm() < 1.0e-12);
+    }
+
+    #[test]
+    fn tilted_support_velocity_is_the_material_point_jacobian() {
+        let model = load_text(SIMPLE_URDF).unwrap();
+        let rotation = UnitQuaternion::from_euler_angles(0.0, 0.4, 0.0);
+        let feet = model
+            .feet(
+                &BTreeMap::from([(
+                    "left_joint".into(),
+                    CoordinateState {
+                        position: 0.4,
+                        velocity: 2.0,
+                    },
+                )]),
+                Vector3::z(),
+            )
+            .unwrap();
+        let point = Vector3::new(0.1, 0.0, -0.1);
+        assert!((feet[0].support_in_foot - point).norm() < 1.0e-12);
+        let expected_velocity = (Vector3::y() * 2.0).cross(&(rotation * point));
+        assert!((feet[0].relative_velocity - expected_velocity).norm() < 1.0e-12);
+    }
+
+    #[test]
+    fn support_follows_box_toe_heel_and_gravity_direction() {
+        let collisions = [GeometryInstance {
+            origin: Isometry3::translation(0.02, 0.0, -0.1),
+            geometry: Geometry::Box {
+                size: Vector3::new(0.3, 0.1, 0.04),
+            },
+            rgba: [1.0; 4],
+        }];
+        assert!(
+            (support_point(&collisions, Vector3::z()) - Vector3::new(0.02, 0.0, -0.12)).norm()
+                < 1.0e-12
+        );
+        for pitch in [-0.4, 0.4] {
+            let rotation = UnitQuaternion::from_euler_angles(0.0, pitch, 0.0);
+            let up = rotation.inverse() * Vector3::z();
+            let point = support_point(&collisions, up);
+            let expected = Vector3::new(0.02 + 0.15 * pitch.signum(), 0.0, -0.12);
+            assert!((point - expected).norm() < 1.0e-12);
+        }
+    }
+
+    #[test]
+    fn round_support_uses_exact_primitive_surface() {
+        let down = Vector3::new(0.3, -0.4, -0.5).normalize();
+        let mut collisions = [GeometryInstance {
+            origin: Isometry3::identity(),
+            geometry: Geometry::Sphere { radius: 0.1 },
+            rgba: [1.0; 4],
+        }];
+        assert!((support_point(&collisions, -down) - down * 0.1).norm() < 1.0e-12);
+        collisions[0].geometry = Geometry::Cylinder {
+            radius: 0.1,
+            length: 0.04,
+        };
+        assert!(
+            (support_point(&collisions, -down) - Vector3::new(0.06, -0.08, -0.02)).norm() < 1.0e-12
+        );
+        assert!(
+            (support_point(&collisions, Vector3::z()) - Vector3::new(0.0, 0.0, -0.02)).norm()
+                < 1.0e-12
+        );
+    }
+
+    #[test]
+    fn support_direction_must_be_a_unit_vector() {
+        let model = load_text(SIMPLE_URDF).unwrap();
+        for up in [Vector3::zeros(), Vector3::new(f64::NAN, 0.0, 1.0)] {
+            assert!(model.feet(&BTreeMap::new(), up).is_err());
+        }
     }
 
     #[test]

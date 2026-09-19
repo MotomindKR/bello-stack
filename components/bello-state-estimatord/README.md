@@ -32,8 +32,16 @@ foot slip, flight, rolling, or non-foot support.
 
 The required `planar` configuration field selects the ground model. With
 `planar: true`, each acquired foot anchor is constrained to `ground_height_m`
-in the configured reference frame. Set `planar: false` for uneven terrain,
+in the configured reference frame; pelvis height remains free to change. Set `planar: false` for uneven terrain,
 stairs, or any deployment where contact height must remain unconstrained.
+
+The support point follows the lowest surface of the foot link's URDF collision
+primitives using measured joint angles and IMU orientation. Flat support uses
+the center of the lowest primitive faces; pitched feet use their toe/heel
+edges or rounded surfaces. When this material point changes, its existing
+anchor moves by the corresponding rigid-body offset, avoiding a false base
+translation. This uses gravity as the support normal, not a terrain estimate;
+it does not infer hand or knee support.
 
 Contact evidence is continuous rather than a binary threshold. Relative foot
 height and base-independent encoder kinematics each produce a smooth score
@@ -42,9 +50,12 @@ time constants. In planar mode the motion score uses only vertical foot motion,
 so normal horizontal stance motion does not reject a contact. Non-planar mode
 uses the full base-independent kinematic speed.
 
-Full world-foot speed supplies an additional score only when the opposite foot
+Full world-foot speed supplies a score only when the opposite foot
 is already both high-confidence and stationary. This lets a trusted stance foot
-reject a low-clearance swing foot using horizontal motion. A foot cannot use its
+reject a low-clearance swing foot using horizontal motion, and lets stationary
+world feet remain contacts while the body moves vertically during a squat.
+The opposite-support confidence blends from the base-independent motion score
+to the world-speed score; height evidence remains required. A foot cannot use its
 own anchor to validate its speed, and world speed is ignored when neither foot
 provides stationary opposite support, so drift cannot block contact recovery.
 
