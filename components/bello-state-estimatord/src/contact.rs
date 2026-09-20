@@ -38,6 +38,34 @@ struct ContactState {
     active: bool,
 }
 
+impl ContactState {
+    fn update(
+        &mut self,
+        target: f64,
+        model: &ContactProbabilityModel,
+        dt: Duration,
+    ) -> ContactUpdate {
+        let time_constant = if target >= self.probability {
+            model.rise_time
+        } else {
+            model.fall_time
+        };
+        self.probability = low_pass(self.probability, target, time_constant, dt).clamp(0., 1.);
+        let was_active = self.active;
+        self.active = if was_active {
+            self.probability > RELEASE_PROBABILITY
+        } else {
+            self.probability >= ACQUIRE_PROBABILITY
+        };
+        ContactUpdate {
+            probability: self.probability,
+            active: self.active,
+            changed: was_active != self.active,
+            world_speed_reliability: 0.,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct ContactUpdate {
     pub(crate) probability: f64,
@@ -116,32 +144,33 @@ impl ContactManager {
                 + world_speed_reliability * height_probability;
             let target = motion_probability * world_speed_factor;
 
-            let state = &mut self.feet[index];
-            let time_constant = if target >= state.probability {
-                self.model.rise_time
-            } else {
-                self.model.fall_time
-            };
-            state.probability =
-                low_pass(state.probability, target, time_constant, dt).clamp(0.0, 1.0);
-
-            let was_active = state.active;
-            state.active = if was_active {
-                state.probability > RELEASE_PROBABILITY
-            } else {
-                state.probability >= ACQUIRE_PROBABILITY
-            };
             ContactUpdate {
-                probability: state.probability,
-                active: state.active,
-                changed: was_active != state.active,
                 world_speed_reliability,
+                ..self.feet[index].update(target, &self.model, dt)
             }
         })
     }
 
     pub(crate) fn active(&self) -> [bool; 2] {
         self.feet.map(|foot| foot.active)
+    }
+
+    pub(crate) fn update_loaded(
+        &mut self,
+        heights: [f64; 2],
+        load_probability: [f64; 2],
+        dt: Duration,
+    ) -> [ContactUpdate; 2] {
+        let minimum = heights[0].min(heights[1]);
+        std::array::from_fn(|index| {
+            let target = load_probability[index]
+                * descending_smoothstep(
+                    heights[index] - minimum,
+                    self.model.height_full,
+                    self.model.height_zero,
+                );
+            self.feet[index].update(target, &self.model, dt)
+        })
     }
 
     pub(crate) fn probabilities(&self) -> [f64; 2] {
@@ -170,7 +199,7 @@ impl ContactManager {
     }
 }
 
-fn descending_smoothstep(value: f64, full: f64, zero: f64) -> f64 {
+pub(crate) fn descending_smoothstep(value: f64, full: f64, zero: f64) -> f64 {
     if value <= full {
         return 1.0;
     }
@@ -315,6 +344,19 @@ mod tests {
                 [0.8, 0.8],
                 Duration::from_millis(10),
             );
+        }
+        assert_eq!(contacts.active(), [false, false]);
+    }
+
+    #[test]
+    fn loaded_contact_still_requires_relative_ground_height() {
+        let mut contacts = manager();
+        for _ in 0..30 {
+            contacts.update_loaded([0., 0.2], [1., 1.], Duration::from_millis(20));
+        }
+        assert_eq!(contacts.active(), [true, false]);
+        for _ in 0..30 {
+            contacts.update_loaded([0., 0.], [0., 0.], Duration::from_millis(20));
         }
         assert_eq!(contacts.active(), [false, false]);
     }

@@ -23,6 +23,7 @@ use crate::alignment::{CoordinateHistory, source_time_ns};
 use crate::config::EstimatorConfig;
 use crate::filter::{ContactFilter, PoseEstimate};
 use crate::imu_filter::ImuLowPass;
+use crate::load::{LoadObserver, Sample};
 use crate::model::{ImuFrameTransform, KinematicModel};
 
 #[derive(Clone, Debug)]
@@ -169,7 +170,15 @@ pub async fn run(path: &Path) -> anyhow::Result<()> {
 }
 
 pub fn check(path: &Path) -> anyhow::Result<()> {
-    let _ = load(path)?;
+    let (config, _, _) = load(path)?;
+    if let Some(observer) = config.load_observer {
+        crate::load::check(
+            observer,
+            config.urdf,
+            config.tracked_frame,
+            [config.left_foot, config.right_foot],
+        )?;
+    }
     Ok(())
 }
 
@@ -190,14 +199,13 @@ fn load(path: &Path) -> anyhow::Result<(EstimatorConfig, KinematicModel, ImuFram
 fn validate_inventory(
     robot: &Robot,
     config: &EstimatorConfig,
-    model: &KinematicModel,
+    required_coordinates: &[String],
 ) -> anyhow::Result<()> {
     let coordinates = robot
         .motors()
         .map(|motor| motor.coordinate().to_owned())
         .collect::<BTreeSet<_>>();
-    let missing = model
-        .required_coordinates()
+    let missing = required_coordinates
         .iter()
         .filter(|name| !coordinates.contains(name.as_str()))
         .cloned()
@@ -236,14 +244,32 @@ async fn monitor_hardware(
     poses: watch::Sender<Option<StampedPose>>,
     mut shutdown: watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
-    let mut filter = ContactFilter::new(&config);
-    let mut sequence = 0_u64;
+    let observer = if let Some(observer_config) = &config.load_observer {
+        Some(
+            LoadObserver::start(
+                observer_config.clone(),
+                config.urdf.clone(),
+                config.tracked_frame.clone(),
+                [config.left_foot.clone(), config.right_foot.clone()],
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
+    let mut estimator = Estimator {
+        filter: ContactFilter::new(&config),
+        model,
+        imu_frame,
+        observer,
+        sequence: 0,
+    };
     let mut retry_delay = Duration::from_millis(200);
     loop {
         if *shutdown.borrow() {
             return Ok(());
         }
-        let previous_sequence = sequence;
+        let previous_sequence = estimator.sequence;
         let session = async {
             let robot = tokio::time::timeout(
                 Duration::from_secs(3),
@@ -253,17 +279,13 @@ async fn monitor_hardware(
             .map_err(|_| {
                 HardwareError::Rpc(Status::deadline_exceeded("hardware connection timed out"))
             })??;
-            validate_inventory(&robot, &config, &model)?;
-            consume_hardware(
-                robot,
-                &config,
-                &model,
-                &imu_frame,
-                &poses,
-                &mut filter,
-                &mut sequence,
-            )
-            .await
+            let required = estimator
+                .observer
+                .as_ref()
+                .map(|value| value.coordinates.as_slice())
+                .unwrap_or(estimator.model.required_coordinates());
+            validate_inventory(&robot, &config, required)?;
+            consume_hardware(robot, &config, &poses, &mut estimator).await
         };
         let result = tokio::select! {
             result = session => result,
@@ -275,7 +297,7 @@ async fn monitor_hardware(
         {
             return result;
         }
-        if sequence != previous_sequence {
+        if estimator.sequence != previous_sequence {
             retry_delay = Duration::from_millis(200);
         }
         warn!(error = ?result.err(), ?retry_delay, "hardware telemetry unavailable; keeping pose service alive and reconnecting");
@@ -301,15 +323,31 @@ fn retryable_hardware_error(error: &anyhow::Error) -> bool {
     }
 }
 
+struct Estimator {
+    model: KinematicModel,
+    imu_frame: ImuFrameTransform,
+    filter: ContactFilter,
+    observer: Option<LoadObserver>,
+    sequence: u64,
+}
+
 async fn consume_hardware(
     robot: Robot,
     config: &EstimatorConfig,
-    model: &KinematicModel,
-    imu_frame: &ImuFrameTransform,
     poses: &watch::Sender<Option<StampedPose>>,
-    filter: &mut ContactFilter,
-    sequence: &mut u64,
+    estimator: &mut Estimator,
 ) -> anyhow::Result<()> {
+    let Estimator {
+        model,
+        imu_frame,
+        filter,
+        observer,
+        sequence,
+    } = estimator;
+    let observer = observer.as_ref();
+    let required_coordinates = observer
+        .map(|value| value.coordinates.as_slice())
+        .unwrap_or(model.required_coordinates());
     let mut states = tokio::time::timeout(
         Duration::from_secs(3),
         robot.states_with(StateStreamOptions::default().reconnect_on_unavailable(false)),
@@ -327,6 +365,7 @@ async fn consume_hardware(
     let mut previous_imu_ns = None;
     let mut previous_motor_epoch = None;
     let mut last_diagnostics = Instant::now();
+    let mut last_support = None;
 
     loop {
         let state = match tokio::time::timeout(
@@ -345,8 +384,7 @@ async fn consume_hardware(
         };
         let imu = match state.last_change() {
             Some(RobotStateChange::Motor(motor)) => {
-                if model
-                    .required_coordinates()
+                if required_coordinates
                     .iter()
                     .any(|name| name == &motor.coordinate)
                 {
@@ -356,6 +394,7 @@ async fn consume_hardware(
                         motor.feedback_age,
                         motor.position,
                         motor.velocity,
+                        motor.torque,
                     );
                 }
                 continue;
@@ -363,6 +402,7 @@ async fn consume_hardware(
             Some(RobotStateChange::Imu(imu)) => imu,
             _ => continue,
         };
+        let received = Instant::now();
         if imu.imu != config.imu || imu.sample_age > config.imu_stale() {
             continue;
         }
@@ -402,11 +442,9 @@ async fn consume_hardware(
         let orientation = filtered_imu.orientation;
         let angular_velocity = filtered_imu.angular_velocity;
         let linear_acceleration = filtered_imu.linear_acceleration;
-        let Some(coordinates) = coordinate_history.sample_at(
-            model.required_coordinates(),
-            imu_source_ns,
-            config.motor_stale(),
-        ) else {
+        let Some(coordinates) =
+            coordinate_history.sample_at(required_coordinates, imu_source_ns, config.motor_stale())
+        else {
             continue;
         };
         let up_in_tracked = imu_frame.tracked_orientation(orientation).inverse() * Vector3::z();
@@ -437,8 +475,31 @@ async fn consume_hardware(
                 .map(Duration::from_nanos)
                 .filter(|interval| *interval <= Duration::from_millis(500))
                 .unwrap_or(Duration::from_millis(10));
+            let load = if let Some(observer) = observer {
+                let prediction = filter.diagnostics();
+                let root = imu_frame.tracked_state(
+                    prediction.position,
+                    orientation,
+                    prediction.velocity,
+                    angular_velocity,
+                );
+                let support = observer
+                    .update(Sample {
+                        time_ns: imu_source_ns,
+                        reset: previous_motor_epoch.is_none(),
+                        root,
+                        coordinates: coordinates.values.clone(),
+                        torques: coordinates.torques.clone(),
+                    })
+                    .await?;
+                let probability = support.probability;
+                last_support = Some(support);
+                Some(probability)
+            } else {
+                None
+            };
             let correction =
-                filter.correct_contacts(orientation, angular_velocity, feet, interval)?;
+                filter.correct_contacts(orientation, angular_velocity, feet, interval, load)?;
             log_contact_diagnostics(&correction.contacts);
             pose = Some(correction.pose);
             previous_motor_epoch = Some(coordinates.epoch_ns);
@@ -455,6 +516,8 @@ async fn consume_hardware(
                 contact_probabilities = ?diagnostics.contact_probabilities,
                 effective_contact_probabilities = ?diagnostics.effective_contact_probabilities,
                 motor_alignment_ms = coordinates.maximum_offset.as_secs_f64() * 1000.0,
+                estimated_foot_force_z = ?last_support.as_ref().map(|support| support.force_z),
+                load_probabilities = ?last_support.as_ref().map(|support| support.probability),
                 "pose estimator diagnostics"
             );
             last_diagnostics = Instant::now();
@@ -476,7 +539,7 @@ async fn consume_hardware(
                 },
                 angular_velocity_local: tracked.angular_velocity_local,
                 produced: Instant::now(),
-                source_age: imu.sample_age,
+                source_age: imu.sample_age.saturating_add(received.elapsed()),
                 sample_monotonic_ns: imu_source_ns,
             }));
         }
@@ -497,6 +560,8 @@ fn log_contact_diagnostics(contacts: &[crate::filter::ContactDiagnostics; 2]) {
                 kinematic_speed = contact.kinematic_speed,
                 contact_motion_speed = contact.contact_motion_speed,
                 world_speed_reliability = contact.world_speed_reliability,
+                load_probability = ?contact.load_probability,
+                tangent_weight = contact.tangent_weight,
                 "pose-estimator contact changed"
             );
         }

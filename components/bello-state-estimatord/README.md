@@ -2,7 +2,7 @@
 
 `bello-state-estimatord` reads direction-corrected motor and EBIMU telemetry
 through `bello-hardware-client`, estimates a local tracked-frame pose with
-encoder-based stationary-foot constraints, and implements the existing
+contact-aided stationary-foot constraints, and implements the existing
 `bello.pose.v1.PoseService`.
 
 Hardwared may start later or restart independently. The pose service stays up,
@@ -69,7 +69,51 @@ rather than pinning the robot. Contacts below 0.95 probability cannot update the
 accelerometer-bias state. Binary state remains only for anchor lifecycle: a new
 anchor is created above an internal acquisition probability and retired only
 after its already-weak confidence falls near zero. No force or torque
-measurement is used. The daemon currently has no gait-reference contact input.
+measurement is used by this default kinematic mode. The daemon has no
+gait-reference contact input.
+
+## Load-aware deployment candidate
+
+The supplied robot profiles remain kinematic. The load-aware mode is an explicit
+candidate, not a commissioned replacement: closed-loop Lima balance still hits
+the tilt termination despite improved height estimates. Do not enable it on a
+physical robot based only on offline height RMSE.
+
+To evaluate it, add this block to an estimator config stored beside the supplied
+Mini profile (paths are relative to the config):
+
+```yaml
+load_observer:
+  model: ../../bello-mujoco/config/bello_mini.yaml
+  cutoff_hz: 10.0
+  velocity_cutoff_hz: 10.0
+  zero_weight_fraction: 0.02
+  full_weight_fraction: 0.10
+```
+
+The model is built from the existing robot-owned physics configuration and must
+resolve to the same canonical URDF. `tracked_frame` must be its free-root link.
+This requires the pinned headless MuJoCo 3.12 runtime, all body motor feedback,
+and `planar: true`. `--check` compiles and validates the observer model too.
+
+The observer uses timestamp-aligned measured torque, joint position/velocity,
+IMU orientation/gyro, and the filter's predicted root state. Native tendon
+transmissions supply the motor-to-joint torque mapping. It does not read actuator
+commands, emulator truth, simulated acceleration, or solved contact forces.
+A bounded worker owns all MuJoCo data; computation time counts toward pose age.
+
+Estimated vertical load and relative support height determine contact confidence.
+Sole tilt is measured against world +Z using `world_from_imu * imu_from_sole`.
+Horizontal anchor information fades between 3 and 15 degrees while vertical
+support information remains available at the toe/heel. The selected foot link's
+local +Z must be its sole normal. This does not estimate terrain orientation.
+
+Missing/stale whole-body feedback withholds poses; there is no silent kinematic
+fallback. Reconnection preserves odometry but resets the momentum history.
+Wrong masses, encoder zeros, torque scaling, slip, hand/knee support, and telemetry
+latency can still corrupt inferred loads. A good load estimate is not a direct
+contact measurement. The existing confidence smoothing, anchor lifecycle, and
+accelerometer-bias gating remain shared with kinematic mode.
 
 Motor samples are timestamped at their estimated source time and interpolated,
 or velocity-extrapolated within `motor_stale_ms`, to each IMU source timestamp

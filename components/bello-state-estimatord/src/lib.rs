@@ -1,5 +1,6 @@
 mod alignment;
 mod contact;
+mod load;
 
 pub mod config;
 pub mod filter;

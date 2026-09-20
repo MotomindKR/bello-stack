@@ -8,6 +8,7 @@ struct TimedCoordinate {
     source_ns: u64,
     position: f64,
     velocity: f64,
+    torque: f64,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -34,7 +35,7 @@ impl CoordinateTimeline {
         &self,
         target_ns: u64,
         maximum_offset: Duration,
-    ) -> Option<(CoordinateState, u64)> {
+    ) -> Option<(CoordinateState, f64, u64)> {
         let latest = self.latest?;
         let maximum_ns = duration_ns(maximum_offset);
         if let Some(previous) = self.previous
@@ -48,6 +49,7 @@ impl CoordinateTimeline {
                         position: latest.position,
                         velocity: latest.velocity,
                     },
+                    latest.torque,
                     0,
                 ));
             }
@@ -61,6 +63,7 @@ impl CoordinateTimeline {
                     position: previous.position + alpha * (latest.position - previous.position),
                     velocity: previous.velocity + alpha * (latest.velocity - previous.velocity),
                 },
+                previous.torque + alpha * (latest.torque - previous.torque),
                 offset,
             ));
         }
@@ -80,6 +83,7 @@ impl CoordinateTimeline {
                 position: reference.position + reference.velocity * dt,
                 velocity: reference.velocity,
             },
+            reference.torque,
             offset,
         ))
     }
@@ -93,6 +97,7 @@ pub struct CoordinateHistory {
 #[derive(Clone, Debug)]
 pub struct AlignedCoordinates {
     pub values: BTreeMap<String, CoordinateState>,
+    pub torques: BTreeMap<String, f64>,
     pub epoch_ns: u64,
     pub maximum_offset: Duration,
 }
@@ -105,14 +110,16 @@ impl CoordinateHistory {
         feedback_age: Duration,
         position: f64,
         velocity: f64,
+        torque: f64,
     ) {
-        if !position.is_finite() || !velocity.is_finite() {
+        if !position.is_finite() || !velocity.is_finite() || !torque.is_finite() {
             return;
         }
         let sample = TimedCoordinate {
             source_ns: monotonic_ns.saturating_sub(duration_ns(feedback_age)),
             position,
             velocity,
+            torque,
         };
         self.timelines
             .entry(coordinate.to_owned())
@@ -127,18 +134,21 @@ impl CoordinateHistory {
         maximum_offset: Duration,
     ) -> Option<AlignedCoordinates> {
         let mut values = BTreeMap::new();
+        let mut torques = BTreeMap::new();
         let mut epoch_ns = u64::MAX;
         let mut maximum_observed_offset = 0;
         for name in names {
             let timeline = self.timelines.get(name)?;
             let latest = timeline.latest?;
-            let (value, offset) = timeline.sample_at(target_ns, maximum_offset)?;
+            let (value, torque, offset) = timeline.sample_at(target_ns, maximum_offset)?;
             values.insert(name.clone(), value);
+            torques.insert(name.clone(), torque);
             epoch_ns = epoch_ns.min(latest.source_ns);
             maximum_observed_offset = maximum_observed_offset.max(offset);
         }
         Some(AlignedCoordinates {
             values,
+            torques,
             epoch_ns,
             maximum_offset: Duration::from_nanos(maximum_observed_offset),
         })
@@ -160,8 +170,8 @@ mod tests {
     #[test]
     fn interpolates_coordinates_to_the_imu_source_time() {
         let mut history = CoordinateHistory::default();
-        history.observe("joint", 100_000_000, Duration::ZERO, 0.0, 1.0);
-        history.observe("joint", 200_000_000, Duration::ZERO, 0.2, 3.0);
+        history.observe("joint", 100_000_000, Duration::ZERO, 0.0, 1.0, 2.0);
+        history.observe("joint", 200_000_000, Duration::ZERO, 0.2, 3.0, 4.0);
 
         let sample = history
             .sample_at(&["joint".into()], 150_000_000, Duration::from_millis(60))
@@ -170,12 +180,13 @@ mod tests {
         assert!((joint.position - 0.1).abs() < 1.0e-12);
         assert!((joint.velocity - 2.0).abs() < 1.0e-12);
         assert_eq!(sample.maximum_offset, Duration::from_millis(50));
+        assert_eq!(sample.torques["joint"], 3.0);
     }
 
     #[test]
     fn velocity_extrapolation_is_bounded_by_freshness() {
         let mut history = CoordinateHistory::default();
-        history.observe("joint", 100_000_000, Duration::ZERO, 0.4, 2.0);
+        history.observe("joint", 100_000_000, Duration::ZERO, 0.4, 2.0, 3.0);
 
         let sample = history
             .sample_at(&["joint".into()], 110_000_000, Duration::from_millis(20))
@@ -191,7 +202,14 @@ mod tests {
     #[test]
     fn feedback_age_is_removed_from_the_event_timestamp() {
         let mut history = CoordinateHistory::default();
-        history.observe("joint", 110_000_000, Duration::from_millis(10), 0.4, 0.0);
+        history.observe(
+            "joint",
+            110_000_000,
+            Duration::from_millis(10),
+            0.4,
+            0.0,
+            3.0,
+        );
         let sample = history
             .sample_at(&["joint".into()], 100_000_000, Duration::ZERO)
             .unwrap();

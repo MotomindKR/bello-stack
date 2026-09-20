@@ -23,6 +23,12 @@ const CONTACT_REFERENCE_INTERVAL_SECONDS: f64 = 0.01;
 const CONTACT_MINIMUM_INTERVAL_SECONDS: f64 = 0.002;
 const CONTACT_MAXIMUM_INTERVAL_SECONDS: f64 = 0.05;
 
+fn sole_tangent_weight(world_from_sole: UnitQuaternion<f64>) -> f64 {
+    let normal = world_from_sole * Vector3::z();
+    let angle = normal.z.clamp(-1.0, 1.0).acos();
+    crate::contact::descending_smoothstep(angle, 3.0_f64.to_radians(), 15.0_f64.to_radians())
+}
+
 type StateVector = SVector<f64, STATE_SIZE>;
 type Covariance = SMatrix<f64, STATE_SIZE, STATE_SIZE>;
 type MeasurementMatrix = SMatrix<f64, 3, STATE_SIZE>;
@@ -36,6 +42,8 @@ pub struct PoseEstimate {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ContactDiagnostics {
+    pub load_probability: Option<f64>,
+    pub tangent_weight: f64,
     pub active: bool,
     pub changed: bool,
     pub probability: f64,
@@ -231,7 +239,15 @@ impl ContactFilter {
         angular_velocity_local: Vector3<f64>,
         feet: [FootKinematics; 2],
         update_interval: Duration,
+        load_probability: Option<[f64; 2]>,
     ) -> anyhow::Result<ContactCorrection> {
+        if let Some(load) = load_probability {
+            anyhow::ensure!(
+                load.iter()
+                    .all(|p| p.is_finite() && (0.0..=1.0).contains(p)),
+                "invalid load probability"
+            );
+        }
         if !self.initialized {
             let pose = self.initialize(orientation, angular_velocity_local, feet);
             return Ok(ContactCorrection {
@@ -261,12 +277,22 @@ impl ContactFilter {
                 velocity.norm()
             }
         });
-        let contacts =
-            self.contacts
-                .update(heights, contact_motion_speeds, speeds, update_interval);
+        let contacts = match load_probability {
+            Some(load) => self.contacts.update_loaded(heights, load, update_interval),
+            None => self
+                .contacts
+                .update(heights, contact_motion_speeds, speeds, update_interval),
+        };
         let minimum_height = heights[0].min(heights[1]);
         let mut diagnostics = [ContactDiagnostics::default(); 2];
         for index in 0..2 {
+            let tangent_weight = if load_probability.is_some() {
+                sole_tangent_weight(orientation * feet[index].foot_orientation)
+            } else {
+                1.0
+            };
+            diagnostics[index].load_probability = load_probability.map(|load| load[index]);
+            diagnostics[index].tangent_weight = tangent_weight;
             diagnostics[index].probability = contacts[index].probability;
             diagnostics[index].effective_probability =
                 effective_contact_probability(contacts[index].probability);
@@ -296,6 +322,7 @@ impl ContactFilter {
                     relative[index],
                     contacts[index].probability,
                     update_interval,
+                    tangent_weight,
                 )?;
             }
             diagnostics[index].active = contacts[index].active;
@@ -318,6 +345,7 @@ impl ContactFilter {
         relative: Vector3<f64>,
         probability: f64,
         update_interval: Duration,
+        tangent_weight: f64,
     ) -> anyhow::Result<()> {
         let offset = contact_offset(index);
         let mut observation = MeasurementMatrix::zeros();
@@ -327,7 +355,11 @@ impl ContactFilter {
         observation
             .fixed_view_mut::<3, 3>(0, offset)
             .copy_from(&-SMatrix::<f64, 3, 3>::identity());
-        let measurement = -relative;
+        // Project in world axes: rolling support retains Z, but cannot pin XY.
+        let projection =
+            SMatrix::<f64, 3, 3>::from_diagonal(&Vector3::new(tangent_weight, tangent_weight, 1.0));
+        observation = projection * observation;
+        let measurement = -projection * relative;
         let innovation = measurement - observation * self.state;
         let variance = contact_measurement_variance(probability, update_interval);
         let noise = SMatrix::<f64, 3, 3>::identity() * variance;
@@ -444,6 +476,7 @@ mod tests {
 
     fn config() -> EstimatorConfig {
         EstimatorConfig {
+            load_observer: None,
             urdf: "unused".into(),
             hardware_endpoint: "http://127.0.0.1:50051".into(),
             listen: "127.0.0.1:50053".parse().unwrap(),
@@ -506,6 +539,7 @@ mod tests {
                 Vector3::zeros(),
                 changed,
                 Duration::from_millis(10),
+                None,
             )
             .unwrap();
         assert!((corrected.pose.position - original.position).norm() < 1.0e-12);
@@ -520,6 +554,7 @@ mod tests {
                 Vector3::zeros(),
                 centered,
                 Duration::from_millis(10),
+                None,
             )
             .unwrap();
         assert!((restored.pose.position - original.position).norm() < 1.0e-12);
@@ -532,6 +567,38 @@ mod tests {
         assert!((pose.position.z - 0.8).abs() < 1.0e-12);
         assert_eq!(filter.contacts.active(), [true, true]);
         assert_eq!(filter.contacts.probabilities(), [1.0, 1.0]);
+    }
+
+    #[test]
+    fn sole_gate_uses_world_orientation_not_relative_ankle_angle() {
+        let body = UnitQuaternion::from_euler_angles(0., 0.4, 0.);
+        let ankle = body.inverse();
+        assert_eq!(sole_tangent_weight(body * ankle), 1.);
+        assert_eq!(sole_tangent_weight(body), 0.);
+        assert_eq!(
+            sole_tangent_weight(UnitQuaternion::from_euler_angles(0., 0., 2.)),
+            1.
+        );
+    }
+
+    #[test]
+    fn rolling_contact_retains_height_without_direct_horizontal_anchor() {
+        let mut filter = ContactFilter::new(&config());
+        filter.initialize(UnitQuaternion::identity(), Vector3::zeros(), feet());
+        let before = filter.position();
+        filter
+            .correct_contact(
+                0,
+                Vector3::new(2., 3., -0.6),
+                1.,
+                Duration::from_millis(10),
+                0.,
+            )
+            .unwrap();
+        let after = filter.position();
+        assert_eq!(before.x, after.x);
+        assert_eq!(before.y, after.y);
+        assert!((before.z - after.z).abs() > 0.01);
     }
 
     #[test]
@@ -620,6 +687,7 @@ mod tests {
                     Vector3::new(1.0, 0.1, -0.8),
                     probability,
                     Duration::from_millis(10),
+                    1.0,
                 )
                 .unwrap();
             filter.accelerometer_bias()
@@ -647,6 +715,7 @@ mod tests {
                     Vector3::zeros(),
                     feet(),
                     Duration::from_millis(10),
+                    None,
                 )
                 .unwrap();
         }
@@ -670,6 +739,7 @@ mod tests {
                         Vector3::zeros(),
                         feet(),
                         Duration::from_millis(40),
+                        None,
                     )
                     .unwrap();
             }
@@ -701,6 +771,7 @@ mod tests {
                     Vector3::zeros(),
                     feet(),
                     Duration::from_millis(config.contact_probability_rise_ms),
+                    None,
                 )
                 .unwrap();
         }
@@ -739,6 +810,7 @@ mod tests {
                     Vector3::zeros(),
                     planted,
                     Duration::from_secs_f64(dt),
+                    None,
                 )
                 .unwrap();
             assert!((correction.pose.position.z - height).abs() < 0.01);

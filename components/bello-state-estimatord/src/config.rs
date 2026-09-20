@@ -9,6 +9,8 @@ use serde::Deserialize;
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EstimatorConfig {
+    /// Explicit opt-in; missing torque never falls back to kinematic evidence.
+    pub load_observer: Option<crate::load::LoadConfig>,
     pub urdf: PathBuf,
     pub hardware_endpoint: String,
     pub listen: SocketAddr,
@@ -60,6 +62,13 @@ impl EstimatorConfig {
         let mut value: Self = serde_yaml::from_str(&text)
             .with_context(|| format!("parse estimator config {}", path.display()))?;
         let parent = path.parent().unwrap_or_else(|| Path::new("."));
+        if let Some(observer) = &mut value.load_observer {
+            observer.model = parent.join(&observer.model);
+            observer.validate()?;
+            if !value.planar {
+                bail!("load-aware contact requires the flat-ground model");
+            }
+        }
         if value.urdf.is_relative() {
             value.urdf = parent.join(&value.urdf);
         }

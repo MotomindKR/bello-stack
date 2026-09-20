@@ -737,6 +737,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "bello-hardware-client",
+ "bello-mujoco",
  "bello-pose-api",
  "bello-robot-description",
  "clap",
