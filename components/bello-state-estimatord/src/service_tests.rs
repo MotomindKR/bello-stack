@@ -24,6 +24,49 @@ impl HardwareService for Hardware {
     ) -> Result<Response<p::ListHardwareResponse>, Status> {
         self.inventories.fetch_add(1, Ordering::SeqCst);
         Ok(Response::new(p::ListHardwareResponse {
+            buses: vec![p::BusInfo {
+                name: "test".into(),
+                interface: "synthetic".into(),
+                ..Default::default()
+            }],
+            motors: ["left", "right"]
+                .into_iter()
+                .enumerate()
+                .map(|(index, name)| p::MotorInfo {
+                    name: name.into(),
+                    coordinate: format!("{name}_joint"),
+                    group: "body".into(),
+                    address: Some(p::MotorAddress {
+                        bus: "test".into(),
+                        id: index as u32 + 1,
+                    }),
+                    model: "ROBSTRIDE_03".into(),
+                    direction: 1,
+                    limits: Some(p::MotorLimits {
+                        position_min: -1.,
+                        position_max: 1.,
+                        velocity_min: -10.,
+                        velocity_max: 10.,
+                        torque_min: -30.,
+                        torque_max: 30.,
+                        kp_max: 100.,
+                        kd_max: 10.,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                })
+                .collect(),
+            groups: vec![p::GroupInfo {
+                name: "body".into(),
+                control_rate_hz: 100.,
+                motors: (1..=2)
+                    .map(|id| p::MotorAddress {
+                        bus: "test".into(),
+                        id,
+                    })
+                    .collect(),
+                ..Default::default()
+            }],
             serial_devices: vec![p::SerialDeviceInfo {
                 name: "serial".into(),
                 port: "none".into(),
@@ -56,12 +99,19 @@ impl HardwareService for Hardware {
                     _ => {}
                 }
                 timestamp += 10_000_000;
+                for name in ["left", "right"] {
+                    yield p::WatchTelemetryResponse { monotonic_ns: timestamp,
+                        payload: Some(p::watch_telemetry_response::Payload::Motor(p::MotorTelemetry {
+                            motor_name: name.into(), group: "body".into(), ..Default::default()
+                        }))
+                    };
+                }
                 yield p::WatchTelemetryResponse { monotonic_ns: timestamp,
                     payload: Some(p::watch_telemetry_response::Payload::Imu(p::ImuTelemetry {
                         imu_name: "imu".into(),
                         orientation: Some(p::Quaternion { w: 1., ..Default::default() }),
                         angular_velocity: Some(p::Vector3::default()),
-                        linear_acceleration: Some(p::Vector3 { z: 9.81, ..Default::default() }),
+                        linear_acceleration: Some(p::Vector3::default()),
                         ..Default::default()
                     }))
                 };
@@ -153,17 +203,49 @@ async fn wait_pose(
 async fn absent_hardware_eof_restart_and_stall_do_not_stop_monitor() {
     let temporary = tempfile::tempdir().unwrap();
     let urdf = temporary.path().join("robot.urdf");
-    std::fs::write(&urdf, r#"<robot name="synthetic"><link name="pelvis"/>
-        <link name="left"><collision><geometry><box size=".1 .1 .02"/></geometry></collision></link>
-        <link name="right"><collision><geometry><box size=".1 .1 .02"/></geometry></collision></link>
-        <joint name="left_fixed" type="fixed"><parent link="pelvis"/><child link="left"/><origin xyz="0 .1 -.8"/></joint>
-        <joint name="right_fixed" type="fixed"><parent link="pelvis"/><child link="right"/><origin xyz="0 -.1 -.8"/></joint></robot>"#).unwrap();
+    std::fs::write(&urdf, r#"<robot name="synthetic">
+        <link name="pelvis"><inertial><mass value="5"/><inertia ixx=".1" iyy=".1" izz=".1" ixy="0" ixz="0" iyz="0"/></inertial></link>
+        <link name="left"><inertial><mass value="1"/><inertia ixx=".01" iyy=".01" izz=".01" ixy="0" ixz="0" iyz="0"/></inertial><collision><geometry><box size=".1 .1 .02"/></geometry></collision></link>
+        <link name="right"><inertial><mass value="1"/><inertia ixx=".01" iyy=".01" izz=".01" ixy="0" ixz="0" iyz="0"/></inertial><collision><geometry><box size=".1 .1 .02"/></geometry></collision></link>
+        <joint name="left_joint" type="revolute"><parent link="pelvis"/><child link="left"/><origin xyz="0 .1 -.8"/><axis xyz="1 0 0"/><limit lower="-1" upper="1" effort="30" velocity="10"/></joint>
+        <joint name="right_joint" type="revolute"><parent link="pelvis"/><child link="right"/><origin xyz="0 -.1 -.8"/><axis xyz="1 0 0"/><limit lower="-1" upper="1" effort="30" velocity="10"/></joint></robot>"#).unwrap();
+    std::fs::write(
+        temporary.path().join("hardware.yaml"),
+        r#"
+robot_description: robot.urdf
+logical_buses: [{name: test, host_id: 253}]
+motors:
+  - {name: left, coordinate: left_joint, bus: test, id: 1, model: ROBSTRIDE_03, direction: 1}
+  - {name: right, coordinate: right_joint, bus: test, id: 2, model: ROBSTRIDE_03, direction: 1}
+imus: [{name: imu, source_frame: pelvis, output_frame: pelvis}]
+"#,
+    )
+    .unwrap();
+    let observer_model = temporary.path().join("model.yaml");
+    std::fs::write(
+        &observer_model,
+        r#"
+hardware: hardware.yaml
+timestep_seconds: 0.0025
+initial_root_position: [0, 0, 0.81]
+initial_root_quaternion: [1, 0, 0, 0]
+initial_joint_positions: {left_joint: 0, right_joint: 0}
+neighbor_exclusion_depth: 2
+"#,
+    )
+    .unwrap();
     let reservation = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = reservation.local_addr().unwrap();
     drop(reservation);
     let config: EstimatorConfig = serde_yaml::from_str(&format!(
         r#"
 urdf: {}
+load_observer:
+  model: {}
+  cutoff_hz: 10
+  velocity_cutoff_hz: 10
+  zero_weight_fraction: 0.02
+  full_weight_fraction: 0.10
 hardware_endpoint: http://{}
 listen: 127.0.0.1:0
 imu_frame: pelvis
@@ -174,6 +256,7 @@ planar: true
 ground_height_m: 0
 "#,
         urdf.display(),
+        observer_model.display(),
         address
     ))
     .unwrap();

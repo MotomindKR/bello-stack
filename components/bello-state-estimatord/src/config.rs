@@ -9,8 +9,7 @@ use serde::Deserialize;
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EstimatorConfig {
-    /// Explicit opt-in; missing torque never falls back to kinematic evidence.
-    pub load_observer: Option<crate::load::LoadConfig>,
+    pub load_observer: crate::load::LoadConfig,
     pub urdf: PathBuf,
     pub hardware_endpoint: String,
     pub listen: SocketAddr,
@@ -45,10 +44,6 @@ pub struct EstimatorConfig {
     pub contact_motion_full_mps: f64,
     #[serde(default = "default_contact_motion_zero")]
     pub contact_motion_zero_mps: f64,
-    #[serde(default = "default_contact_world_speed_full")]
-    pub contact_world_speed_full_mps: f64,
-    #[serde(default = "default_contact_world_speed_zero")]
-    pub contact_world_speed_zero_mps: f64,
     #[serde(default = "default_contact_probability_rise_ms")]
     pub contact_probability_rise_ms: u64,
     #[serde(default = "default_contact_probability_fall_ms")]
@@ -62,12 +57,10 @@ impl EstimatorConfig {
         let mut value: Self = serde_yaml::from_str(&text)
             .with_context(|| format!("parse estimator config {}", path.display()))?;
         let parent = path.parent().unwrap_or_else(|| Path::new("."));
-        if let Some(observer) = &mut value.load_observer {
-            observer.model = parent.join(&observer.model);
-            observer.validate()?;
-            if !value.planar {
-                bail!("load-aware contact requires the flat-ground model");
-            }
+        value.load_observer.model = parent.join(&value.load_observer.model);
+        value.load_observer.validate()?;
+        if !value.planar {
+            bail!("load-aware contact requires the flat-ground model");
         }
         if value.urdf.is_relative() {
             value.urdf = parent.join(&value.urdf);
@@ -100,14 +93,6 @@ impl EstimatorConfig {
             ("contact_height_zero_m", value.contact_height_zero_m),
             ("contact_motion_full_mps", value.contact_motion_full_mps),
             ("contact_motion_zero_mps", value.contact_motion_zero_mps),
-            (
-                "contact_world_speed_full_mps",
-                value.contact_world_speed_full_mps,
-            ),
-            (
-                "contact_world_speed_zero_mps",
-                value.contact_world_speed_zero_mps,
-            ),
         ] {
             if !number.is_finite() || number < 0.0 {
                 bail!("{name} must be nonnegative and finite");
@@ -130,7 +115,6 @@ impl EstimatorConfig {
         }
         if value.contact_height_full_m >= value.contact_height_zero_m
             || value.contact_motion_full_mps >= value.contact_motion_zero_mps
-            || value.contact_world_speed_full_mps >= value.contact_world_speed_zero_mps
         {
             bail!(
                 "full-confidence contact thresholds must be smaller than zero-confidence thresholds"
@@ -197,12 +181,6 @@ const fn default_contact_motion_full() -> f64 {
 }
 const fn default_contact_motion_zero() -> f64 {
     0.60
-}
-const fn default_contact_world_speed_full() -> f64 {
-    0.10
-}
-const fn default_contact_world_speed_zero() -> f64 {
-    0.50
 }
 const fn default_contact_probability_rise_ms() -> u64 {
     80

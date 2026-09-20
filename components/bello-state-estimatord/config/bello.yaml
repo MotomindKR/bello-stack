@@ -1,5 +1,11 @@
 # Contact-aided local pose estimator for Bello, independent of hardware transport.
 urdf: ../../../descriptions/bello/urdf/bello.urdf
+load_observer:
+  model: ../../bello-mujoco/config/bello.yaml
+  cutoff_hz: 10.0
+  velocity_cutoff_hz: 10.0
+  zero_weight_fraction: 0.02
+  full_weight_fraction: 0.10
 hardware_endpoint: http://127.0.0.1:50051
 listen: 0.0.0.0:50053
 imu: imu
@@ -19,7 +25,5 @@ contact_height_full_m: 0.015
 contact_height_zero_m: 0.06
 contact_motion_full_mps: 0.10
 contact_motion_zero_mps: 0.60
-contact_world_speed_full_mps: 0.10
-contact_world_speed_zero_mps: 0.50
 contact_probability_rise_ms: 80
 contact_probability_fall_ms: 20

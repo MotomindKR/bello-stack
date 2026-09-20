@@ -2,7 +2,7 @@
 
 `bello-state-estimatord` reads direction-corrected motor and EBIMU telemetry
 through `bello-hardware-client`, estimates a local tracked-frame pose with
-contact-aided stationary-foot constraints, and implements the existing
+measured-torque contact inference and stationary-foot constraints, and implements the existing
 `bello.pose.v1.PoseService`.
 
 Hardwared may start later or restart independently. The pose service stays up,
@@ -30,10 +30,9 @@ estimated by a contact-aided linear Kalman filter. It is local odometry:
 without an external absolute position source it can drift, especially during
 foot slip, flight, rolling, or non-foot support.
 
-The required `planar` configuration field selects the ground model. With
-`planar: true`, each acquired foot anchor is constrained to `ground_height_m`
-in the configured reference frame; pelvis height remains free to change. Set `planar: false` for uneven terrain,
-stairs, or any deployment where contact height must remain unconstrained.
+The estimator currently requires `planar: true`: each acquired foot anchor is
+constrained to `ground_height_m` in the reference frame, while pelvis height
+remains free to change. Uneven terrain and stairs are not supported.
 
 The support point follows the lowest surface of the foot link's URDF collision
 primitives using measured joint angles and IMU orientation. Flat support uses
@@ -43,21 +42,12 @@ anchor moves by the corresponding rigid-body offset, avoiding a false base
 translation. This uses gravity as the support normal, not a terrain estimate;
 it does not infer hand or knee support.
 
-Contact evidence is continuous rather than a binary threshold. Relative foot
-height and base-independent encoder kinematics each produce a smooth score
-between zero and one; their product is filtered with separate rise and fall
-time constants. In planar mode the motion score uses only vertical foot motion,
-so normal horizontal stance motion does not reject a contact. Non-planar mode
-uses the full base-independent kinematic speed.
-
-Full world-foot speed supplies a score only when the opposite foot
-is already both high-confidence and stationary. This lets a trusted stance foot
-reject a low-clearance swing foot using horizontal motion, and lets stationary
-world feet remain contacts while the body moves vertically during a squat.
-The opposite-support confidence blends from the base-independent motion score
-to the world-speed score; height evidence remains required. A foot cannot use its
-own anchor to validate its speed, and world speed is ignored when neither foot
-provides stationary opposite support, so drift cannot block contact recovery.
+Contact evidence is continuous rather than a binary threshold. Estimated load
+and relative foot height produce smooth scores whose product is filtered with
+separate rise and fall time constants. Only the initial pose bootstrap uses
+relative height and vertical encoder/gyro motion before momentum history exists;
+`contact_motion_*` thresholds apply to that initialization, not ongoing contact
+classification. There is no selectable kinematic-only mode or fallback.
 
 The filtered probability is cubed before it scales both sides of the contact
 model. This makes medium-confidence contacts much weaker while preserving a
@@ -68,19 +58,15 @@ low confidence increases anchor process noise so a questionable anchor can move
 rather than pinning the robot. Contacts below 0.95 probability cannot update the
 accelerometer-bias state. Binary state remains only for anchor lifecycle: a new
 anchor is created above an internal acquisition probability and retired only
-after its already-weak confidence falls near zero. No force or torque
-measurement is used by this default kinematic mode. The daemon has no
+after its already-weak confidence falls near zero. The daemon has no
 gait-reference contact input.
 
-## Load-aware deployment candidate
+## Required dynamics model
 
-The supplied robot profiles remain kinematic. The load-aware mode is an explicit
-candidate, not a commissioned replacement: closed-loop Lima balance still hits
-the tilt termination despite improved height estimates. Do not enable it on a
-physical robot based only on offline height RMSE.
-
-To evaluate it, add this block to an estimator config stored beside the supplied
-Mini profile (paths are relative to the config):
+Load-aware estimation is the sole implementation in both shipped robot profiles.
+Custom configs must supply the `load_observer` block; omission or null is an
+error. Remove obsolete `contact_world_speed_*` settings, which are rejected.
+For example, the Mini profile uses paths relative to the config:
 
 ```yaml
 load_observer:
@@ -91,6 +77,9 @@ load_observer:
   full_weight_fraction: 0.10
 ```
 
+The model and its native builder live entirely in this bello-stack repository's
+`components/bello-mujoco`, with canonical inputs under `descriptions/`. No Python
+training checkout, generated policy MJCF, or policy bundle is needed.
 The model is built from the existing robot-owned physics configuration and must
 resolve to the same canonical URDF. `tracked_frame` must be its free-root link.
 This requires the pinned headless MuJoCo 3.12 runtime, all body motor feedback,
@@ -112,8 +101,10 @@ Missing/stale whole-body feedback withholds poses; there is no silent kinematic
 fallback. Reconnection preserves odometry but resets the momentum history.
 Wrong masses, encoder zeros, torque scaling, slip, hand/knee support, and telemetry
 latency can still corrupt inferred loads. A good load estimate is not a direct
-contact measurement. The existing confidence smoothing, anchor lifecycle, and
-accelerometer-bias gating remain shared with kinematic mode.
+contact measurement. Making this the software default is not physical deployment
+approval: Lima tests still show substantial, variable horizontal drift during
+deep balance/lunge motions despite improved height estimates. Commission on
+supported hardware before relying on this pose stream for motion control.
 
 Motor samples are timestamped at their estimated source time and interpolated,
 or velocity-extrapolated within `motor_stale_ms`, to each IMU source timestamp

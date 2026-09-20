@@ -42,7 +42,7 @@ pub struct PoseEstimate {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ContactDiagnostics {
-    pub load_probability: Option<f64>,
+    pub load_probability: f64,
     pub tangent_weight: f64,
     pub active: bool,
     pub changed: bool,
@@ -53,7 +53,6 @@ pub struct ContactDiagnostics {
     pub world_speed: f64,
     pub kinematic_speed: f64,
     pub contact_motion_speed: f64,
-    pub world_speed_reliability: f64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -239,15 +238,14 @@ impl ContactFilter {
         angular_velocity_local: Vector3<f64>,
         feet: [FootKinematics; 2],
         update_interval: Duration,
-        load_probability: Option<[f64; 2]>,
+        load_probability: [f64; 2],
     ) -> anyhow::Result<ContactCorrection> {
-        if let Some(load) = load_probability {
-            anyhow::ensure!(
-                load.iter()
-                    .all(|p| p.is_finite() && (0.0..=1.0).contains(p)),
-                "invalid load probability"
-            );
-        }
+        anyhow::ensure!(
+            load_probability
+                .iter()
+                .all(|p| p.is_finite() && (0.0..=1.0).contains(p)),
+            "invalid load probability"
+        );
         if !self.initialized {
             let pose = self.initialize(orientation, angular_velocity_local, feet);
             return Ok(ContactCorrection {
@@ -277,21 +275,14 @@ impl ContactFilter {
                 velocity.norm()
             }
         });
-        let contacts = match load_probability {
-            Some(load) => self.contacts.update_loaded(heights, load, update_interval),
-            None => self
-                .contacts
-                .update(heights, contact_motion_speeds, speeds, update_interval),
-        };
+        let contacts = self
+            .contacts
+            .update(heights, load_probability, update_interval);
         let minimum_height = heights[0].min(heights[1]);
         let mut diagnostics = [ContactDiagnostics::default(); 2];
         for index in 0..2 {
-            let tangent_weight = if load_probability.is_some() {
-                sole_tangent_weight(orientation * feet[index].foot_orientation)
-            } else {
-                1.0
-            };
-            diagnostics[index].load_probability = load_probability.map(|load| load[index]);
+            let tangent_weight = sole_tangent_weight(orientation * feet[index].foot_orientation);
+            diagnostics[index].load_probability = load_probability[index];
             diagnostics[index].tangent_weight = tangent_weight;
             diagnostics[index].probability = contacts[index].probability;
             diagnostics[index].effective_probability =
@@ -301,7 +292,6 @@ impl ContactFilter {
             diagnostics[index].world_speed = speeds[index];
             diagnostics[index].kinematic_speed = kinematic_speeds[index];
             diagnostics[index].contact_motion_speed = contact_motion_speeds[index];
-            diagnostics[index].world_speed_reliability = contacts[index].world_speed_reliability;
             if contacts[index].active && contacts[index].changed {
                 self.set_contact_position(index, self.position() + relative[index]);
                 self.reset_contact_covariance(index);
@@ -476,7 +466,13 @@ mod tests {
 
     fn config() -> EstimatorConfig {
         EstimatorConfig {
-            load_observer: None,
+            load_observer: crate::load::LoadConfig {
+                model: "unused".into(),
+                cutoff_hz: 10.,
+                velocity_cutoff_hz: 10.,
+                zero_weight_fraction: 0.02,
+                full_weight_fraction: 0.10,
+            },
             urdf: "unused".into(),
             hardware_endpoint: "http://127.0.0.1:50051".into(),
             listen: "127.0.0.1:50053".parse().unwrap(),
@@ -497,8 +493,6 @@ mod tests {
             contact_height_zero_m: 0.06,
             contact_motion_full_mps: 0.10,
             contact_motion_zero_mps: 0.60,
-            contact_world_speed_full_mps: 0.10,
-            contact_world_speed_zero_mps: 0.50,
             contact_probability_rise_ms: 80,
             contact_probability_fall_ms: 20,
         }
@@ -539,7 +533,7 @@ mod tests {
                 Vector3::zeros(),
                 changed,
                 Duration::from_millis(10),
-                None,
+                [1.; 2],
             )
             .unwrap();
         assert!((corrected.pose.position - original.position).norm() < 1.0e-12);
@@ -554,7 +548,7 @@ mod tests {
                 Vector3::zeros(),
                 centered,
                 Duration::from_millis(10),
-                None,
+                [1.; 2],
             )
             .unwrap();
         assert!((restored.pose.position - original.position).norm() < 1.0e-12);
@@ -715,7 +709,7 @@ mod tests {
                     Vector3::zeros(),
                     feet(),
                     Duration::from_millis(10),
-                    None,
+                    [1.; 2],
                 )
                 .unwrap();
         }
@@ -739,7 +733,7 @@ mod tests {
                         Vector3::zeros(),
                         feet(),
                         Duration::from_millis(40),
-                        None,
+                        [1.; 2],
                     )
                     .unwrap();
             }
@@ -771,7 +765,7 @@ mod tests {
                     Vector3::zeros(),
                     feet(),
                     Duration::from_millis(config.contact_probability_rise_ms),
-                    None,
+                    [1.; 2],
                 )
                 .unwrap();
         }
@@ -810,7 +804,7 @@ mod tests {
                     Vector3::zeros(),
                     planted,
                     Duration::from_secs_f64(dt),
-                    None,
+                    [1.; 2],
                 )
                 .unwrap();
             assert!((correction.pose.position.z - height).abs() < 0.01);

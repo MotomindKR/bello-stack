@@ -11,8 +11,6 @@ struct ContactProbabilityModel {
     height_zero: f64,
     motion_full: f64,
     motion_zero: f64,
-    world_speed_full: f64,
-    world_speed_zero: f64,
     rise_time: Duration,
     fall_time: Duration,
 }
@@ -24,8 +22,6 @@ impl ContactProbabilityModel {
             height_zero: config.contact_height_zero_m,
             motion_full: config.contact_motion_full_mps,
             motion_zero: config.contact_motion_zero_mps,
-            world_speed_full: config.contact_world_speed_full_mps,
-            world_speed_zero: config.contact_world_speed_zero_mps,
             rise_time: config.contact_probability_rise(),
             fall_time: config.contact_probability_fall(),
         }
@@ -61,7 +57,6 @@ impl ContactState {
             probability: self.probability,
             active: self.active,
             changed: was_active != self.active,
-            world_speed_reliability: 0.,
         }
     }
 }
@@ -71,7 +66,6 @@ pub(crate) struct ContactUpdate {
     pub(crate) probability: f64,
     pub(crate) active: bool,
     pub(crate) changed: bool,
-    pub(crate) world_speed_reliability: f64,
 }
 
 #[derive(Debug)]
@@ -106,47 +100,6 @@ impl ContactManager {
                 probability,
                 active,
                 changed: active,
-                world_speed_reliability: 0.0,
-            }
-        })
-    }
-
-    pub(crate) fn update(
-        &mut self,
-        heights: [f64; 2],
-        motion_speeds: [f64; 2],
-        world_speeds: [f64; 2],
-        dt: Duration,
-    ) -> [ContactUpdate; 2] {
-        let minimum_height = heights[0].min(heights[1]);
-        let previous_feet = self.feet;
-        std::array::from_fn(|index| {
-            let other = 1 - index;
-            let opposite_world_probability = self.world_speed_probability(world_speeds[other]);
-            let world_speed_reliability = if previous_feet[other].active {
-                previous_feet[other].probability * opposite_world_probability
-            } else {
-                0.0
-            };
-            let kinematic_probability =
-                self.kinematic_probability(heights[index] - minimum_height, motion_speeds[index]);
-            let world_speed_probability = self.world_speed_probability(world_speeds[index]);
-            let world_speed_factor =
-                1.0 - world_speed_reliability * (1.0 - world_speed_probability);
-            let height_probability = descending_smoothstep(
-                heights[index] - minimum_height,
-                self.model.height_full,
-                self.model.height_zero,
-            );
-            // A trusted opposite stance foot makes world velocity informative.
-            // Body-relative vertical motion alone is not swing evidence in a squat.
-            let motion_probability = (1.0 - world_speed_reliability) * kinematic_probability
-                + world_speed_reliability * height_probability;
-            let target = motion_probability * world_speed_factor;
-
-            ContactUpdate {
-                world_speed_reliability,
-                ..self.feet[index].update(target, &self.model, dt)
             }
         })
     }
@@ -155,7 +108,7 @@ impl ContactManager {
         self.feet.map(|foot| foot.active)
     }
 
-    pub(crate) fn update_loaded(
+    pub(crate) fn update(
         &mut self,
         heights: [f64; 2],
         load_probability: [f64; 2],
@@ -189,14 +142,6 @@ impl ContactManager {
             self.model.height_zero,
         ) * descending_smoothstep(motion_speed, self.model.motion_full, self.model.motion_zero)
     }
-
-    fn world_speed_probability(&self, world_speed: f64) -> f64 {
-        descending_smoothstep(
-            world_speed,
-            self.model.world_speed_full,
-            self.model.world_speed_zero,
-        )
-    }
 }
 
 pub(crate) fn descending_smoothstep(value: f64, full: f64, zero: f64) -> f64 {
@@ -226,8 +171,6 @@ mod tests {
                 height_zero: 0.06,
                 motion_full: 0.10,
                 motion_zero: 0.60,
-                world_speed_full: 0.10,
-                world_speed_zero: 0.50,
                 rise_time: Duration::from_millis(80),
                 fall_time: Duration::from_millis(20),
             },
@@ -241,12 +184,7 @@ mod tests {
         let initialized = contacts.initialize([0.0, 0.0], [0.0, 0.0]);
         assert!(initialized.iter().all(|contact| contact.active));
 
-        let fading = contacts.update(
-            [0.0, 0.0],
-            [1.0, 1.0],
-            [1.0, 1.0],
-            Duration::from_millis(20),
-        );
+        let fading = contacts.update([0.0, 0.0], [0.0, 0.0], Duration::from_millis(20));
         assert!(fading.iter().all(|contact| contact.active));
         assert!(
             fading
@@ -254,12 +192,7 @@ mod tests {
                 .all(|contact| contact.probability > RELEASE_PROBABILITY)
         );
 
-        let released = contacts.update(
-            [0.0, 0.0],
-            [1.0, 1.0],
-            [1.0, 1.0],
-            Duration::from_millis(40),
-        );
+        let released = contacts.update([0.0, 0.0], [0.0, 0.0], Duration::from_millis(40));
         assert!(released.iter().all(|contact| !contact.active));
         assert!(released.iter().all(|contact| contact.changed));
     }
@@ -277,86 +210,39 @@ mod tests {
     }
 
     #[test]
-    fn trusted_opposite_support_uses_world_speed_to_reject_a_swing_foot() {
+    fn unloaded_foot_releases_without_disturbing_loaded_support() {
         let mut contacts = manager();
         contacts.initialize([0.0, 0.0], [0.0, 0.0]);
 
-        let fading = contacts.update(
-            [0.0, 0.0],
-            [0.0, 0.0],
-            [0.0, 1.0],
-            Duration::from_millis(20),
-        );
+        let fading = contacts.update([0.0, 0.0], [1.0, 0.0], Duration::from_millis(20));
         assert_eq!(fading[0].probability, 1.0);
         assert!(fading[1].probability < 0.5);
-        assert_eq!(fading[1].world_speed_reliability, 1.0);
 
-        let released = contacts.update(
-            [0.0, 0.0],
-            [0.0, 0.0],
-            [0.0, 1.0],
-            Duration::from_millis(40),
-        );
+        let released = contacts.update([0.0, 0.0], [1.0, 0.0], Duration::from_millis(40));
         assert!(released[0].active);
         assert!(!released[1].active);
     }
 
     #[test]
-    fn world_speed_does_not_block_recovery_without_stationary_opposite_support() {
+    fn loaded_feet_acquire_support_from_unanchored_state() {
         let mut contacts = manager();
 
         for _ in 0..3 {
-            contacts.update(
-                [0.0, 0.0],
-                [0.0, 0.0],
-                [10.0, 10.0],
-                Duration::from_millis(80),
-            );
+            contacts.update([0.0, 0.0], [1.0, 1.0], Duration::from_millis(80));
         }
 
         assert_eq!(contacts.active(), [true, true]);
-    }
-
-    #[test]
-    fn stationary_world_feet_remain_contacts_during_body_vertical_motion() {
-        let mut contacts = manager();
-        contacts.initialize([0.0, 0.0], [0.0, 0.0]);
-        for _ in 0..100 {
-            contacts.update(
-                [0.0, 0.0],
-                [0.8, 0.8],
-                [0.0, 0.0],
-                Duration::from_millis(10),
-            );
-        }
-        assert_eq!(contacts.probabilities(), [1.0, 1.0]);
-        assert_eq!(contacts.active(), [true, true]);
-    }
-
-    #[test]
-    fn moving_world_feet_cannot_validate_each_other_as_stationary() {
-        let mut contacts = manager();
-        contacts.initialize([0.0, 0.0], [0.0, 0.0]);
-        for _ in 0..10 {
-            contacts.update(
-                [0.0, 0.0],
-                [0.8, 0.8],
-                [0.8, 0.8],
-                Duration::from_millis(10),
-            );
-        }
-        assert_eq!(contacts.active(), [false, false]);
     }
 
     #[test]
     fn loaded_contact_still_requires_relative_ground_height() {
         let mut contacts = manager();
         for _ in 0..30 {
-            contacts.update_loaded([0., 0.2], [1., 1.], Duration::from_millis(20));
+            contacts.update([0., 0.2], [1., 1.], Duration::from_millis(20));
         }
         assert_eq!(contacts.active(), [true, false]);
         for _ in 0..30 {
-            contacts.update_loaded([0., 0.], [0., 0.], Duration::from_millis(20));
+            contacts.update([0., 0.], [0., 0.], Duration::from_millis(20));
         }
         assert_eq!(contacts.active(), [false, false]);
     }

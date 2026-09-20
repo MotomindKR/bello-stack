@@ -171,15 +171,12 @@ pub async fn run(path: &Path) -> anyhow::Result<()> {
 
 pub fn check(path: &Path) -> anyhow::Result<()> {
     let (config, _, _) = load(path)?;
-    if let Some(observer) = config.load_observer {
-        crate::load::check(
-            observer,
-            config.urdf,
-            config.tracked_frame,
-            [config.left_foot, config.right_foot],
-        )?;
-    }
-    Ok(())
+    crate::load::check(
+        config.load_observer,
+        config.urdf,
+        config.tracked_frame,
+        [config.left_foot, config.right_foot],
+    )
 }
 
 fn load(path: &Path) -> anyhow::Result<(EstimatorConfig, KinematicModel, ImuFrameTransform)> {
@@ -244,19 +241,13 @@ async fn monitor_hardware(
     poses: watch::Sender<Option<StampedPose>>,
     mut shutdown: watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
-    let observer = if let Some(observer_config) = &config.load_observer {
-        Some(
-            LoadObserver::start(
-                observer_config.clone(),
-                config.urdf.clone(),
-                config.tracked_frame.clone(),
-                [config.left_foot.clone(), config.right_foot.clone()],
-            )
-            .await?,
-        )
-    } else {
-        None
-    };
+    let observer = LoadObserver::start(
+        config.load_observer.clone(),
+        config.urdf.clone(),
+        config.tracked_frame.clone(),
+        [config.left_foot.clone(), config.right_foot.clone()],
+    )
+    .await?;
     let mut estimator = Estimator {
         filter: ContactFilter::new(&config),
         model,
@@ -279,12 +270,7 @@ async fn monitor_hardware(
             .map_err(|_| {
                 HardwareError::Rpc(Status::deadline_exceeded("hardware connection timed out"))
             })??;
-            let required = estimator
-                .observer
-                .as_ref()
-                .map(|value| value.coordinates.as_slice())
-                .unwrap_or(estimator.model.required_coordinates());
-            validate_inventory(&robot, &config, required)?;
+            validate_inventory(&robot, &config, &estimator.observer.coordinates)?;
             consume_hardware(robot, &config, &poses, &mut estimator).await
         };
         let result = tokio::select! {
@@ -327,7 +313,7 @@ struct Estimator {
     model: KinematicModel,
     imu_frame: ImuFrameTransform,
     filter: ContactFilter,
-    observer: Option<LoadObserver>,
+    observer: LoadObserver,
     sequence: u64,
 }
 
@@ -344,10 +330,7 @@ async fn consume_hardware(
         observer,
         sequence,
     } = estimator;
-    let observer = observer.as_ref();
-    let required_coordinates = observer
-        .map(|value| value.coordinates.as_slice())
-        .unwrap_or(model.required_coordinates());
+    let required_coordinates = observer.coordinates.as_slice();
     let mut states = tokio::time::timeout(
         Duration::from_secs(3),
         robot.states_with(StateStreamOptions::default().reconnect_on_unavailable(false)),
@@ -475,31 +458,30 @@ async fn consume_hardware(
                 .map(Duration::from_nanos)
                 .filter(|interval| *interval <= Duration::from_millis(500))
                 .unwrap_or(Duration::from_millis(10));
-            let load = if let Some(observer) = observer {
-                let prediction = filter.diagnostics();
-                let root = imu_frame.tracked_state(
-                    prediction.position,
-                    orientation,
-                    prediction.velocity,
-                    angular_velocity,
-                );
-                let support = observer
-                    .update(Sample {
-                        time_ns: imu_source_ns,
-                        reset: previous_motor_epoch.is_none(),
-                        root,
-                        coordinates: coordinates.values.clone(),
-                        torques: coordinates.torques.clone(),
-                    })
-                    .await?;
-                let probability = support.probability;
-                last_support = Some(support);
-                Some(probability)
-            } else {
-                None
-            };
-            let correction =
-                filter.correct_contacts(orientation, angular_velocity, feet, interval, load)?;
+            let prediction = filter.diagnostics();
+            let root = imu_frame.tracked_state(
+                prediction.position,
+                orientation,
+                prediction.velocity,
+                angular_velocity,
+            );
+            let support = observer
+                .update(Sample {
+                    time_ns: imu_source_ns,
+                    reset: previous_motor_epoch.is_none(),
+                    root,
+                    coordinates: coordinates.values.clone(),
+                    torques: coordinates.torques.clone(),
+                })
+                .await?;
+            let correction = filter.correct_contacts(
+                orientation,
+                angular_velocity,
+                feet,
+                interval,
+                support.probability,
+            )?;
+            last_support = Some(support);
             log_contact_diagnostics(&correction.contacts);
             pose = Some(correction.pose);
             previous_motor_epoch = Some(coordinates.epoch_ns);
@@ -559,8 +541,7 @@ fn log_contact_diagnostics(contacts: &[crate::filter::ContactDiagnostics; 2]) {
                 world_speed = contact.world_speed,
                 kinematic_speed = contact.kinematic_speed,
                 contact_motion_speed = contact.contact_motion_speed,
-                world_speed_reliability = contact.world_speed_reliability,
-                load_probability = ?contact.load_probability,
+                load_probability = contact.load_probability,
                 tangent_weight = contact.tangent_weight,
                 "pose-estimator contact changed"
             );
