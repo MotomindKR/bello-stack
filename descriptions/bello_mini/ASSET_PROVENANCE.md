@@ -8,11 +8,100 @@ The source assembly used millimetres and was classified with review contract
 `bello_mini_resolved_link_ownership_v1`.
 
 The checked-in description has 28 exterior visual meshes and primitive-only
-collision geometry. Its modeled total mass is 43.503025077021036 kg:
-19.529025077021032 kg of material-derived structure, 20.544 kg of catalog
-RobStride motors, 3.4 kg of measured torso assemblies, and 0.03 kg for the
-Orbbec Astra Stereo S U3 camera. Detailed hands are deliberately absent and
-each wrist ends in a massless anonymous 25 mm sphere.
+collision geometry. Its modeled total mass is **48.580 kg**, reconciled to
+assembly measurements on 2026-09-22. Detailed hands remain anonymous 25 mm
+radius spheres, now carrying 0.470 kg each. The separate fixed head uses a
+nominal sphere proxy rather than a CAD mesh.
+
+## Measured mass reconciliation
+
+| Assembly | Mass (kg) | Allocation |
+| --- | ---: | --- |
+| Left arm including hand/covers | 5.800 | 5.330 across seven arm links; 0.470 at the end-effector sphere |
+| Right arm including hand/covers | 5.800 | Same measured target, scaled independently from its CAD baseline |
+| Left leg | 10.200 | 5.640 above knee; 4.560 knee-down |
+| Right leg | 10.200 | Same measured target |
+| Central body, excluding head | 15.900 | Pelvis and waist yaw masses unchanged; excess allocated to torso |
+| Head | 0.680 | Separate fixed `head_link` |
+| **Total** | **48.580** | Sum of measured assemblies, not rounded to 48.5 |
+
+The arm measurements exclude the shoulder-pitch motors already owned by the
+torso; leg measurements exclude the hip-pitch motors already owned by the
+pelvis. These root motors must not be counted twice. The 0.500 kg cover estimate
+per arm is included in the 5.800 kg target, not an extra payload.
+
+For each arm, all seven original masses and COM inertia tensors are scaled by
+one common factor to total 5.330 kg, initially retaining the individual COMs.
+The left/right symmetry pass below is then applied. Each 0.470 kg hand is added
+at its existing sphere center (local
+`[0, 0, -0.025]` m), with solid-sphere COM inertia
+`diag(0.0001175, 0.0001175, 0.0001175)` kg m^2. This is an explicit inertia
+approximation, not a measurement of the physical hand.
+
+The hip-pitch, hip-roll and hip-yaw link masses and inertia tensors are scaled
+proportionally to total 5.640 kg per leg. The knee-down target includes the knee
+motor. Its 0.097690723121 kg excess is assigned only to `*_knee_link`, whose mass
+becomes 3.533698537613 kg; its inertia initially scales by the same ratio about
+its existing COM. Ankle pitch/roll masses are unchanged. Central-body excess
+1.258867006766 kg is assigned only to `torso_link`, bringing it to
+11.053965802291 kg with proportional inertia scaling. These allocations are
+followed by the symmetry pass below.
+
+These allocations deliberately approximate the distribution of unidentified
+mass. The original 43.503025077021036 kg CAD baseline comprised
+19.529025077021032 kg of structure, 20.544 kg of catalog motors, 3.400 kg of
+measured torso assemblies and 0.030 kg of camera. The torso assemblies already
+included the 2.650 kg battery and 0.750 kg electronics; neither is added again.
+The old material/catalog breakdown is historical provenance, not an exact
+decomposition of the reconciled inertials.
+
+### Separate head placement
+
+No head or neck geometry was present in the reviewed Mini model. The fixed
+mount is inferred from the upper torso, not from an identified mounting hole:
+`torso_link -> head_link` has `xyz="0 0 0.333"`, `rpy="0 0 0"`. This is centered
+on the robot's sagittal plane above the actual torso visual mesh, whose local
+bounds are approximately `[-0.074001, -0.114258, -0.080528]` to
+`[0.070000, 0.116202, 0.332759]` m. The shoulder-pitch axes are at torso-local
+z = 0.228 m.
+
+The head is represented by a 0.060 m radius sphere for visual, collision and
+inertia purposes. Its COM is `[0, 0, 0.060]` m in `head_link`, hence
+`[0, 0, 0.393]` m in `torso_link`. Its mass is measured (0.680 kg), but its
+position, dimensions and solid-sphere inertia
+`diag(0.0009792, 0.0009792, 0.0009792)` kg m^2 are nominal approximations.
+The head is fixed, not an additional actuated joint. Existing joint limits,
+mesh transforms, camera and IMU frames are unchanged.
+
+### Left/right symmetry
+
+After matching the measured assembly totals, each left/right pair is averaged
+in a common reflected frame using `S = diag(1, -1, 1)`. Mass is the arithmetic
+mean, COM is the mass-weighted mean, and COM inertia includes the parallel-axis
+terms needed to average the two mass distributions. The right link receives
+`S * COM` and `S * I * S`. Thus `ixy` and `iyz` change sign, while `ixz` does
+not. This preserves the measured totals rather than copying one side's mass
+to the other. Pelvis, waist-yaw and torso inertials are similarly averaged with
+their own reflections, placing their COMs on `y=0` and zeroing `ixy`/`iyz`.
+These symmetry assumptions replace the small CAD-derived asymmetries.
+
+Paired joint origins are averaged after reflection to remove sub-nanometre
+CAD roundoff. Axes and reviewed signed limits are retained: mirrored pitch
+motions use the same sign, while roll/yaw use opposite signs. The wrist-roll
+collision sphere centers had a 3 mm sagittal mismatch and are replaced by
+their reflected mean. Other paired collision shapes already agree within
+numerical precision (the two heel cylinders exchange +/-Y roles). Original
+CAD visual meshes are retained; small asymmetric mesh details are not used to
+derive the symmetrized inertials.
+
+Runtime validation with MuJoCo 3.12.0 confirmed 48.580 kg in both physics and
+visual models, 28 actuators, positive physically valid inertia tensors, mirrored
+paired inertials/collisions and sign-adjusted joint limits, and zero lateral
+whole-body COM in the symmetric home pose. The existing neutral-pose collision
+check passed. This validates the description, not a trained policy's behavior
+under the new mass distribution; hardware deployment remains separate.
+
+## Sensor and motor conventions
 
 The camera sensor tree uses nominal mechanical optical origins rather than
 factory calibration. The IR/depth origin is 2 mm behind the CAD front face,
