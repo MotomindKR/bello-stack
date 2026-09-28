@@ -286,6 +286,7 @@ impl ControlSession {
     pub async fn shutdown(mut self) -> Result<(), Error> {
         self.command_stream.take();
         let mut errors = Vec::new();
+        let mut faulted = false;
 
         if self.state == ControlState::Running {
             match self.lease.stop().await {
@@ -295,26 +296,38 @@ impl ControlSession {
                         errors.push(error.to_string());
                     }
                 }
-                Err(error) => errors.push(error.to_string()),
+                Err(error) => {
+                    faulted = self.confirm_fault(&error).await;
+                    if !faulted {
+                        errors.push(error.to_string());
+                    }
+                }
             }
         }
         // Disable is valid from Idle, Damped, and Running. Always ask the
         // authoritative daemon, including after an ambiguous lifecycle error.
-        match self.lease.disable().await {
-            Ok(state) => {
-                let actual = GroupState::from_wire(state);
-                if let Err(error) = self.expect_state("disable", GroupState::Idle, actual) {
-                    errors.push(error.to_string());
+        if !faulted {
+            match self.lease.disable().await {
+                Ok(state) => {
+                    let actual = GroupState::from_wire(state);
+                    if let Err(error) = self.expect_state("disable", GroupState::Idle, actual) {
+                        errors.push(error.to_string());
+                    }
+                }
+                Err(error) => {
+                    faulted = self.confirm_fault(&error).await;
+                    if !faulted {
+                        errors.push(error.to_string());
+                    }
                 }
             }
-            Err(error) => errors.push(error.to_string()),
         }
 
         self.stop_renewal().await;
         match self.lease.release().await {
             Ok(state) => {
                 let actual = GroupState::from_wire(state);
-                if actual != GroupState::Idle {
+                if actual != GroupState::Idle && !(faulted && actual == GroupState::Fault) {
                     errors.push(
                         Error::UnexpectedGroupState {
                             group: self.group.name().into(),
@@ -334,6 +347,29 @@ impl ControlSession {
         } else {
             Err(Error::CleanupFailed(errors))
         }
+    }
+
+    async fn confirm_fault(&self, error: &Error) -> bool {
+        if error
+            .rpc_status()
+            .is_none_or(|status| status.code() != tonic::Code::FailedPrecondition)
+        {
+            return false;
+        }
+        // Fault is already a latched daemon safety response. Releasing ownership
+        // must preserve it; recovery is a separate, explicit operator action.
+        self.group
+            .robot
+            .inner
+            .hardware
+            .inventory()
+            .await
+            .is_ok_and(|inventory| {
+                inventory.groups.iter().any(|group| {
+                    group.name == self.group.name()
+                        && group.state == bello_hardware_api::GroupState::Fault as i32
+                })
+            })
     }
 
     async fn send_and_confirm(

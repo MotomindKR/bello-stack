@@ -40,6 +40,7 @@ struct FakeSettings {
     fail_start: AtomicBool,
     reject_commands: AtomicBool,
     fail_release: AtomicBool,
+    faulted: AtomicBool,
 }
 
 impl Default for FakeHardware {
@@ -55,6 +56,7 @@ impl Default for FakeHardware {
                 fail_start: AtomicBool::new(false),
                 reject_commands: AtomicBool::new(false),
                 fail_release: AtomicBool::new(false),
+                faulted: AtomicBool::new(false),
             }),
         }
     }
@@ -116,7 +118,11 @@ impl HardwareService for FakeHardware {
             groups: vec![GroupInfo {
                 name: GROUP.into(),
                 control_rate_hz: 250.0,
-                state: GroupState::Idle as i32,
+                state: if self.settings.faulted.load(Ordering::Relaxed) {
+                    GroupState::Fault
+                } else {
+                    GroupState::Idle
+                } as i32,
                 motors: vec![MotorAddress {
                     bus: "test_bus".into(),
                     id: 1,
@@ -334,7 +340,11 @@ impl HardwareService for FakeHardware {
             ));
         }
         Ok(Response::new(ReleaseLeaseResponse {
-            state: GroupState::Idle as i32,
+            state: if self.settings.faulted.load(Ordering::Relaxed) {
+                GroupState::Fault
+            } else {
+                GroupState::Idle
+            } as i32,
         }))
     }
 
@@ -374,6 +384,9 @@ impl HardwareService for FakeHardware {
     ) -> Result<Response<StopControlResponse>, Status> {
         let request = request.into_inner();
         self.record_lifecycle("stop", request.group, request.lease_token);
+        if self.settings.faulted.load(Ordering::Relaxed) {
+            return Err(Status::failed_precondition("stop is not allowed in Fault"));
+        }
         Ok(Response::new(StopControlResponse {
             state: GroupState::Damped as i32,
         }))
@@ -385,6 +398,11 @@ impl HardwareService for FakeHardware {
     ) -> Result<Response<DisableGroupResponse>, Status> {
         let request = request.into_inner();
         self.record_lifecycle("disable", request.group, request.lease_token);
+        if self.settings.faulted.load(Ordering::Relaxed) {
+            return Err(Status::failed_precondition(
+                "disable is not allowed in Fault",
+            ));
+        }
         Ok(Response::new(DisableGroupResponse {
             state: GroupState::Idle as i32,
         }))
@@ -1169,6 +1187,38 @@ async fn ergonomic_state_stream_aggregates_events_without_protobuf_matching() {
             if changed.motor == "motor_a"
     ));
 
+    server.stop().await;
+}
+
+#[tokio::test]
+async fn shutdown_releases_faulted_group_without_recovering_or_disabling_it() {
+    let server = FakeServer::start().await;
+    let robot = Robot::connect(&server.endpoint).await.unwrap();
+    let group = robot.group(GROUP).unwrap();
+    let mut control = group.control("fault-cleanup").await.unwrap();
+    let frame = group
+        .frame()
+        .coordinate(
+            "coordinate_a",
+            CoordinateTarget::position(0.0).gains(20.0, 1.0),
+        )
+        .unwrap()
+        .build()
+        .unwrap();
+    control.start(frame).await.unwrap();
+    server.settings.faulted.store(true, Ordering::Relaxed);
+    control.shutdown().await.unwrap();
+    {
+        let recorded = server.state.lock().unwrap();
+        assert_eq!(recorded.released.len(), 1);
+        assert!(
+            !recorded
+                .lifecycle
+                .iter()
+                .any(|call| matches!(call.action, "disable" | "recover"))
+        );
+    }
+    assert!(server.settings.faulted.load(Ordering::Relaxed));
     server.stop().await;
 }
 

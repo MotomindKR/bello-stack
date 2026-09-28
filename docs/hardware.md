@@ -64,8 +64,11 @@ batch preserves queued control traffic.
 Control queue capacity is the number of motor groups using that bus, with a
 minimum of one. A group contributes at most one atomic batch per bus per
 control tick. Configuration and safety queues each have capacity
-`max(control_capacity, 4)`. Producers use bounded, nonblocking submission so a
-stalled transport becomes an explicit error instead of unbounded latency.
+`max(control_capacity, 4)`. Control submission waits for a free slot only until
+the original batch deadline minus its wire-time budget. This lets the TX worker
+drain a transient backlog after scheduler jitter without growing the queue or
+extending command freshness. A stalled transport still expires explicitly.
+Configuration and safety submission remains nonblocking.
 
 Every control batch has an absolute freshness deadline: collection time of its
 first motor frame plus one group period. Submission and transmission both check

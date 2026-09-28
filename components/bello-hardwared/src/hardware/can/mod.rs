@@ -37,8 +37,6 @@ pub(crate) struct ReceivedFrame {
 pub(crate) enum BusError {
     #[error("bus {bus} is unavailable ({state})")]
     Unavailable { bus: BusName, state: DeviceState },
-    #[error("bus {bus} control queue is full")]
-    ControlQueueFull { bus: BusName },
     #[error("bus {bus} control batch expired before transmission")]
     ControlBatchExpired { bus: BusName },
     #[error("group {group} started a new control batch before completing the previous batch")]
@@ -159,7 +157,7 @@ impl BusHandle {
         self.lifecycle.status()
     }
 
-    pub(crate) fn try_enqueue_control_batch(
+    pub(crate) fn enqueue_control_batch(
         &self,
         frames: Vec<CanFrame>,
         expires_at: Instant,
@@ -168,24 +166,25 @@ impl BusHandle {
         if frames.is_empty() {
             return Ok(());
         }
-        if Instant::now()
-            .checked_add(self.spec.control_batch_budget(frames.len()))
-            .is_none_or(|completion| completion > expires_at)
-        {
+        let Some(enqueue_by) = expires_at.checked_sub(self.spec.control_batch_budget(frames.len()))
+        else {
             return Err(BusError::ControlBatchExpired {
                 bus: self.spec.name.clone(),
             });
-        }
-        self.control_tx
-            .try_send(ControlBatch { frames, expires_at })
-            .map_err(|error| match error {
-                crossbeam_channel::TrySendError::Full(_) => BusError::ControlQueueFull {
-                    bus: self.spec.name.clone(),
-                },
-                crossbeam_channel::TrySendError::Disconnected(_) => BusError::Disconnected {
-                    bus: self.spec.name.clone(),
-                },
-            })
+        };
+        enqueue_control(
+            &self.control_tx,
+            ControlBatch { frames, expires_at },
+            enqueue_by,
+        )
+        .map_err(|error| match error {
+            crossbeam_channel::SendTimeoutError::Timeout(_) => BusError::ControlBatchExpired {
+                bus: self.spec.name.clone(),
+            },
+            crossbeam_channel::SendTimeoutError::Disconnected(_) => BusError::Disconnected {
+                bus: self.spec.name.clone(),
+            },
+        })
     }
 
     pub(crate) fn enqueue_configuration_batch(
@@ -245,6 +244,19 @@ impl BusHandle {
             completion: Some(result),
         })
     }
+}
+
+fn enqueue_control(
+    queue: &Sender<ControlBatch>,
+    batch: ControlBatch,
+    enqueue_by: Instant,
+) -> Result<(), crossbeam_channel::SendTimeoutError<ControlBatch>> {
+    if Instant::now() >= enqueue_by {
+        return Err(crossbeam_channel::SendTimeoutError::Timeout(batch));
+    }
+    // Give the TX worker a chance to drain after scheduler jitter, but reserve
+    // the wire budget inside the original deadline. Never grow the queue.
+    queue.send_deadline(batch, enqueue_by)
 }
 
 fn control_queue_capacity(topology: &ResolvedTopology, bus: &BusName) -> usize {
@@ -366,6 +378,50 @@ impl Drop for BusManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn batch(id: u32) -> ControlBatch {
+        ControlBatch {
+            frames: vec![CanFrame { id, data: [0; 8] }],
+            expires_at: Instant::now() + std::time::Duration::from_secs(1),
+        }
+    }
+
+    #[test]
+    fn control_enqueue_waits_for_transient_backpressure_without_growing_queue() {
+        let (tx, rx) = bounded(1);
+        tx.send(batch(1)).unwrap();
+        let worker = thread::spawn(move || {
+            assert_eq!(rx.recv().unwrap().frames[0].id, 1);
+            assert_eq!(rx.recv().unwrap().frames[0].id, 2);
+        });
+        assert!(
+            enqueue_control(
+                &tx,
+                batch(2),
+                Instant::now() + std::time::Duration::from_secs(1)
+            )
+            .is_ok()
+        );
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn stalled_control_queue_expires_and_keeps_the_original_batch() {
+        let (tx, rx) = bounded(1);
+        tx.send(batch(1)).unwrap();
+        assert!(matches!(
+            enqueue_control(
+                &tx,
+                batch(2),
+                Instant::now() + std::time::Duration::from_millis(10)
+            ),
+            Err(crossbeam_channel::SendTimeoutError::Timeout(_))
+        ));
+        assert_eq!(rx.recv().unwrap().frames[0].id, 1);
+        assert!(rx.is_empty());
+        assert!(enqueue_control(&tx, batch(3), Instant::now()).is_err());
+        assert!(rx.is_empty());
+    }
 
     #[test]
     fn pending_batch_preserves_transport_expiration() {

@@ -46,6 +46,11 @@ let robot = Robot::connect_with(options).await?;
 
 ## Motor-group control
 
+Session shutdown preserves an already latched daemon Fault. If stop or disable
+is rejected because the group has faulted, the client confirms that state with
+fresh inventory and releases the lease without automatic recovery. An explicit
+`recover()` is required before another control session can enable the group.
+
 ```rust,no_run
 use std::time::Duration;
 

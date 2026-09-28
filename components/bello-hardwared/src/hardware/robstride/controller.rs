@@ -77,7 +77,7 @@ impl ControlBatcher {
         // from suppressing the same logical tick on every later interface.
         let mut first_error = None;
         for (bus, frames) in batches.into_values() {
-            if let Err(error) = bus.try_enqueue_control_batch(frames, expires_at) {
+            if let Err(error) = bus.enqueue_control_batch(frames, expires_at) {
                 if first_error.is_none() {
                     first_error = Some(error);
                 } else {
