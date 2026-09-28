@@ -12,6 +12,51 @@ use serde::Deserialize;
 
 use crate::Simulation;
 
+fn imported_spec(urdf: &Path) -> Result<MjSpec> {
+    fn replace_visual_meshes(element: &mut xmltree::Element, urdf: &Path) -> Result<bool> {
+        let mut changed = false;
+        if element.name == "mesh" {
+            if let Some(filename) = element.attributes.get("filename").cloned() {
+                if filename.to_ascii_lowercase().ends_with(".glb") {
+                    let companion = urdf
+                        .parent()
+                        .context("URDF has no parent")?
+                        .join(&filename)
+                        .with_extension("stl")
+                        .canonicalize()
+                        .with_context(|| format!("missing MuJoCo STL companion for {filename}"))?;
+                    element
+                        .attributes
+                        .insert("filename".into(), companion.to_string_lossy().into());
+                    changed = true;
+                } else {
+                    let path = urdf
+                        .parent()
+                        .context("URDF has no parent")?
+                        .join(&filename)
+                        .canonicalize()?;
+                    element
+                        .attributes
+                        .insert("filename".into(), path.to_string_lossy().into());
+                }
+            }
+        }
+        for child in &mut element.children {
+            if let xmltree::XMLNode::Element(child) = child {
+                changed |= replace_visual_meshes(child, urdf)?;
+            }
+        }
+        Ok(changed)
+    }
+    let mut document = xmltree::Element::parse(std::fs::File::open(urdf)?)?;
+    if !replace_visual_meshes(&mut document, urdf)? {
+        return Ok(MjSpec::from_xml(urdf)?);
+    }
+    let mut temporary = tempfile::NamedTempFile::new()?;
+    document.write(&mut temporary)?;
+    Ok(MjSpec::from_xml(temporary.path())?)
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelConfig {
@@ -234,7 +279,7 @@ fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Re
         coordinate_names == expected_coordinates,
         "motor coordinates must match the URDF transmissions exactly"
     );
-    let mut spec = MjSpec::from_xml(&urdf)?;
+    let mut spec = imported_spec(&urdf)?;
     spec.compiler_mut().set_fusestatic(false);
     spec.option_mut().timestep = config.timestep_seconds;
     spec.option_mut().gravity = [0., 0., -9.81];

@@ -3,11 +3,6 @@ urdf: ../../../descriptions/bello/urdf/bello.urdf
 hardware:
   endpoint: http://127.0.0.1:50051
   # endpoint: http://192.168.0.8:50051
-remote:
-  listen: 0.0.0.0:50054
-  controller_index: 0
-  poll_hz: 60
-  deadzone: 0.1
 root:
   # Contact-aided pose served by bello-state-estimatord.
   source: external_pose

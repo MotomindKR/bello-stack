@@ -60,8 +60,6 @@ The Cargo workspace includes these core components:
 
 - [`bello-hardware-api`](../components/bello-hardware-api): protobuf source and
   generated tonic client/server types;
-- [`bello-remote-api`](../components/bello-remote-api): normalized remote-command
-  protobuf source and generated tonic client/server types;
 - [`bello-hardware-client`](../components/bello-hardware-client): maintained
   robot/group/coordinate client with internal lease, command, and state machinery;
 - [`bello-hardwared`](../components/bello-hardwared): daemon and `run`/`check`

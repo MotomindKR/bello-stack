@@ -6,7 +6,6 @@ use bello_hardware_client::GroupState;
 use bello_visualizer::config::RootConfig;
 use bello_visualizer::diagnostics::DiagnosticsUi;
 use bello_visualizer::editor::{EditorMode, GroupEditor};
-use bello_visualizer::gamepad::gamepad_ui;
 use bello_visualizer::runtime::{ControlStatus, DisplaySnapshot, RuntimeHandle};
 use bello_visualizer::scene::ModelScene;
 use bello_visualizer::transmission::{CoordinateFeedback, FeedbackReconstructor, Transmission};
@@ -17,7 +16,6 @@ use kiss3d::prelude::*;
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum VisualizerTab {
     Controls,
-    Gamepad,
     Environment,
 }
 
@@ -184,7 +182,6 @@ async fn run() -> anyhow::Result<()> {
                             VisualizerTab::Controls,
                             "Controls",
                         );
-                        ui.selectable_value(&mut visualizer_tab, VisualizerTab::Gamepad, "Gamepad");
                         ui.selectable_value(
                             &mut visualizer_tab,
                             VisualizerTab::Environment,
@@ -192,11 +189,6 @@ async fn run() -> anyhow::Result<()> {
                         );
                     });
                     ui.separator();
-
-                    if visualizer_tab == VisualizerTab::Gamepad {
-                        gamepad_ui(ui, snapshot.remote.as_ref());
-                        return;
-                    }
 
                     if visualizer_tab == VisualizerTab::Environment {
                         ui.heading("Scene environment");

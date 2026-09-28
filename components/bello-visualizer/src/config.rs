@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 use bello_hardware_client::Motor;
@@ -72,22 +71,12 @@ pub enum ConfigError {
 pub struct VisualizerConfig {
     pub urdf: PathBuf,
     pub hardware: EndpointConfig,
-    pub remote: RemoteConfig,
     #[serde(default)]
     pub root: RootConfig,
     #[serde(default)]
     pub control_profiles: BTreeMap<String, GroupControlProfile>,
     #[serde(default = "default_refresh_hz")]
     pub refresh_hz: f64,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RemoteConfig {
-    pub listen: SocketAddr,
-    pub controller_index: usize,
-    pub poll_hz: f64,
-    pub deadzone: f64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -251,24 +240,6 @@ impl VisualizerConfig {
         if self.hardware.endpoint.trim().is_empty() {
             return Err(ConfigError::Invalid(
                 "hardware.endpoint must be non-empty".into(),
-            ));
-        }
-        if !self.remote.poll_hz.is_finite() || self.remote.poll_hz <= 0.0 {
-            return Err(ConfigError::Invalid(
-                "remote.poll_hz must be positive and finite".into(),
-            ));
-        }
-        if std::time::Duration::from_secs_f64(1.0 / self.remote.poll_hz).is_zero() {
-            return Err(ConfigError::Invalid(
-                "remote.poll_hz is too large for the system timer".into(),
-            ));
-        }
-        if !self.remote.deadzone.is_finite()
-            || self.remote.deadzone < 0.0
-            || self.remote.deadzone >= 1.0
-        {
-            return Err(ConfigError::Invalid(
-                "remote.deadzone must be finite and in [0, 1)".into(),
             ));
         }
         validate_tls(self.hardware.tls.as_ref(), "hardware.tls")?;

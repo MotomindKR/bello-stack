@@ -62,8 +62,6 @@ remain:
 
 - [`hardware.proto`](../components/bello-hardware-api/proto/bello/hardware/v1/hardware.proto)
   for the gRPC contract;
-- [`remote.proto`](../components/bello-remote-api/proto/bello/remote/v1/remote.proto)
-  for the normalized operator-intent stream;
 - [`config/model.rs`](../components/bello-hardwared/src/config/model.rs) and the
   validated specification modules for YAML fields and limits;
 - [`config/bello.yaml`](../components/bello-hardwared/config/bello.yaml) and

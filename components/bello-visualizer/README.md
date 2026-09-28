@@ -6,8 +6,10 @@ telemetry from hardwared. See [power-board integration](../../docs/power_board.m
 `bello-visualizer` is the native Kiss3d + egui monitor and command UI for
 `bello-hardwared`. It renders the repository's URDF description, follows live
 motor and IMU telemetry, reconstructs differential ankle joints, can command
-explicitly configured motor groups, and serves normalized physical-controller
-intent to remote policy runners.
+explicitly configured motor groups. Policy operation uses the Electron console
+and runner-owned operator service in `bello_mujoco`. This diagnostic viewer does
+not open a controller or host a joystick command server. GLB node transforms
+and baked materials are imported by Kiss3d; STL remains supported for other robots.
 
 Create a machine-local Bello configuration from the maintained example, then
 run it with:
@@ -33,8 +35,7 @@ This profile uses the reviewed Mini motor directions, while physical encoder
 zeros and ankle reductions remain calibration-gated.
 
 The local `bello.yaml` and `bello-mini.yaml` files are ignored by Git. Both
-examples use localhost for their hardware clients and listen on port 50054 for
-remote-command subscribers. Both use their matching state estimator on port
+examples use localhost for their hardware clients. Both use their matching state estimator on port
 50053. MuJoCo ground truth remains separately available on port 50052 during
 emulator runs. Override the clients without editing the YAML when they run on
 another host:
@@ -61,8 +62,6 @@ One YAML document defines:
 - `urdf`: robot description used for rendering, hierarchy, joint limits, and
   differential transmissions;
 - `hardware`: hardwared endpoint and optional TLS material;
-- `remote`: plaintext TCP listen address, controller index, poll rate, and
-  rescaled stick deadzone for `bello.remote.v1.RemoteCommandService`;
 - `root`: a fixed transform or an external `PoseService`;
 - `refresh_hz`: telemetry refresh frequency;
 - `control_profiles`: the hardware groups that the UI may command and their
@@ -84,21 +83,6 @@ The model-space velocity and effort sliders use conservative transmission-aware
 bounds, so every slider combination remains inside all actuator limits.
 Position is slew-limited in the background command loop.
 
-## Remote controller stream
-
-The visualizer owns the configured physical controller. Left-stick vertical
-and horizontal publish normalized forward and lateral intent; right-stick
-horizontal publishes normalized yaw. R1 publishes a level-sensitive abort
-request. The stream does not contain policy-specific metres-per-second or
-radians-per-second limits; consumers apply their own command bounds.
-
-A newly connected controller publishes zero until every mapped stick has
-returned inside the configured deadzone once. Disconnects also publish exact
-zero. The gRPC service is read-only, supports multiple subscribers, and sends
-the latest snapshot at `remote.poll_hz`. Version 1 is plaintext TCP intended
-for a trusted operator/robot network. On Linux, the visualizer process needs
-access to the selected `/dev/input/event*` device.
-
 ## Root pose and diagnostics
 
 With `root.source: external_pose`, samples are
@@ -107,9 +91,6 @@ display. Configured quaternions are normalized when the YAML is loaded. A stale
 or disconnected pose stream freezes the last root transform and never changes
 command or safety behavior.
 
-The controls window has a dedicated **Gamepad** tab showing the remote listen
-address, controller identity, raw stick positions, normalized command axes,
-neutral-arm state, R1 abort state, and any terminal service error.
 The diagnostics window shows transport lifecycle, motor inventory and
 limits, motor/group/IMU telemetry, command state, faults, sample ages, and a
 bounded event history. Disconnected streams retain their last values but are

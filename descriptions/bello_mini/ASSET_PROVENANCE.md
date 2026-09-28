@@ -9,9 +9,9 @@ The source assembly used millimetres and was classified with review contract
 
 The checked-in description has 28 exterior visual meshes and primitive-only
 collision geometry. Its modeled total mass is **48.580 kg**, reconciled to
-assembly measurements on 2026-09-22. Detailed hands remain anonymous 25 mm
-radius spheres, now carrying 0.470 kg each. The separate fixed head uses a
-nominal sphere proxy rather than a CAD mesh.
+assembly measurements on 2026-09-22. Hand physical proxies remain 25 mm radius spheres carrying 0.470 kg each.
+The fixed head retains its nominal sphere collision and inertia approximation.
+Their separate proxy visuals are removed because the new GLBs include them.
 
 ## Measured mass reconciliation
 
@@ -65,8 +65,7 @@ bounds are approximately `[-0.074001, -0.114258, -0.080528]` to
 `[0.070000, 0.116202, 0.332759]` m. The shoulder-pitch axes are at torso-local
 z = 0.228 m.
 
-The head is represented by a 0.060 m radius sphere for visual, collision and
-inertia purposes. Its COM is `[0, 0, 0.060]` m in `head_link`, hence
+The head retains a 0.060 m radius sphere for collision and inertia purposes. Its COM is `[0, 0, 0.060]` m in `head_link`, hence
 `[0, 0, 0.393]` m in `torso_link`. Its mass is measured (0.680 kg), but its
 position, dimensions and solid-sphere inertia
 `diag(0.0009792, 0.0009792, 0.0009792)` kg m^2 are nominal approximations.
@@ -198,3 +197,21 @@ before using the physical bindings.
 The descriptions and meshes are proprietary. This repository does not grant
 permission to redistribute them. External distribution requires a separate
 written agreement with the applicable rights holder.
+
+## GLB visual update (2026-09-29)
+
+The 28 GLBs were supplied in the `bello_mini_urdf` package. They replace only
+matching STL visual references and use the existing `0.001 0.001 0.001` scale:
+vertices are in millimetres. Embedded glTF materials own visual colors; the old
+per-visual URDF material overrides are removed. The torso GLB contains the head
+and each wrist-roll GLB contains its hand, so only the redundant `head_link`
+and end-effector-sphere visual elements are removed. All physical links, joints,
+transmissions, collisions, inertials, limits and sensor frames are unchanged.
+
+The companion STL meshes are retained for MuJoCo import. Both the stack native
+emulator and bello_mujoco's Python asset pipeline create a temporary URDF with
+explicit STL references; neither rewrites the canonical GLB URDF. Kiss3d and
+the Electron console use the GLBs and their embedded materials directly. The
+companion STLs retain their earlier geometry, so MuJoCo diagnostics do not show
+the newly detailed head and hands. Physical mass and collision geometry match
+across import paths.

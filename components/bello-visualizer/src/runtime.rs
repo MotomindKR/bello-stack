@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::fs;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -22,7 +21,6 @@ use crate::config::{
     CoordinateLimits, EndpointConfig, GroupControlProfile, ResolvedGroupControlProfile, RootConfig,
     TlsConfig, VisualizerConfig,
 };
-use crate::remote::RemoteRuntime;
 
 const DIAGNOSTIC_EVENT_CAPACITY: usize = 512;
 const DEFAULT_DISPLAY_STALE_AFTER: Duration = Duration::from_millis(200);
@@ -151,23 +149,6 @@ pub struct CoordinateCommand {
 }
 
 #[derive(Clone, Debug)]
-pub struct DisplayRemote {
-    pub listen: SocketAddr,
-    pub service_error: Option<String>,
-    pub controller_connected: bool,
-    pub controller_name: String,
-    pub intent_armed: bool,
-    pub raw_left_stick_x: f64,
-    pub raw_left_stick_y: f64,
-    pub raw_right_stick_x: f64,
-    pub raw_right_stick_y: f64,
-    pub normalized_forward: f64,
-    pub normalized_lateral: f64,
-    pub normalized_yaw: f64,
-    pub abort_active: bool,
-}
-
-#[derive(Clone, Debug)]
 pub struct DisplaySnapshot {
     pub hardware_connected: bool,
     pub hardware_warning: Option<String>,
@@ -182,7 +163,6 @@ pub struct DisplaySnapshot {
     pub telemetry_dropped_total: u64,
     pub events_evicted: u64,
     pub control: BTreeMap<String, ControlStatus>,
-    pub remote: Option<DisplayRemote>,
     pub root_transform: Transform,
     pub pose_available: bool,
     pub pose_warning: Option<String>,
@@ -205,7 +185,6 @@ impl Default for DisplaySnapshot {
             telemetry_dropped_total: 0,
             events_evicted: 0,
             control: BTreeMap::new(),
-            remote: None,
             root_transform: Transform::IDENTITY,
             pose_available: true,
             pose_warning: None,
@@ -251,7 +230,6 @@ pub struct RuntimeHandle {
 
 impl RuntimeHandle {
     pub fn spawn(config: VisualizerConfig, description: RobotDescription) -> anyhow::Result<Self> {
-        let remote = RemoteRuntime::bind(config.remote.clone())?;
         let latest = Arc::new(RwLock::new(DisplaySnapshot::default()));
         if let RootConfig::Fixed { transform } = &config.root {
             let snapshot = &mut *latest.write();
@@ -304,27 +282,11 @@ impl RuntimeHandle {
                         Arc::clone(&thread_latest),
                         shutdown_receiver.clone(),
                     ));
-                    let remote_listen = remote.listen();
-                    let remote_latest = Arc::clone(&thread_latest);
-                    let remote = tokio::spawn(async move {
-                        if let Err(error) = remote
-                            .run(Arc::clone(&remote_latest), shutdown_receiver.clone())
-                            .await
-                        {
-                            tracing::error!("remote command service stopped: {error:#}");
-                            crate::remote::mark_service_failed(
-                                &remote_latest,
-                                remote_listen,
-                                error.to_string(),
-                            );
-                        }
-                    });
                     let _ = hardware.await;
                     if let Some(pose) = pose {
                         let _ = pose.await;
                     }
                     let _ = controls.await;
-                    let _ = remote.await;
                 });
             })?;
         Ok(Self {

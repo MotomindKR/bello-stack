@@ -19,7 +19,6 @@ fn loads_one_yaml_and_resolves_local_paths_with_safe_defaults() {
 urdf: model.urdf
 hardware:
   endpoint: http://127.0.0.1:50051
-remote: { listen: "127.0.0.1:0", controller_index: 0, poll_hz: 60, deadzone: 0.1 }
 control_profiles:
   legs:
     velocity: { min: -2.0, max: 2.0, default: 0.0 }
@@ -39,33 +38,6 @@ control_profiles:
     assert_eq!(profile.validity_ms, 100);
     assert_eq!(profile.telemetry_staleness_ms, 200);
     assert_eq!(profile.position_slew_rate, 0.5);
-
-    let mut invalid = config.clone();
-    invalid.remote.poll_hz = 0.0;
-    assert!(
-        invalid
-            .validate()
-            .unwrap_err()
-            .to_string()
-            .contains("remote.poll_hz")
-    );
-    invalid.remote.poll_hz = f64::MAX;
-    assert!(
-        invalid
-            .validate()
-            .unwrap_err()
-            .to_string()
-            .contains("system timer")
-    );
-    invalid.remote.poll_hz = 60.0;
-    invalid.remote.deadzone = 1.0;
-    assert!(
-        invalid
-            .validate()
-            .unwrap_err()
-            .to_string()
-            .contains("remote.deadzone")
-    );
 }
 
 #[test]
@@ -78,7 +50,6 @@ fn normalizes_external_pose_model_root_transform() {
 urdf: model.urdf
 hardware:
   endpoint: http://127.0.0.1:50051
-remote: { listen: "127.0.0.1:0", controller_index: 0, poll_hz: 60, deadzone: 0.1 }
 root:
   source: external_pose
   endpoint: http://127.0.0.1:50052
@@ -116,7 +87,6 @@ hardware:
   endpoint: https://robot.example
   tls:
     client_certificate: client.pem
-remote: { listen: "127.0.0.1:0", controller_index: 0, poll_hz: 60, deadzone: 0.1 }
 control_profiles:
   legs:
     kp: { min: -1.0, max: 20.0, default: 10.0 }

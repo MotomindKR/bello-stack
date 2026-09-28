@@ -20,7 +20,6 @@ in hardware command safety.
 | [`bello-hardware-python`](components/bello-hardware-python) | Thin blocking robot/group/coordinate client with background lease and telemetry I/O | Pure-Python package |
 | [`bello-upper-body-teleop`](components/bello-upper-body-teleop) | Dynamixel teaching-arm input mapped to the daemon's leased upper-body group | Python application |
 | [`bello-pose-api`](components/bello-pose-api) | Neutral streaming contract for external root-pose providers | Rust library and protobuf descriptor |
-| [`bello-remote-api`](components/bello-remote-api) | Normalized operator-intent stream shared by the visualizer and policy clients | Rust library and protobuf descriptor |
 | [`bello-state-estimatord`](components/bello-state-estimatord) | URDF/IMU/encoder contact-aided local pose provider | `bello-state-estimatord` binary |
 | [`bello-robot-description`](components/bello-robot-description) | Shared URDF hierarchy, visuals, joint limits, differential transmissions, and kinematics | Rust library |
 | [`bello-visualizer`](components/bello-visualizer) | Native URDF monitor and toggle-controlled multi-group command UI | `bello-visualizer` binary |
@@ -68,9 +67,8 @@ Start with the [documentation index](docs/README.md), or go directly to:
 - [Deployment, emulation, and troubleshooting](docs/operations.md)
 - [Development and testing](docs/development.md)
 
-The hardware and remote-control protobuf contracts are
-[`hardware.proto`](components/bello-hardware-api/proto/bello/hardware/v1/hardware.proto)
-and [`remote.proto`](components/bello-remote-api/proto/bello/remote/v1/remote.proto).
+The hardware protobuf contract is
+[`hardware.proto`](components/bello-hardware-api/proto/bello/hardware/v1/hardware.proto).
 Rust applications should normally start with the
 [`bello-hardware-client` guide](components/bello-hardware-client/README.md).
 Python applications should start with the

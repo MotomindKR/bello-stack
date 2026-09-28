@@ -8,7 +8,6 @@ members = [
   "components/bello-hardwared",
   "components/bello-pose-api",
   "components/bello-mujoco",
-  "components/bello-remote-api",
   "components/bello-robot-description",
   "components/bello-state-estimatord",
   "components/bello-visualizer",
@@ -31,7 +30,6 @@ bello-hardware-api = { path = "components/bello-hardware-api" }
 bello-hardware-client = { path = "components/bello-hardware-client" }
 bello-hardwared = { path = "components/bello-hardwared" }
 bello-pose-api = { path = "components/bello-pose-api" }
-bello-remote-api = { path = "components/bello-remote-api" }
 bello-robot-description = { path = "components/bello-robot-description" }
 clap = "4"
 crossbeam-channel = "0.5"

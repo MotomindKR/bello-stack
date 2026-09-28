@@ -3,7 +3,6 @@ version: v2
 modules:
   - path: components/bello-hardware-api/proto
   - path: components/bello-pose-api/proto
-  - path: components/bello-remote-api/proto
 
 lint:
   use:

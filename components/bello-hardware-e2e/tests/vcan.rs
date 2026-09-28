@@ -424,11 +424,6 @@ fn visualizer_yaml(urdf: &Path, endpoint: &str, command_rate_hz: f64) -> String 
         r#"urdf: {urdf:?}
 hardware:
   endpoint: {endpoint}
-remote:
-  listen: 127.0.0.1:0
-  controller_index: 0
-  poll_hz: 60
-  deadzone: 0.1
 root:
   source: fixed
 refresh_hz: 100
