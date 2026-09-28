@@ -565,25 +565,15 @@ mod tests {
         let first = MotorName::from("left_ankle_1");
         let second = MotorName::from("left_ankle_2");
         let hip = MotorName::from("left_hip_pitch");
-        let lower_feedback = neutral_feedback(lower);
-        let ankle_damping = lower.mechanical.damping_commands(&lower_feedback).unwrap();
+        let ankle_damping = lower.mechanical.damping_commands();
         assert!((ankle_damping[&first].kd - 2.0).abs() < 1.0e-12);
         assert!((ankle_damping[&second].kd - 2.0).abs() < 1.0e-12);
         assert!((ankle_damping[&hip].kd - 40.0).abs() < 1.0e-12);
 
-        let mut missing = lower_feedback.clone();
-        missing.remove(&first);
-        let error = lower.mechanical.damping_commands(&missing).unwrap_err();
-        assert!(error.detail.contains("without fresh motor feedback"));
-
-        let mut nonfinite = lower_feedback;
-        nonfinite.get_mut(&first).unwrap().position = f64::NAN;
-        let error = lower.mechanical.damping_commands(&nonfinite).unwrap_err();
-        assert_eq!(
-            error.violation,
-            SafetyViolation::NonFinite {
-                field: "feedback position"
-            }
-        );
+        for command in ankle_damping.values() {
+            assert_eq!(command.kp, 0.0);
+            assert_eq!(command.velocity, 0.0);
+            assert_eq!(command.torque, 0.0);
+        }
     }
 }

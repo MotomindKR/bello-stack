@@ -282,6 +282,29 @@ impl ControlSession {
         Ok(())
     }
 
+    /// Releases ownership with the daemon's damping reaction, without disabling motors.
+    /// Running becomes Damped; Idle, Damped and a latched Fault are preserved.
+    pub async fn release(mut self) -> Result<(), Error> {
+        self.command_stream.take();
+        self.stop_renewal().await;
+        let result = self.lease.release().await;
+        self.state = ControlState::Closed;
+        let actual = GroupState::from_wire(result?);
+        if matches!(
+            actual,
+            GroupState::Idle | GroupState::Damped | GroupState::Fault
+        ) {
+            Ok(())
+        } else {
+            Err(Error::UnexpectedGroupState {
+                group: self.group.name().into(),
+                operation: "release",
+                expected: GroupState::Damped,
+                actual,
+            })
+        }
+    }
+
     /// Stops motion if needed, disables the group, stops renewal, and releases ownership.
     pub async fn shutdown(mut self) -> Result<(), Error> {
         self.command_stream.take();
@@ -429,15 +452,15 @@ impl ControlSession {
     async fn rollback_start(&mut self, primary: Error) -> Error {
         self.command_stream.take();
         self.state = ControlState::Uncertain;
-        match self.lease.disable().await {
-            Ok(state) if GroupState::from_wire(state) == GroupState::Idle => {
-                self.state = ControlState::Ready;
+        match self.lease.stop().await {
+            Ok(state) if GroupState::from_wire(state) == GroupState::Damped => {
+                self.state = ControlState::Damped;
                 primary
             }
             Ok(state) => Error::CleanupFailed(vec![
                 primary.to_string(),
                 format!(
-                    "start rollback returned {:?} instead of Idle",
+                    "start rollback returned {:?} instead of Damped",
                     GroupState::from_wire(state)
                 ),
             ]),

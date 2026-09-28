@@ -211,35 +211,21 @@ impl MechanicalEnvelope {
         Ok(())
     }
 
-    pub(crate) fn damping_commands(
-        &self,
-        feedback: &HashMap<MotorName, Feedback>,
-    ) -> Result<HashMap<MotorName, ImpedanceCommand>, MechanicalViolation> {
-        for motor in self.motor_damping_kd.keys() {
-            let measured = feedback.get(motor).ok_or_else(|| MechanicalViolation {
-                motor: motor.clone(),
-                affected_motors: vec![motor.clone()],
-                violation: SafetyViolation::PositionLimit,
-                detail: "cannot construct damping without fresh motor feedback".into(),
-            })?;
-            validate_finite_feedback_position(motor, measured)?;
-        }
-
-        Ok(self
-            .motor_damping_kd
+    pub(crate) fn damping_commands(&self) -> HashMap<MotorName, ImpedanceCommand> {
+        // Kp, desired velocity and feedforward torque are zero. The drive's
+        // local velocity feedback supplies damping even when host feedback is stale.
+        self.motor_damping_kd
             .iter()
             .map(|(motor, kd)| {
-                let measured = feedback[motor];
                 (
                     motor.clone(),
                     ImpedanceCommand {
-                        position: measured.position,
                         kd: *kd,
                         ..Default::default()
                     },
                 )
             })
-            .collect())
+            .collect()
     }
 
     pub(crate) fn validate_feedback_positions(
@@ -302,25 +288,6 @@ impl MechanicalEnvelope {
     #[cfg(test)]
     pub(crate) fn differential_count(&self) -> usize {
         self.differentials.len()
-    }
-}
-
-fn validate_finite_feedback_position(
-    motor: &MotorName,
-    feedback: &Feedback,
-) -> Result<(), MechanicalViolation> {
-    if !feedback.position.is_finite() {
-        return Err(nonfinite_feedback_violation(motor, "feedback position"));
-    }
-    Ok(())
-}
-
-fn nonfinite_feedback_violation(motor: &MotorName, field: &'static str) -> MechanicalViolation {
-    MechanicalViolation {
-        motor: motor.clone(),
-        affected_motors: vec![motor.clone()],
-        violation: SafetyViolation::NonFinite { field },
-        detail: format!("{field} is not finite"),
     }
 }
 
@@ -415,16 +382,11 @@ mod tests {
             motor_damping_kd: HashMap::from([(motor.clone(), 200.0)]),
             ..MechanicalEnvelope::default()
         };
-        let feedback = HashMap::from([(
-            motor.clone(),
-            Feedback {
-                position: 0.5,
-                ..Feedback::default()
-            },
-        )]);
-
-        let commands = envelope.damping_commands(&feedback).unwrap();
-        assert_eq!(commands[&motor].position, 0.5);
+        let commands = envelope.damping_commands();
+        assert_eq!(commands[&motor].position, 0.0);
+        assert_eq!(commands[&motor].kp, 0.0);
+        assert_eq!(commands[&motor].velocity, 0.0);
+        assert_eq!(commands[&motor].torque, 0.0);
         assert_eq!(commands[&motor].kd, 200.0);
     }
 }

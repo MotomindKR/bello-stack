@@ -103,7 +103,7 @@ motor_groups:
     enable_retries: 3
     fault_policy:
       default: damping
-      overrides: { temperature: disable, reported_motor_fault: disable }
+      overrides: {}
   - name: upper_body
     motors: [left_shoulder_pitch_motor, left_shoulder_roll_motor, left_shoulder_yaw_motor, left_elbow_pitch_motor, left_wrist_yaw_motor, left_wrist_pitch_motor, left_wrist_roll_motor, right_shoulder_pitch_motor, right_shoulder_roll_motor, right_shoulder_yaw_motor, right_elbow_pitch_motor, right_wrist_yaw_motor, right_wrist_pitch_motor, right_wrist_roll_motor]
     control_rate_hz: 100.0
@@ -114,4 +114,4 @@ motor_groups:
     enable_retries: 3
     fault_policy:
       default: damping
-      overrides: { temperature: disable, reported_motor_fault: disable }
+      overrides: {}

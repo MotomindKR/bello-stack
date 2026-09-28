@@ -46,6 +46,14 @@ let robot = Robot::connect_with(options).await?;
 
 ## Motor-group control
 
+`ControlSession::release()` releases ownership with the daemon's damping
+reaction and never calls disable. Running groups become Damped; Fault remains
+latched. Use `shutdown()` only when motor disable is intended. Failed starts
+roll back to damping. Bello Mini configures damping for every fault cause;
+stale host feedback does not prevent zero-Kp damping commands, and failed
+transmission is reported without substituting disable. Drive protections and
+power/transport availability still determine whether damping can be applied.
+
 Session shutdown preserves an already latched daemon Fault. If stop or disable
 is rejected because the group has faulted, the client confirms that state with
 fresh inventory and releases the lease without automatic recovery. An explicit

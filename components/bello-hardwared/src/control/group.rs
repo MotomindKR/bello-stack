@@ -27,11 +27,6 @@ use super::spec::GroupSpec;
 
 const GROUP_TELEMETRY_PERIOD: Duration = Duration::from_millis(40);
 
-enum DampingOutcome {
-    Applied,
-    Stopped(String),
-}
-
 enum EnableFailure {
     LeaseLost(String),
     Shutdown(String),
@@ -421,15 +416,8 @@ impl GroupController {
 
     fn establish_damping(&mut self, cause: GroupCause, success: &str) -> super::Transition {
         match self.send_damping() {
-            Ok(DampingOutcome::Applied) => self.fsm.damp(cause, success),
-            Ok(DampingOutcome::Stopped(reason)) => self.latch_fault(
-                cause,
-                format!("damping was unavailable ({reason}); motors were stopped"),
-            ),
-            Err(error) => self.latch_fault(
-                cause,
-                format!("damping and fallback motor stop failed: {error}"),
-            ),
+            Ok(()) => self.fsm.damp(cause, success),
+            Err(error) => self.latch_fault(cause, format!("damping transmit failed: {error}")),
         }
     }
 
@@ -767,65 +755,18 @@ impl GroupController {
 
     fn respond(&self, response: FaultResponse) -> Result<(), String> {
         match response {
-            FaultResponse::Damping => {
-                if let DampingOutcome::Stopped(reason) = self.send_damping()? {
-                    tracing::warn!(
-                        group = %self.spec.name,
-                        %reason,
-                        "damping was unavailable; sent motor stop frames"
-                    );
-                }
-                Ok(())
-            }
+            FaultResponse::Damping => self.send_damping(),
             FaultResponse::Disable => self.stop_motors(false),
         }
     }
 
-    fn send_damping(&self) -> Result<DampingOutcome, String> {
-        let feedback = self
-            .motors
-            .iter()
-            .map(|motor| {
-                let name = motor.controller.spec.name.clone();
-                let measured = motor.controller.feedback().ok_or_else(|| {
-                    format!("motor {name} has no feedback for the damping command")
-                })?;
-                if measured.received.elapsed() > self.spec.feedback_timeout {
-                    return Err(format!(
-                        "motor {name} feedback is stale for the damping command"
-                    ));
-                }
-                Ok((name, measured.value))
-            })
-            .collect::<Result<HashMap<_, _>, String>>();
-        let commands = feedback.and_then(|feedback| {
-            self.spec
-                .mechanical
-                .damping_commands(&feedback)
-                .map_err(|violation| violation.detail)
-        });
-        let commands = match commands {
-            Ok(commands) => commands,
-            Err(reason) => return self.stop_after_damping_failure(reason),
-        };
-        match super::safety::send_damping(
+    fn send_damping(&self) -> Result<(), String> {
+        let commands = self.spec.mechanical.damping_commands();
+        super::safety::send_damping(
             self.motors
                 .iter()
                 .map(|motor| (&motor.controller, commands[&motor.controller.spec.name])),
-        ) {
-            Ok(()) => Ok(DampingOutcome::Applied),
-            Err(error) => {
-                self.stop_after_damping_failure(format!("damping transmit failed: {error}"))
-            }
-        }
-    }
-
-    fn stop_after_damping_failure(&self, reason: String) -> Result<DampingOutcome, String> {
-        self.stop_motors(false)
-            .map(|()| DampingOutcome::Stopped(reason.clone()))
-            .map_err(|error| {
-                format!("damping unavailable ({reason}); fallback motor stop failed: {error}")
-            })
+        )
     }
 
     fn stop_motors(&self, clear_fault: bool) -> Result<(), String> {

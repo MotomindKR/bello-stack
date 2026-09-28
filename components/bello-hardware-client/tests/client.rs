@@ -41,6 +41,7 @@ struct FakeSettings {
     reject_commands: AtomicBool,
     fail_release: AtomicBool,
     faulted: AtomicBool,
+    released_damped: AtomicBool,
 }
 
 impl Default for FakeHardware {
@@ -57,6 +58,7 @@ impl Default for FakeHardware {
                 reject_commands: AtomicBool::new(false),
                 fail_release: AtomicBool::new(false),
                 faulted: AtomicBool::new(false),
+                released_damped: AtomicBool::new(false),
             }),
         }
     }
@@ -342,6 +344,8 @@ impl HardwareService for FakeHardware {
         Ok(Response::new(ReleaseLeaseResponse {
             state: if self.settings.faulted.load(Ordering::Relaxed) {
                 GroupState::Fault
+            } else if self.settings.released_damped.load(Ordering::Relaxed) {
+                GroupState::Damped
             } else {
                 GroupState::Idle
             } as i32,
@@ -1386,5 +1390,67 @@ async fn ergonomic_resume_rolls_an_ambiguous_start_back_to_damped() {
     assert_eq!(control.state(), bello_hardware_client::ControlState::Damped);
 
     control.shutdown().await.expect("shutdown damped control");
+    server.stop().await;
+}
+
+#[tokio::test]
+async fn release_preserves_damping_and_fault_without_disable() {
+    for faulted in [false, true] {
+        let server = FakeServer::start().await;
+        let robot = Robot::connect(&server.endpoint).await.unwrap();
+        let group = robot.group(GROUP).unwrap();
+        let mut control = group.control("damping-release").await.unwrap();
+        let frame = group
+            .frame()
+            .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
+            .unwrap()
+            .build()
+            .unwrap();
+        control.start(frame).await.unwrap();
+        server.settings.faulted.store(faulted, Ordering::Relaxed);
+        server
+            .settings
+            .released_damped
+            .store(true, Ordering::Relaxed);
+        control.release().await.unwrap();
+        {
+            let recorded = server.state.lock().unwrap();
+            assert_eq!(recorded.released.len(), 1);
+            assert!(
+                !recorded
+                    .lifecycle
+                    .iter()
+                    .any(|call| matches!(call.action, "disable" | "recover"))
+            );
+        }
+        server.stop().await;
+    }
+}
+
+#[tokio::test]
+async fn failed_start_rolls_back_to_damping() {
+    let server = FakeServer::start().await;
+    let robot = Robot::connect(&server.endpoint).await.unwrap();
+    let group = robot.group(GROUP).unwrap();
+    let mut control = group.control("failed-start-damping").await.unwrap();
+    let frame = group
+        .frame()
+        .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
+        .unwrap()
+        .build()
+        .unwrap();
+    server.settings.fail_start.store(true, Ordering::Relaxed);
+    assert!(control.start(frame).await.is_err());
+    assert_eq!(control.state(), bello_hardware_client::ControlState::Damped);
+    control.release().await.unwrap();
+    assert!(
+        !server
+            .state
+            .lock()
+            .unwrap()
+            .lifecycle
+            .iter()
+            .any(|call| call.action == "disable")
+    );
     server.stop().await;
 }
