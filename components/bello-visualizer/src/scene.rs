@@ -113,19 +113,18 @@ fn add_geometry(parent: &mut SceneNode3d, instance: &GeometryInstance) -> anyhow
     }
     let mut frame = parent.add_group();
     set_pose(&mut frame, &instance.origin);
-    if let Geometry::Mesh { path, scale } = &instance.geometry {
-        if path
+    if let Geometry::Mesh { path, scale } = &instance.geometry
+        && path
             .extension()
             .is_some_and(|extension| extension.eq_ignore_ascii_case("glb"))
-        {
-            let mut model = kiss3d::loader::gltf::load(path)
-                .with_context(|| format!("read GLB mesh {}", path.display()))?;
-            model
-                .root
-                .set_local_scale(scale[0] as f32, scale[1] as f32, scale[2] as f32);
-            frame.add_child(model.root);
-            return Ok(());
-        }
+    {
+        let mut model = kiss3d::loader::gltf::load(path)
+            .with_context(|| format!("read GLB mesh {}", path.display()))?;
+        model
+            .root
+            .set_local_scale(scale[0] as f32, scale[1] as f32, scale[2] as f32);
+        frame.add_child(model.root);
+        return Ok(());
     }
     let mut rendered = match &instance.geometry {
         Geometry::Mesh { path, scale } => {
