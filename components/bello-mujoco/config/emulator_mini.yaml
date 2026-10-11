@@ -1,5 +1,5 @@
 model: bello_mini.yaml
-bus_interfaces: {can0: vcan0, can1: vcan1}
+bus_interfaces: {can0: vcan0, can1: vcan1, can2: vcan2, can3: vcan3}
 feedback_rate_hz: 100
 temperature_c: 25
 command_latency_seconds: 0.01
