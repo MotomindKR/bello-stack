@@ -305,10 +305,11 @@ Defaults are host ID `253` (`0xFD`), bitrate `1000000`, and maximum utilization
 `0.75`. Bus names and physical interface names must both be unique. Each bus
 must have at least one motor.
 
-The resolver's current timing model budgets two extended eight-byte frames per
-motor per group tick at roughly 150 bits per frame. It rejects both aggregate load
-above `maximum_utilization` and a group batch that cannot fit within its control
-period. See [`hardware/can/spec.rs`](../components/bello-hardwared/src/hardware/can/spec.rs)
+The resolver budgets two extended eight-byte frames per motor per transmission
+at roughly 150 bits per frame. Periodic mode uses `command_refresh_rate_hz`;
+`on_update` conservatively uses `control_rate_hz`. It rejects aggregate load above
+`maximum_utilization` and a group batch that cannot fit within that mode's
+transmission period. See [`hardware/can/spec.rs`](../components/bello-hardwared/src/hardware/can/spec.rs)
 and the utilization check in
 [`config/resolved.rs`](../components/bello-hardwared/src/config/resolved.rs).
 
@@ -428,8 +429,10 @@ different groups may share a bus. Every motor belongs to exactly one group.
   the legacy behavior by using `control_rate_hz`
 - `command_transmission`: `on_update` (default) sends accepted updates immediately
   and refreshes only when the producer pauses; `periodic` stages updates and
-  sends the latest target on the independent `command_refresh_rate_hz` clock.
-  Missed transmission slots are skipped without catch-up bursts.
+  sends the latest target on the CAN TX worker's `command_refresh_rate_hz` clock.
+  Missed slots are counted and skipped without catch-up bursts. Four refresh
+  periods without completed socket writes latch a transmission fault; updates
+  do not reset this watchdog. Original target validity and lease checks apply.
 - `periodic_feedback_during_control`: boolean (default `true`). When `false`,
   periodic motor reports are disabled only in Running; command replies provide
   feedback. Damping, stop, disable, faults, and shutdown restore periodic reports.
@@ -557,7 +560,7 @@ direct or differential coordinate mappings; it never supplies hardware gains.
 See the
 [`bello-visualizer` guide](../components/bello-visualizer/README.md).
 
-The Bello Mini profile uses 300 Hz safety ticks and periodic CAN transmission,
+The Bello Mini profile uses 300 Hz safety ticks and TX-owned periodic CAN transmission,
 with `periodic_feedback_during_control: false`. Its policy still supplies new
 50 Hz targets; each target is retained between updates without extending its
 original validity deadline. Idle/enabling/damped monitoring retains periodic

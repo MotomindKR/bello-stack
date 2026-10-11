@@ -136,22 +136,41 @@ The one-tick grace prevents the refresh deadline from racing a policy command
 expected at the same nominal frequency. `Running` retains the command until a
 newer complete batch replaces it, or until stop, disable, recover, lease loss,
 fault, or shutdown clears it.
-With `command_transmission: periodic`, new commands update the retained targets
-without immediate transmission or resetting the refresh schedule. The periodic
-schedule sends at `command_refresh_rate_hz` and skips missed slots instead of
-sending catch-up bursts. Both modes preserve the original command validity.
+With `command_transmission: periodic`, the group encodes each accepted target
+set once and publishes it into one latest-value slot per group per bus. The CAN
+TX worker owns the `command_refresh_rate_hz` clock and reads that slot at each
+send; it does not wait for the group to assemble and enqueue another repeat.
+Updates replace pending targets without resetting the clock. Missed slots are
+counted and skipped, with no catch-up replay. Each repeat retains the original
+command deadline and lease generation. TX checks validity before a burst and
+lease ownership, shutdown, and revocation before every frame. Stop, disable,
+recover, lease loss, fault, and shutdown revoke the activation before submitting
+ordered safety barriers; an old activation cannot resume after a later Start.
 
-CAN delivery has a separate batch deadline of one `control_rate_hz` period.
-At 300 Hz this is 3.33 ms. The transport reserves twice the estimated wire time:
-seven extended frames at 1 Mbps reserve 2.10 ms, leaving about 1.23 ms for
-assembly and enqueue scheduling. A batch that expires in the TX worker is
-discarded; an enqueue expiry faults the group with a transmission cause. A
-moderate average bus load does not guarantee these Linux scheduling deadlines.
+Periodic mode allows isolated missed slots. Four refresh periods without a
+completed SocketCAN write burst revoke the targets and latch a transmission
+fault through the group's configured safety response. At 300 Hz this is about
+13.33 ms. The group safety tick also checks this watchdog, so fresh policy
+updates cannot conceal a stalled TX worker. This watches host socket writes;
+it is not a motor acknowledgement or a hard real-time guarantee. Skipped-slot
+counts and lateness are logged when a slot is missed. Actual write errors or
+expiry after a partial burst remain indeterminate transport failures.
+TX checks the silence guard between frames and on completion, so a pause during
+a burst cannot continue the remaining frames or hide the gap by completing late.
+
+The default `on_update` path still has a separate delivery deadline of one
+`control_rate_hz` period, measured from assembly of its first frame. At 300 Hz
+this is 3.33 ms. Seven extended frames at 1 Mbps reserve 2.10 ms, leaving about
+1.23 ms for assembly and enqueue scheduling. Enqueue expiry faults that group;
+TX discards a batch expired before its first write. Periodic mode instead
+reserves the same wire budget against the original target validity deadline,
+without a new one-period assembly/handoff deadline on every repeat. A moderate
+average bus load does not guarantee Linux scheduling deadlines.
+
 `StartControl` installs the first command directly; stream commands are accepted
-only in `Running`. A command expired at admission is rejected. A stored command
-that expires before a later periodic tick is not submitted: command state is
-cleared and the group moves to `Damped`. Every resulting CAN batch is governed
-by its own one-period freshness deadline.
+only in `Running`. Expired commands are rejected at admission. When a retained
+target expires, TX stops repeating it and the group moves to `Damped` with the
+command-timeout response. Repetition never extends validity in either mode.
 
 The daemon records `submitted_at` before taking the lease gate. The effective
 validity is the smaller of the batch's requested validity and the group's
@@ -196,21 +215,22 @@ lower even when the control rate is above 25 Hz.
 
 `Damped` polls each motor's already-classified status and the exact coupled
 differential feedback pose, but does not send periodic control frames.
-`Running` first performs the same availability poll, re-evaluates the retained
-position/velocity target against the mechanical envelope, and checks the
-command watchdog before submitting one control frame per motor.
-`ControlBatcher` holds those frames until it has seen every motor in the logical
-group tick, then enqueues one atomic batch on each affected bus. All buses are
-attempted before an enqueue error is returned.
+`Running` performs the same availability and feedback-position checks, then
+checks target expiry and periodic transport health. Target position and velocity
+are validated against the mechanical envelope once during admission; unchanged
+retained targets are not rebuilt and revalidated on each safety tick.
 
-The CAN TX workers are event-driven rather than frequency-driven. A control
-batch expires after one group control period measured from collection of its
-first motor frame. If the bus can determine before writing that the complete
-batch will not fit, it discards the batch without reconnecting. A write error,
-expiry after partial transmission, or completion after the deadline is
-indeterminate and causes transport failure and reconnect. Queue ordering is
-atomic on one bus; no software can make separate physical CAN interfaces
-simultaneous. See
+For `on_update`, `ControlBatcher` holds frames until it has seen every motor in
+the logical group tick, then enqueues one atomic batch on each affected bus.
+All buses are attempted before an enqueue error is returned. These batches
+expire one control period after assembly begins. Expiry before any write
+is discarded; write errors, partial expiry, or late completion cause reconnect.
+Periodic mode publishes each new target set once and repeats it directly from
+the TX worker's latest-value slot under the original target deadline. Normal
+per-frame lease/revocation and stall-deadline checks use atomics and a captured
+deadline; the slot is locked only when a stall must be latched, or for batch
+scheduling/completion. Queue ordering is atomic on one bus; separate physical
+CAN interfaces cannot be made simultaneous. See
 [`hardware/robstride/controller.rs`](../components/bello-hardwared/src/hardware/robstride/controller.rs),
 [`hardware/can/mod.rs`](../components/bello-hardwared/src/hardware/can/mod.rs),
 and [`hardware/can/supervisor.rs`](../components/bello-hardwared/src/hardware/can/supervisor.rs).

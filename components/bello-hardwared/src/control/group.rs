@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver};
@@ -13,6 +13,7 @@ use crate::domain::{
     CommandBatch, CommandError, CommandPolicyTelemetry, GroupTelemetry, ImpedanceCommand,
     TelemetryPayload,
 };
+use crate::hardware::can::PeriodicControl;
 use crate::hardware::robstride::{MotorController, MotorFaultCause};
 use crate::mechanics::MechanicalViolation;
 use crate::telemetry::Telemetry;
@@ -50,16 +51,6 @@ impl CommandRefreshSchedule {
 
     fn record_immediate_send(&mut self, now: Instant) {
         self.next_refresh = now + self.refresh_period + self.command_arrival_grace;
-    }
-
-    fn should_transmit_periodic(&mut self, now: Instant) -> bool {
-        if now < self.next_refresh {
-            return false;
-        }
-        let remainder =
-            now.duration_since(self.next_refresh).as_nanos() % self.refresh_period.as_nanos();
-        self.next_refresh = now + self.refresh_period - Duration::from_nanos(remainder as u64);
-        true
     }
 
     fn should_retransmit(&mut self, now: Instant) -> bool {
@@ -107,6 +98,7 @@ pub(super) struct ControllerInputs {
 pub(super) struct GroupController {
     spec: GroupSpec,
     motors: Vec<GroupMotor>,
+    periodic_buses: Vec<(PeriodicControl, Vec<usize>)>,
     lifecycle_rx: Receiver<LifecycleRequest>,
     wake_rx: Receiver<()>,
     command_mailbox: Arc<Mutex<Option<CommandSubmission>>>,
@@ -135,9 +127,28 @@ impl GroupController {
         inputs: ControllerInputs,
         telemetry: Telemetry,
     ) -> Self {
+        let mut periodic_buses = BTreeMap::new();
+        if spec.command_transmission == CommandTransmission::Periodic {
+            for (index, motor) in motors.iter().enumerate() {
+                let entry = periodic_buses
+                    .entry(motor.controller.spec.address.bus.clone())
+                    .or_insert_with(|| {
+                        (
+                            motor.controller.periodic_control(
+                                spec.command_refresh_period(),
+                                inputs.lease_generation.clone(),
+                                inputs.shutdown.clone(),
+                            ),
+                            Vec::new(),
+                        )
+                    });
+                entry.1.push(index);
+            }
+        }
         Self {
             spec,
             motors,
+            periodic_buses: periodic_buses.into_values().collect(),
             lifecycle_rx: inputs.lifecycle_rx,
             wake_rx: inputs.wake_rx,
             command_mailbox: inputs.command_mailbox,
@@ -164,8 +175,9 @@ impl GroupController {
         let period = self.spec.period();
         let now = Instant::now();
         let mut next_tick = now + period;
-        let mut refresh_schedule =
-            CommandRefreshSchedule::new(now, self.spec.command_refresh_period(), period);
+        let mut refresh_schedule = (self.spec.command_transmission
+            == CommandTransmission::OnUpdate)
+            .then(|| CommandRefreshSchedule::new(now, self.spec.command_refresh_period(), period));
         loop {
             if self.shutdown.load(Ordering::Acquire) {
                 self.perform_shutdown();
@@ -203,11 +215,14 @@ impl GroupController {
                     GroupState::Running,
                 );
                 if result.is_ok() {
-                    if self.spec.command_transmission == CommandTransmission::OnUpdate {
+                    if let Some(schedule) = &mut refresh_schedule {
                         self.control_tick(0, true);
-                        refresh_schedule.record_immediate_send(Instant::now());
+                        schedule.record_immediate_send(Instant::now());
                     } else {
                         self.control_tick(0, false);
+                        if self.fsm.state() == GroupState::Running {
+                            self.publish_periodic_targets();
+                        }
                     }
                 }
                 let _ = submission.reply.send(result);
@@ -219,11 +234,9 @@ impl GroupController {
                     .saturating_duration_since(next_tick)
                     .as_micros()
                     .min(i64::MAX as u128) as i64;
-                let transmit = if self.spec.command_transmission == CommandTransmission::Periodic {
-                    refresh_schedule.should_transmit_periodic(now)
-                } else {
-                    refresh_schedule.should_retransmit(now)
-                };
+                let transmit = refresh_schedule
+                    .as_mut()
+                    .is_some_and(|schedule| schedule.should_retransmit(now));
                 self.control_tick(jitter, transmit);
                 next_tick += period;
                 if next_tick < now {
@@ -327,7 +340,22 @@ impl GroupController {
                         Ok(()) => match self
                             .set_periodic_reporting(self.spec.periodic_feedback_during_control)
                         {
-                            Ok(()) => self.fsm.start(),
+                            Ok(()) => {
+                                let transition = self.fsm.start();
+                                if self.spec.command_transmission == CommandTransmission::Periodic {
+                                    self.control_tick(0, false);
+                                    if self.fsm.state() == GroupState::Running {
+                                        self.publish_periodic_targets();
+                                    } else {
+                                        return super::Transition {
+                                            ok: false,
+                                            to: self.fsm.state(),
+                                            message: self.fsm.detail().into(),
+                                        };
+                                    }
+                                }
+                                transition
+                            }
                             Err(error) => self.enter_fault(FaultCause::Transmission, error),
                         },
                         Err(error) => super::Transition {
@@ -406,6 +434,7 @@ impl GroupController {
     }
 
     fn clear_command_state(&mut self) {
+        self.revoke_periodic_targets();
         if let Some(pending) = self.command_mailbox.lock().take() {
             let _ = pending.reply.send(Err(CommandError::Superseded));
         }
@@ -446,7 +475,6 @@ impl GroupController {
     }
 
     pub(super) fn handle_worker_panic(&mut self) {
-        self.clear_command_state();
         self.enter_fault(FaultCause::Internal, "group controller panicked".into());
         self.update_snapshot(0);
     }
@@ -676,6 +704,15 @@ impl GroupController {
             return;
         }
         if self.fsm.state() == GroupState::Running {
+            if let Some(detail) = self
+                .periodic_buses
+                .iter()
+                .find_map(|(control, _)| control.failure(Instant::now()))
+            {
+                self.enter_fault(FaultCause::Transmission, detail);
+                self.update_snapshot(jitter_us);
+                return;
+            }
             if self
                 .command_deadline
                 .is_none_or(|deadline| Instant::now() >= deadline)
@@ -685,20 +722,6 @@ impl GroupController {
                     GroupCause::CommandTimeout,
                     "command watchdog expired; damping applied",
                 );
-                self.update_snapshot(jitter_us);
-                return;
-            }
-            let commands = self
-                .motors
-                .iter()
-                .filter_map(|motor| {
-                    motor
-                        .command
-                        .map(|command| (motor.controller.spec.name.clone(), command))
-                })
-                .collect();
-            if let Err(violation) = self.spec.mechanical.validate_targets(&commands) {
-                self.enter_fault(FaultCause::CommandLimit, violation.detail);
                 self.update_snapshot(jitter_us);
                 return;
             }
@@ -817,6 +840,33 @@ impl GroupController {
             Err(errors.join("; "))
         }
     }
+
+    fn publish_periodic_targets(&self) {
+        let deadline = self
+            .command_deadline
+            .expect("Running has a command deadline");
+        let generation = self
+            .command_generation
+            .expect("Running has a command generation");
+        for (control, indices) in &self.periodic_buses {
+            let frames = indices
+                .iter()
+                .map(|index| {
+                    let motor = &self.motors[*index];
+                    motor
+                        .controller
+                        .control_frame(motor.command.expect("Running has complete targets"))
+                })
+                .collect();
+            control.publish(frames, deadline, generation);
+        }
+    }
+
+    fn revoke_periodic_targets(&self) {
+        for (control, _) in &self.periodic_buses {
+            control.revoke();
+        }
+    }
     fn command_fault_cause(&self, check: CommandPolicyCheck) -> FaultCause {
         match check {
             CommandPolicyCheck::CommandLimit => FaultCause::CommandLimit,
@@ -914,23 +964,6 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::CommandRefreshSchedule;
-
-    #[test]
-    fn periodic_transmission_keeps_phase_and_skips_missed_slots() {
-        let start = Instant::now();
-        let period = Duration::from_secs_f64(1.0 / 300.0);
-        let mut schedule = CommandRefreshSchedule::new(start, period, period);
-        assert!(!schedule.should_transmit_periodic(start));
-        for tick in 1..=30 {
-            let due = start + period * tick;
-            assert!(schedule.should_transmit_periodic(due + Duration::from_micros(100)));
-            assert!(!schedule.should_transmit_periodic(due + Duration::from_micros(200)));
-        }
-        let late = start + period * 40 + Duration::from_micros(100);
-        assert!(schedule.should_transmit_periodic(late));
-        assert!(!schedule.should_transmit_periodic(late));
-        assert_eq!(schedule.next_refresh, start + period * 41);
-    }
 
     #[test]
     fn healthy_policy_commands_defer_periodic_refresh() {

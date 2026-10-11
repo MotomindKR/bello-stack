@@ -35,13 +35,6 @@ if ! command -v ip >/dev/null 2>&1; then
   exit 1
 fi
 
-for interface in "${INTERFACES[@]}"; do
-  if ! ip link show dev "$interface" >/dev/null 2>&1; then
-    echo "SocketCAN interface $interface does not exist" >&2
-    exit 1
-  fi
-done
-
 check_interface() {
   local interface=$1
   local details
@@ -67,10 +60,6 @@ check_interface() {
     echo "SocketCAN interface $interface is not configured for classic CAN (expected MTU 16)" >&2
     return 1
   fi
-  if [[ $details =~ (^|[[:space:]])fd[[:space:]]on([[:space:]]|$) ]]; then
-    echo "SocketCAN interface $interface has CAN FD enabled" >&2
-    return 1
-  fi
   if [[ ! $details =~ (^|[[:space:]])bitrate[[:space:]]$BITRATE([[:space:]]|$) ]]; then
     echo "SocketCAN interface $interface is not configured for $BITRATE bit/s" >&2
     return 1
@@ -84,6 +73,13 @@ if [[ $CHECK_ONLY == true ]]; then
   echo "${INTERFACES[*]} are UP and configured for classic CAN at $BITRATE bit/s"
   exit 0
 fi
+
+for interface in "${INTERFACES[@]}"; do
+  if ! ip link show dev "$interface" >/dev/null 2>&1; then
+    echo "SocketCAN interface $interface does not exist" >&2
+    exit 1
+  fi
+done
 
 for interface in "${INTERFACES[@]}"; do
   ip link set dev "$interface" down

@@ -236,7 +236,85 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
     );
     drop(sender);
     drop(replies);
-    lease.disable().await?;
+    // Stop and lease release must revoke repeats, even with live target validity.
+    let long_validity = CommandValidity::For(Duration::from_millis(400));
+    lease.start(long_validity, commands()).await?;
+    sleep(Duration::from_millis(20)).await;
+    lease.stop().await?;
+    let stopped = std::time::Instant::now();
+    sleep(Duration::from_millis(30)).await;
+    assert!(
+        !recorded
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(at, f)| *at >= stopped && (f.id >> 24) & 31 == 1),
+        "periodic targets resumed after StopControl"
+    );
+    lease.start(long_validity, commands()).await?;
+    sleep(Duration::from_millis(20)).await;
+    lease.release().await?;
+    let released = std::time::Instant::now();
+    sleep(Duration::from_millis(30)).await;
+    assert!(
+        !recorded
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(at, f)| *at >= released && (f.id >> 24) & 31 == 1),
+        "periodic targets resumed after lease release"
+    );
+    let state = client
+        .grpc_client()
+        .get_state_frame(GetStateFrameRequest {
+            groups: vec!["e2e_group".into()],
+            imus: vec![],
+        })
+        .await?
+        .into_inner();
+    assert_eq!(state.groups[0].state, GroupState::Damped as i32);
+    assert_eq!(state.groups[0].cause, GroupCause::LeaseLoss as i32);
+
+    // Freeze only the isolated fixture, with targets and feedback still fresh.
+    // A sustained scheduling gap must fault instead of replaying missed ticks.
+    let mut lease = client
+        .acquire_lease(
+            "e2e_group",
+            "stall-test",
+            LeaseDuration::For(Duration::from_secs(10)),
+        )
+        .await?;
+    lease.start(long_validity, commands()).await?;
+    sleep(Duration::from_millis(20)).await;
+    daemon.suspend()?;
+    sleep(Duration::from_millis(25)).await;
+    daemon.resume()?;
+    timeout(Duration::from_secs(2), async {
+        loop {
+            let inventory = client
+                .grpc_client()
+                .get_state_frame(GetStateFrameRequest {
+                    groups: vec!["e2e_group".into()],
+                    imus: vec![],
+                })
+                .await?
+                .into_inner();
+            if inventory.groups[0].state == GroupState::Fault as i32 {
+                assert_eq!(inventory.groups[0].cause, GroupCause::Transmission as i32);
+                assert!(
+                    inventory.groups[0]
+                        .detail
+                        .contains("periodic control stalled")
+                );
+                break;
+            }
+            sleep(Duration::from_millis(5)).await;
+        }
+        Ok::<(), anyhow::Error>(())
+    })
+    .await??;
+    println!("Stop, lease release, expiry, and injected 25 ms TX stall applied safety responses");
+    lease.recover().await?;
     lease.release().await?;
     daemon.stop();
     emulator.stop();

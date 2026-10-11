@@ -61,7 +61,7 @@ is chosen ahead of normal control. A safety barrier additionally purges every
 queued control batch before its safety frames are written. A configuration
 batch preserves queued control traffic.
 
-Control queue capacity is the number of motor groups using that bus, with a
+`on_update` control queue capacity is the number of motor groups using that bus, with a
 minimum of one. A group contributes at most one atomic batch per bus per
 control tick. Configuration and safety queues each have capacity
 `max(control_capacity, 4)`. Control submission waits for a free slot only until
@@ -70,12 +70,25 @@ drain a transient backlog after scheduler jitter without growing the queue or
 extending command freshness. A stalled transport still expires explicitly.
 Configuration and safety submission remains nonblocking.
 
-Every control batch has an absolute freshness deadline: collection time of its
+Every `on_update` control batch has an absolute freshness deadline: collection time of its
 first motor frame plus one group period. Submission and transmission both check
 that the full batch still fits its estimated wire-time budget. A batch that
 expires before its first frame is discarded. Expiry after any frame was written,
 a write error, or completion after the deadline makes the outcome indeterminate
 and forces reconnection.
+
+Periodic groups instead publish one immutable target batch into a latest-value
+slot per group per bus. Publication replaces pending targets without waiting
+for a free queue slot. The TX worker owns each refresh clock, keeps its phase
+across target updates, and skips missed slots. It reserves wire time against
+the original target deadline and checks lease generation and revocation before
+every frame. Safety transitions revoke their group's slot before enqueueing
+an ordered barrier; other groups sharing the bus retain their slots. A gap of
+four refresh periods without a completed socket write burst latches a group
+transmission fault (13.33 ms at 300 Hz). Both TX and group safety ticks check
+this gap; new policy targets do not reset it. This does not guarantee physical
+wire delivery or motor acknowledgement. See
+[`hardware/can/periodic.rs`](../components/bello-hardwared/src/hardware/can/periodic.rs).
 
 Configuration and safety batches use an absolute delivery deadline derived
 from estimated wire time, a two-times transmission margin, a 20 ms scheduling
@@ -143,7 +156,7 @@ The motor-group worker performs safety and watchdog checks at
 stream commands transmit immediately and defer fallback refresh until one
 additional safety-tick grace period. With `command_transmission: periodic`,
 updates are accepted into the latest-target mailbox and transmit only on the
-independent `command_refresh_rate_hz` clock. Missed slots are skipped rather
+independent `command_refresh_rate_hz` clock owned by the CAN TX worker. Missed slots are skipped rather
 than replayed in a burst. Retransmission never extends target validity or lease
 ownership.
 
@@ -153,11 +166,12 @@ idle/enabling/damped monitoring and are restored on stop, expiry, lease loss,
 fault response, disabling, and shutdown. The feedback watchdog remains active
 while relying on command replies.
 
-A shared `ControlBatcher` holds each logical transmission until all motors in
+For `on_update`, a shared `ControlBatcher` holds each logical transmission until all motors in
 the group have contributed, partitions the frames by CAN bus, and enqueues one
 control batch per bus with the same deadline. This makes the queue item atomic
-on each bus and supports groups that span buses. CAN TX is queue-driven and CAN
-RX is event-driven by incoming frames.
+on each bus and supports groups that span buses. Periodic mode encodes new
+targets once on admission and uses the per-bus TX slots described above. CAN RX
+is event-driven by incoming frames.
 
 ### Feedback routing and watchdogs
 
@@ -356,7 +370,7 @@ gRPC telemetry stream.
 | --- | --- | --- |
 | Motor-group safety | `control_rate_hz`, 1–2000 Hz | Fixed checks; does not necessarily transmit CAN commands |
 | CAN transmission | `command_refresh_rate_hz`, 1–`control_rate_hz` Hz | `on_update`: fallback refresh; `periodic`: independent latest-target clock |
-| CAN TX | Queue arrivals and batch deadlines | Event-driven, strict safety/configuration/control priority |
+| CAN TX | Priority/command arrivals and periodic slot deadlines | Safety and configuration preempt normal control; periodic clocks run in TX |
 | CAN RX | SocketCAN input | Blocking/event-driven with a 100 ms OS timeout |
 | Motor health scan | `feedback_timeout_ms / 4`, clamped to 1–20 ms | Checks bus state and armed feedback watchdogs |
 | Serial TX | Sensor configuration requests | Event-driven; bounded by `timeout_ms` |

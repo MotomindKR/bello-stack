@@ -1,12 +1,13 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc as std_mpsc;
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow};
 use crossbeam_channel::{Receiver, Sender, bounded};
+use parking_lot::Mutex;
 use thiserror::Error;
 use tracing::error;
 
@@ -15,9 +16,11 @@ use crate::domain::{BusName, GroupName};
 use crate::hardware::lifecycle::{DeviceLifecycle, DeviceState, DeviceStatus};
 use crate::telemetry::Telemetry;
 
+mod periodic;
 mod spec;
 mod supervisor;
 
+pub(crate) use periodic::PeriodicControl;
 pub(crate) use spec::BusSpec;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -101,6 +104,8 @@ pub(super) struct BusTxQueues {
     pub(super) safety: Receiver<PriorityBatch>,
     pub(super) configuration: Receiver<PriorityBatch>,
     pub(super) control: Receiver<ControlBatch>,
+    pub(super) periodic: Arc<Mutex<BTreeMap<GroupName, PeriodicControl>>>,
+    pub(super) wake: Receiver<()>,
 }
 
 #[must_use = "a submitted CAN batch must be awaited with PendingBatch::wait"]
@@ -138,9 +143,34 @@ pub(crate) struct BusHandle {
     control_tx: Sender<ControlBatch>,
     configuration_tx: Sender<PriorityBatch>,
     safety_tx: Sender<PriorityBatch>,
+    periodic: Arc<Mutex<BTreeMap<GroupName, PeriodicControl>>>,
+    wake: Sender<()>,
 }
 
 impl BusHandle {
+    pub(crate) fn periodic_control(
+        &self,
+        group: &GroupName,
+        period: Duration,
+        lease: Arc<AtomicU64>,
+        shutdown: Arc<AtomicBool>,
+    ) -> PeriodicControl {
+        self.periodic
+            .lock()
+            .entry(group.clone())
+            .or_insert_with(|| {
+                PeriodicControl::new(
+                    group.clone(),
+                    self.spec.name.clone(),
+                    period,
+                    lease,
+                    shutdown,
+                    self.wake.clone(),
+                )
+            })
+            .clone()
+    }
+
     fn ensure_online(&self) -> Result<(), BusError> {
         let state = self.lifecycle.state();
         if state.is_online() {
@@ -299,6 +329,8 @@ impl BusManager {
             let priority_capacity = control_capacity.max(4);
             let (configuration_tx, configuration_rx) = bounded(priority_capacity);
             let (safety_tx, safety_rx) = bounded(priority_capacity);
+            let (wake_tx, wake_rx) = bounded(1);
+            let periodic = Arc::new(Mutex::new(BTreeMap::new()));
             let lifecycle = DeviceLifecycle::new(
                 format!("can/{}", bus.name),
                 DeviceState::Starting,
@@ -313,6 +345,8 @@ impl BusManager {
                     control_tx,
                     configuration_tx,
                     safety_tx,
+                    periodic: periodic.clone(),
+                    wake: wake_tx,
                 },
             );
             let spec = bus.clone();
@@ -330,6 +364,8 @@ impl BusManager {
                                     safety: safety_rx,
                                     configuration: configuration_rx,
                                     control: control_rx,
+                                    periodic,
+                                    wake: wake_rx,
                                 },
                                 frames,
                                 lifecycle,

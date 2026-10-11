@@ -534,7 +534,42 @@ motor_groups:
   - { name: group, motors: [motor_a], control_rate_hz: 33.333333333333336 }
 "#;
         let error = parse(text).unwrap_err().to_string();
-        assert!(error.contains("freshness period"), "{error}");
+        assert!(error.contains("transmission period"), "{error}");
+    }
+
+    #[test]
+    fn periodic_load_uses_tx_refresh_rate_instead_of_the_safety_tick_rate() {
+        let text = r#"
+buses:
+  - { name: slow, interface: vcan0, bitrate: 10000, maximum_utilization: 1.0 }
+motors:
+  - { name: motor_a, coordinate: left_hip_pitch_joint, bus: slow, id: 1, model: ROBSTRIDE_03 }
+motor_groups:
+  - { name: group, motors: [motor_a], control_rate_hz: 1000.0, command_refresh_rate_hz: 20.0, command_transmission: periodic }
+"#;
+        assert!(parse(text).is_ok());
+        let too_fast = text.replace(
+            "command_refresh_rate_hz: 20.0",
+            "command_refresh_rate_hz: 40.0",
+        );
+        let error = parse(&too_fast).unwrap_err().to_string();
+        assert!(error.contains("transmission period"), "{error}");
+    }
+
+    #[test]
+    fn periodic_groups_still_enforce_the_shared_bus_load_limit() {
+        let text = r#"
+buses:
+  - { name: slow, interface: vcan0, bitrate: 10000, maximum_utilization: 1.0 }
+motors:
+  - { name: motor_a, coordinate: left_hip_pitch_joint, bus: slow, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_b, coordinate: right_hip_pitch_joint, bus: slow, id: 2, model: ROBSTRIDE_03 }
+motor_groups:
+  - { name: group_a, motors: [motor_a], control_rate_hz: 1000.0, command_refresh_rate_hz: 20.0, command_transmission: periodic }
+  - { name: group_b, motors: [motor_b], control_rate_hz: 1000.0, command_refresh_rate_hz: 20.0, command_transmission: periodic }
+"#;
+        let error = parse(text).unwrap_err().to_string();
+        assert!(error.contains("estimated utilization"), "{error}");
     }
 
     #[test]

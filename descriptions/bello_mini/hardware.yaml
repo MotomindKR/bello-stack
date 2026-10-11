@@ -106,7 +106,6 @@ motor_groups:
   - name: lower_body
     motors: [waist_yaw_motor, waist_roll_motor, left_hip_pitch_motor, left_hip_roll_motor, left_hip_yaw_motor, left_knee_motor, left_ankle_motor_1, left_ankle_motor_2, right_hip_pitch_motor, right_hip_roll_motor, right_hip_yaw_motor, right_knee_motor, right_ankle_motor_1, right_ankle_motor_2]
     control_rate_hz: 300.0
-    command_refresh_rate_hz: 300.0
     command_transmission: periodic
     periodic_feedback_during_control: false
     command_timeout_ms: 500
@@ -119,7 +118,6 @@ motor_groups:
   - name: upper_body
     motors: [left_shoulder_pitch_motor, left_shoulder_roll_motor, left_shoulder_yaw_motor, left_elbow_pitch_motor, left_wrist_yaw_motor, left_wrist_pitch_motor, left_wrist_roll_motor, right_shoulder_pitch_motor, right_shoulder_roll_motor, right_shoulder_yaw_motor, right_elbow_pitch_motor, right_wrist_yaw_motor, right_wrist_pitch_motor, right_wrist_roll_motor]
     control_rate_hz: 300.0
-    command_refresh_rate_hz: 300.0
     command_transmission: periodic
     periodic_feedback_during_control: false
     command_timeout_ms: 500

@@ -11,7 +11,7 @@ pub(super) fn send_damping<'a>(
 ) -> Result<(), String> {
     let mut batches = BTreeMap::<BusName, BusBatch>::new();
     for (motor, command) in motors {
-        batch_for(&mut batches, motor).push(motor.safety_control_frame(command));
+        batch_for(&mut batches, motor).push(motor.control_frame(command));
     }
     deliver(batches)
 }

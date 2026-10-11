@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::{Result, anyhow, bail};
 use bello_robot_description::RobotDescription;
 
-use super::{Config, ImuFilterConfig, MotorVelocityFilterConfig};
+use super::{CommandTransmission, Config, ImuFilterConfig, MotorVelocityFilterConfig};
 use crate::api::grpc::GrpcSpec;
 use crate::control::GroupSpec;
 use crate::domain::PowerBoardName;
@@ -326,14 +326,21 @@ fn validate_bus_utilization(
                 continue;
             }
             let batch_budget = bus.control_batch_budget(motors_on_bus);
-            if batch_budget >= group.period() {
+            let (transmission_rate, transmission_period) = match group.command_transmission {
+                CommandTransmission::OnUpdate => (group.control_rate_hz, group.period()),
+                CommandTransmission::Periodic => (
+                    group.command_refresh_rate_hz,
+                    group.command_refresh_period(),
+                ),
+            };
+            if batch_budget >= transmission_period {
                 bail!(
-                    "bus {} cannot transmit group {} control batch within its freshness period",
+                    "bus {} cannot transmit group {} control batch within its transmission period",
                     bus.name,
                     group.name
                 );
             }
-            frames_per_second += group.control_rate_hz * motors_on_bus as f64 * 2.0;
+            frames_per_second += transmission_rate * motors_on_bus as f64 * 2.0;
         }
         let utilization = bus.estimated_utilization(frames_per_second);
         if utilization > bus.maximum_utilization {

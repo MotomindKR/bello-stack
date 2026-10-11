@@ -83,9 +83,9 @@ blocking I/O but does not make them hard real-time.
 | Execution context | Cardinality | Responsibility |
 | --- | --- | --- |
 | Tokio runtime | One runtime, multiple tasks | tonic server/RPC streams, lease watchdog, signals |
-| Group worker | One thread per motor group | FSM, command mailbox, control clock, active-group motor status polling, safety reaction |
+| Group worker | One thread per motor group | FSM, command mailbox, safety clock, active-group motor status polling, safety reaction |
 | CAN supervisor | One persistent thread per bus | Open/reopen SocketCAN sessions and own reconnect state |
-| CAN session workers | One TX and one RX thread while a bus session is open | Prioritized batch transmission and frame reception |
+| CAN session workers | One TX and one RX thread while a bus session is open | Priority batches, periodic latest-target clocks, and frame reception |
 | Robstride feedback worker | One shared thread | Route received frames by `(bus, motor id)` and scan motor health |
 | Serial supervisor | One persistent thread per serial device | Open/reopen the port and own reconnect state |
 | Serial session workers | One writer and one reader thread while a session is open | Deadline-bound writes and byte-chunk reception |
@@ -141,10 +141,9 @@ gRPC command stream
   -> group latest-value mailbox
   -> group worker validates age, sequence, completeness, and motor policy
   -> accepted command updates the latest targets and performs safety checks
-  -> configured immediate or periodic transmission schedule
-  -> Robstride ControlBatcher creates one batch per affected bus
-  -> CAN control queue
-  -> SocketCAN TX worker
+  -> on_update: Robstride ControlBatcher -> bounded CAN control queue
+  -> periodic: encode once -> latest-target slot per group per bus
+  -> SocketCAN TX worker (owns periodic repeat clocks)
 ```
 
 The API acknowledgement means the group accepted the batch and ran its
@@ -157,17 +156,20 @@ The detailed timing and safety rules are in
 [`control/group.rs`](../components/bello-hardwared/src/control/group.rs), and
 [`hardware/robstride/controller.rs`](../components/bello-hardwared/src/hardware/robstride/controller.rs).
 
-CAN transmission is queue-driven. With the default `on_update` transmission
-mode, accepted commands transmit immediately and an independent refresh deadline
-retransmits the latest command after the command stream has gone quiet. With
-`periodic`, only the periodic schedule transmits the latest accepted targets;
-new commands neither reset that schedule nor transmit an extra batch. Fixed-rate
-safety ticks enforce the watchdog and command checks in both modes. A
-complete logical group tick is accumulated and submitted as one queue item per bus.
-Frames are atomic with respect to queue ordering on one bus, but separate
-physical buses cannot be made electrically atomic. The TX worker rejects work
-that cannot finish before its freshness deadline. See
-[`hardware/can/supervisor.rs`](../components/bello-hardwared/src/hardware/can/supervisor.rs).
+With the default `on_update` transmission mode, accepted commands enqueue
+batches immediately and a group refresh deadline retransmits the latest command
+after the command stream has gone quiet. With `periodic`, the CAN TX worker
+owns the refresh clock and sends the latest accepted encoded targets directly
+from a shared slot. Group workers publish only when accepting new targets;
+there is no group-to-TX queue handoff for each repeat. Updates neither reset
+the clock nor trigger an extra burst. Fixed-rate group safety ticks enforce
+watchdogs and command checks in both modes. Each periodic repeat checks the
+original target deadline, current lease generation, and activation revocation.
+Four refresh periods without a completed socket write burst latch a group
+transmission fault. Frames are serialized as bursts on one bus; separate
+physical buses cannot be made electrically atomic. See
+[`hardware/can/supervisor.rs`](../components/bello-hardwared/src/hardware/can/supervisor.rs)
+and [`hardware/can/periodic.rs`](../components/bello-hardwared/src/hardware/can/periodic.rs).
 
 ### Motor feedback to state and telemetry
 

@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
@@ -16,7 +17,7 @@ use crate::config::MotorVelocityFilterConfig;
 use crate::domain::{
     BusName, DeviceStatus, GroupName, ImpedanceCommand, MotorName, MotorTelemetry, TelemetryPayload,
 };
-use crate::hardware::can::{BusError, BusHandle, CanFrame, PendingBatch};
+use crate::hardware::can::{BusError, BusHandle, CanFrame, PendingBatch, PeriodicControl};
 use crate::hardware::lifecycle::DeviceLifecycle;
 use crate::telemetry::Telemetry;
 
@@ -131,6 +132,16 @@ pub(crate) struct MotorController {
 }
 
 impl MotorController {
+    pub(crate) fn periodic_control(
+        &self,
+        period: Duration,
+        lease: Arc<AtomicU64>,
+        shutdown: Arc<AtomicBool>,
+    ) -> PeriodicControl {
+        self.bus
+            .periodic_control(&self.group, period, lease, shutdown)
+    }
+
     pub(super) fn new(
         spec: MotorSpec,
         group: GroupName,
@@ -246,7 +257,7 @@ impl MotorController {
         )
     }
 
-    pub(crate) fn safety_control_frame(&self, command: ImpedanceCommand) -> CanFrame {
+    pub(crate) fn control_frame(&self, command: ImpedanceCommand) -> CanFrame {
         control_frame(
             self.spec.params,
             protocol_command(self.spec.address.id, command),
