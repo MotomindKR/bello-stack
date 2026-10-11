@@ -52,7 +52,7 @@ affecting hardware ownership.
 
 The provisional Bello Mini profiles are [`config/bello-mini.yaml`](config/bello-mini.yaml)
 for physical transport bindings and [`config/bello-mini-vcan.yaml`](config/bello-mini-vcan.yaml)
-for `vcan0`, `vcan1`, and `/dev/ttyIMU`. Both use
+for `vcan0` through `vcan3`, `/dev/ttyIMU`, and `/dev/ttyPOWER`. Both use
 [`descriptions/bello_mini/hardware.yaml`](../../descriptions/bello_mini/hardware.yaml)
 and expose 28 motors: 14 in `lower_body` (both legs and waist yaw/roll) and
 14 in `upper_body` (seven per arm). Validate without opening hardware:

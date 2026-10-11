@@ -125,8 +125,9 @@ The command stream is latest-value control, not a FIFO trajectory buffer. Each
 group has one mailbox slot. A new submission replaces an older submission that
 the group thread has not yet processed; the old request receives `Superseded`.
 Once accepted, the command is stored per motor and triggers an immediate
-control tick. That tick runs the same health, feedback, mechanical, watchdog,
-and transmission checks as a periodic tick. The `control_rate_hz` safety
+control tick. That tick runs the same health, feedback, mechanical, and watchdog
+checks as a periodic tick. With the default `command_transmission: on_update`,
+it also transmits the command immediately. The `control_rate_hz` safety
 schedule stays fixed and performs those checks without necessarily transmitting
 a CAN command. Each immediate command defers periodic CAN refresh for one
 `command_refresh_rate_hz` period plus one safety tick. If no newer command
@@ -135,6 +136,17 @@ The one-tick grace prevents the refresh deadline from racing a policy command
 expected at the same nominal frequency. `Running` retains the command until a
 newer complete batch replaces it, or until stop, disable, recover, lease loss,
 fault, or shutdown clears it.
+With `command_transmission: periodic`, new commands update the retained targets
+without immediate transmission or resetting the refresh schedule. The periodic
+schedule sends at `command_refresh_rate_hz` and skips missed slots instead of
+sending catch-up bursts. Both modes preserve the original command validity.
+
+CAN delivery has a separate batch deadline of one `control_rate_hz` period.
+At 300 Hz this is 3.33 ms. The transport reserves twice the estimated wire time:
+seven extended frames at 1 Mbps reserve 2.10 ms, leaving about 1.23 ms for
+assembly and enqueue scheduling. A batch that expires in the TX worker is
+discarded; an enqueue expiry faults the group with a transmission cause. A
+moderate average bus load does not guarantee these Linux scheduling deadlines.
 `StartControl` installs the first command directly; stream commands are accepted
 only in `Running`. A command expired at admission is rejected. A stored command
 that expires before a later periodic tick is not submitted: command state is

@@ -137,11 +137,13 @@ pub struct Emulator {
     actuators: BTreeMap<u8, Actuator>,
     events: VecDeque<ScheduledEvent>,
     random_state: u64,
+    command_reports: Vec<u8>,
 }
 
 impl Emulator {
     /// Clear active control without rewinding transport time or fault schedules.
     pub fn disarm(&mut self) {
+        self.command_reports.clear();
         for actuator in self.actuators.values_mut() {
             actuator.enabled = false;
             actuator.command = None;
@@ -183,6 +185,7 @@ impl Emulator {
             actuators,
             events: events.into(),
             random_state: 0x4d595df4d0f33173,
+            command_reports: Vec::new(),
         })
     }
 
@@ -194,6 +197,7 @@ impl Emulator {
         if let Some(command) = parse_control(&frame, actuator.params) {
             if actuator.enabled && actuator.impedance_mode {
                 actuator.command = Some(command);
+                self.command_reports.push(motor_id);
             }
             return;
         }
@@ -291,6 +295,18 @@ impl Emulator {
         }
         let mut due = Vec::new();
         let mut reports = Vec::new();
+        for motor_id in std::mem::take(&mut self.command_reports) {
+            if let Some(actuator) = self.actuators.get(&motor_id)
+                && !actuator.overrides.drop_feedback
+            {
+                reports.push((
+                    actuator.feedback(),
+                    actuator.params,
+                    actuator.overrides.feedback_delay,
+                    actuator.overrides.feedback_jitter,
+                ));
+            }
+        }
         let mut feedback_steps = 0_usize;
         for actuator in self.actuators.values_mut() {
             if !actuator.active_reporting {
@@ -478,6 +494,42 @@ mod tests {
         )
         .unwrap();
         assert_eq!(feedback.mode_status, RUNNING_MODE_STATUS);
+    }
+
+    #[test]
+    fn command_replies_continue_with_periodic_reporting_disabled() {
+        let mut emulator = Emulator::new(config(Vec::new())).unwrap();
+        let params = MotorParams::for_model("ROBSTRIDE_03", 1).unwrap();
+        emulator.handle(param_write_u8_frame(
+            0xfd,
+            1,
+            RUN_MODE_INDEX,
+            IMPEDANCE_RUN_MODE,
+        ));
+        emulator.handle(enable_frame(0xfd, 1));
+        emulator.handle(active_report_frame(0xfd, 1, false));
+        assert!(emulator.advance(Duration::from_millis(20)).is_empty());
+        emulator.handle(control_frame(
+            params,
+            ControlCommand {
+                motor_id: 1,
+                position: 0.0,
+                kp: 20.0,
+                kd: 1.0,
+                ..Default::default()
+            },
+        ));
+        let frames = emulator.advance(Duration::from_millis(1));
+        assert_eq!(frames.len(), 1);
+        assert_eq!(
+            parse_feedback(&frames[0].frame, params)
+                .unwrap()
+                .mode_status,
+            2
+        );
+        assert!(emulator.advance(Duration::from_millis(20)).is_empty());
+        emulator.handle(active_report_frame(0xfd, 1, true));
+        assert!(!emulator.advance(Duration::from_millis(10)).is_empty());
     }
 
     #[test]

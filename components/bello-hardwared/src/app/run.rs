@@ -24,22 +24,26 @@ pub fn check(config_path: impl AsRef<Path>) -> Result<()> {
 
 pub async fn run(config_path: impl AsRef<Path>) -> Result<()> {
     let topology = ResolvedTopology::load(config_path)?;
-    let listen = topology.grpc().listen().clone();
-    match &listen {
-        GrpcListenSpec::Tcp(address)
-            if !address.ip().is_loopback() && !topology.grpc().uses_tls() =>
-        {
-            tracing::warn!(%address, "gRPC control is exposed without transport encryption or authentication");
+    let listen = topology.grpc().listen().to_vec();
+    let mut listeners = Vec::with_capacity(listen.len());
+    for spec in &listen {
+        match spec {
+            GrpcListenSpec::Tcp(address)
+                if !address.ip().is_loopback() && !topology.grpc().uses_tls() =>
+            {
+                tracing::warn!(%address, "gRPC control is exposed without transport encryption or authentication");
+            }
+            GrpcListenSpec::Tcp(address)
+                if !address.ip().is_loopback()
+                    && !topology.grpc().requires_client_certificate() =>
+            {
+                tracing::warn!(%address, "gRPC TLS is enabled without client authentication");
+            }
+            _ => {}
         }
-        GrpcListenSpec::Tcp(address)
-            if !address.ip().is_loopback() && !topology.grpc().requires_client_certificate() =>
-        {
-            tracing::warn!(%address, "gRPC TLS is enabled without client authentication");
-        }
-        _ => {}
+        // Bind every endpoint before starting hardware; a partial bind is fatal.
+        listeners.push((GrpcIncoming::bind(spec)?, topology.grpc().server(spec)?));
     }
-    let incoming = GrpcIncoming::bind(&listen)?;
-    let mut server = topology.grpc().server()?;
     let mut signals = ShutdownSignals::install()?;
     let telemetry = Telemetry::new(topology.telemetry_capacity());
     let (server_shutdown_tx, server_shutdown_rx) = watch::channel(false);
@@ -51,51 +55,61 @@ pub async fn run(config_path: impl AsRef<Path>) -> Result<()> {
     ));
 
     tracing::info!(?listen, "Bello hardware daemon ready");
-    let server_result = {
-        type ServerFuture =
-            Pin<Box<dyn Future<Output = Result<(), tonic::transport::Error>> + Send + 'static>>;
-        let service = HardwareServiceServer::new(HardwareGrpc::new(
-            daemon.clone(),
-            server_shutdown_rx.clone(),
-        ));
-        let mut server: ServerFuture = match incoming {
+    type ServerFuture =
+        Pin<Box<dyn Future<Output = Result<(), tonic::transport::Error>> + Send + 'static>>;
+    let mut servers = tokio::task::JoinSet::new();
+    for (incoming, mut server) in listeners {
+        let shutdown = server_shutdown_rx.clone();
+        let service =
+            HardwareServiceServer::new(HardwareGrpc::new(daemon.clone(), shutdown.clone()));
+        let future: ServerFuture = match incoming {
             GrpcIncoming::Tcp(incoming) => Box::pin(
                 server
                     .add_service(service)
-                    .serve_with_incoming_shutdown(incoming, wait_for_shutdown(server_shutdown_rx)),
+                    .serve_with_incoming_shutdown(incoming, wait_for_shutdown(shutdown)),
             ),
             #[cfg(unix)]
             GrpcIncoming::Unix { incoming, socket } => Box::pin(async move {
                 let _socket = socket;
                 server
                     .add_service(service)
-                    .serve_with_incoming_shutdown(incoming, wait_for_shutdown(server_shutdown_rx))
+                    .serve_with_incoming_shutdown(incoming, wait_for_shutdown(shutdown))
                     .await
             }),
         };
-        tokio::select! {
-            result = server.as_mut() => {
-                begin_shutdown(&daemon, &watchdog_shutdown_tx, &server_shutdown_tx);
-                result.map_err(anyhow::Error::from)
-            },
-            signal = signals.wait() => {
-                begin_shutdown(&daemon, &watchdog_shutdown_tx, &server_shutdown_tx);
-                let drain_result = match tokio::time::timeout(Duration::from_secs(2), server.as_mut()).await {
-                    Ok(result) => result.map_err(anyhow::Error::from),
-                    Err(_) => {
-                        tracing::warn!("gRPC drain deadline expired; forcing server shutdown");
-                        Ok(())
-                    }
-                };
-                signal.and(drain_result)
-            }
+        servers.spawn(future);
+    }
+    let server_result = tokio::select! {
+        result = servers.join_next() => match result {
+            Some(Ok(Err(error))) => Err(anyhow::Error::from(error)),
+            Some(Err(error)) => Err(anyhow::Error::from(error)),
+            _ => Err(anyhow!("gRPC listener stopped unexpectedly")),
+        },
+        signal = signals.wait() => signal,
+    };
+    begin_shutdown(&daemon, &watchdog_shutdown_tx, &server_shutdown_tx);
+    let drained = tokio::time::timeout(Duration::from_secs(2), async {
+        while let Some(result) = servers.join_next().await {
+            result
+                .map_err(anyhow::Error::from)?
+                .map_err(anyhow::Error::from)?;
+        }
+        Ok::<(), anyhow::Error>(())
+    })
+    .await;
+    let drain_result = match drained {
+        Ok(result) => result,
+        Err(_) => {
+            tracing::warn!("gRPC drain deadline expired; forcing server shutdown");
+            Ok(())
         }
     };
+    servers.abort_all();
+    while servers.join_next().await.is_some() {}
 
-    begin_shutdown(&daemon, &watchdog_shutdown_tx, &server_shutdown_tx);
     let _ = watchdog.await;
     drop(daemon);
-    server_result
+    server_result.and(drain_result)
 }
 
 /// Stops lease expiry, publishes and joins final group state, then lets gRPC

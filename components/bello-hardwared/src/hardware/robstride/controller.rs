@@ -122,6 +122,7 @@ pub(crate) struct MotorController {
     velocity_filter: Arc<Mutex<MotorVelocityFilter>>,
     feedback_expected_since: Arc<RwLock<Option<Instant>>>,
     monitoring_request: Arc<Mutex<Option<(u64, Instant)>>>,
+    periodic_reporting: Arc<Mutex<bool>>,
     thermal_health: Arc<Mutex<ThermalHealth>>,
     fault: Arc<RwLock<Option<MotorFault>>>,
     feedback_timeout: Duration,
@@ -151,6 +152,7 @@ impl MotorController {
             ))),
             feedback_expected_since: Arc::new(RwLock::new(None)),
             monitoring_request: Arc::new(Mutex::new(None)),
+            periodic_reporting: Arc::new(Mutex::new(true)),
             thermal_health: Arc::new(Mutex::new(ThermalHealth::default())),
             fault: Arc::new(RwLock::new(None)),
             feedback_timeout: feedback_processing.timeout,
@@ -196,6 +198,8 @@ impl MotorController {
     }
 
     pub(crate) fn configure_enable(&self) -> Result<(), BusError> {
+        *self.periodic_reporting.lock() = true;
+        *self.monitoring_request.lock() = None;
         *self.feedback.write() = None;
         self.velocity_filter.lock().reset();
         *self.feedback_expected_since.write() = None;
@@ -212,6 +216,21 @@ impl MotorController {
         ])?;
         self.prepare_feedback_wait();
         *self.feedback_expected_since.write() = Some(Instant::now());
+        Ok(())
+    }
+
+    pub(crate) fn set_periodic_reporting(&self, enabled: bool) -> Result<(), BusError> {
+        let mut desired = self.periodic_reporting.lock();
+        if *desired == enabled {
+            return Ok(());
+        }
+        *desired = enabled;
+        *self.monitoring_request.lock() = None;
+        self.bus.enqueue_configuration_batch(vec![
+            active_report_frame(self.bus.spec.host_id, self.spec.address.id, enabled).into(),
+        ])?;
+        *self.monitoring_request.lock() =
+            Some((self.bus.status().transition_count, Instant::now()));
         Ok(())
     }
 
@@ -271,6 +290,12 @@ impl MotorController {
     pub(super) fn sync_bus(&self) {
         let bus = self.bus.status();
         if bus.state.is_online() {
+            // Serialize with reporting changes; monitoring must not re-enable
+            // periodic reports while a group relies on command replies.
+            let periodic_reporting = self.periodic_reporting.lock();
+            if !*periodic_reporting {
+                return;
+            }
             let feedback_is_fresh = self
                 .feedback
                 .read()

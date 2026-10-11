@@ -29,8 +29,16 @@ async fn daemon_accepts_server_authenticated_tls() -> Result<()> {
     let pki = TestPki::new()?;
     let paths = pki.write(directory.path())?;
     let address = available_loopback_address()?;
+    let listeners = format!("    - {{ type: tcp, address: {address} }}\n");
+    #[cfg(unix)]
+    let socket = directory.path().join("hardwared-tls.sock");
+    #[cfg(unix)]
+    let listeners = format!(
+        "{listeners}    - {{ type: unix, path: {}, mode: \"0600\" }}\n",
+        socket.display(),
+    );
     let grpc = format!(
-        "  listen: {{ type: tcp, address: {address} }}\n  tls:\n    certificate: {}\n    private_key: {}\n  default_lease_ms: 1000\n  maximum_lease_ms: 10000",
+        "  listen:\n{listeners}  tls:\n    certificate: {}\n    private_key: {}\n  default_lease_ms: 1000\n  maximum_lease_ms: 10000",
         paths.server_certificate.display(),
         paths.server_private_key.display(),
     );
@@ -45,6 +53,18 @@ async fn daemon_accepts_server_authenticated_tls() -> Result<()> {
         .inventory()
         .await
         .context("reading inventory over TLS")?;
+    #[cfg(unix)]
+    {
+        let local = connect(
+            ConnectOptions::new(format!("unix://{}", socket.display())),
+            &mut daemon,
+        )
+        .await?;
+        local
+            .inventory()
+            .await
+            .context("Unix listener must not require TCP TLS")?;
+    }
     drop(client);
     daemon.stop();
     Ok(())
@@ -57,7 +77,7 @@ async fn daemon_requires_a_trusted_client_certificate_for_mtls() -> Result<()> {
     let paths = pki.write(directory.path())?;
     let address = available_loopback_address()?;
     let grpc = format!(
-        "  listen: {{ type: tcp, address: {address} }}\n  tls:\n    certificate: {}\n    private_key: {}\n    client_ca: {}\n  default_lease_ms: 1000\n  maximum_lease_ms: 10000",
+        "  listen: [{{ type: tcp, address: {address} }}]\n  tls:\n    certificate: {}\n    private_key: {}\n    client_ca: {}\n  default_lease_ms: 1000\n  maximum_lease_ms: 10000",
         paths.server_certificate.display(),
         paths.server_private_key.display(),
         paths.ca_certificate.display(),
@@ -105,7 +125,7 @@ async fn daemon_accepts_unix_connections_and_owns_socket_lifecycle() -> Result<(
     drop(stale);
     assert!(socket.exists());
     let grpc = format!(
-        "  listen:\n    type: unix\n    path: {}\n    mode: \"0600\"\n  default_lease_ms: 1000\n  maximum_lease_ms: 10000",
+        "  listen:\n    - type: unix\n      path: {}\n      mode: \"0600\"\n  default_lease_ms: 1000\n  maximum_lease_ms: 10000",
         socket.display(),
     );
     let config = directory.path().join("hardwared-unix.yaml");
@@ -118,12 +138,101 @@ async fn daemon_accepts_unix_connections_and_owns_socket_lifecycle() -> Result<(
         .inventory()
         .await
         .context("reading inventory over a Unix socket")?;
+    run_python_unix(&format!("unix://{}", socket.display())).await?;
     let mode = fs::metadata(&socket)?.permissions().mode() & 0o777;
     assert_eq!(mode, 0o600);
 
     drop(client);
     daemon.stop();
     assert!(!socket.exists(), "daemon left its Unix socket behind");
+    Ok(())
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn tcp_and_unix_share_inventory_and_control_leases() -> Result<()> {
+    use bello_hardware_client::raw::LeaseDuration;
+
+    let directory = tempfile::tempdir()?;
+    let socket = directory.path().join("hardwared.sock");
+    let address = available_loopback_address()?;
+    let grpc = format!(
+        "  listen:\n    - {{ type: tcp, address: {address} }}\n    - {{ type: unix, path: {}, mode: \"0600\" }}",
+        socket.display(),
+    );
+    let config = directory.path().join("hardwared-dual.yaml");
+    config::write_hardwared_with_grpc(&config, UNAVAILABLE_CAN, &grpc, 250.0)?;
+    let mut daemon = start_daemon(&config)?;
+    let tcp = connect(
+        ConnectOptions::new(format!("http://{address}")),
+        &mut daemon,
+    )
+    .await?;
+    let unix = connect(
+        ConnectOptions::new(format!("unix://{}", socket.display())),
+        &mut daemon,
+    )
+    .await?;
+    let tcp_inventory = tcp.inventory().await?;
+    let unix_inventory = unix.inventory().await?;
+    let addresses = |motors: Vec<bello_hardware_api::MotorInfo>| {
+        motors
+            .into_iter()
+            .map(|motor| (motor.name, motor.address, motor.group))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        addresses(tcp_inventory.motors),
+        addresses(unix_inventory.motors)
+    );
+    let mut lease = tcp
+        .acquire_lease("e2e_group", "tcp", LeaseDuration::ServerDefault)
+        .await?;
+    assert!(
+        unix.acquire_lease("e2e_group", "unix", LeaseDuration::ServerDefault)
+            .await
+            .is_err()
+    );
+    lease.release().await?;
+    let mut lease = unix
+        .acquire_lease("e2e_group", "unix", LeaseDuration::ServerDefault)
+        .await?;
+    lease.release().await?;
+    drop(tcp);
+    drop(unix);
+    daemon.stop();
+    assert!(
+        !socket.exists(),
+        "dual-listener daemon left its socket behind"
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn failed_second_listener_cleans_up_first_socket() -> Result<()> {
+    let directory = tempfile::tempdir()?;
+    let socket = directory.path().join("hardwared.sock");
+    let occupied = TcpListener::bind("127.0.0.1:0")?;
+    let address = occupied.local_addr()?;
+    let grpc = format!(
+        "  listen:\n    - {{ type: unix, path: {}, mode: \"0600\" }}\n    - {{ type: tcp, address: {address} }}",
+        socket.display(),
+    );
+    let config = directory.path().join("hardwared-bind-failure.yaml");
+    config::write_hardwared_with_grpc(&config, UNAVAILABLE_CAN, &grpc, 250.0)?;
+    let mut daemon = start_daemon(&config)?;
+    timeout(Duration::from_secs(3), async {
+        while daemon.ensure_running().is_ok() {
+            sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .context("daemon continued with only one bound endpoint")?;
+    assert!(
+        !socket.exists(),
+        "failed startup left its Unix socket behind"
+    );
     Ok(())
 }
 
@@ -155,6 +264,23 @@ fn available_loopback_address() -> Result<SocketAddr> {
     let address = listener.local_addr()?;
     drop(listener);
     Ok(address)
+}
+
+#[cfg(unix)]
+async fn run_python_unix(endpoint: &str) -> Result<()> {
+    let endpoint = endpoint.to_owned();
+    tokio::task::spawn_blocking(move || {
+        let package = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent().expect("components parent").join("bello-hardware-python");
+        let output = Command::new("python3")
+            .args(["-c", "import sys; from bello_hardware import Robot; robot = Robot.connect(sys.argv[1], timeout=2.0); assert 'e2e_group' in robot.group_names; robot.close()", &endpoint])
+            .env("PYTHONPATH", package.join("src"))
+            .output().context("running Python Unix smoke client")?;
+        if !output.status.success() {
+            anyhow::bail!("Python Unix smoke client failed: {}", String::from_utf8_lossy(&output.stderr));
+        }
+        Ok(())
+    }).await.context("joining Python Unix smoke client")?
 }
 
 async fn run_python_mtls(endpoint: &str, paths: &TestPkiPaths) -> Result<()> {

@@ -4,7 +4,7 @@ set -euo pipefail
 readonly BITRATE=1000000
 readonly RESTART_MS=100
 readonly TX_QUEUE_LENGTH=64
-readonly INTERFACES=(can0 can1)
+readonly INTERFACES=(can0 can1 can2 can3 can4)
 
 usage() {
   echo "usage: sudo $0 | $0 --check" >&2
@@ -81,7 +81,7 @@ if [[ $CHECK_ONLY == true ]]; then
   for interface in "${INTERFACES[@]}"; do
     check_interface "$interface"
   done
-  echo "can0 and can1 are UP and configured for classic CAN at $BITRATE bit/s"
+  echo "${INTERFACES[*]} are UP and configured for classic CAN at $BITRATE bit/s"
   exit 0
 fi
 
@@ -92,5 +92,6 @@ for interface in "${INTERFACES[@]}"; do
   ip link set dev "$interface" up
 done
 
-ip -details link show dev can0
-ip -details link show dev can1
+for interface in "${INTERFACES[@]}"; do
+  ip -details link show dev "$interface"
+done

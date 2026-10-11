@@ -140,14 +140,15 @@ gRPC command stream
   -> HardwareDaemon verifies lease and captures its generation
   -> group latest-value mailbox
   -> group worker validates age, sequence, completeness, and motor policy
-  -> accepted command triggers a control tick and defers periodic refresh
+  -> accepted command updates the latest targets and performs safety checks
+  -> configured immediate or periodic transmission schedule
   -> Robstride ControlBatcher creates one batch per affected bus
   -> CAN control queue
   -> SocketCAN TX worker
 ```
 
 The API acknowledgement means the group accepted the batch and ran its
-command-triggered control tick; it does not mean a CAN frame has already reached
+command-triggered safety checks; it does not mean a CAN frame has already reached
 a motor. Periodic retransmission continues only in the group's `Running` state.
 The detailed timing and safety rules are in
 [Control and safety](control-and-safety.md). The implementation path is
@@ -156,10 +157,12 @@ The detailed timing and safety rules are in
 [`control/group.rs`](../components/bello-hardwared/src/control/group.rs), and
 [`hardware/robstride/controller.rs`](../components/bello-hardwared/src/hardware/robstride/controller.rs).
 
-CAN transmission is queue-driven, not a separate fixed-frequency CAN loop.
-Accepted commands create immediate control ticks. Fixed-rate safety ticks
-enforce the watchdog and command checks, while an independent refresh deadline
-retransmits the latest command only after the command stream has gone quiet. A
+CAN transmission is queue-driven. With the default `on_update` transmission
+mode, accepted commands transmit immediately and an independent refresh deadline
+retransmits the latest command after the command stream has gone quiet. With
+`periodic`, only the periodic schedule transmits the latest accepted targets;
+new commands neither reset that schedule nor transmit an extra batch. Fixed-rate
+safety ticks enforce the watchdog and command checks in both modes. A
 complete logical group tick is accumulated and submitted as one queue item per bus.
 Frames are atomic with respect to queue ordering on one bus, but separate
 physical buses cannot be made electrically atomic. The TX worker rejects work
@@ -184,6 +187,11 @@ averaged. Every decoded sample also produces a motor telemetry event. The group
 reads device status rather than consuming the telemetry stream. See
 [`hardware/robstride/manager.rs`](../components/bello-hardwared/src/hardware/robstride/manager.rs)
 and [`hardware/robstride/controller.rs`](../components/bello-hardwared/src/hardware/robstride/controller.rs).
+
+The Mini deployment transmits at 300 Hz with periodic reporting disabled while
+Running, so command replies supply its feedback. Reporting is restored when
+control stops or a safety response is applied. Repeated targets retain their
+original command deadline and do not renew the controlling client's lease.
 
 ### Serial input to IMU telemetry
 

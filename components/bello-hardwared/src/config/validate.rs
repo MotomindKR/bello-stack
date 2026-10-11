@@ -468,12 +468,12 @@ motors:
     #[test]
     fn unix_listener_requires_an_absolute_path_and_octal_mode() {
         let relative = one_group(&format!(
-            "{PREFIX}\ngrpc:\n  listen: {{ type: unix, path: relative.sock }}"
+            "{PREFIX}\ngrpc:\n  listen: [{{ type: unix, path: relative.sock }}]"
         ));
         assert!(parse(&relative).is_err());
 
         let bad_mode = one_group(&format!(
-            "{PREFIX}\ngrpc:\n  listen: {{ type: unix, path: /tmp/hardwared.sock, mode: \"0680\" }}"
+            "{PREFIX}\ngrpc:\n  listen: [{{ type: unix, path: /tmp/hardwared.sock, mode: \"0680\" }}]"
         ));
         assert!(parse(&bad_mode).is_err());
     }
@@ -481,10 +481,22 @@ motors:
     #[test]
     fn unix_listener_rejects_tls() {
         let source = one_group(&format!(
-            "{PREFIX}\ngrpc:\n  listen: {{ type: unix, path: /tmp/hardwared.sock }}\n  tls:\n    certificate: missing-cert.pem\n    private_key: missing-key.pem"
+            "{PREFIX}\ngrpc:\n  listen: [{{ type: unix, path: /tmp/hardwared.sock }}]\n  tls:\n    certificate: missing-cert.pem\n    private_key: missing-key.pem"
         ));
         let error = parse(&source).unwrap_err().to_string();
-        assert!(error.contains("cannot be combined"), "{error}");
+        assert!(error.contains("requires a TCP listener"), "{error}");
+    }
+
+    #[test]
+    fn listeners_reject_empty_and_duplicate_endpoints() {
+        for listen in [
+            "[]",
+            "[{type: tcp, address: '127.0.0.1:50051'}, {type: tcp, address: '127.0.0.1:50051'}]",
+            "[{type: unix, path: /tmp/test.sock, mode: '0600'}, {type: unix, path: /tmp/test.sock, mode: '0660'}]",
+        ] {
+            let source = one_group(&format!("{PREFIX}\ngrpc:\n  listen: {listen}"));
+            assert!(parse(&source).is_err(), "accepted {listen}");
+        }
     }
 
     #[test]

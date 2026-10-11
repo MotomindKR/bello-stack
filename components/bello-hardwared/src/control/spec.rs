@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use anyhow::{Result, bail};
 
-use crate::config::{FaultPolicyConfig, GroupConfig};
+use crate::config::{CommandTransmission, FaultPolicyConfig, GroupConfig};
 use crate::domain::{GroupName, MotorName};
 use crate::mechanics::MechanicalEnvelope;
 
@@ -13,6 +13,8 @@ pub(crate) struct GroupSpec {
     pub(crate) motors: Vec<MotorName>,
     pub(crate) control_rate_hz: f64,
     pub(crate) command_refresh_rate_hz: f64,
+    pub(crate) command_transmission: CommandTransmission,
+    pub(crate) periodic_feedback_during_control: bool,
     pub(crate) command_timeout: Duration,
     pub(crate) feedback_timeout: Duration,
     pub(crate) enable_timeout: Duration,
@@ -82,6 +84,8 @@ impl TryFrom<&GroupConfig> for GroupSpec {
                 .collect(),
             control_rate_hz: config.control_rate_hz,
             command_refresh_rate_hz,
+            command_transmission: config.command_transmission,
+            periodic_feedback_during_control: config.periodic_feedback_during_control,
             command_timeout: Duration::from_millis(config.command_timeout_ms),
             feedback_timeout: Duration::from_millis(config.feedback_timeout_ms),
             enable_timeout: Duration::from_millis(config.enable_timeout_ms),

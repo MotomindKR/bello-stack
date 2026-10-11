@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use parking_lot::{Mutex, RwLock};
 
-use crate::config::{CommandBehavior, FaultCause, FaultResponse};
+use crate::config::{CommandBehavior, CommandTransmission, FaultCause, FaultResponse};
 use crate::domain::{
     CommandBatch, CommandError, CommandPolicyTelemetry, GroupTelemetry, ImpedanceCommand,
     TelemetryPayload,
@@ -50,6 +50,16 @@ impl CommandRefreshSchedule {
 
     fn record_immediate_send(&mut self, now: Instant) {
         self.next_refresh = now + self.refresh_period + self.command_arrival_grace;
+    }
+
+    fn should_transmit_periodic(&mut self, now: Instant) -> bool {
+        if now < self.next_refresh {
+            return false;
+        }
+        let remainder =
+            now.duration_since(self.next_refresh).as_nanos() % self.refresh_period.as_nanos();
+        self.next_refresh = now + self.refresh_period - Duration::from_nanos(remainder as u64);
+        true
     }
 
     fn should_retransmit(&mut self, now: Instant) -> bool {
@@ -193,8 +203,12 @@ impl GroupController {
                     GroupState::Running,
                 );
                 if result.is_ok() {
-                    self.control_tick(0, true);
-                    refresh_schedule.record_immediate_send(Instant::now());
+                    if self.spec.command_transmission == CommandTransmission::OnUpdate {
+                        self.control_tick(0, true);
+                        refresh_schedule.record_immediate_send(Instant::now());
+                    } else {
+                        self.control_tick(0, false);
+                    }
                 }
                 let _ = submission.reply.send(result);
                 continue;
@@ -205,7 +219,12 @@ impl GroupController {
                     .saturating_duration_since(next_tick)
                     .as_micros()
                     .min(i64::MAX as u128) as i64;
-                self.control_tick(jitter, refresh_schedule.should_retransmit(now));
+                let transmit = if self.spec.command_transmission == CommandTransmission::Periodic {
+                    refresh_schedule.should_transmit_periodic(now)
+                } else {
+                    refresh_schedule.should_retransmit(now)
+                };
+                self.control_tick(jitter, transmit);
                 next_tick += period;
                 if next_tick < now {
                     next_tick = now + period;
@@ -305,7 +324,12 @@ impl GroupController {
                         submitted_at,
                         GroupState::Damped,
                     ) {
-                        Ok(()) => self.fsm.start(),
+                        Ok(()) => match self
+                            .set_periodic_reporting(self.spec.periodic_feedback_during_control)
+                        {
+                            Ok(()) => self.fsm.start(),
+                            Err(error) => self.enter_fault(FaultCause::Transmission, error),
+                        },
                         Err(error) => super::Transition {
                             ok: false,
                             to: self.fsm.state(),
@@ -762,18 +786,36 @@ impl GroupController {
 
     fn send_damping(&self) -> Result<(), String> {
         let commands = self.spec.mechanical.damping_commands();
-        super::safety::send_damping(
+        let safety = super::safety::send_damping(
             self.motors
                 .iter()
                 .map(|motor| (&motor.controller, commands[&motor.controller.spec.name])),
-        )
+        );
+        let reporting = self.set_periodic_reporting(true);
+        safety.and(reporting)
     }
 
     fn stop_motors(&self, clear_fault: bool) -> Result<(), String> {
-        super::safety::stop(
+        let safety = super::safety::stop(
             self.motors.iter().map(|motor| &motor.controller),
             clear_fault,
-        )
+        );
+        let reporting = self.set_periodic_reporting(true);
+        safety.and(reporting)
+    }
+
+    fn set_periodic_reporting(&self, enabled: bool) -> Result<(), String> {
+        let mut errors = Vec::new();
+        for motor in &self.motors {
+            if let Err(error) = motor.controller.set_periodic_reporting(enabled) {
+                errors.push(format!("{}: {error}", motor.controller.spec.name));
+            }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
+        }
     }
     fn command_fault_cause(&self, check: CommandPolicyCheck) -> FaultCause {
         match check {
@@ -872,6 +914,23 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::CommandRefreshSchedule;
+
+    #[test]
+    fn periodic_transmission_keeps_phase_and_skips_missed_slots() {
+        let start = Instant::now();
+        let period = Duration::from_secs_f64(1.0 / 300.0);
+        let mut schedule = CommandRefreshSchedule::new(start, period, period);
+        assert!(!schedule.should_transmit_periodic(start));
+        for tick in 1..=30 {
+            let due = start + period * tick;
+            assert!(schedule.should_transmit_periodic(due + Duration::from_micros(100)));
+            assert!(!schedule.should_transmit_periodic(due + Duration::from_micros(200)));
+        }
+        let late = start + period * 40 + Duration::from_micros(100);
+        assert!(schedule.should_transmit_periodic(late));
+        assert!(!schedule.should_transmit_periodic(late));
+        assert_eq!(schedule.next_refresh, start + period * 41);
+    }
 
     #[test]
     fn healthy_policy_commands_defer_periodic_refresh() {

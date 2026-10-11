@@ -32,14 +32,14 @@ impl fmt::Debug for GrpcTlsSpec {
 
 #[derive(Clone, Debug)]
 pub struct GrpcSpec {
-    listen: GrpcListenSpec,
+    listen: Vec<GrpcListenSpec>,
     tls: Option<GrpcTlsSpec>,
     pub(crate) default_lease_ms: u64,
     pub(crate) maximum_lease_ms: u64,
 }
 
 impl GrpcSpec {
-    pub fn listen(&self) -> &GrpcListenSpec {
+    pub fn listen(&self) -> &[GrpcListenSpec] {
         &self.listen
     }
 
@@ -51,9 +51,13 @@ impl GrpcSpec {
         self.tls.as_ref().is_some_and(|tls| tls.client_ca.is_some())
     }
 
-    pub(crate) fn server(&self) -> Result<Server> {
+    pub(crate) fn server(&self, listen: &GrpcListenSpec) -> Result<Server> {
         let server = Server::builder();
-        let Some(tls) = &self.tls else {
+        let Some(tls) = self
+            .tls
+            .as_ref()
+            .filter(|_| matches!(listen, GrpcListenSpec::Tcp(_)))
+        else {
             return Ok(server);
         };
         let mut config = ServerTlsConfig::new().identity(Identity::from_pem(
@@ -79,23 +83,43 @@ impl TryFrom<&GrpcConfig> for GrpcSpec {
         {
             bail!("grpc lease durations must satisfy 20 <= default <= maximum <= 300000 ms");
         }
-        let listen = match &config.listen {
-            GrpcListenConfig::Tcp { address } => GrpcListenSpec::Tcp(*address),
-            GrpcListenConfig::Unix { path, mode } => {
-                if !path.is_absolute() {
-                    bail!("grpc Unix socket path must be absolute");
+        if config.listen.is_empty() {
+            bail!("grpc.listen must contain at least one listener");
+        }
+        let mut listen = Vec::with_capacity(config.listen.len());
+        for configured in &config.listen {
+            let listener = match configured {
+                GrpcListenConfig::Tcp { address } => GrpcListenSpec::Tcp(*address),
+                GrpcListenConfig::Unix { path, mode } => {
+                    if !path.is_absolute() {
+                        bail!("grpc Unix socket path must be absolute");
+                    }
+                    if path.file_name().is_none() {
+                        bail!("grpc Unix socket path must name a socket file");
+                    }
+                    GrpcListenSpec::Unix {
+                        path: path.clone(),
+                        mode: parse_socket_mode(mode)?,
+                    }
                 }
-                if path.file_name().is_none() {
-                    bail!("grpc Unix socket path must name a socket file");
+            };
+            if listen.iter().any(|existing| match (existing, &listener) {
+                (GrpcListenSpec::Tcp(a), GrpcListenSpec::Tcp(b)) => a == b,
+                (GrpcListenSpec::Unix { path: a, .. }, GrpcListenSpec::Unix { path: b, .. }) => {
+                    a == b
                 }
-                GrpcListenSpec::Unix {
-                    path: path.clone(),
-                    mode: parse_socket_mode(mode)?,
-                }
+                _ => false,
+            }) {
+                bail!("grpc.listen contains a duplicate listener");
             }
-        };
-        if matches!(listen, GrpcListenSpec::Unix { .. }) && config.tls.is_some() {
-            bail!("grpc TLS cannot be combined with a Unix socket");
+            listen.push(listener);
+        }
+        if config.tls.is_some()
+            && !listen
+                .iter()
+                .any(|item| matches!(item, GrpcListenSpec::Tcp(_)))
+        {
+            bail!("grpc TLS requires a TCP listener");
         }
         let tls = config.tls.as_ref().map(load_tls).transpose()?;
         let spec = Self {
@@ -104,7 +128,9 @@ impl TryFrom<&GrpcConfig> for GrpcSpec {
             default_lease_ms: config.default_lease_ms,
             maximum_lease_ms: config.maximum_lease_ms,
         };
-        spec.server()?;
+        for listener in spec.listen() {
+            spec.server(listener)?;
+        }
         Ok(spec)
     }
 }

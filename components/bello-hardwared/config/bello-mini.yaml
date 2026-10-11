@@ -12,11 +12,13 @@ runtime:
     acceleration_cutoff_hz: 10.0
 
 grpc:
-  listen: { type: tcp, address: 0.0.0.0:50051 }
+  listen:
+    - { type: tcp, address: 0.0.0.0:50051 }
+    - { type: unix, path: /run/user/1000/bello-hardwared.sock, mode: "0600" }
   default_lease_ms: 1000
   maximum_lease_ms: 5000
 
-bus_interfaces: { can0: can0, can1: can1 }
+bus_interfaces: { can0: can0, can1: can1, can2: can2, can3: can3 }
 serial_ports:
   imu_serial: /dev/serial/by-id/usb-1a86_USB_Single_Serial_5C93185491-if00
   power_board_serial: /dev/ttyTHS1

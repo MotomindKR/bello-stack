@@ -10,7 +10,7 @@ import grpc  # type: ignore[import-untyped]
 from .errors import ConnectionError
 from .tls import TlsCredentials
 
-_DEFAULT_OPTIONS: tuple[tuple[str, int], ...] = (
+_DEFAULT_OPTIONS: tuple[tuple[str, int | str], ...] = (
     ("grpc.keepalive_time_ms", 10_000),
     ("grpc.keepalive_timeout_ms", 3_000),
     ("grpc.keepalive_permit_without_calls", 1),
@@ -28,6 +28,7 @@ def create_channel(
     if timeout <= 0.0:
         raise ValueError("connect timeout must be positive")
 
+    options = _DEFAULT_OPTIONS
     if endpoint.startswith("unix:"):
         if not endpoint.startswith("unix:///"):
             raise ValueError("Unix endpoint must use unix:///absolute/path")
@@ -35,6 +36,8 @@ def create_channel(
         if not Path(socket_path).is_absolute():
             raise ValueError("Unix endpoint path must be absolute")
         target = endpoint
+        # The socket path is a transport address, not an HTTP authority.
+        options += (("grpc.default_authority", "localhost"),)
         secure = False
     elif "://" not in endpoint:
         target = endpoint
@@ -56,10 +59,10 @@ def create_channel(
         channel = grpc.secure_channel(
             target,
             grpc.ssl_channel_credentials(**arguments),
-            options=_DEFAULT_OPTIONS,
+            options=options,
         )
     else:
-        channel = grpc.insecure_channel(target, options=_DEFAULT_OPTIONS)
+        channel = grpc.insecure_channel(target, options=options)
 
     try:
         grpc.channel_ready_future(channel).result(timeout=timeout)

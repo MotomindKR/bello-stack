@@ -143,12 +143,16 @@ accelerometer-filter and vibration-cancellation settings.
 
 ```yaml
 grpc:
-  listen: { type: tcp, address: 127.0.0.1:50051 }
+  listen: [{ type: tcp, address: 127.0.0.1:50051 }]
   default_lease_ms: 1000
   maximum_lease_ms: 5000
 ```
 
-The TCP listener defaults to loopback. The lease values must satisfy
+The `listen` field is a nonempty list of endpoints; its default is one TCP
+listener on loopback. All endpoints share the same hardware and exclusive
+control leases. All endpoints must bind successfully before hardware starts.
+Use a list even when configuring a single endpoint. The lease values must
+satisfy
 `20 <= default_lease_ms <= maximum_lease_ms <= 300000`. Control leases are
 exclusive per motor group; read-only telemetry streams do not require a
 control lease.
@@ -158,7 +162,7 @@ key path:
 
 ```yaml
 grpc:
-  listen: { type: tcp, address: 0.0.0.0:50051 }
+  listen: [{ type: tcp, address: 0.0.0.0:50051 }]
   tls:
     certificate: /etc/bello/tls/server.crt
     private_key: /etc/bello/tls/server.key
@@ -184,20 +188,33 @@ For same-host clients, a Unix-domain socket avoids exposing a TCP port:
 ```yaml
 grpc:
   listen:
-    type: unix
-    path: /run/bello/hardwared.sock
-    mode: "0660"
+    - type: unix
+      path: /run/bello/hardwared.sock
+      mode: "0660"
   default_lease_ms: 1000
   maximum_lease_ms: 5000
 ```
+
+To expose TCP and a local Unix socket simultaneously:
+
+```yaml
+grpc:
+  listen:
+    - { type: tcp, address: 0.0.0.0:50051 }
+    - { type: unix, path: /run/user/1000/bello-hardwared.sock, mode: "0600" }
+```
+
+Local clients use `unix:///run/user/1000/bello-hardwared.sock`; remote clients
+use the TCP endpoint. Select the runtime directory for the service account's UID.
 
 The socket path must be absolute and its parent directory must already exist.
 The daemon applies the configured permission mode, removes a demonstrably stale
 socket before binding, and removes only its own socket inode during shutdown.
 Protect the parent directory as well, because its permissions control who can
 reach the socket throughout creation. Run the service with the desired owning
-user/group, or configure those through the service manager. TLS is intentionally
-rejected for Unix sockets.
+user/group, or configure those through the service manager. TLS applies only
+to TCP listeners; Unix sockets use filesystem permissions.
+Configuring TLS requires at least one TCP listener.
 
 Do not expose plaintext TCP on a non-loopback address. Server-only TLS encrypts
 traffic and authenticates the robot but does not restrict which clients may
@@ -409,6 +426,13 @@ different groups may share a bus. Every motor belongs to exactly one group.
 - `control_rate_hz`: finite, `1..=2000` (default `500`)
 - `command_refresh_rate_hz`: finite, `1..=control_rate_hz`; omission preserves
   the legacy behavior by using `control_rate_hz`
+- `command_transmission`: `on_update` (default) sends accepted updates immediately
+  and refreshes only when the producer pauses; `periodic` stages updates and
+  sends the latest target on the independent `command_refresh_rate_hz` clock.
+  Missed transmission slots are skipped without catch-up bursts.
+- `periodic_feedback_during_control`: boolean (default `true`). When `false`,
+  periodic motor reports are disabled only in Running; command replies provide
+  feedback. Damping, stop, disable, faults, and shutdown restore periodic reports.
 - `command_timeout_ms`: `1..=10000` (default `100`)
 - `feedback_timeout_ms`: `1..=10000` (default `100`)
 - `enable_timeout_ms`: `1..=30000` (default `500`)
@@ -532,3 +556,11 @@ validity, slew, and feedback-staleness limits. Defaults are 50 Hz, 100 ms, and
 direct or differential coordinate mappings; it never supplies hardware gains.
 See the
 [`bello-visualizer` guide](../components/bello-visualizer/README.md).
+
+The Bello Mini profile uses 300 Hz safety ticks and periodic CAN transmission,
+with `periodic_feedback_during_control: false`. Its policy still supplies new
+50 Hz targets; each target is retained between updates without extending its
+original validity deadline. Idle/enabling/damped monitoring retains periodic
+feedback. At seven motors per bus, 300 command/reply exchanges per motor per
+second use approximately 63--67% of a 1 Mbps bus. Measure the active hardware
+before treating that estimate as an observed rate.

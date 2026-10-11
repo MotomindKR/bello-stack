@@ -29,6 +29,220 @@ use tokio::sync::mpsc;
 use tokio::time::{Instant, sleep, timeout};
 use tokio_stream::wrappers::ReceiverStream;
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires an isolated host vcan interface"]
+async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<()> {
+    use bello_hardware_api::{DeviceState, GetStateFrameRequest, GroupCause, GroupState};
+    use bello_hardware_client::raw::{CommandStreamOptions, CommandValidity, LeaseDuration};
+
+    let interface = selected_interface()?;
+    require_vcan(&interface)?;
+    let directory = tempfile::tempdir()?;
+    let hardware_config = directory.path().join("hardwared.yaml");
+    let emulator_config = directory.path().join("emulator.yaml");
+    let address = available_loopback_address()?;
+    support::config::write_hardwared_with_control_rate(
+        &hardware_config,
+        &interface,
+        address,
+        300.0,
+    )?;
+    let description = directory.path().join("e2e-hardware.yaml");
+    let mut identity: serde_yaml::Value = serde_yaml::from_str(&fs::read_to_string(&description)?)?;
+    let group = &mut identity["motor_groups"][0];
+    group["command_refresh_rate_hz"] = serde_yaml::to_value(300.0)?;
+    group["command_transmission"] = serde_yaml::to_value("periodic")?;
+    group["periodic_feedback_during_control"] = serde_yaml::to_value(false)?;
+    fs::write(&description, serde_yaml::to_string(&identity)?)?;
+    let mut model: serde_yaml::Value =
+        serde_yaml::from_str(&support::config::emulator(&interface))?;
+    model["feedback_rate_hz"] = serde_yaml::to_value(100.0)?;
+    fs::write(&emulator_config, serde_yaml::to_string(&model)?)?;
+
+    let socket = CanSocket::open(&interface)?;
+    socket.set_read_timeout(Duration::from_millis(10))?;
+    let recorded = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let recording = recorded.clone();
+    let stop = Arc::new(AtomicBool::new(false));
+    let stopping = stop.clone();
+    let worker = thread::spawn(move || {
+        while !stopping.load(Ordering::Acquire) {
+            if let Ok(frame) = socket.read_frame() {
+                let Ok(data) = frame.data().try_into() else {
+                    continue;
+                };
+                recording.lock().unwrap().push((
+                    std::time::Instant::now(),
+                    Frame {
+                        id: frame.raw_id(),
+                        data,
+                    },
+                ));
+            }
+        }
+    });
+    struct CaptureGuard(Arc<AtomicBool>, Option<thread::JoinHandle<()>>);
+    impl Drop for CaptureGuard {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Release);
+            if let Some(worker) = self.1.take() {
+                let _ = worker.join();
+            }
+        }
+    }
+    let _capture = CaptureGuard(stop, Some(worker));
+    let mut emulator = ManagedProcess::spawn(
+        "emulator",
+        env!("CARGO_BIN_EXE_robstride-emulator-e2e-fixture"),
+        [&emulator_config],
+    )?;
+    let mut daemon = ManagedProcess::spawn(
+        "hardwared",
+        env!("CARGO_BIN_EXE_hardwared-e2e-fixture"),
+        [&hardware_config],
+    )?;
+    let client = support::scenario::connect(
+        &format!("http://{address}"),
+        Duration::from_secs(5),
+        &mut daemon,
+        &mut emulator,
+    )
+    .await?;
+    timeout(Duration::from_secs(5), async {
+        loop {
+            let inventory = client.inventory().await?;
+            if inventory.motors.iter().all(|m| {
+                m.status
+                    .as_ref()
+                    .is_some_and(|s| s.state == DeviceState::Online as i32)
+            }) {
+                break;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+        Ok::<(), anyhow::Error>(())
+    })
+    .await??;
+    let commands = || {
+        ["e2e_motor_1", "e2e_motor_2"]
+            .into_iter()
+            .map(|name| MotorCommand {
+                motor_name: name.into(),
+                position: 0.0,
+                velocity: 0.0,
+                torque_feedforward: 0.0,
+                kp: 20.0,
+                kd: 1.0,
+            })
+            .collect::<Vec<_>>()
+    };
+    let validity = CommandValidity::For(Duration::from_millis(80));
+    let mut lease = client
+        .acquire_lease(
+            "e2e_group",
+            "300hz-test",
+            LeaseDuration::For(Duration::from_secs(10)),
+        )
+        .await?;
+    lease.enable().await?;
+    lease.start(validity, commands()).await?;
+    let (mut sender, mut replies) = lease
+        .open_command_stream(CommandStreamOptions::default())
+        .await?
+        .split();
+    let mut timer = tokio::time::interval(Duration::from_millis(20));
+    timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let started = std::time::Instant::now();
+    for _ in 0..50 {
+        timer.tick().await;
+        sender.send(validity, commands()).await?;
+        timeout(Duration::from_secs(1), replies.message())
+            .await??
+            .context("missing command acknowledgement")?
+            .require_accepted()?;
+    }
+    let ended = std::time::Instant::now();
+    let elapsed = ended.duration_since(started).as_secs_f64();
+    let inventory = client.inventory().await?;
+    assert_eq!(inventory.groups[0].state, GroupState::Running as i32);
+    assert!(
+        inventory
+            .motors
+            .iter()
+            .all(|m| m.status.as_ref().unwrap().state == DeviceState::Online as i32)
+    );
+    {
+        let traffic = recorded.lock().unwrap();
+        for motor in [1u32, 2] {
+            let sends = traffic
+                .iter()
+                .filter(|(at, frame)| {
+                    *at >= started
+                        && *at <= ended
+                        && (frame.id >> 24) & 31 == 1
+                        && frame.id & 255 == motor
+                })
+                .count();
+            let rate = sends as f64 / elapsed;
+            assert!(
+                (270.0..=330.0).contains(&rate),
+                "motor {motor}: {rate:.1} Hz"
+            );
+            println!("motor {motor}: {rate:.1} CAN commands/s with 50 Hz policy updates");
+        }
+        assert!(
+            traffic
+                .iter()
+                .any(|(_, f)| (f.id >> 24) & 31 == 24 && f.data[6] == 0)
+        );
+        assert!(
+            !traffic.iter().any(|(at, f)| *at >= started
+                && *at <= ended
+                && (f.id >> 24) & 31 == 24
+                && f.data[6] == 1),
+            "monitoring re-enabled periodic reports during control"
+        );
+    }
+    // Keep the command stream and lease alive, but stop supplying targets.
+    sleep(Duration::from_millis(180)).await;
+    let frame = client
+        .grpc_client()
+        .get_state_frame(GetStateFrameRequest {
+            groups: vec!["e2e_group".into()],
+            imus: vec![],
+        })
+        .await?
+        .into_inner();
+    assert_eq!(frame.groups[0].state, GroupState::Damped as i32);
+    assert_eq!(frame.groups[0].cause, GroupCause::CommandTimeout as i32);
+    assert!(frame.motors.iter().all(|m| m.sample_age_ns < 30_000_000));
+    let quiet = std::time::Instant::now();
+    sleep(Duration::from_millis(60)).await;
+    assert!(
+        !recorded
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(at, f)| *at >= quiet && (f.id >> 24) & 31 == 1),
+        "stale target continued to transmit after expiry"
+    );
+    assert!(
+        recorded
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(at, f)| *at > ended && (f.id >> 24) & 31 == 24 && f.data[6] == 1),
+        "periodic reporting was not restored after expiry"
+    );
+    drop(sender);
+    drop(replies);
+    lease.disable().await?;
+    lease.release().await?;
+    daemon.stop();
+    emulator.stop();
+    Ok(())
+}
+
 #[test]
 fn generated_runtime_configs_are_valid() -> Result<()> {
     let directory = tempfile::tempdir()?;

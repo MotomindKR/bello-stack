@@ -1,6 +1,6 @@
 # Contact-aided local pose estimator for Bello Mini, independent of hardware transport.
 urdf: ../../../descriptions/bello_mini/urdf/bello_mini.urdf
-hardware_endpoint: http://127.0.0.1:50051
+hardware_endpoint: unix:///run/user/1000/bello-hardwared.sock
 listen: 0.0.0.0:50053
 imu: imu
 imu_frame: imu_link

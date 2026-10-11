@@ -147,7 +147,7 @@ impl Default for ImuFilterConfig {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct GrpcConfig {
-    pub listen: GrpcListenConfig,
+    pub listen: Vec<GrpcListenConfig>,
     pub tls: Option<GrpcTlsConfig>,
     pub default_lease_ms: u64,
     pub maximum_lease_ms: u64,
@@ -155,7 +155,7 @@ pub struct GrpcConfig {
 impl Default for GrpcConfig {
     fn default() -> Self {
         Self {
-            listen: GrpcListenConfig::default(),
+            listen: vec![GrpcListenConfig::default()],
             tls: None,
             default_lease_ms: 1000,
             maximum_lease_ms: 5000,
@@ -376,6 +376,14 @@ pub enum FaultCause {
     Internal,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CommandTransmission {
+    #[default]
+    OnUpdate,
+    Periodic,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GroupConfig {
@@ -385,6 +393,10 @@ pub struct GroupConfig {
     pub control_rate_hz: f64,
     #[serde(default)]
     pub command_refresh_rate_hz: Option<f64>,
+    #[serde(default)]
+    pub command_transmission: CommandTransmission,
+    #[serde(default = "default_periodic_feedback")]
+    pub periodic_feedback_during_control: bool,
     #[serde(default = "default_command_timeout")]
     pub command_timeout_ms: u64,
     #[serde(default = "default_feedback_timeout")]
@@ -395,6 +407,9 @@ pub struct GroupConfig {
     pub enable_retries: u32,
     #[serde(default)]
     pub fault_policy: FaultPolicyConfig,
+}
+fn default_periodic_feedback() -> bool {
+    true
 }
 fn default_control_rate() -> f64 {
     500.0

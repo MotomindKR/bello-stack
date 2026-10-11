@@ -11,8 +11,10 @@ deployment_blockers:
   require validation
 can_topology:
   logical_buses:
-    can0: waist and left/right legs
-    can1: left and right arms
+    can0: waist roll and left leg
+    can1: waist yaw and right leg
+    can2: left arm
+    can3: right arm
   bitrate_bps: 1000000
   id_policy: original Bello body ranges with IDs increasing along each kinematic chain;
     waist yaw/roll use 51/52
@@ -86,7 +88,7 @@ motors:
     candidate_command_direction: 1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can0
+    bus: can1
     can_id: 51
     command_direction: -1
     encoder_zero_offset_rad: null
@@ -360,7 +362,7 @@ motors:
     candidate_command_direction: -1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can0
+    bus: can1
     can_id: 71
     command_direction: 1
     encoder_zero_offset_rad: null
@@ -393,7 +395,7 @@ motors:
     candidate_command_direction: 1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can0
+    bus: can1
     can_id: 72
     command_direction: -1
     encoder_zero_offset_rad: null
@@ -426,7 +428,7 @@ motors:
     candidate_command_direction: 1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can0
+    bus: can1
     can_id: 73
     command_direction: null
     encoder_zero_offset_rad: null
@@ -459,7 +461,7 @@ motors:
     candidate_command_direction: -1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can0
+    bus: can1
     can_id: 74
     command_direction: null
     encoder_zero_offset_rad: null
@@ -497,7 +499,7 @@ motors:
     candidate_command_direction: null
     status: cad_pitch_projection_only_differential_unresolved
   hardware_binding:
-    bus: can0
+    bus: can1
     can_id: 75
     command_direction: -1
     encoder_zero_offset_rad: null
@@ -535,7 +537,7 @@ motors:
     candidate_command_direction: null
     status: cad_pitch_projection_only_differential_unresolved
   hardware_binding:
-    bus: can0
+    bus: can1
     can_id: 76
     command_direction: -1
     encoder_zero_offset_rad: null
@@ -568,7 +570,7 @@ motors:
     candidate_command_direction: 1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can1
+    bus: can2
     can_id: 31
     command_direction: -1
     encoder_zero_offset_rad: null
@@ -601,7 +603,7 @@ motors:
     candidate_command_direction: 1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can1
+    bus: can2
     can_id: 32
     command_direction: null
     encoder_zero_offset_rad: null
@@ -634,7 +636,7 @@ motors:
     candidate_command_direction: 1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can1
+    bus: can2
     can_id: 33
     command_direction: null
     encoder_zero_offset_rad: null
@@ -667,7 +669,7 @@ motors:
     candidate_command_direction: -1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can1
+    bus: can2
     can_id: 34
     command_direction: null
     encoder_zero_offset_rad: null
@@ -700,7 +702,7 @@ motors:
     candidate_command_direction: 1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can1
+    bus: can2
     can_id: 35
     command_direction: null
     encoder_zero_offset_rad: null
@@ -733,7 +735,7 @@ motors:
     candidate_command_direction: 1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can1
+    bus: can2
     can_id: 36
     command_direction: -1
     encoder_zero_offset_rad: null
@@ -766,7 +768,7 @@ motors:
     candidate_command_direction: -1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can1
+    bus: can2
     can_id: 37
     command_direction: null
     encoder_zero_offset_rad: null
@@ -799,7 +801,7 @@ motors:
     candidate_command_direction: -1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can1
+    bus: can3
     can_id: 41
     command_direction: 1
     encoder_zero_offset_rad: null
@@ -832,7 +834,7 @@ motors:
     candidate_command_direction: -1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can1
+    bus: can3
     can_id: 42
     command_direction: null
     encoder_zero_offset_rad: null
@@ -865,7 +867,7 @@ motors:
     candidate_command_direction: 1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can1
+    bus: can3
     can_id: 43
     command_direction: null
     encoder_zero_offset_rad: null
@@ -898,7 +900,7 @@ motors:
     candidate_command_direction: -1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can1
+    bus: can3
     can_id: 44
     command_direction: null
     encoder_zero_offset_rad: null
@@ -931,7 +933,7 @@ motors:
     candidate_command_direction: 1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can1
+    bus: can3
     can_id: 45
     command_direction: null
     encoder_zero_offset_rad: null
@@ -964,7 +966,7 @@ motors:
     candidate_command_direction: -1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can1
+    bus: can3
     can_id: 46
     command_direction: 1
     encoder_zero_offset_rad: null
@@ -997,7 +999,7 @@ motors:
     candidate_command_direction: 1
     status: cad_geometry_only_protocol_sign_unverified
   hardware_binding:
-    bus: can1
+    bus: can3
     can_id: 47
     command_direction: null
     encoder_zero_offset_rad: null

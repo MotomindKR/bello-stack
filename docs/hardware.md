@@ -139,11 +139,19 @@ sequence is sent again on the next enable.
 ### Control batches
 
 The motor-group worker performs safety and watchdog checks at
-`control_rate_hz`. Accepted stream commands are checked and transmitted
-immediately without changing that schedule. While commands keep arriving they
-defer the periodic CAN refresh deadline. If the stream goes quiet, the retained
-command is retransmitted at `command_refresh_rate_hz` after one additional
-safety-tick grace period.
+`control_rate_hz`. With `command_transmission: on_update` (default), accepted
+stream commands transmit immediately and defer fallback refresh until one
+additional safety-tick grace period. With `command_transmission: periodic`,
+updates are accepted into the latest-target mailbox and transmit only on the
+independent `command_refresh_rate_hz` clock. Missed slots are skipped rather
+than replayed in a burst. Retransmission never extends target validity or lease
+ownership.
+
+With `periodic_feedback_during_control: false`, Running uses command-response
+feedback and disables autonomous reports. Periodic reports remain enabled for
+idle/enabling/damped monitoring and are restored on stop, expiry, lease loss,
+fault response, disabling, and shutdown. The feedback watchdog remains active
+while relying on command replies.
 
 A shared `ControlBatcher` holds each logical transmission until all motors in
 the group have contributed, partitions the frames by CAN bus, and enqueues one
@@ -347,7 +355,7 @@ gRPC telemetry stream.
 | Activity | Timing source | Behavior |
 | --- | --- | --- |
 | Motor-group safety | `control_rate_hz`, 1–2000 Hz | Fixed checks; does not necessarily transmit CAN commands |
-| Held-command refresh | `command_refresh_rate_hz`, 1–`control_rate_hz` Hz | Retransmits only after immediate commands stop arriving |
+| CAN transmission | `command_refresh_rate_hz`, 1–`control_rate_hz` Hz | `on_update`: fallback refresh; `periodic`: independent latest-target clock |
 | CAN TX | Queue arrivals and batch deadlines | Event-driven, strict safety/configuration/control priority |
 | CAN RX | SocketCAN input | Blocking/event-driven with a 100 ms OS timeout |
 | Motor health scan | `feedback_timeout_ms / 4`, clamped to 1–20 ms | Checks bus state and armed feedback watchdogs |
