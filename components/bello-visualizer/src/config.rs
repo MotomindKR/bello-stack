@@ -365,7 +365,7 @@ impl GroupControlProfile {
                 .coordinate_position_limits(&coordinate)
                 .ok_or_else(|| {
                     ConfigError::Invalid(format!(
-                        "hardware coordinate {coordinate:?} has no URDF joint or differential actuator with finite limits"
+                        "hardware coordinate {coordinate:?} has no URDF motor mapping with finite limits"
                     ))
                 })?;
             let position_min = limits.position_min.max(model_position_min);

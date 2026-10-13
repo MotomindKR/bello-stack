@@ -43,6 +43,15 @@ impl TryFrom<&GroupConfig> for GroupSpec {
         if config.motors.is_empty() {
             bail!("motor_groups.{}.motors must not be empty", config.name);
         }
+        if !config.parallel_feedback_position_tolerance.is_finite()
+            || !(0.0 < config.parallel_feedback_position_tolerance
+                && config.parallel_feedback_position_tolerance <= 0.4)
+        {
+            bail!(
+                "motor_groups.{}.parallel_feedback_position_tolerance must be in (0, 0.4]",
+                config.name
+            );
+        }
         if !config.control_rate_hz.is_finite() || !(1.0..=2_000.0).contains(&config.control_rate_hz)
         {
             bail!(
@@ -105,6 +114,17 @@ mod tests {
         let config: GroupConfig =
             serde_yaml::from_str("name: group_a\nmotors: [motor_a]\ncontrol_rate_hz: 0.0").unwrap();
         assert!(GroupSpec::try_from(&config).is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_parallel_feedback_tolerance() {
+        for value in ["0", "-0.1", "0.5", ".nan"] {
+            let config: GroupConfig = serde_yaml::from_str(&format!(
+                "name: group\nmotors: [a, b]\nparallel_feedback_position_tolerance: {value}"
+            ))
+            .unwrap();
+            assert!(GroupSpec::try_from(&config).is_err());
+        }
     }
 
     #[test]

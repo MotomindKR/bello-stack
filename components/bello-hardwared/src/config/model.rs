@@ -389,6 +389,8 @@ pub enum CommandTransmission {
 pub struct GroupConfig {
     pub name: String,
     pub motors: Vec<String>,
+    #[serde(default = "default_parallel_feedback_position_tolerance")]
+    pub parallel_feedback_position_tolerance: f64,
     #[serde(default = "default_control_rate")]
     pub control_rate_hz: f64,
     #[serde(default)]
@@ -407,6 +409,9 @@ pub struct GroupConfig {
     pub enable_retries: u32,
     #[serde(default)]
     pub fault_policy: FaultPolicyConfig,
+}
+fn default_parallel_feedback_position_tolerance() -> f64 {
+    0.02
 }
 fn default_periodic_feedback() -> bool {
     true

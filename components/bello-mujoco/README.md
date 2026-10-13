@@ -40,6 +40,15 @@ the profile to `bello.yaml` for Bello. `--export-physics PATH` writes an optiona
 inspection MJCF; neither model construction nor simulation requires an artifact.
 URDF transmission offsets are represented separately from native tendon lengths.
 
+For the fixed-base Bello Mini Torso, use `config/bello_mini_torso.yaml` for
+`check` and `config/emulator_mini_torso.yaml` for `run`. Its model sets
+`root: fixed` and `floor: false`: the invisible hip-pitch base stays at world
+zero and the floor does not intersect below-pivot geometry. Existing profiles
+default to `root: free` and `floor: true`. A fixed root rejects a torso guide.
+Simple transmissions create one native motor-coordinate tendon per actuator;
+multiple actuators can drive the same joint and their efforts add. See the
+[torso bring-up guide](../../descriptions/bello_mini_torso/README.md).
+
 Model profiles optionally accept `payloads`, a list of `{frame, mass_kg, radius_m}`.
 Each entry adds a spherical payload inertia at an existing inertial-free frame;
 the radius describes the payload mass distribution and adds no collision geometry.
@@ -49,7 +58,7 @@ Use two entries for symmetric carried masses. Payloads are model settings,
 independent of policy bundles, and are included in exported physics.
 
 `Simulation::load` and `Simulation::from_xml` remain low-level native loaders;
-loading a URDF alone does not create its differential transmissions.
+loading a URDF alone does not instantiate its actuator transmissions.
 
 Run the headless emulator on Linux after creating virtual CAN interfaces and an
 IMU serial pair (the `bello_mujoco` Lima setup supplies these):

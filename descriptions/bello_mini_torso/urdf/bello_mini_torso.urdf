@@ -1,0 +1,883 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="bello_mini_torso">
+  <!--Derived from bello_mini: fixed base, active shared torso pitch, waist and both arms. See ../ASSET_PROVENANCE.md.-->
+  <!--base_link is the midpoint of the source hip-pitch axes, at world zero. The user requested an invisible base; no base mesh, floor plane, or stand inertia is added.-->
+  <!--The source pelvis frame is preserved by a fixed offset. Its inertia is expressed on torso_pitch_link without changing the physical mass distribution.-->
+  <!--User-specified pitch travel: 60 degrees forward, 30 degrees backward. The 240 Nm effort envelope sums the source hip envelopes; physical calibration remains separate.-->
+  <link name="base_link" />
+  <link name="torso_pitch_link">
+    <inertial>
+      <origin xyz="0.00076623038541579445 0 0.028238543869593125" rpy="0 0 0" />
+      <mass value="4.396505078066963" />
+      <inertia ixx="0.017878298864020866" ixy="0" ixz="8.8747753963781351e-05" iyy="0.016838841717648798" iyz="0" izz="0.010732361203565306" />
+    </inertial>
+  </link>
+  <joint name="torso_pitch_joint" type="revolute">
+    <parent link="base_link" />
+    <child link="torso_pitch_link" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.5235987755982989" upper="1.0471975511965979" effort="240" velocity="15" />
+  </joint>
+  <joint name="torso_pitch_to_pelvis_joint" type="fixed">
+    <parent link="torso_pitch_link" />
+    <child link="pelvis_link" />
+    <origin xyz="0.0099999999999894115 0 0.180000001143162" rpy="0 0 0" />
+  </joint>
+  <link name="left_hip_pitch_mount_frame" />
+  <joint name="left_hip_pitch_mount_joint" type="fixed">
+    <parent link="base_link" />
+    <child link="left_hip_pitch_mount_frame" />
+    <origin xyz="0 0.033596880771079501 0" rpy="0 0 0" />
+  </joint>
+  <link name="right_hip_pitch_mount_frame" />
+  <joint name="right_hip_pitch_mount_joint" type="fixed">
+    <parent link="base_link" />
+    <child link="right_hip_pitch_mount_frame" />
+    <origin xyz="0 -0.033596880771079501 0" rpy="0 0 0" />
+  </joint>
+  <!--Designer-provided joint ranges use user-reviewed left-side signs; right roll/yaw signs are mirrored and physical stops require validation.-->
+  <!--Astra Stereo S U3 sensor origins are nominal mechanical values: IR/depth is 2 mm behind the CAD front face; RGB is 2 mm forward of IR/depth. They are not factory-calibrated extrinsics.-->
+  <!--Publish camera sensor TFs from this URDF or from the Orbbec driver, never from both sources simultaneously.-->
+  <!--Left/right mass properties use mirrored spatial-inertia means; central-body inertials are symmetrized about y=0. Existing signed joint conventions are preserved.-->
+  <!--imu_link is the published logical IMU frame; imu_sensor_link is the coincident physical EBIMU frame and records its upside-down mounting.-->
+  <mujoco>
+    <compiler fusestatic="false" inertiafromgeom="false" discardvisual="false" strippath="false" />
+  </mujoco>
+  <material name="center_links">
+    <color rgba="0.32 0.36 0.42 1" />
+  </material>
+  <material name="left_links">
+    <color rgba="0.17 0.46 0.73 1" />
+  </material>
+  <material name="right_links">
+    <color rgba="0.91 0.36 0.18 1" />
+  </material>
+  <material name="anonymous_end_effector">
+    <color rgba="0.85 0.85 0.88 1" />
+  </material>
+  <link name="left_elbow_link">
+    <inertial>
+      <origin xyz="-0.0072175401293037523 -4.7001713014736826e-07 -0.063373863693477903" rpy="0 0 0" />
+      <mass value="0.58084975001435646" />
+      <inertia ixx="0.001212432770522474" ixy="2.7281051516877219e-09" ixz="-6.8159398179940635e-05" iyy="0.0010434459881715186" iyz="9.8862147452877322e-09" izz="0.00049070222617907447" />
+    </inertial>
+    <visual name="left_elbow_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/left_elbow_link.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="left_elbow_link_segment">
+      <origin xyz="-0.0045000003069986076 0 -0.044894063045046152" rpy="3.1415926535897909 0.099902288420159704 0" />
+      <geometry>
+        <cylinder radius="0.044999999999999998" length="0.090238060694045649" />
+      </geometry>
+    </collision>
+    <collision name="left_elbow_link_joint_envelope">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.044999999999999998" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_lower_arm_link">
+    <inertial>
+      <origin xyz="-1.8497248774765397e-09 0.00236211464758283 -0.064656028696145992" rpy="0 0 0" />
+      <mass value="0.19059262416017736" />
+      <inertia ixx="0.0003111879848699943" ixy="-1.5843396605343738e-11" ixz="-2.5285483371565677e-11" iyy="0.00017688640496303461" iyz="1.3585523346649508e-05" izz="0.00021045066543157022" />
+    </inertial>
+    <visual name="left_lower_arm_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/left_lower_arm_link.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="left_lower_arm_link_segment">
+      <origin xyz="-1.1874945471390675e-14 -0.0027639596331926128 -0.046556053245424514" rpy="3.082293829968934 2.5417184440633598e-13 -1.5089782506472866e-14" />
+      <geometry>
+        <cylinder radius="0.040000000000000001" length="0.093276054089883542" />
+      </geometry>
+    </collision>
+    <collision name="left_lower_arm_link_joint_envelope">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.040000000000000001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_shoulder_pitch_link">
+    <inertial>
+      <origin xyz="-0.00046029292577580113 0.076454135684222116 -0.01489690385212368" rpy="0 0 0" />
+      <mass value="0.4489566190312233" />
+      <inertia ixx="0.001067297154875383" ixy="-1.7489171559806354e-05" ixz="5.3797057086800822e-06" iyy="0.00089213635514743715" iyz="0.00016505581645646881" izz="0.0012491201518785074" />
+    </inertial>
+    <visual name="left_shoulder_pitch_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/left_shoulder_pitch_link.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="left_shoulder_pitch_link_segment">
+      <origin xyz="-9.3654521915453874e-10 0.053630913667238066 -0.012499999944061998" rpy="-1.7997828046294242 3.8604184880461008e-09 1.6563021726264999e-08" />
+      <geometry>
+        <cylinder radius="0.055" length="0.11013673137304" />
+      </geometry>
+    </collision>
+    <collision name="left_shoulder_pitch_link_joint_envelope">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.055" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_shoulder_roll_link">
+    <inertial>
+      <origin xyz="7.2784240520435105e-06 0.0058231173856334922 -0.035755268578724887" rpy="0 0 0" />
+      <mass value="2.1214233236918343" />
+      <inertia ixx="0.0066043561612653175" ixy="6.7873748688211267e-08" ixz="-5.7230032303659258e-07" iyy="0.0062111958548811581" iyz="0.00062018449012630659" izz="0.0024975447593751643" />
+    </inertial>
+    <visual name="left_shoulder_roll_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/left_shoulder_roll_link.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="left_shoulder_roll_link_segment">
+      <origin xyz="9.3654272603771462e-10 0.0069999999999897965 -0.046386540710133518" rpy="-2.9918169145239415 -1.9740426684084862e-08 -2.9789457172909085e-09" />
+      <geometry>
+        <cylinder radius="0.055" length="0.093823475933323477" />
+      </geometry>
+    </collision>
+    <collision name="left_shoulder_roll_link_joint_envelope">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.055" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_upper_arm_link">
+    <inertial>
+      <origin xyz="0.0041696244760407262 0.0006026728796300466 -0.094539844840652296" rpy="0 0 0" />
+      <mass value="1.0369576670857419" />
+      <inertia ixx="0.0013644555603561927" ixy="2.1389683718432051e-06" ixz="4.7601402390878424e-05" iyy="0.001431265468198849" iyz="-3.0734188482373366e-05" izz="0.00082460426930548952" />
+    </inertial>
+    <visual name="left_upper_arm_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/left_upper_arm_link.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="left_upper_arm_link_segment">
+      <origin xyz="0.0024999999999999775 1.3500311979441904e-15 -0.052363459619556657" rpy="-3.1415926535897674 -0.047706990705139375 -1.2309124055060636e-15" />
+      <geometry>
+        <cylinder radius="0.050000000000000003" length="0.10484620934166271" />
+      </geometry>
+    </collision>
+    <collision name="left_upper_arm_link_joint_envelope">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.050000000000000003" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_wrist_link">
+    <inertial>
+      <origin xyz="3.6713968273785311e-06 0.0036479398885982612 -0.03181142059956172" rpy="0 0 0" />
+      <mass value="0.80958882100622653" />
+      <inertia ixx="0.0012081087222606927" ixy="-5.6761051789648544e-09" ixz="9.1166511598760614e-08" iyy="0.001194471747630596" iyz="4.5144692829430206e-05" izz="0.00043960666276356163" />
+    </inertial>
+    <visual name="left_wrist_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/left_wrist_link.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="left_wrist_link_segment">
+      <origin xyz="-1.6253435984658893e-08 0.0027639111626542247 -0.032499999999995352" rpy="-3.0567533702971956 4.9651473768231937e-07 4.2225311566240181e-08" />
+      <geometry>
+        <cylinder radius="0.040000000000000001" length="0.065234628991510529" />
+      </geometry>
+    </collision>
+    <collision name="left_wrist_link_joint_envelope">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.040000000000000001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_wrist_roll_link">
+    <inertial>
+      <origin xyz="0.00060217488584886076 -0.0012794646761914543 -0.013113225242450392" rpy="0 0 0" />
+      <mass value="0.14163119501044008" />
+      <inertia ixx="9.2530620364362701e-05" ixy="-1.0917664806609436e-07" ixz="-1.1187861724664335e-06" iyy="0.00022761697315831059" iyz="-5.4498237328441395e-06" izz="0.00018492814858636576" />
+    </inertial>
+    <visual name="left_wrist_roll_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/left_wrist_roll_link.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="left_wrist_roll_link_sphere">
+      <origin xyz="3.2506870559808991e-08 0.00019095295923638388 -0.0070280240007716509" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.044999999999999998" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="pelvis_link">
+    <visual name="pelvis_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/pelvis_link.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="pelvis_link_box">
+      <origin xyz="-0.009999999999983019 1.3571366253017914e-15 -0.15265406739979442" rpy="0 0 0" />
+      <geometry>
+        <box size="0.14414999185611668 0.10710000000310056 0.19563115862444452" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_elbow_link">
+    <inertial>
+      <origin xyz="-0.0072175401293037523 4.7001713014736826e-07 -0.063373863693477903" rpy="0 0 0" />
+      <mass value="0.58084975001435646" />
+      <inertia ixx="0.001212432770522474" ixy="-2.7281051516877219e-09" ixz="-6.8159398179940635e-05" iyy="0.0010434459881715186" iyz="-9.8862147452877322e-09" izz="0.00049070222617907447" />
+    </inertial>
+    <visual name="right_elbow_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/right_elbow_link.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="right_elbow_link_segment">
+      <origin xyz="-0.0045000003069986076 0 -0.044894063045046152" rpy="-3.1415926535897909 0.099902288420159704 0" />
+      <geometry>
+        <cylinder radius="0.044999999999999998" length="0.090238060694045649" />
+      </geometry>
+    </collision>
+    <collision name="right_elbow_link_joint_envelope">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.044999999999999998" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_lower_arm_link">
+    <inertial>
+      <origin xyz="-1.8497248774765397e-09 -0.00236211464758283 -0.064656028696145992" rpy="0 0 0" />
+      <mass value="0.19059262416017736" />
+      <inertia ixx="0.0003111879848699943" ixy="1.5843396605343738e-11" ixz="-2.5285483371565677e-11" iyy="0.00017688640496303461" iyz="-1.3585523346649508e-05" izz="0.00021045066543157022" />
+    </inertial>
+    <visual name="right_lower_arm_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/right_lower_arm_link.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="right_lower_arm_link_segment">
+      <origin xyz="-1.1874945471390675e-14 0.0027639596331926128 -0.046556053245424514" rpy="-3.082293829968934 2.5417184440633598e-13 1.5089782506472866e-14" />
+      <geometry>
+        <cylinder radius="0.040000000000000001" length="0.093276054089883542" />
+      </geometry>
+    </collision>
+    <collision name="right_lower_arm_link_joint_envelope">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.040000000000000001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_shoulder_pitch_link">
+    <inertial>
+      <origin xyz="-0.00046029292577580113 -0.076454135684222116 -0.01489690385212368" rpy="0 0 0" />
+      <mass value="0.4489566190312233" />
+      <inertia ixx="0.001067297154875383" ixy="1.7489171559806354e-05" ixz="5.3797057086800822e-06" iyy="0.00089213635514743715" iyz="-0.00016505581645646881" izz="0.0012491201518785074" />
+    </inertial>
+    <visual name="right_shoulder_pitch_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/right_shoulder_pitch_link.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="right_shoulder_pitch_link_segment">
+      <origin xyz="-9.3654521915453874e-10 -0.053630913667238066 -0.012499999944061998" rpy="1.7997828046294242 3.8604184880461008e-09 -1.6563021726264999e-08" />
+      <geometry>
+        <cylinder radius="0.055" length="0.11013673137304" />
+      </geometry>
+    </collision>
+    <collision name="right_shoulder_pitch_link_joint_envelope">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.055" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_shoulder_roll_link">
+    <inertial>
+      <origin xyz="7.2784240520435105e-06 -0.0058231173856334922 -0.035755268578724887" rpy="0 0 0" />
+      <mass value="2.1214233236918343" />
+      <inertia ixx="0.0066043561612653175" ixy="-6.7873748688211267e-08" ixz="-5.7230032303659258e-07" iyy="0.0062111958548811581" iyz="-0.00062018449012630659" izz="0.0024975447593751643" />
+    </inertial>
+    <visual name="right_shoulder_roll_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/right_shoulder_roll_link.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="right_shoulder_roll_link_segment">
+      <origin xyz="9.3654272603771462e-10 -0.0069999999999897965 -0.046386540710133518" rpy="2.9918169145239415 -1.9740426684084862e-08 2.9789457172909085e-09" />
+      <geometry>
+        <cylinder radius="0.055" length="0.093823475933323477" />
+      </geometry>
+    </collision>
+    <collision name="right_shoulder_roll_link_joint_envelope">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.055" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_upper_arm_link">
+    <inertial>
+      <origin xyz="0.0041696244760407262 -0.0006026728796300466 -0.094539844840652296" rpy="0 0 0" />
+      <mass value="1.0369576670857419" />
+      <inertia ixx="0.0013644555603561927" ixy="-2.1389683718432051e-06" ixz="4.7601402390878424e-05" iyy="0.001431265468198849" iyz="3.0734188482373366e-05" izz="0.00082460426930548952" />
+    </inertial>
+    <visual name="right_upper_arm_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/right_upper_arm_link.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="right_upper_arm_link_segment">
+      <origin xyz="0.0024999999999999775 -1.3500311979441904e-15 -0.052363459619556657" rpy="3.1415926535897674 -0.047706990705139375 1.2309124055060636e-15" />
+      <geometry>
+        <cylinder radius="0.050000000000000003" length="0.10484620934166271" />
+      </geometry>
+    </collision>
+    <collision name="right_upper_arm_link_joint_envelope">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.050000000000000003" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_wrist_link">
+    <inertial>
+      <origin xyz="3.6713968273785311e-06 -0.0036479398885982612 -0.03181142059956172" rpy="0 0 0" />
+      <mass value="0.80958882100622653" />
+      <inertia ixx="0.0012081087222606927" ixy="5.6761051789648544e-09" ixz="9.1166511598760614e-08" iyy="0.001194471747630596" iyz="-4.5144692829430206e-05" izz="0.00043960666276356163" />
+    </inertial>
+    <visual name="right_wrist_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/right_wrist_link.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="right_wrist_link_segment">
+      <origin xyz="-1.6253435984658893e-08 -0.0027639111626542247 -0.032499999999995352" rpy="3.0567533702971956 4.9651473768231937e-07 -4.2225311566240181e-08" />
+      <geometry>
+        <cylinder radius="0.040000000000000001" length="0.065234628991510529" />
+      </geometry>
+    </collision>
+    <collision name="right_wrist_link_joint_envelope">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.040000000000000001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_wrist_roll_link">
+    <inertial>
+      <origin xyz="0.00060217488584886076 0.0012794646761914543 -0.013113225242450392" rpy="0 0 0" />
+      <mass value="0.14163119501044008" />
+      <inertia ixx="9.2530620364362701e-05" ixy="1.0917664806609436e-07" ixz="-1.1187861724664335e-06" iyy="0.00022761697315831059" iyz="5.4498237328441395e-06" izz="0.00018492814858636576" />
+    </inertial>
+    <visual name="right_wrist_roll_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/right_wrist_roll_link.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="right_wrist_roll_link_sphere">
+      <origin xyz="3.2506870559808991e-08 -0.00019095295923638388 -0.0070280240007716509" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.044999999999999998" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="torso_link">
+    <inertial>
+      <origin xyz="-0.0018901787523689097 0 0.13684047773239016" rpy="0 0 0" />
+      <mass value="11.053965802291374" />
+      <inertia ixx="0.16350184303796975" ixy="0" ixz="-0.0015159659578618387" iyy="0.12648374004116003" iyz="0" izz="0.063734968235968373" />
+    </inertial>
+    <visual name="torso_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/torso_link.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="torso_link_box">
+      <origin xyz="-1.1187473525353653e-10 -8.5804299692332894e-13 0.11949278376883757" rpy="0 0 0" />
+      <geometry>
+        <box size="0.13386288552785738 0.2056500069858464 0.35817270402658558" />
+      </geometry>
+    </collision>
+  </link>
+  <!--Head mount inferred on torso centerline above CAD mesh top (z=0.332759 m); 60 mm sphere is an approximate visual/collision/inertia proxy, not measured head geometry.-->
+  <link name="head_link">
+    <inertial>
+      <origin xyz="0 0 0.060" rpy="0 0 0" />
+      <mass value="0.680" />
+      <inertia ixx="0.0009792" ixy="0" ixz="0" iyy="0.0009792" iyz="0" izz="0.0009792" />
+    </inertial>
+    <collision name="head_collision_proxy">
+      <origin xyz="0 0 0.060" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.060" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="head_joint" type="fixed">
+    <parent link="torso_link" />
+    <child link="head_link" />
+    <origin xyz="0 0 0.333" rpy="0 0 0" />
+  </joint>
+  <link name="waist_yaw_link">
+    <inertial>
+      <origin xyz="0.013666269001539428 0 -0.041125542346871651" rpy="0 0 0" />
+      <mass value="0.44952911964166126" />
+      <inertia ixx="0.00054277290126875848" ixy="0" ixz="-8.381399056407241e-05" iyy="0.00052262718242163109" iyz="0" izz="0.00024697595498223774" />
+    </inertial>
+    <visual name="waist_yaw_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/waist_yaw_link.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="waist_yaw_link_cylinder">
+      <origin xyz="-0.0002500001118686406 -8.5765219841866083e-13 -0.030249999888125999" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.033750000000015871" length="0.094600000000000101" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="waist_yaw_joint" type="revolute">
+    <parent link="pelvis_link" />
+    <child link="waist_yaw_link" />
+    <origin xyz="-0.0099999998881160068 0 0.020999999888126016" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="60" velocity="20" />
+  </joint>
+  <joint name="waist_roll_joint" type="revolute">
+    <parent link="waist_yaw_link" />
+    <child link="torso_link" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.43633231299858238" upper="0.43633231299858238" effort="60" velocity="20" />
+  </joint>
+  <joint name="left_shoulder_pitch_joint" type="revolute">
+    <parent link="torso_link" />
+    <child link="left_shoulder_pitch_link" />
+    <origin xyz="-1.1176899857023859e-10 0.084988172760004407 0.22799999999999998" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-3.9269908169872414" upper="0.78539816339744828" effort="60" velocity="20" />
+  </joint>
+  <joint name="left_shoulder_roll_joint" type="revolute">
+    <parent link="left_shoulder_pitch_link" />
+    <child link="left_shoulder_roll_link" />
+    <origin xyz="-1.8730904396968562e-09 0.10726182733447613 -0.024999999888123986" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.26179938779914941" upper="3.1415926535897931" effort="60" velocity="20" />
+  </joint>
+  <joint name="left_shoulder_yaw_joint" type="revolute">
+    <parent link="left_shoulder_roll_link" />
+    <child link="left_upper_arm_link" />
+    <origin xyz="1.8730854523668627e-09 0.013999999999979584 -0.092773081420267051" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="36" velocity="50" />
+  </joint>
+  <joint name="left_elbow_pitch_joint" type="revolute">
+    <parent link="left_upper_arm_link" />
+    <child link="left_elbow_link" />
+    <origin xyz="0.004999999999999955 0 -0.10472691923911331" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-2.2689280275926285" upper="0.26179938779914941" effort="36" velocity="50" />
+  </joint>
+  <joint name="left_wrist_yaw_joint" type="revolute">
+    <parent link="left_elbow_link" />
+    <child link="left_lower_arm_link" />
+    <origin xyz="-0.0090000006139972152 0 -0.089788126090092304" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.0385445663293771" upper="2.0385445663293771" effort="14" velocity="33" />
+  </joint>
+  <joint name="left_wrist_pitch_joint" type="revolute">
+    <parent link="left_lower_arm_link" />
+    <child link="left_wrist_link" />
+    <origin xyz="0 -0.0055279192663852117 -0.093112106490849042" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="14" velocity="33" />
+  </joint>
+  <joint name="left_wrist_roll_joint" type="revolute">
+    <parent link="left_wrist_link" />
+    <child link="left_wrist_roll_link" />
+    <origin xyz="-3.2506871970247597e-08 0.0055278223253084346 -0.064999999999990704" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="14" velocity="33" />
+  </joint>
+  <joint name="right_shoulder_pitch_joint" type="revolute">
+    <parent link="torso_link" />
+    <child link="right_shoulder_pitch_link" />
+    <origin xyz="-1.1176899857023859e-10 -0.084988172760004407 0.22799999999999998" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-3.9269908169872414" upper="0.78539816339744828" effort="60" velocity="20" />
+  </joint>
+  <joint name="right_shoulder_roll_joint" type="revolute">
+    <parent link="right_shoulder_pitch_link" />
+    <child link="right_shoulder_roll_link" />
+    <origin xyz="-1.8730904396968562e-09 -0.10726182733447613 -0.024999999888123986" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-3.1415926535897931" upper="0.26179938779914941" effort="60" velocity="20" />
+  </joint>
+  <joint name="right_shoulder_yaw_joint" type="revolute">
+    <parent link="right_shoulder_roll_link" />
+    <child link="right_upper_arm_link" />
+    <origin xyz="1.8730854523668627e-09 -0.013999999999979584 -0.092773081420267051" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="36" velocity="50" />
+  </joint>
+  <joint name="right_elbow_pitch_joint" type="revolute">
+    <parent link="right_upper_arm_link" />
+    <child link="right_elbow_link" />
+    <origin xyz="0.004999999999999955 0 -0.10472691923911331" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-2.2689280275926285" upper="0.26179938779914941" effort="36" velocity="50" />
+  </joint>
+  <joint name="right_wrist_yaw_joint" type="revolute">
+    <parent link="right_elbow_link" />
+    <child link="right_lower_arm_link" />
+    <origin xyz="-0.0090000006139972152 0 -0.089788126090092304" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.0385445663293771" upper="2.0385445663293771" effort="14" velocity="33" />
+  </joint>
+  <joint name="right_wrist_pitch_joint" type="revolute">
+    <parent link="right_lower_arm_link" />
+    <child link="right_wrist_link" />
+    <origin xyz="0 0.0055279192663852117 -0.093112106490849042" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="14" velocity="33" />
+  </joint>
+  <joint name="right_wrist_roll_joint" type="revolute">
+    <parent link="right_wrist_link" />
+    <child link="right_wrist_roll_link" />
+    <origin xyz="-3.2506871970247597e-08 -0.0055278223253084346 -0.064999999999990704" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="14" velocity="33" />
+  </joint>
+  <link name="imu_link" />
+  <joint name="imu_joint" type="fixed">
+    <parent link="pelvis_link" />
+    <child link="imu_link" />
+    <origin xyz="-0.0099999999999894115 0 -0.230000001143162" rpy="0 0 -1.5707963267948966" />
+  </joint>
+  <link name="imu_sensor_link" />
+  <joint name="imu_sensor_joint" type="fixed">
+    <parent link="imu_link" />
+    <child link="imu_sensor_link" />
+    <origin xyz="0 0 0" rpy="3.141592653589793 0 0" />
+  </joint>
+  <link name="astra_mount_frame">
+    <visual name="astra_mount_frame_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../../bello_mini/meshes/astra_mount_frame.glb" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision name="astra_stereo_s_u3_enclosure">
+      <origin xyz="-0.00050052191185222499 -3.7523495426408091e-13 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.01360104383192445 0.065300000001550465 0.022700000010130238" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="astra_mount_joint" type="fixed">
+    <parent link="pelvis_link" />
+    <child link="astra_mount_frame" />
+    <origin xyz="0.053720633367909998 0 -0.1368292600604" rpy="0 1.1754791852348003 0" />
+  </joint>
+  <link name="camera_link" />
+  <joint name="astra_mount_to_camera_joint" type="fixed">
+    <parent link="astra_mount_frame" />
+    <child link="camera_link" />
+    <origin xyz="0.0043 0.02 0" rpy="0 0 0" />
+  </joint>
+  <link name="camera_depth_frame" />
+  <joint name="camera_depth_joint" type="fixed">
+    <parent link="camera_link" />
+    <child link="camera_depth_frame" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+  </joint>
+  <link name="camera_depth_optical_frame" />
+  <joint name="camera_depth_optical_joint" type="fixed">
+    <parent link="camera_depth_frame" />
+    <child link="camera_depth_optical_frame" />
+    <origin xyz="0 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966" />
+  </joint>
+  <link name="camera_left_ir_frame" />
+  <joint name="camera_left_ir_joint" type="fixed">
+    <parent link="camera_depth_frame" />
+    <child link="camera_left_ir_frame" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+  </joint>
+  <link name="camera_left_ir_optical_frame" />
+  <joint name="camera_left_ir_optical_joint" type="fixed">
+    <parent link="camera_left_ir_frame" />
+    <child link="camera_left_ir_optical_frame" />
+    <origin xyz="0 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966" />
+  </joint>
+  <link name="camera_right_ir_frame" />
+  <joint name="camera_right_ir_joint" type="fixed">
+    <parent link="camera_depth_frame" />
+    <child link="camera_right_ir_frame" />
+    <origin xyz="0 -0.040000000000000001 0" rpy="0 0 0" />
+  </joint>
+  <link name="camera_right_ir_optical_frame" />
+  <joint name="camera_right_ir_optical_joint" type="fixed">
+    <parent link="camera_right_ir_frame" />
+    <child link="camera_right_ir_optical_frame" />
+    <origin xyz="0 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966" />
+  </joint>
+  <link name="camera_color_frame" />
+  <joint name="camera_color_joint" type="fixed">
+    <parent link="camera_depth_frame" />
+    <child link="camera_color_frame" />
+    <origin xyz="0.002 -0.01 0" rpy="0 0 0" />
+  </joint>
+  <link name="camera_color_optical_frame" />
+  <joint name="camera_color_optical_joint" type="fixed">
+    <parent link="camera_color_frame" />
+    <child link="camera_color_optical_frame" />
+    <origin xyz="0 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966" />
+  </joint>
+  <link name="left_end_effector_sphere_link">
+    <inertial>
+      <origin xyz="0 0 -0.025000000000000001" rpy="0 0 0" />
+      <mass value="0.46999999999999997" />
+      <inertia ixx="0.00011750000000000002" ixy="0" ixz="0" iyy="0.00011750000000000002" iyz="0" izz="0.00011750000000000002" />
+    </inertial>
+    <collision name="left_end_effector_sphere_link_collision">
+      <origin xyz="0 0 -0.025000000000000001" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.025000000000000001" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="left_end_effector_sphere_joint" type="fixed">
+    <parent link="left_wrist_roll_link" />
+    <child link="left_end_effector_sphere_link" />
+    <origin xyz="0 0 -0.037497803653348316" rpy="0 0 0" />
+  </joint>
+  <link name="right_end_effector_sphere_link">
+    <inertial>
+      <origin xyz="0 0 -0.025000000000000001" rpy="0 0 0" />
+      <mass value="0.46999999999999997" />
+      <inertia ixx="0.00011750000000000002" ixy="0" ixz="0" iyy="0.00011750000000000002" iyz="0" izz="0.00011750000000000002" />
+    </inertial>
+    <collision name="right_end_effector_sphere_link_collision">
+      <origin xyz="0 0 -0.025000000000000001" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.025000000000000001" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_end_effector_sphere_joint" type="fixed">
+    <parent link="right_wrist_roll_link" />
+    <child link="right_end_effector_sphere_link" />
+    <origin xyz="0 0 -0.037497803653348316" rpy="0 0 0" />
+  </joint>
+  <!--Both hip actuators drive torso_pitch_joint in parallel. Separate SimpleTransmission mappings share one joint; efforts add and motor targets must agree in joint coordinates.-->
+  <!--Hip reductions are -1 in the source normalized joint coordinates because the pelvis now moves relative to the fixed leg-side mounts. Raw encoder directions and zero calibration remain hardware concerns.-->
+  <transmission name="left_hip_pitch_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="torso_pitch_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="left_hip_pitch_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>-1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="right_hip_pitch_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="torso_pitch_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="right_hip_pitch_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>-1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="waist_yaw_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="waist_yaw_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="waist_yaw_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="waist_roll_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="waist_roll_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="waist_roll_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="left_shoulder_pitch_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="left_shoulder_pitch_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="left_shoulder_pitch_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="left_shoulder_roll_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="left_shoulder_roll_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="left_shoulder_roll_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="left_shoulder_yaw_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="left_shoulder_yaw_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="left_shoulder_yaw_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="left_elbow_pitch_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="left_elbow_pitch_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="left_elbow_pitch_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="left_wrist_yaw_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="left_wrist_yaw_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="left_wrist_yaw_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="left_wrist_pitch_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="left_wrist_pitch_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="left_wrist_pitch_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="left_wrist_roll_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="left_wrist_roll_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="left_wrist_roll_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="right_shoulder_pitch_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="right_shoulder_pitch_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="right_shoulder_pitch_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="right_shoulder_roll_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="right_shoulder_roll_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="right_shoulder_roll_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="right_shoulder_yaw_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="right_shoulder_yaw_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="right_shoulder_yaw_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="right_elbow_pitch_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="right_elbow_pitch_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="right_elbow_pitch_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="right_wrist_yaw_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="right_wrist_yaw_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="right_wrist_yaw_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="right_wrist_pitch_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="right_wrist_pitch_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="right_wrist_pitch_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+  <transmission name="right_wrist_roll_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="right_wrist_roll_joint">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="right_wrist_roll_motor">
+      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+</robot>

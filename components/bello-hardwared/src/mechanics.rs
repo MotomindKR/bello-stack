@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use anyhow::{Context, Result, bail};
 use bello_robot_description::{
     CoordinateState, DifferentialTransmission, JointKind, JointLimits, RobotDescription,
+    SimpleTransmission,
 };
 
 use crate::domain::{ImpedanceCommand, MotorName, SafetyViolation};
@@ -56,6 +57,25 @@ struct DifferentialEnvelope {
 }
 
 #[derive(Clone, Debug)]
+struct ParallelEnvelope {
+    mappings: Vec<SimpleTransmission>,
+    motors: Vec<MotorName>,
+    joint: JointEnvelope,
+    feedback_position_tolerance: f64,
+}
+
+impl ParallelEnvelope {
+    fn violation(&self, violation: SafetyViolation, detail: String) -> MechanicalViolation {
+        MechanicalViolation {
+            motor: self.motors[0].clone(),
+            affected_motors: self.motors.clone(),
+            violation,
+            detail: format!("parallel joint {:?}: {detail}", self.joint.name),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct MechanicalViolation {
     pub(crate) motor: MotorName,
     pub(crate) affected_motors: Vec<MotorName>,
@@ -67,6 +87,7 @@ pub(crate) struct MechanicalViolation {
 pub(crate) struct MechanicalEnvelope {
     direct: Vec<DirectEnvelope>,
     differentials: Vec<DifferentialEnvelope>,
+    parallel: Vec<ParallelEnvelope>,
     motor_damping_kd: HashMap<MotorName, f64>,
 }
 
@@ -75,6 +96,7 @@ impl MechanicalEnvelope {
         description: &RobotDescription,
         group_motors: &[MotorName],
         motors: &HashMap<MotorName, MotorSpec>,
+        parallel_feedback_position_tolerance: f64,
     ) -> Result<Self> {
         let group_set = group_motors.iter().cloned().collect::<HashSet<_>>();
         let coordinate_motors = motors
@@ -83,13 +105,61 @@ impl MechanicalEnvelope {
             .collect::<HashMap<_, _>>();
         let mut direct = Vec::new();
         let mut differentials = Vec::new();
+        let mut parallel = Vec::new();
         let mut used_transmissions = HashSet::new();
+        let mut used_simple_joints = HashSet::new();
 
         for motor_name in group_motors {
             let motor = motors
                 .get(motor_name)
                 .with_context(|| format!("group refers to unknown motor {motor_name}"))?;
-            if let Some(transmission) = description.transmission_for_coordinate(&motor.coordinate) {
+            if let Some(simple) = description.simple_transmission_for_coordinate(&motor.coordinate)
+            {
+                if !used_simple_joints.insert(simple.joint.as_str()) {
+                    continue;
+                }
+                let mappings: Vec<_> = description
+                    .simple_transmissions()
+                    .iter()
+                    .filter(|t| t.joint == simple.joint)
+                    .cloned()
+                    .collect();
+                let simple_motors = mappings
+                    .iter()
+                    .map(|t| {
+                        let name =
+                            coordinate_motors
+                                .get(t.coordinate.as_str())
+                                .with_context(|| {
+                                    format!(
+                                        "simple transmission {:?} has no motor for coordinate {:?}",
+                                        t.name, t.coordinate
+                                    )
+                                })?;
+                        if !group_set.contains(name) {
+                            bail!(
+                                "parallel joint {:?} coordinates must belong to one motor group",
+                                simple.joint
+                            );
+                        }
+                        Ok(name.clone())
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                let feedback_position_tolerance = if mappings.len() == 1 {
+                    motors[&simple_motors[0]].feedback_position_tolerance
+                        / mappings[0].reduction.abs()
+                } else {
+                    parallel_feedback_position_tolerance
+                };
+                parallel.push(ParallelEnvelope {
+                    mappings,
+                    motors: simple_motors,
+                    joint: JointEnvelope::from_description(description, &simple.joint)?,
+                    feedback_position_tolerance,
+                });
+            } else if let Some(transmission) =
+                description.transmission_for_coordinate(&motor.coordinate)
+            {
                 if !used_transmissions.insert(transmission.name.as_str()) {
                     continue;
                 }
@@ -139,6 +209,7 @@ impl MechanicalEnvelope {
         Ok(Self {
             direct,
             differentials,
+            parallel,
             motor_damping_kd: group_motors
                 .iter()
                 .map(|name| (name.clone(), motors[name].fault_damping_kd))
@@ -172,6 +243,36 @@ impl MechanicalEnvelope {
                     detail,
                 },
             )?;
+        }
+        for parallel in &self.parallel {
+            let states: Vec<_> = parallel
+                .mappings
+                .iter()
+                .zip(&parallel.motors)
+                .map(|(mapping, motor)| {
+                    let command = commands[motor];
+                    mapping.resolve(CoordinateState {
+                        position: command.position,
+                        velocity: command.velocity,
+                    })
+                })
+                .collect();
+            for state in &states {
+                validate_joint_target(&parallel.joint, state.position, state.velocity)
+                    .map_err(|(violation, detail)| parallel.violation(violation, detail))?;
+                if (state.position - states[0].position).abs() > 1e-9 {
+                    return Err(parallel.violation(
+                        SafetyViolation::PositionLimit,
+                        "motor position targets disagree".into(),
+                    ));
+                }
+                if (state.velocity - states[0].velocity).abs() > 1e-9 {
+                    return Err(parallel.violation(
+                        SafetyViolation::VelocityLimit,
+                        "motor velocity targets disagree".into(),
+                    ));
+                }
+            }
         }
         for differential in &self.differentials {
             let states = differential
@@ -232,6 +333,50 @@ impl MechanicalEnvelope {
         &self,
         feedback: &HashMap<MotorName, Feedback>,
     ) -> Result<(), MechanicalViolation> {
+        for parallel in &self.parallel {
+            let Some(states) = parallel
+                .mappings
+                .iter()
+                .zip(&parallel.motors)
+                .map(|(mapping, motor)| {
+                    feedback.get(motor).map(|sample| {
+                        mapping.resolve(CoordinateState {
+                            position: sample.position,
+                            velocity: sample.velocity,
+                        })
+                    })
+                })
+                .collect::<Option<Vec<_>>>()
+            else {
+                continue;
+            };
+            let minimum = states
+                .iter()
+                .map(|state| state.position)
+                .fold(f64::INFINITY, f64::min);
+            let maximum = states
+                .iter()
+                .map(|state| state.position)
+                .fold(f64::NEG_INFINITY, f64::max);
+            if maximum - minimum > parallel.feedback_position_tolerance {
+                return Err(parallel.violation(
+                    SafetyViolation::PositionLimit,
+                    format!(
+                        "encoder disagreement {:.6} exceeds {:.6} rad",
+                        maximum - minimum,
+                        parallel.feedback_position_tolerance
+                    ),
+                ));
+            }
+            if minimum < parallel.joint.lower - parallel.feedback_position_tolerance
+                || maximum > parallel.joint.upper + parallel.feedback_position_tolerance
+            {
+                return Err(parallel.violation(
+                    SafetyViolation::PositionLimit,
+                    "feedback outside the shared joint envelope".into(),
+                ));
+            }
+        }
         for differential in &self.differentials {
             let Some(states) = differential
                 .transmission

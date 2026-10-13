@@ -1,0 +1,34 @@
+# Invisible fixed base at the hip-pitch axis; no floor intersects the below-pivot pelvis.
+hardware: ../../../descriptions/bello_mini_torso/hardware.yaml
+timestep_seconds: 0.0025
+initial_root_position:
+- 0.0
+- 0.0
+- 0.0
+initial_root_quaternion:
+- 1.0
+- 0.0
+- 0.0
+- 0.0
+initial_joint_positions:
+  torso_pitch_joint: 0.0
+  waist_yaw_joint: 0.0
+  waist_roll_joint: 0.0
+  right_shoulder_pitch_joint: 0.0
+  right_shoulder_roll_joint: -0.15
+  right_shoulder_yaw_joint: 0.0
+  right_elbow_pitch_joint: 0.0
+  right_wrist_yaw_joint: 0.0
+  right_wrist_pitch_joint: 0.0
+  right_wrist_roll_joint: 0.0
+  left_shoulder_pitch_joint: 0.0
+  left_shoulder_roll_joint: 0.15
+  left_shoulder_yaw_joint: 0.0
+  left_elbow_pitch_joint: 0.0
+  left_wrist_yaw_joint: 0.0
+  left_wrist_pitch_joint: 0.0
+  left_wrist_roll_joint: 0.0
+neighbor_exclusion_depth: 2
+payloads: []
+root: fixed
+floor: false

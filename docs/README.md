@@ -73,6 +73,9 @@ remain:
   description, meshes, hardware topology, and their provenance boundary.
 - [`descriptions/milly`](../descriptions/milly) for the canonical Milly
   single-arm description, hardware topology, and asset provenance.
+- [`descriptions/bello_mini_torso`](../descriptions/bello_mini_torso) for the
+  fixed-base Mini torso URDF, parallel hip-pitch hardware topology, deployment
+  profiles, mounting contract, and bring-up guide.
 
 The project is greenfield. Documentation describes the current interface only;
 it does not preserve historical aliases or compatibility behavior.

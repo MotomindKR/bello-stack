@@ -212,8 +212,12 @@ impl ResolvedTopology {
                     bail!("motor {motor} belongs to both {owner} and {}", spec.name);
                 }
             }
-            spec.mechanical =
-                MechanicalEnvelope::build(&robot_description, &spec.motors, &motor_specs)?;
+            spec.mechanical = MechanicalEnvelope::build(
+                &robot_description,
+                &spec.motors,
+                &motor_specs,
+                raw.parallel_feedback_position_tolerance,
+            )?;
             if groups.insert(spec.name.clone(), spec).is_some() {
                 bail!("duplicate group name {}", raw.name);
             }
@@ -417,6 +421,93 @@ mod tests {
             .iter()
             .map(|name| (name.clone(), ImpedanceCommand::default()))
             .collect()
+    }
+
+    #[test]
+    fn torso_profiles_require_synchronized_pitch_and_detect_encoder_disagreement() {
+        for file in ["bello-mini-torso.yaml", "bello-mini-torso-vcan.yaml"] {
+            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("config")
+                .join(file);
+            let topology = ResolvedTopology::load(&path).unwrap();
+            let pitch = &topology.groups[&GroupName::from("torso_pitch")];
+            let left = MotorName::from("left_hip_pitch_motor");
+            let right = MotorName::from("right_hip_pitch_motor");
+            let mut commands = neutral_commands(pitch);
+            for angle in [
+                -std::f64::consts::FRAC_PI_6,
+                0.0,
+                std::f64::consts::FRAC_PI_3,
+            ] {
+                commands.get_mut(&left).unwrap().position = -angle;
+                commands.get_mut(&right).unwrap().position = -angle;
+                pitch.mechanical.validate_targets(&commands).unwrap();
+            }
+            commands.get_mut(&right).unwrap().position = -0.1;
+            let error = pitch.mechanical.validate_targets(&commands).unwrap_err();
+            assert!(error.detail.contains("targets disagree"));
+            assert_eq!(error.affected_motors.len(), 2);
+            let mut feedback = neutral_feedback(pitch);
+            feedback.get_mut(&right).unwrap().position = 0.01;
+            pitch
+                .mechanical
+                .validate_feedback_positions(&feedback)
+                .unwrap();
+            feedback.get_mut(&right).unwrap().position = 0.03;
+            assert!(
+                pitch
+                    .mechanical
+                    .validate_feedback_positions(&feedback)
+                    .unwrap_err()
+                    .detail
+                    .contains("encoder disagreement")
+            );
+            let mut config = Config::load_raw(&path).unwrap();
+            config
+                .motor_groups
+                .iter_mut()
+                .find(|g| g.name == "torso_pitch")
+                .unwrap()
+                .motors
+                .retain(|m| m != "right_hip_pitch_motor");
+            config.motor_groups.push(
+                serde_yaml::from_str(
+                    "name: isolated\nmotors: [right_hip_pitch_motor]\ncontrol_rate_hz: 300",
+                )
+                .unwrap(),
+            );
+            assert!(
+                ResolvedTopology::resolve(config)
+                    .err()
+                    .unwrap()
+                    .to_string()
+                    .contains("one motor group")
+            );
+        }
+    }
+
+    #[test]
+    fn torso_joint_name_cannot_bypass_the_second_motor_ownership_requirement() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("config/bello-mini-torso-vcan.yaml");
+        let mut config = Config::load_raw(path).unwrap();
+        config
+            .motors
+            .retain(|motor| motor.name != "right_hip_pitch_motor");
+        config
+            .motors
+            .iter_mut()
+            .find(|motor| motor.name == "left_hip_pitch_motor")
+            .unwrap()
+            .coordinate = "torso_pitch_joint".into();
+        config
+            .motor_groups
+            .iter_mut()
+            .find(|group| group.name == "torso_pitch")
+            .unwrap()
+            .motors
+            .retain(|motor| motor != "right_hip_pitch_motor");
+        let error = ResolvedTopology::resolve(config).err().unwrap().to_string();
+        assert!(error.contains("no URDF position limits"), "{error}");
     }
 
     fn neutral_feedback(group: &GroupSpec) -> HashMap<MotorName, Feedback> {

@@ -64,7 +64,17 @@ impl RobstrideSimulation {
                 bindings.push(Binding {
                     motor: motor.id,
                     actuator,
-                    torque_limit: params.torque_max,
+                    torque_limit: unsafe {
+                        let model = simulation.model();
+                        if *model.actuator_forcelimited.add(actuator) {
+                            params
+                                .torque_max
+                                .min((*model.actuator_forcerange.add(2 * actuator)).abs())
+                                .min((*model.actuator_forcerange.add(2 * actuator + 1)).abs())
+                        } else {
+                            params.torque_max
+                        }
+                    },
                     offset: coordinate.offset,
                 });
             }
@@ -279,5 +289,48 @@ mod tests {
             RobstrideSimulation::new(crate::tests::simulation(), vec![(config(), mapping)])
                 .is_err()
         );
+    }
+
+    #[test]
+    fn servo_updates_keep_native_effort_limits() {
+        let mut simulation = crate::tests::simulation();
+        simulation
+            .set_impedance(0, Default::default(), 1.0)
+            .unwrap();
+        let mapping = BTreeMap::from([
+            (
+                1,
+                Coordinate {
+                    actuator: 0,
+                    offset: 0.0,
+                },
+            ),
+            (
+                2,
+                Coordinate {
+                    actuator: 1,
+                    offset: 0.0,
+                },
+            ),
+        ]);
+        let mut runtime = RobstrideSimulation::new(simulation, vec![(config(), mapping)]).unwrap();
+        let params = MotorParams::for_model("ROBSTRIDE_03", -1).unwrap();
+        for frame in [
+            param_write_u8_frame(0xfd, 1, 0x7005, 0),
+            enable_frame(0xfd, 1),
+            control_frame(
+                params,
+                ControlCommand {
+                    motor_id: 1,
+                    torque: 10.0,
+                    ..Default::default()
+                },
+            ),
+        ] {
+            runtime.handle("vcan-test", frame).unwrap();
+        }
+        runtime.step().unwrap();
+        let effort = runtime.simulation.actuator_state(0).unwrap().2;
+        assert!((effort - 1.0).abs() < 1e-12);
     }
 }

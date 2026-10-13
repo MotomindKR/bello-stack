@@ -110,7 +110,12 @@ impl Config {
         let mut membership = HashMap::new();
         for group in &description.motor_groups {
             let spec = GroupSpec::try_from(group)?;
-            MechanicalEnvelope::build(&robot, &spec.motors, &resolved_motors)?;
+            MechanicalEnvelope::build(
+                &robot,
+                &spec.motors,
+                &resolved_motors,
+                group.parallel_feedback_position_tolerance,
+            )?;
             if groups.insert(group.name.as_str(), group).is_some() {
                 bail!("duplicate motor group name {}", group.name);
             }

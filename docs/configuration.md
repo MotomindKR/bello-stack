@@ -37,6 +37,9 @@ The maintained examples are:
 - [provisional Bello Mini physical bindings](../components/bello-hardwared/config/bello-mini.yaml)
 - [provisional Bello Mini vCAN deployment](../components/bello-hardwared/config/bello-mini-vcan.yaml)
 - [Bello Mini hardware description](../descriptions/bello_mini/hardware.yaml)
+- [Bello Mini Torso hardware](../components/bello-hardwared/config/bello-mini-torso.yaml)
+- [Bello Mini Torso vCAN deployment](../components/bello-hardwared/config/bello-mini-torso-vcan.yaml)
+- [Bello Mini Torso hardware description](../descriptions/bello_mini_torso/hardware.yaml)
 
 Bello Mini exposes 28 motors in `lower_body` (legs and both waist axes) and
 `upper_body` (seven motors per arm). These profiles use provisional motor
@@ -83,7 +86,13 @@ robot_description: urdf/bello.urdf
 
 That path resolves from the hardware-description file. Every controlled
 coordinate must resolve to either a movable URDF joint or one actuator
-coordinate of a complete differential transmission.
+coordinate of a complete differential or simple transmission. Several simple
+transmissions may drive one shared joint, with distinct actuator coordinates.
+Every actuator of that joint must belong to the same motor group. Their scalar
+effort envelopes divide the joint envelope into equal joint-torque shares,
+accounting for each signed reduction.
+Transmitted joints must be controlled through their declared actuator
+coordinates; their joint names cannot serve as implicit direct-drive aliases.
 
 ### `runtime`
 
@@ -438,6 +447,12 @@ different groups may share a bus. Every motor belongs to exactly one group.
   feedback. Damping, stop, disable, faults, and shutdown restore periodic reports.
 - `command_timeout_ms`: `1..=10000` (default `100`)
 - `feedback_timeout_ms`: `1..=10000` (default `100`)
+- `parallel_feedback_position_tolerance`: finite, `(0, 0.4]` (default `0.02`),
+  in shared-joint units (radians for revolute joints). This is the maximum
+  disagreement between encoder positions resolved through parallel simple
+  transmissions. Targets must agree to numerical precision in both position
+  and velocity; violating feedback follows the group's `safe_position` fault
+  response.
 - `enable_timeout_ms`: `1..=30000` (default `500`)
 - `enable_retries`: `1..=100` (default `3`)
 

@@ -8,7 +8,7 @@ use crate::RobotDescription;
 
 #[derive(Debug, Error, PartialEq)]
 pub enum TransmissionError {
-    #[error("coordinate {0:?} is not a URDF scalar joint or differential actuator")]
+    #[error("coordinate {0:?} has no URDF motor mapping")]
     UnknownCoordinate(String),
     #[error("coordinate {0:?} appears more than once")]
     DuplicateCoordinate(String),
@@ -56,39 +56,10 @@ impl Transmission {
         let mut offsets = Vec::new();
         let mut affected = BTreeSet::new();
         for coordinate in &coordinate_names {
-            let (row, offset) = if let Some(joint) = description.joint(coordinate) {
-                if joint.kind == bello_robot_description::JointKind::Fixed {
-                    return Err(TransmissionError::UnknownCoordinate(coordinate.clone()));
-                }
-                (BTreeMap::from([(coordinate.clone(), 1.0)]), 0.0)
-            } else if let Some(transmission) = description.transmission_for_coordinate(coordinate) {
-                let coordinate_index = transmission
-                    .coordinates
-                    .iter()
-                    .position(|name| name == coordinate)
-                    .expect("matching transmission contains coordinate");
-                let sign = if coordinate_index == 0 { 1.0 } else { -1.0 };
-                let coordinate_reduction = transmission.coordinate_reduction[coordinate_index];
-                (
-                    BTreeMap::from([
-                        (
-                            transmission.joints[0].clone(),
-                            coordinate_reduction * transmission.joint_reduction[0],
-                        ),
-                        (
-                            transmission.joints[1].clone(),
-                            sign * coordinate_reduction * transmission.joint_reduction[1],
-                        ),
-                    ]),
-                    -coordinate_reduction
-                        * (transmission.joint_reduction[0] * transmission.joint_offset[0]
-                            + sign
-                                * transmission.joint_reduction[1]
-                                * transmission.joint_offset[1]),
-                )
-            } else {
-                return Err(TransmissionError::UnknownCoordinate(coordinate.clone()));
-            };
+            let mapping = description
+                .coordinate_mapping(coordinate)
+                .ok_or_else(|| TransmissionError::UnknownCoordinate(coordinate.clone()))?;
+            let (row, offset) = (mapping.coefficients, mapping.offset);
             affected.extend(row.keys().cloned());
             rows.push(row);
             offsets.push(offset);
@@ -317,5 +288,66 @@ impl FeedbackReconstructor {
 
     pub fn transmission(&self) -> &Transmission {
         &self.transmission
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn torso_pitch_reconstructs_both_encoders_and_splits_joint_torque() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../descriptions/bello_mini_torso/urdf/bello_mini_torso.urdf");
+        let description = RobotDescription::load(&path).unwrap();
+        let transmission = Transmission::from_description(
+            &description,
+            ["left_hip_pitch_motor", "right_hip_pitch_motor"],
+        )
+        .unwrap();
+        assert_eq!(transmission.joint_names(), &["torso_pitch_joint"]);
+        assert_eq!(
+            transmission.joint_to_coordinate(&[0.5]).unwrap(),
+            vec![-0.5, -0.5]
+        );
+        assert!(
+            (transmission.coordinate_to_joint(&[-0.49, -0.51]).unwrap()[0] - 0.5).abs() < 1e-12
+        );
+        assert_eq!(
+            transmission
+                .coordinate_effort_to_joint(&[-10., -20.])
+                .unwrap(),
+            vec![30.]
+        );
+        assert_eq!(
+            transmission.joint_effort_to_coordinate(&[30.]).unwrap(),
+            vec![-15., -15.]
+        );
+        let mut feedback = FeedbackReconstructor::new(transmission, Duration::from_millis(200));
+        let mut samples = BTreeMap::from([
+            (
+                "left_hip_pitch_motor".into(),
+                CoordinateFeedback {
+                    position: -0.5,
+                    velocity: -0.2,
+                    effort: -15.,
+                    age: Duration::ZERO,
+                },
+            ),
+            (
+                "right_hip_pitch_motor".into(),
+                CoordinateFeedback {
+                    position: -0.5,
+                    velocity: -0.2,
+                    effort: -15.,
+                    age: Duration::ZERO,
+                },
+            ),
+        ]);
+        assert!(feedback.update(&samples).available);
+        samples.remove("right_hip_pitch_motor");
+        let missing = feedback.update(&samples);
+        assert!(!missing.available);
+        assert_eq!(missing.position, vec![0.5]);
     }
 }

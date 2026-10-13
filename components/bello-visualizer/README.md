@@ -5,7 +5,7 @@ telemetry from hardwared. See [power-board integration](../../docs/power_board.m
 
 `bello-visualizer` is the native Kiss3d + egui monitor and command UI for
 `bello-hardwared`. It renders the repository's URDF description, follows live
-motor and IMU telemetry, reconstructs differential ankle joints, can command
+motor and IMU telemetry, reconstructs differential and parallel-actuated joints, can command
 explicitly configured motor groups. Policy operation uses the Electron console
 and runner-owned operator service in `bello_mujoco`. This diagnostic viewer does
 not open a controller or host a joystick command server. GLB node transforms

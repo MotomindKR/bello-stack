@@ -326,8 +326,13 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
         let mut sequence = 0;
         let mut queues = Queues::default();
         let stdin = std::io::stdin();
+        let controls = if guide.is_some() {
+            "Enter releases/resets the torso guide; Ctrl-C stops."
+        } else {
+            "Ctrl-C stops."
+        };
         eprintln!(
-            "Native emulator online at {}. Enter releases/resets the torso guide; Ctrl-C stops.",
+            "Native emulator online at {}. {controls}",
             config.pose.listen
         );
         while !*stop_rx.borrow() && duration.is_none_or(|limit| epoch.elapsed() < limit) {

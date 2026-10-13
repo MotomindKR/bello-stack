@@ -15,30 +15,30 @@ use crate::Simulation;
 fn imported_spec(urdf: &Path) -> Result<MjSpec> {
     fn replace_visual_meshes(element: &mut xmltree::Element, urdf: &Path) -> Result<bool> {
         let mut changed = false;
-        if element.name == "mesh" {
-            if let Some(filename) = element.attributes.get("filename").cloned() {
-                if filename.to_ascii_lowercase().ends_with(".glb") {
-                    let companion = urdf
-                        .parent()
-                        .context("URDF has no parent")?
-                        .join(&filename)
-                        .with_extension("stl")
-                        .canonicalize()
-                        .with_context(|| format!("missing MuJoCo STL companion for {filename}"))?;
-                    element
-                        .attributes
-                        .insert("filename".into(), companion.to_string_lossy().into());
-                    changed = true;
-                } else {
-                    let path = urdf
-                        .parent()
-                        .context("URDF has no parent")?
-                        .join(&filename)
-                        .canonicalize()?;
-                    element
-                        .attributes
-                        .insert("filename".into(), path.to_string_lossy().into());
-                }
+        if element.name == "mesh"
+            && let Some(filename) = element.attributes.get("filename").cloned()
+        {
+            if filename.to_ascii_lowercase().ends_with(".glb") {
+                let companion = urdf
+                    .parent()
+                    .context("URDF has no parent")?
+                    .join(&filename)
+                    .with_extension("stl")
+                    .canonicalize()
+                    .with_context(|| format!("missing MuJoCo STL companion for {filename}"))?;
+                element
+                    .attributes
+                    .insert("filename".into(), companion.to_string_lossy().into());
+                changed = true;
+            } else {
+                let path = urdf
+                    .parent()
+                    .context("URDF has no parent")?
+                    .join(&filename)
+                    .canonicalize()?;
+                element
+                    .attributes
+                    .insert("filename".into(), path.to_string_lossy().into());
             }
         }
         for child in &mut element.children {
@@ -61,6 +61,10 @@ fn imported_spec(urdf: &Path) -> Result<MjSpec> {
 #[serde(deny_unknown_fields)]
 pub struct ModelConfig {
     pub hardware: PathBuf,
+    #[serde(default)]
+    pub root: RootMode,
+    #[serde(default = "default_floor")]
+    pub floor: bool,
     pub timestep_seconds: f64,
     pub initial_root_position: [f64; 3],
     pub initial_root_quaternion: [f64; 4],
@@ -70,6 +74,18 @@ pub struct ModelConfig {
     pub payloads: Vec<Payload>,
     #[serde(default)]
     pub torso_guide: Option<crate::guide::Config>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RootMode {
+    #[default]
+    Free,
+    Fixed,
+}
+
+fn default_floor() -> bool {
+    true
 }
 
 #[derive(Debug, Deserialize)]
@@ -268,13 +284,7 @@ fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Re
             "invalid motor model/direction"
         );
     }
-    let mut expected_coordinates = moving.clone();
-    for transmission in description.transmissions() {
-        for joint in &transmission.joints {
-            expected_coordinates.remove(joint.as_str());
-        }
-        expected_coordinates.extend(transmission.coordinates.iter().map(String::as_str));
-    }
+    let expected_coordinates = description.motor_coordinates();
     ensure!(
         coordinate_names == expected_coordinates,
         "motor coordinates must match the URDF transmissions exactly"
@@ -284,13 +294,18 @@ fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Re
     spec.option_mut().timestep = config.timestep_seconds;
     spec.option_mut().gravity = [0., 0., -9.81];
     spec.option_mut().integrator = MjtIntegrator::mjINT_IMPLICITFAST as i32;
-    // Keep source link frames and inertias; only the world mounting becomes free.
+    ensure!(
+        config.root != RootMode::Fixed || config.torso_guide.is_none(),
+        "a fixed root cannot use a torso guide"
+    );
     let root = spec
         .body_mut(description.root_link())
         .context("native URDF root body is missing")?;
-    root.add_joint()
-        .with_name("root_free")
-        .with_type(MjtJoint::mjJNT_FREE);
+    if config.root == RootMode::Free {
+        root.add_joint()
+            .with_name("root_free")
+            .with_type(MjtJoint::mjJNT_FREE);
+    }
     root.with_pos(config.initial_root_position)
         .with_quat(config.initial_root_quaternion);
 
@@ -312,9 +327,10 @@ fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Re
                 .parse::<f64>()?;
         } else {
             ensure!(
-                description
-                    .joints()
-                    .any(|j| j.child == name && j.kind == JointKind::Fixed),
+                (config.root == RootMode::Fixed && name == description.root_link())
+                    || description
+                        .joints()
+                        .any(|j| j.child == name && j.kind == JointKind::Fixed),
                 "dynamic link {name} is missing explicit inertia"
             );
             let body = spec.body_mut(name).context("missing fixed URDF frame")?;
@@ -348,55 +364,50 @@ fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Re
         }
     }
     add_neighbor_exclusions(&mut spec, &description, config.neighbor_exclusion_depth)?;
-    spec.world_body_mut()
-        .add_geom()
-        .with_name("floor")
-        .with_type(MjtGeom::mjGEOM_PLANE)
-        .with_size([5., 5., 0.1])
-        .with_friction([1.0, 0.005, 0.0001]);
+    if config.floor {
+        spec.world_body_mut()
+            .add_geom()
+            .with_name("floor")
+            .with_type(MjtGeom::mjGEOM_PLANE)
+            .with_size([5., 5., 0.1])
+            .with_friction([1.0, 0.005, 0.0001]);
+    }
     let mut offsets = BTreeMap::new();
     let mut covered = BTreeSet::new();
     for motor in &hardware.motors {
-        let (target, kind, offset) =
-            if let Some(t) = description.transmission_for_coordinate(&motor.coordinate) {
-                let index = t
-                    .coordinates
-                    .iter()
-                    .position(|c| c == &motor.coordinate)
-                    .unwrap();
-                let coefficients = [
-                    t.coordinate_reduction[index] * t.joint_reduction[0],
-                    (if index == 0 { 1. } else { -1. })
-                        * t.coordinate_reduction[index]
-                        * t.joint_reduction[1],
-                ];
-                let tendon = spec.add_tendon();
-                tendon.set_name(&motor.coordinate)?;
-                for (joint, coefficient) in t.joints.iter().zip(coefficients) {
-                    tendon.wrap_joint(joint, coefficient);
-                    covered.insert(joint.as_str());
-                }
-                (
-                    motor.coordinate.as_str(),
-                    MjtTrn::mjTRN_TENDON,
-                    -coefficients
-                        .iter()
-                        .zip(t.joint_offset)
-                        .map(|(c, q)| c * q)
-                        .sum::<f64>(),
-                )
-            } else {
-                ensure!(
-                    moving.contains(motor.coordinate.as_str()),
-                    "unknown motor coordinate {}",
-                    motor.coordinate
-                );
-                ensure!(
-                    covered.insert(motor.coordinate.as_str()),
-                    "duplicate joint actuation"
-                );
-                (motor.coordinate.as_str(), MjtTrn::mjTRN_JOINT, 0.)
-            };
+        let (target, kind, offset) = if description
+            .transmission_for_coordinate(&motor.coordinate)
+            .is_some()
+            || description
+                .simple_transmission_for_coordinate(&motor.coordinate)
+                .is_some()
+        {
+            let mapping = description
+                .coordinate_mapping(&motor.coordinate)
+                .context("missing motor mapping")?;
+            let tendon = spec.add_tendon();
+            tendon.set_name(&motor.coordinate)?;
+            for (joint, coefficient) in &mapping.coefficients {
+                tendon.wrap_joint(joint, *coefficient);
+                covered.insert(joint.clone());
+            }
+            (
+                motor.coordinate.as_str(),
+                MjtTrn::mjTRN_TENDON,
+                mapping.offset,
+            )
+        } else {
+            ensure!(
+                moving.contains(motor.coordinate.as_str()),
+                "unknown motor coordinate {}",
+                motor.coordinate
+            );
+            ensure!(
+                covered.insert(motor.coordinate.clone()),
+                "duplicate joint actuation"
+            );
+            (motor.coordinate.as_str(), MjtTrn::mjTRN_JOINT, 0.)
+        };
         offsets.insert(motor.coordinate.clone(), offset);
         let params = MotorParams::for_model(&motor.model, motor.direction).unwrap();
         let actuator = spec.add_actuator();
@@ -404,12 +415,18 @@ fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Re
         actuator.set_to_motor();
         actuator.set_trntype(kind);
         actuator.set_target(target);
-        actuator.with_forcerange([params.torque_min, params.torque_max]);
+        let effort = description
+            .coordinate_effort_limit(&motor.coordinate)
+            .context("missing motor effort limit")?;
+        actuator.with_forcerange([
+            params.torque_min.max(-effort),
+            params.torque_max.min(effort),
+        ]);
         actuator.set_forcelimited(MjtLimited::mjLIMITED_TRUE);
         actuator.set_ctrllimited(MjtLimited::mjLIMITED_FALSE);
     }
     ensure!(
-        covered == moving,
+        covered.iter().map(String::as_str).collect::<BTreeSet<_>>() == moving,
         "motors do not cover every movable URDF joint"
     );
     for t in description.transmissions() {
@@ -669,6 +686,8 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
             dir,
             ModelConfig {
                 hardware,
+                root: RootMode::Free,
+                floor: true,
                 timestep_seconds: 0.001,
                 initial_root_position: [0., 0., 1.],
                 initial_root_quaternion: [1., 0., 0., 0.],
@@ -717,6 +736,76 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
         assert_eq!(a.jnt_qposadr(), b.jnt_qposadr());
         assert_eq!(a.jnt_axis(), b.jnt_axis());
         assert_eq!(physics.data.qpos(), visual.data.qpos());
+    }
+
+    #[test]
+    fn fixed_root_parallel_actuators_sum_torque_and_preserve_affine_coordinates() {
+        let (_dir, mut config) = fixture();
+        let urdf = config.hardware.parent().unwrap().join("robot.urdf");
+        let mut xml = xmltree::Element::parse(std::fs::File::open(&urdf).unwrap()).unwrap();
+        xml.children.retain(
+            |node| !matches!(node, xmltree::XMLNode::Element(e) if e.name == "transmission"),
+        );
+        for node in &mut xml.children {
+            if let xmltree::XMLNode::Element(e) = node
+                && e.name == "joint"
+                && e.attributes.get("name").map(String::as_str) == Some("pitch")
+            {
+                e.attributes.insert("type".into(), "fixed".into());
+                e.children.retain(|node| !matches!(node, xmltree::XMLNode::Element(e) if e.name == "limit" || e.name == "axis"));
+            }
+        }
+        for (name, reduction) in [("a", -2.), ("b", 4.)] {
+            let transmission = xmltree::Element::parse(format!(r#"<transmission name="{name}"><type>transmission_interface/SimpleTransmission</type><actuator name="{name}"><mechanicalReduction>{reduction}</mechanicalReduction></actuator><joint name="roll"><offset>0.01</offset></joint></transmission>"#).as_bytes()).unwrap();
+            xml.children.push(xmltree::XMLNode::Element(transmission));
+        }
+        xml.write(std::fs::File::create(urdf).unwrap()).unwrap();
+        config.root = RootMode::Fixed;
+        config.floor = false;
+        config.initial_joint_positions.remove("pitch");
+        let mut robot = build(&config, None).unwrap();
+        assert_eq!(robot.simulation.model().nq, 1);
+        let dof = robot.simulation.data.model().jnt_dofadr()
+            [robot.simulation.id(MjtObj::mjOBJ_JOINT, "roll").unwrap() as usize]
+            as usize;
+        for (name, reduction, torque) in [("a", -2., 2.), ("b", 4., -1.)] {
+            let coordinate = robot.coordinates[name];
+            let (position, _, _) = robot
+                .simulation
+                .actuator_state(coordinate.actuator)
+                .unwrap();
+            assert!((position + coordinate.offset - reduction * (0.2 - 0.01)).abs() < 1e-12);
+            robot
+                .simulation
+                .set_impedance(
+                    coordinate.actuator,
+                    robstride_protocol::ControlCommand {
+                        torque,
+                        ..Default::default()
+                    },
+                    10.,
+                )
+                .unwrap();
+        }
+        robot.simulation.forward();
+        assert!((robot.simulation.data.qfrc_actuator()[dof] + 8.).abs() < 1e-12);
+        let base = robot.simulation.id(MjtObj::mjOBJ_BODY, "base").unwrap() as usize;
+        for _ in 0..100 {
+            robot.simulation.step();
+        }
+        let position = robot.simulation.body_state(base).unwrap().position;
+        assert!((position[2] - 1.).abs() < 1e-12);
+        config.torso_guide = Some(crate::guide::Config {
+            body: "base".into(),
+            drop_limit_m: 0.05,
+        });
+        assert!(
+            build(&config, None)
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("fixed root")
+        );
     }
 
     #[test]

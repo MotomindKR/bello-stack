@@ -6,6 +6,9 @@ use anyhow::{Context, bail};
 use nalgebra::{Isometry3, Translation3, Unit, UnitQuaternion, Vector3};
 use roxmltree::{Document, Node};
 
+mod simple_transmission;
+pub use simple_transmission::{CoordinateMapping, SimpleTransmission};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum JointKind {
     Fixed,
@@ -160,6 +163,7 @@ pub struct RobotDescription {
     joints: BTreeMap<String, Joint>,
     children: BTreeMap<String, Vec<String>>,
     transmissions: Vec<DifferentialTransmission>,
+    simple_transmissions: Vec<SimpleTransmission>,
 }
 
 impl RobotDescription {
@@ -178,6 +182,7 @@ impl RobotDescription {
         let joints = parse_joints(robot)?;
         let transmissions = parse_transmissions(robot)?;
         validate_description(&links, &joints, &transmissions)?;
+        let simple_transmissions = simple_transmission::parse(robot, &joints, &transmissions)?;
 
         let child_links = joints
             .values()
@@ -208,6 +213,7 @@ impl RobotDescription {
             joints,
             children,
             transmissions,
+            simple_transmissions,
         })
     }
 
@@ -269,6 +275,92 @@ impl RobotDescription {
         &self.transmissions
     }
 
+    pub fn simple_transmissions(&self) -> &[SimpleTransmission] {
+        &self.simple_transmissions
+    }
+
+    pub fn simple_transmission_for_coordinate(
+        &self,
+        coordinate: &str,
+    ) -> Option<&SimpleTransmission> {
+        self.simple_transmissions
+            .iter()
+            .find(|t| t.coordinate == coordinate)
+    }
+
+    /// Motor-space affine mapping `coordinate = sum(coefficients * joints) + offset`.
+    pub fn coordinate_mapping(&self, coordinate: &str) -> Option<CoordinateMapping> {
+        if let Some(t) = self.simple_transmission_for_coordinate(coordinate) {
+            return Some(CoordinateMapping {
+                coefficients: BTreeMap::from([(t.joint.clone(), t.reduction)]),
+                offset: -t.reduction * t.offset,
+            });
+        }
+        if let Some(t) = self.transmission_for_coordinate(coordinate) {
+            let index = t.coordinates.iter().position(|c| c == coordinate)?;
+            let sign = if index == 0 { 1.0 } else { -1.0 };
+            let coefficients = [
+                t.coordinate_reduction[index] * t.joint_reduction[0],
+                sign * t.coordinate_reduction[index] * t.joint_reduction[1],
+            ];
+            return Some(CoordinateMapping {
+                coefficients: t.joints.iter().cloned().zip(coefficients).collect(),
+                offset: -coefficients[0] * t.joint_offset[0] - coefficients[1] * t.joint_offset[1],
+            });
+        }
+        self.direct_coordinate_joint(coordinate)?;
+        Some(CoordinateMapping {
+            coefficients: BTreeMap::from([(coordinate.to_owned(), 1.0)]),
+            offset: 0.0,
+        })
+    }
+
+    /// Exact motor ownership declared by the description, including direct joints.
+    pub fn motor_coordinates(&self) -> BTreeSet<&str> {
+        let mut coordinates: BTreeSet<_> = self
+            .joints()
+            .filter(|j| j.kind != JointKind::Fixed)
+            .map(|j| j.name.as_str())
+            .collect();
+        for t in &self.transmissions {
+            for joint in &t.joints {
+                coordinates.remove(joint.as_str());
+            }
+        }
+        for t in &self.simple_transmissions {
+            coordinates.remove(t.joint.as_str());
+        }
+        coordinates.extend(
+            self.transmissions
+                .iter()
+                .flat_map(|t| t.coordinates.iter().map(String::as_str)),
+        );
+        coordinates.extend(
+            self.simple_transmissions
+                .iter()
+                .map(|t| t.coordinate.as_str()),
+        );
+        coordinates
+    }
+
+    fn direct_coordinate_joint(&self, coordinate: &str) -> Option<&Joint> {
+        let joint = self
+            .joint(coordinate)
+            .filter(|j| j.kind != JointKind::Fixed)?;
+        if self
+            .simple_transmissions
+            .iter()
+            .any(|t| t.joint == coordinate)
+            || self
+                .transmissions
+                .iter()
+                .any(|t| t.joints.iter().any(|name| name == coordinate))
+        {
+            return None;
+        }
+        Some(joint)
+    }
+
     pub fn transmission_for_coordinate(
         &self,
         coordinate: &str,
@@ -282,7 +374,13 @@ impl RobotDescription {
     }
 
     pub fn coordinate_position_limits(&self, coordinate: &str) -> Option<(f64, f64)> {
-        if let Some(joint) = self.joint(coordinate) {
+        if let Some(t) = self.simple_transmission_for_coordinate(coordinate) {
+            let limits = self.joint(&t.joint)?.limits.as_ref()?;
+            let a = t.reduction * (limits.lower - t.offset);
+            let b = t.reduction * (limits.upper - t.offset);
+            return Some((a.min(b), a.max(b)));
+        }
+        if let Some(joint) = self.direct_coordinate_joint(coordinate) {
             let limits = joint.limits.as_ref()?;
             return Some((limits.lower, limits.upper));
         }
@@ -315,7 +413,10 @@ impl RobotDescription {
     }
 
     pub fn coordinate_velocity_limit(&self, coordinate: &str) -> Option<f64> {
-        if let Some(joint) = self.joint(coordinate) {
+        if let Some(t) = self.simple_transmission_for_coordinate(coordinate) {
+            return Some(t.reduction.abs() * self.joint(&t.joint)?.limits.as_ref()?.velocity);
+        }
+        if let Some(joint) = self.direct_coordinate_joint(coordinate) {
             return Some(joint.limits.as_ref()?.velocity);
         }
         let transmission = self.transmission_for_coordinate(coordinate)?;
@@ -339,7 +440,17 @@ impl RobotDescription {
     }
 
     pub fn coordinate_effort_limit(&self, coordinate: &str) -> Option<f64> {
-        if let Some(joint) = self.joint(coordinate) {
+        if let Some(t) = self.simple_transmission_for_coordinate(coordinate) {
+            let count = self
+                .simple_transmissions
+                .iter()
+                .filter(|other| other.joint == t.joint)
+                .count();
+            return Some(
+                self.joint(&t.joint)?.limits.as_ref()?.effort / (count as f64 * t.reduction.abs()),
+            );
+        }
+        if let Some(joint) = self.direct_coordinate_joint(coordinate) {
             return Some(joint.limits.as_ref()?.effort);
         }
         let transmission = self.transmission_for_coordinate(coordinate)?;
@@ -375,6 +486,7 @@ impl RobotDescription {
 pub struct KinematicModel {
     feet: [FootPath; 2],
     transmissions: Vec<DifferentialTransmission>,
+    simple_transmissions: Vec<SimpleTransmission>,
     transmitted_joints: BTreeSet<String>,
     required_coordinates: Vec<String>,
 }
@@ -397,7 +509,7 @@ impl KinematicModel {
     ) -> anyhow::Result<Self> {
         let joints = &description.joints;
         let transmissions = description.transmissions.clone();
-        let transmitted_joints = transmissions
+        let mut transmitted_joints = transmissions
             .iter()
             .flat_map(|transmission| transmission.joints.iter().cloned())
             .collect::<BTreeSet<_>>();
@@ -435,6 +547,13 @@ impl KinematicModel {
                 bail!("differential transmission references unused joint {joint:?}");
             }
         }
+        let simple_transmissions: Vec<_> = description
+            .simple_transmissions
+            .iter()
+            .filter(|t| used_joints.contains(&t.joint))
+            .cloned()
+            .collect();
+        transmitted_joints.extend(simple_transmissions.iter().map(|t| t.joint.clone()));
         let mut required = used_joints
             .difference(&transmitted_joints)
             .cloned()
@@ -442,9 +561,11 @@ impl KinematicModel {
         for transmission in &transmissions {
             required.extend(transmission.coordinates.iter().cloned());
         }
+        required.extend(simple_transmissions.iter().map(|t| t.coordinate.clone()));
         Ok(Self {
             feet,
             transmissions,
+            simple_transmissions,
             transmitted_joints,
             required_coordinates: required.into_iter().collect(),
         })
@@ -470,6 +591,34 @@ impl KinematicModel {
                     bail!("joint {joint:?} is provided by more than one transmission");
                 }
             }
+        }
+        let mut simple_states: BTreeMap<String, (JointState, f64)> = BTreeMap::new();
+        for t in &self.simple_transmissions {
+            let state = t.resolve(
+                *coordinates
+                    .get(&t.coordinate)
+                    .with_context(|| format!("missing coordinate {:?}", t.coordinate))?,
+            );
+            let (sum, count) = simple_states.entry(t.joint.clone()).or_insert((
+                JointState {
+                    position: 0.0,
+                    velocity: 0.0,
+                },
+                0.0,
+            ));
+            let weight = t.reduction * t.reduction;
+            sum.position += weight * state.position;
+            sum.velocity += weight * state.velocity;
+            *count += weight;
+        }
+        for (joint, (sum, count)) in simple_states {
+            joint_states.insert(
+                joint,
+                JointState {
+                    position: sum.position / count,
+                    velocity: sum.velocity / count,
+                },
+            );
         }
         for foot in &self.feet {
             for joint in &foot.joints {
