@@ -1,3 +1,4 @@
+use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -5,6 +6,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use crossbeam_channel::{Receiver, Sender, bounded, select_biased};
+use nix::errno::Errno;
 use socketcan::id::CAN_EFF_FLAG;
 use socketcan::{
     CanFrame as WireFrame, CanSocket, EmbeddedFrame, ExtendedId, Frame, Socket, SocketOptions,
@@ -25,6 +27,9 @@ enum Outbound {
     Priority(PriorityBatch),
     Periodic(PeriodicControl, Arc<PeriodicBatch>),
 }
+
+const BACKPRESSURE_LIMIT: Duration = Duration::from_millis(2);
+const BACKPRESSURE_POLL: Duration = Duration::from_micros(100);
 
 pub(super) fn run(
     spec: BusSpec,
@@ -225,7 +230,7 @@ fn transmit_periodic_batch(
     spec: &BusSpec,
     control: &PeriodicControl,
     batch: &PeriodicBatch,
-    mut write: impl FnMut(CanFrame) -> Result<(), String>,
+    mut write: impl FnMut(CanFrame) -> io::Result<()>,
 ) -> Result<bool, String> {
     let Some(stall_deadline) = control.stall_deadline() else {
         return Ok(false);
@@ -233,6 +238,7 @@ fn transmit_periodic_batch(
     if !control_batch_can_finish(spec, batch.frames.len(), batch.expires_at) {
         return Ok(false);
     }
+    let mut retry_until = None;
     for (index, frame) in batch.frames.iter().enumerate() {
         // Intentional revocation may interrupt a burst: its ordered safety
         // barrier follows on this same TX worker. It must never resume.
@@ -247,7 +253,15 @@ fn transmit_periodic_batch(
                 Err("periodic control batch expired after partial transmission".into())
             };
         }
-        write(*frame)?;
+        if !write_with_backpressure(
+            *frame,
+            batch.expires_at,
+            &mut retry_until,
+            |now| control.permits_transmission(batch, now, stall_deadline),
+            &mut write,
+        )? {
+            return Ok(false);
+        }
     }
     let completed = Instant::now();
     if !control.permits_transmission(batch, completed, stall_deadline) {
@@ -268,6 +282,7 @@ fn transmit_control_batch(
     if !control_batch_can_finish(spec, batch.frames.len(), batch.expires_at) {
         return Ok(false);
     }
+    let mut retry_until = None;
     for (index, frame) in batch.frames.into_iter().enumerate() {
         if Instant::now() >= batch.expires_at {
             return if index == 0 {
@@ -276,7 +291,13 @@ fn transmit_control_batch(
                 Err("control batch expired after partial transmission".into())
             };
         }
-        write_frame(writer, frame)?;
+        write_with_backpressure(
+            frame,
+            batch.expires_at,
+            &mut retry_until,
+            |_| true,
+            |frame| write_frame(writer, frame),
+        )?;
     }
     if Instant::now() > batch.expires_at {
         Err("control batch completed after its freshness deadline".into())
@@ -290,6 +311,7 @@ fn transmit_priority_batch(
     frames: Vec<CanFrame>,
     expires_at: Instant,
 ) -> Result<(), BatchFailure> {
+    let mut retry_until = None;
     for (index, frame) in frames.into_iter().enumerate() {
         if Instant::now() >= expires_at {
             return if index == 0 {
@@ -300,7 +322,14 @@ fn transmit_priority_batch(
                 ))
             };
         }
-        write_frame(writer, frame).map_err(BatchFailure::Transmit)?;
+        write_with_backpressure(
+            frame,
+            expires_at,
+            &mut retry_until,
+            |_| true,
+            |frame| write_frame(writer, frame),
+        )
+        .map_err(BatchFailure::Transmit)?;
     }
     if Instant::now() > expires_at {
         Err(BatchFailure::Transmit(
@@ -323,13 +352,51 @@ fn priority_batch_can_finish(spec: &BusSpec, frame_count: usize, expires_at: Ins
         .is_some_and(|completion| completion <= expires_at)
 }
 
-fn write_frame(writer: &CanSocket, frame: CanFrame) -> Result<(), String> {
-    let id = ExtendedId::new(frame.id).ok_or_else(|| "invalid extended CAN id".to_owned())?;
-    let frame = WireFrame::new(id, &frame.data)
-        .ok_or_else(|| "could not construct CAN frame".to_owned())?;
-    writer
-        .write_frame(&frame)
-        .map_err(|error| format!("CAN write failed: {error}"))
+fn write_with_backpressure(
+    frame: CanFrame,
+    expires_at: Instant,
+    retry_until: &mut Option<Instant>,
+    mut permitted: impl FnMut(Instant) -> bool,
+    mut write: impl FnMut(CanFrame) -> io::Result<()>,
+) -> Result<bool, String> {
+    let mut retrying = false;
+    loop {
+        let now = Instant::now();
+        if !permitted(now) {
+            return Ok(false);
+        }
+        if now >= expires_at {
+            return Err("CAN batch expired while waiting for transmit capacity".into());
+        }
+        if retrying && retry_until.is_some_and(|deadline| now >= deadline) {
+            return Err("CAN transmit queue stayed full beyond its retry budget".into());
+        }
+        match write(frame) {
+            Ok(()) => return Ok(true),
+            Err(error) if error.raw_os_error() == Some(Errno::ENOBUFS as i32) => {
+                // SocketCAN reports a full device queue immediately, even with
+                // SO_SNDTIMEO. Share one short retry budget across this burst.
+                let now = Instant::now();
+                let deadline =
+                    (*retry_until.get_or_insert(now + BACKPRESSURE_LIMIT)).min(expires_at);
+                if now >= deadline {
+                    return Err(format!("CAN transmit queue stayed full: {error}"));
+                }
+                retrying = true;
+                thread::sleep(BACKPRESSURE_POLL.min(deadline - now));
+            }
+            Err(error) => return Err(format!("CAN write failed: {error}")),
+        }
+    }
+}
+
+fn write_frame(writer: &CanSocket, frame: CanFrame) -> io::Result<()> {
+    let id = ExtendedId::new(frame.id)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid extended CAN id"))?;
+    let frame = WireFrame::new(id, &frame.data).ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "could not construct CAN frame")
+    })?;
+    writer.write_frame(&frame)
 }
 
 fn run_rx(
@@ -545,12 +612,105 @@ mod tests {
         let (spec, control, batch) = periodic_fixture(Duration::from_secs(1));
         let result = transmit_periodic_batch(&spec, &control, &batch, |frame| {
             if frame.id == 2 {
-                Err("injected CAN write failure".into())
+                Err(io::Error::other("injected CAN write failure"))
             } else {
                 Ok(())
             }
         });
-        assert_eq!(result, Err("injected CAN write failure".into()));
+        assert_eq!(
+            result,
+            Err("CAN write failed: injected CAN write failure".into())
+        );
+    }
+
+    #[test]
+    fn transient_queue_pressure_retries_only_the_rejected_frame() {
+        let (spec, control, batch) = periodic_fixture(Duration::from_secs(1));
+        let mut attempted = Vec::new();
+        assert!(
+            transmit_periodic_batch(&spec, &control, &batch, |frame| {
+                attempted.push(frame.id);
+                if attempted.len() == 2 {
+                    Err(io::Error::from_raw_os_error(Errno::ENOBUFS as i32))
+                } else {
+                    Ok(())
+                }
+            })
+            .unwrap()
+        );
+        assert_eq!(attempted, vec![1, 2, 2]);
+    }
+
+    #[test]
+    fn revocation_during_queue_pressure_prevents_retry() {
+        let (spec, control, batch) = periodic_fixture(Duration::from_secs(1));
+        let mut attempted = Vec::new();
+        assert!(
+            !transmit_periodic_batch(&spec, &control, &batch, |frame| {
+                attempted.push(frame.id);
+                control.revoke();
+                Err(io::Error::from_raw_os_error(Errno::ENOBUFS as i32))
+            })
+            .unwrap()
+        );
+        assert_eq!(attempted, vec![1]);
+    }
+
+    #[test]
+    fn persistent_queue_pressure_has_a_bounded_shared_budget() {
+        let mut retry_until = None;
+        let frame = CanFrame {
+            id: 1,
+            data: [0; 8],
+        };
+        let expires = Instant::now() + Duration::from_secs(1);
+        let result = write_with_backpressure(
+            frame,
+            expires,
+            &mut retry_until,
+            |_| true,
+            |_| Err(io::Error::from_raw_os_error(Errno::ENOBUFS as i32)),
+        );
+        assert!(result.unwrap_err().contains("queue stayed full"));
+        let original_deadline = retry_until;
+        let mut attempts = 0;
+        let result = write_with_backpressure(
+            frame,
+            expires,
+            &mut retry_until,
+            |_| true,
+            |_| {
+                attempts += 1;
+                Err(io::Error::from_raw_os_error(Errno::ENOBUFS as i32))
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(attempts, 1);
+        assert_eq!(retry_until, original_deadline);
+    }
+
+    #[test]
+    fn expiry_during_queue_pressure_prevents_retry() {
+        let mut retry_until = None;
+        let frame = CanFrame {
+            id: 1,
+            data: [0; 8],
+        };
+        let expires = Instant::now() + Duration::from_millis(1);
+        let mut attempts = 0;
+        let result = write_with_backpressure(
+            frame,
+            expires,
+            &mut retry_until,
+            |_| true,
+            |_| {
+                attempts += 1;
+                thread::sleep(Duration::from_millis(2));
+                Err(io::Error::from_raw_os_error(Errno::ENOBUFS as i32))
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(attempts, 1);
     }
 
     #[test]

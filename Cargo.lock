@@ -654,6 +654,7 @@ dependencies = [
  "crossbeam-channel",
  "futures-core",
  "nalgebra",
+ "nix 0.29.0",
  "parking_lot",
  "robstride-protocol",
  "serde",

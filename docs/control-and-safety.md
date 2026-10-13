@@ -231,6 +231,12 @@ the logical group tick, then enqueues one atomic batch on each affected bus.
 All buses are attempted before an enqueue error is returned. These batches
 expire one control period after assembly begins. Expiry before any write
 is discarded; write errors, partial expiry, or late completion cause reconnect.
+SocketCAN `ENOBUFS` (device transmit queue full) is retried at 100 us intervals
+for at most 2 ms shared across a batch, bounded by its original expiry. Only the
+rejected frame is retried. Periodic targets recheck lease/emergency revocation
+and the existing stall deadline before every attempt. Persistent congestion and
+other write errors still fault; the retry does not extend target validity or
+increase the kernel transmit queue.
 Periodic mode publishes each new target set once and repeats it directly from
 the TX worker's latest-value slot under the original target deadline. Normal
 per-frame lease/revocation and stall-deadline checks use atomics and a captured
