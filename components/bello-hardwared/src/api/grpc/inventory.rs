@@ -115,6 +115,7 @@ pub fn list(daemon: &HardwareDaemon) -> ListHardwareResponse {
             sync_period_ms: spec.sync_period.as_millis() as u64,
             status: daemon
                 .power_workers
+                .lock()
                 .get(name)
                 .map(|worker| conversion::device_status(&worker.lifecycle.status())),
         })

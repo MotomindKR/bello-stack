@@ -5,6 +5,14 @@ use std::path::PathBuf;
 use robstride_protocol::{CONTROL_POSITION_MAX, CONTROL_POSITION_MIN, CONTROL_POSITION_SPAN};
 use serde::Deserialize;
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum EmergencyStopMode {
+    #[default]
+    Hardware,
+    Damping,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PowerBoardConfig {
@@ -12,6 +20,8 @@ pub(crate) struct PowerBoardConfig {
     pub serial_device: String,
     pub profile: crate::hardware::power_board::protocol::Profile,
     pub sync_period_ms: Option<u64>,
+    #[serde(default)]
+    pub emergency_stop: EmergencyStopMode,
     #[serde(default = "default_power_stale_timeout")]
     pub stale_timeout_ms: u64,
 }

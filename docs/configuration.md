@@ -1,6 +1,7 @@
 # Configuration
 
-For opt-in COG serial telemetry and emulated power UARTs, see
+For COG serial telemetry, `power_boards[].emergency_stop` (`hardware` or
+`damping`), and emulated power UARTs, see
 [Power-board telemetry](power_board.md).
 
 [Documentation index](README.md)

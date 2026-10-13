@@ -144,6 +144,14 @@ impl ResolvedTopology {
                 bail!("duplicate power board name {}", raw.name);
             }
         }
+        if power_boards
+            .values()
+            .filter(|board| board.emergency_stop == super::EmergencyStopMode::Damping)
+            .count()
+            > 1
+        {
+            bail!("only one power board may own emergency damping");
+        }
         if let Some(unused) = serial_devices
             .keys()
             .find(|name| !claimed_serial_devices.contains(*name))

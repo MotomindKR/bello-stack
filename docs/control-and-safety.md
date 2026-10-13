@@ -1,5 +1,11 @@
 # Control and safety
 
+An enabled AGX power board configured with `emergency_stop: damping` owns a
+daemon-wide stop input. A press or unavailable/stale emergency status revokes
+all leases and damps enabled groups. Release requires new leases and an explicit
+start; it never resumes retained commands. See [power-board handoff and shutdown
+behavior](power_board.md#physical-emergency-button-and-damping).
+
 [Documentation index](README.md)
 
 Motor groups are the unit of control ownership, synchronous command admission,

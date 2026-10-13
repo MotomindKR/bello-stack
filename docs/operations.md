@@ -208,6 +208,8 @@ operation. The daemon then:
 2. closes admission, asks every group to apply its configured `exit` response
    while CAN and motor workers remain alive, publishes final group `Shutdown`
    events, and joins the group workers;
+   enabled AGX emergency-damping workers then restore category 0 and firmware
+   latching before relinquishing the UART;
 3. closes the server/telemetry watch and gives selected queued telemetry up to
    two seconds to drain through gRPC;
 4. joins the watchdog, then stops device and transport ownership.

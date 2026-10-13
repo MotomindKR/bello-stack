@@ -4,6 +4,12 @@
 Robstride CAN actuators, EBIMU serial sensors, generic motor groups, safety,
 leases, gRPC, and telemetry.
 
+Enabled AGX power boards can hand the physical emergency button to hardwared:
+pressing it revokes all leases and damps enabled motor groups. Orderly shutdown
+restores the board's hardware cutoff and firmware latch. See the
+[power-board guide](../../docs/power_board.md#physical-emergency-button-and-damping)
+for startup, release, telemetry-loss, and crash behavior.
+
 Higher-level robot behavior, kinematics, and pose control are outside this
 component.
 
@@ -112,6 +118,7 @@ src/
   hardware/serial/     serial queues, handles, sessions, and reconnect
   hardware/robstride/  motor protocol device and feedback health
   hardware/imu/        EBIMU configuration, parser, and sensor worker
+  hardware/power_board/ COG telemetry and optional AGX emergency handoff
   hardware/lifecycle   shared device state and reconnect backoff
   lease.rs             exclusive group lease store
   telemetry.rs         bounded event broadcast

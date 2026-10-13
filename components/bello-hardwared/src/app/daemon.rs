@@ -7,7 +7,7 @@ use anyhow::{Result, anyhow};
 use parking_lot::Mutex;
 use tokio::sync::watch;
 
-use crate::config::ResolvedTopology;
+use crate::config::{EmergencyStopMode, ResolvedTopology};
 use crate::control::{GroupHandle, GroupWorker, LifecycleAction, Transition};
 use crate::domain::PowerBoardName;
 use crate::domain::{
@@ -28,14 +28,15 @@ const LEASE_WATCHDOG_PERIOD: Duration = Duration::from_millis(5);
 pub struct HardwareDaemon {
     pub topology: ResolvedTopology,
     pub(crate) groups: HashMap<GroupName, GroupHandle>,
-    leases: LeaseManager,
-    lease_gate: Mutex<()>,
+    leases: Arc<LeaseManager>,
+    lease_gate: Arc<Mutex<()>>,
     shutting_down: AtomicBool,
+    emergency_blocked: Arc<AtomicBool>,
     pub telemetry: Telemetry,
     pub(crate) imus: HashMap<ImuName, ImuHandle>,
     group_workers: Mutex<Vec<GroupWorker>>,
     imu_workers: Vec<ImuWorker>,
-    pub(crate) power_workers: HashMap<PowerBoardName, PowerBoardWorker>,
+    pub(crate) power_workers: Mutex<HashMap<PowerBoardName, PowerBoardWorker>>,
     motor_workers: MotorManager,
     bus_workers: BusManager,
     serial_workers: SerialManager,
@@ -59,14 +60,6 @@ impl HardwareDaemon {
             imus.insert(name.clone(), worker.handle.clone());
             imu_workers.push(worker);
         }
-        let mut power_workers = HashMap::new();
-        for (name, board) in topology.power_boards() {
-            let serial = serial_workers.handle(&board.serial_device)?;
-            power_workers.insert(
-                name.clone(),
-                PowerBoardWorker::start(board.clone(), serial, telemetry.clone())?,
-            );
-        }
         let mut groups = HashMap::new();
         let mut group_workers = Vec::new();
         for (name, group) in topology.groups() {
@@ -78,21 +71,55 @@ impl HardwareDaemon {
             topology.grpc().default_lease_ms,
             topology.grpc().maximum_lease_ms,
         );
-        Ok(Arc::new(Self {
+        let emergency_blocked = topology
+            .power_boards()
+            .any(|(_, board)| board.emergency_stop == EmergencyStopMode::Damping);
+        let daemon = Arc::new(Self {
             topology,
             groups,
-            leases,
-            lease_gate: Mutex::new(()),
+            leases: Arc::new(leases),
+            lease_gate: Arc::new(Mutex::new(())),
             shutting_down: AtomicBool::new(false),
+            emergency_blocked: Arc::new(AtomicBool::new(emergency_blocked)),
             telemetry,
             imus,
             group_workers: Mutex::new(group_workers),
             imu_workers,
-            power_workers,
+            power_workers: Mutex::new(HashMap::new()),
             motor_workers,
             bus_workers,
             serial_workers,
-        }))
+        });
+        for (name, board) in daemon.topology.power_boards() {
+            let serial = daemon.serial_workers.handle(&board.serial_device)?;
+            let emergency = (board.emergency_stop == EmergencyStopMode::Damping)
+                .then(|| daemon.emergency_handler());
+            let worker = PowerBoardWorker::start(
+                board.clone(),
+                serial,
+                daemon.telemetry.clone(),
+                emergency,
+            )?;
+            daemon.power_workers.lock().insert(name.clone(), worker);
+        }
+        Ok(daemon)
+    }
+
+    fn emergency_handler(&self) -> crate::hardware::power_board::EmergencyHandler {
+        let gate = self.lease_gate.clone();
+        let inhibited = self.emergency_blocked.clone();
+        let leases = self.leases.clone();
+        let groups = self.groups.clone();
+        Arc::new(move |blocked| {
+            let _gate = gate.lock();
+            inhibited.store(blocked, Ordering::Release);
+            if blocked {
+                leases.revoke_all();
+                for group in groups.values() {
+                    group.request_emergency_damping();
+                }
+            }
+        })
     }
 
     pub(crate) fn group(&self, name: &GroupName) -> Result<&GroupHandle> {
@@ -131,6 +158,14 @@ impl HardwareDaemon {
             return Err(LeaseError::Unavailable);
         }
         let _gate = self.lease_gate.lock();
+        if self.emergency_blocked.load(Ordering::Acquire)
+            || self
+                .groups
+                .get(group)
+                .is_some_and(GroupHandle::emergency_pending)
+        {
+            return Err(LeaseError::Unavailable);
+        }
         if self.leases.expire_group(group).is_some()
             && let Some(controller) = self.groups.get(group)
         {
@@ -290,6 +325,11 @@ impl HardwareDaemon {
         for worker in workers {
             worker.shutdown();
         }
+        let power_workers = std::mem::take(&mut *self.power_workers.lock());
+        for worker in power_workers.values() {
+            worker.request_stop();
+        }
+        drop(power_workers);
     }
 }
 
@@ -300,9 +340,59 @@ impl Drop for HardwareDaemon {
             worker.request_stop();
         }
         self.imu_workers.clear();
-        for worker in self.power_workers.values() {
-            worker.request_stop();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+
+    #[test]
+    fn emergency_revokes_every_lease_and_release_requires_new_ownership() {
+        let mut config =
+            Config::load_raw(concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml")).unwrap();
+        for (i, bus) in config.buses.iter_mut().enumerate() {
+            bus.interface = format!("no_emergency{i}");
         }
-        self.power_workers.clear();
+        for serial in &mut config.serial_devices {
+            serial.port = "/dev/nonexistent-emergency-test".into();
+        }
+        config.power_boards.clear();
+        let topology = ResolvedTopology::resolve(config).unwrap();
+        let daemon = HardwareDaemon::start(topology, Telemetry::new(4096)).unwrap();
+        let leases = daemon
+            .groups
+            .keys()
+            .map(|group| daemon.acquire_lease(group, "test", 5000).unwrap())
+            .collect::<Vec<_>>();
+        let emergency = daemon.emergency_handler();
+        emergency(true);
+        for lease in &leases {
+            assert!(daemon.leases.verify(&lease.group, lease.token).is_err());
+            assert_eq!(daemon.groups[&lease.group].lease_generation_for_test(), 0);
+            assert!(matches!(
+                daemon.acquire_lease(&lease.group, "replacement", 5000),
+                Err(LeaseError::Unavailable)
+            ));
+        }
+        emergency(false);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while daemon.groups.values().any(GroupHandle::emergency_pending) {
+            assert!(Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        for lease in &leases {
+            assert!(daemon.renew_lease(lease.token, 5000).is_err());
+            let replacement = daemon
+                .acquire_lease(&lease.group, "replacement", 5000)
+                .unwrap();
+            assert_ne!(replacement.generation, lease.generation);
+            assert_eq!(
+                daemon.groups[&lease.group].snapshot.read().state,
+                crate::control::GroupState::Idle
+            );
+        }
+        daemon.shutdown();
     }
 }
