@@ -158,16 +158,16 @@ class MotorAddress(_message.Message):
     def __init__(self, bus: _Optional[str] = ..., id: _Optional[int] = ...) -> None: ...
 
 class BusInfo(_message.Message):
-    __slots__ = ("name", "interface", "host_id", "status")
+    __slots__ = ("name", "transport", "host_id", "status")
     NAME_FIELD_NUMBER: _ClassVar[int]
-    INTERFACE_FIELD_NUMBER: _ClassVar[int]
+    TRANSPORT_FIELD_NUMBER: _ClassVar[int]
     HOST_ID_FIELD_NUMBER: _ClassVar[int]
     STATUS_FIELD_NUMBER: _ClassVar[int]
     name: str
-    interface: str
+    transport: str
     host_id: int
     status: DeviceStatus
-    def __init__(self, name: _Optional[str] = ..., interface: _Optional[str] = ..., host_id: _Optional[int] = ..., status: _Optional[_Union[DeviceStatus, _Mapping]] = ...) -> None: ...
+    def __init__(self, name: _Optional[str] = ..., transport: _Optional[str] = ..., host_id: _Optional[int] = ..., status: _Optional[_Union[DeviceStatus, _Mapping]] = ...) -> None: ...
 
 class SerialDeviceInfo(_message.Message):
     __slots__ = ("name", "port", "baud_rate", "status")

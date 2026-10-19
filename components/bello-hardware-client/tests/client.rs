@@ -109,7 +109,7 @@ impl HardwareService for FakeHardware {
             power_boards: vec![],
             buses: vec![BusInfo {
                 name: "test_bus".into(),
-                interface: "vcan-test".into(),
+                transport: "socketcan:vcan-test".into(),
                 host_id: 127,
                 status: Some(DeviceStatus {
                     state: DeviceState::Online as i32,
@@ -1032,7 +1032,7 @@ async fn ergonomic_robot_api_hides_lease_stream_and_acknowledgement_workflow() {
     );
     let bus = robot.buses().next().expect("configured bus");
     assert_eq!(bus.name(), "test_bus");
-    assert_eq!(bus.interface(), "vcan-test");
+    assert_eq!(bus.transport(), "socketcan:vcan-test");
     assert_eq!(bus.host_id(), 127);
     assert_eq!(
         bus.initial_status().map(|status| status.state()),

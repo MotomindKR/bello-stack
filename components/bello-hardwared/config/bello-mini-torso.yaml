@@ -14,11 +14,11 @@ grpc:
     address: 127.0.0.1:50051
   default_lease_ms: 1000
   maximum_lease_ms: 5000
-bus_interfaces:
-  can0: can0
-  can1: can1
-  can2: can2
-  can3: can3
+bus_transports:
+  can0: { type: socketcan, interface: can0 }
+  can1: { type: socketcan, interface: can1 }
+  can2: { type: socketcan, interface: can2 }
+  can3: { type: socketcan, interface: can3 }
 serial_ports:
   imu_serial: /dev/serial/by-id/usb-1a86_USB_Single_Serial_5C93185491-if00
   power_board_serial: /dev/ttyTHS1

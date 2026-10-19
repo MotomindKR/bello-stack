@@ -185,7 +185,7 @@ impl Motor {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Bus {
     pub(crate) name: String,
-    pub(crate) interface: String,
+    pub(crate) transport: String,
     pub(crate) host_id: u32,
     pub(crate) initial_status: Option<DeviceStatus>,
 }
@@ -195,8 +195,8 @@ impl Bus {
         &self.name
     }
 
-    pub fn interface(&self) -> &str {
-        &self.interface
+    pub fn transport(&self) -> &str {
+        &self.transport
     }
 
     pub fn host_id(&self) -> u32 {
@@ -291,14 +291,14 @@ impl Inventory {
     pub(crate) fn from_proto(response: proto::ListHardwareResponse) -> Result<Self, Error> {
         let mut buses = BTreeMap::new();
         for bus in response.buses {
-            if bus.name.trim().is_empty() || bus.interface.trim().is_empty() {
+            if bus.name.trim().is_empty() || bus.transport.trim().is_empty() {
                 return Err(Error::InvalidInventory(
-                    "bus name and interface must be non-empty".into(),
+                    "bus name and transport must be non-empty".into(),
                 ));
             }
             let resolved = Bus {
                 name: bus.name,
-                interface: bus.interface,
+                transport: bus.transport,
                 host_id: bus.host_id,
                 initial_status: bus.status.map(Into::into),
             };
@@ -555,7 +555,7 @@ mod tests {
             power_boards: vec![],
             buses: vec![proto::BusInfo {
                 name: "can0".into(),
-                interface: "vcan0".into(),
+                transport: "socketcan:vcan0".into(),
                 host_id: 127,
                 status: Some(proto::DeviceStatus {
                     state: proto::DeviceState::Online as i32,
@@ -620,7 +620,7 @@ mod tests {
         assert_eq!(group.coordinate_indices["shoulder"], 0);
         assert_eq!(group.motors[0].limits().torque_max(), 3.0);
         let bus = &inventory.buses["can0"];
-        assert_eq!(bus.interface(), "vcan0");
+        assert_eq!(bus.transport(), "socketcan:vcan0");
         assert_eq!(bus.host_id(), 127);
         assert_eq!(
             bus.initial_status().map(DeviceStatus::transition_count),

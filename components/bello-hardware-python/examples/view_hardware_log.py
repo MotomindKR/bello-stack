@@ -281,7 +281,7 @@ function drawImu(){if(!imuNames.length)return;const name=imuName.value,metric=im
 if(!imuNames.length)document.getElementById('imuPanel').style.display='none';imuName.onchange=drawImu;imuMetric.onchange=drawImu;
 
 const inventory=[];
-for(const item of DATA.inventory.buses||[])inventory.push(['bus',item.name,item.interface,item.status]);
+for(const item of DATA.inventory.buses||[])inventory.push(['bus',item.name,item.transport,item.status]);
 for(const item of DATA.inventory.serial_devices||[])inventory.push(['serial',item.name,`${item.port} @ ${item.baud_rate}`,item.status]);
 for(const item of DATA.inventory.imus||[])inventory.push(['imu',item.name,item.serial_device,item.status]);
 for(const item of DATA.inventory.motors||[])inventory.push(['motor',item.name,`${item.group} / ${item.bus}:${item.id}`,item.status]);

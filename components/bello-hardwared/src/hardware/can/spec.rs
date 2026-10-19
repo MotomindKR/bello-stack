@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use anyhow::{Result, bail};
 
-use crate::config::BusConfig;
+use crate::config::{BusConfig, BusTransportConfig};
 use crate::domain::BusName;
 use crate::hardware::lifecycle::ReconnectPolicy;
 
@@ -15,7 +15,7 @@ const PRIORITY_QUEUE_MARGIN: Duration = Duration::from_millis(50);
 #[derive(Clone, Debug)]
 pub(crate) struct BusSpec {
     pub(crate) name: BusName,
-    pub(crate) interface: String,
+    pub(crate) transport: BusTransportConfig,
     pub(crate) host_id: u8,
     pub(crate) bitrate: u32,
     pub(crate) maximum_utilization: f64,
@@ -50,12 +50,21 @@ impl TryFrom<&BusConfig> for BusSpec {
         if config.name.is_empty() {
             bail!("buses[].name must be non-empty");
         }
-        if config.interface.is_empty() {
-            bail!("buses.{}.interface must be non-empty", config.name);
+        match &config.transport {
+            BusTransportConfig::Socketcan { interface } if interface.trim().is_empty() => {
+                bail!(
+                    "buses.{}.transport.interface must be non-empty",
+                    config.name
+                );
+            }
+            BusTransportConfig::Gsusb { serial, .. } if serial.trim().is_empty() => {
+                bail!("buses.{}.transport.serial must be non-empty", config.name);
+            }
+            _ => {}
         }
         if !(10_000..=1_000_000).contains(&config.bitrate) {
             bail!(
-                "buses.{}.bitrate must be a classic CAN nominal bitrate in 10000..=1000000 and must match the externally configured interface",
+                "buses.{}.bitrate must be a classic CAN nominal bitrate in 10000..=1000000",
                 config.name
             );
         }
@@ -70,7 +79,7 @@ impl TryFrom<&BusConfig> for BusSpec {
         }
         Ok(Self {
             name: BusName::from(config.name.as_str()),
-            interface: config.interface.clone(),
+            transport: config.transport.clone(),
             host_id: config.host_id,
             bitrate: config.bitrate,
             maximum_utilization: config.maximum_utilization,
@@ -86,7 +95,7 @@ mod tests {
     #[test]
     fn rejects_zero_bitrate() {
         let config: BusConfig = serde_yaml::from_str(
-            "name: can\ninterface: vcan0\nbitrate: 0\nmaximum_utilization: 0.5",
+            "name: can\ntransport: { type: socketcan, interface: vcan0 }\nbitrate: 0\nmaximum_utilization: 0.5",
         )
         .unwrap();
         assert!(BusSpec::try_from(&config).is_err());
@@ -95,7 +104,7 @@ mod tests {
     #[test]
     fn rejects_nominal_bitrate_above_classic_can_limit() {
         let config: BusConfig = serde_yaml::from_str(
-            "name: can\ninterface: can0\nbitrate: 1000001\nmaximum_utilization: 0.5",
+            "name: can\ntransport: { type: socketcan, interface: can0 }\nbitrate: 1000001\nmaximum_utilization: 0.5",
         )
         .unwrap();
         let error = BusSpec::try_from(&config).unwrap_err().to_string();
@@ -105,11 +114,11 @@ mod tests {
     #[test]
     fn batch_budget_uses_bitrate_and_full_frame_count() {
         let slow: BusConfig = serde_yaml::from_str(
-            "name: can\ninterface: vcan0\nbitrate: 10000\nmaximum_utilization: 1.0",
+            "name: can\ntransport: { type: socketcan, interface: vcan0 }\nbitrate: 10000\nmaximum_utilization: 1.0",
         )
         .unwrap();
         let fast: BusConfig = serde_yaml::from_str(
-            "name: can\ninterface: vcan0\nbitrate: 1000000\nmaximum_utilization: 1.0",
+            "name: can\ntransport: { type: socketcan, interface: vcan0 }\nbitrate: 1000000\nmaximum_utilization: 1.0",
         )
         .unwrap();
         let slow = BusSpec::try_from(&slow).unwrap();

@@ -316,7 +316,7 @@ fn devices_ui(ui: &mut egui::Ui, snapshot: &DisplaySnapshot) {
             .show(ui, |ui| {
                 for title in [
                     "name",
-                    "interface",
+                    "transport",
                     "host ID",
                     "state",
                     "detail",
@@ -327,7 +327,7 @@ fn devices_ui(ui: &mut egui::Ui, snapshot: &DisplaySnapshot) {
                 ui.end_row();
                 for bus in snapshot.buses.values() {
                     ui.monospace(&bus.name);
-                    ui.monospace(&bus.interface);
+                    ui.monospace(&bus.transport);
                     ui.monospace(bus.host_id.to_string());
                     status_cells(ui, bus.status.as_ref());
                     ui.end_row();

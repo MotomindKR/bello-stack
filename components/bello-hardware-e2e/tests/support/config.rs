@@ -78,7 +78,7 @@ runtime:
 grpc:
 {grpc}
 
-bus_interfaces: {{ e2e_can: {interface} }}
+bus_transports: {{ e2e_can: {{ type: socketcan, interface: {interface} }} }}
 
 enabled_groups: [e2e_group]
 "#,
@@ -129,7 +129,7 @@ pub fn write_canonical_lower_body(
     fs::write(
         deployment_path,
         format!(
-            "description: {}\n\ngrpc:\n  listen: [{{ type: tcp, address: {listen} }}]\n  default_lease_ms: 1000\n  maximum_lease_ms: 10000\n\nbus_interfaces: {{ can0: {can0_interface}, can1: {can1_interface} }}\n\nenabled_groups: [lower_body]\n",
+            "description: {}\n\ngrpc:\n  listen: [{{ type: tcp, address: {listen} }}]\n  default_lease_ms: 1000\n  maximum_lease_ms: 10000\n\nbus_transports: {{ can0: {{ type: socketcan, interface: {can0_interface} }}, can1: {{ type: socketcan, interface: {can1_interface} }} }}\n\nenabled_groups: [lower_body]\n",
             description_path
                 .file_name()
                 .context("description path has no file name")?

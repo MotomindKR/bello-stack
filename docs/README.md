@@ -42,8 +42,8 @@ source comments.
 
 ## Core terminology
 
-- A **bus** is one named SocketCAN transport bound to an existing Linux CAN
-  interface.
+- A **bus** is one named CAN transport bound to a SocketCAN interface or a
+  GS-USB adapter channel.
 - A **serial device** is one named serial transport and reconnect boundary.
 - A **motor** is one Robstride protocol device at a `(bus, id)` address.
 - An **IMU** is one EBIMU device that exclusively consumes one serial stream.

@@ -14,10 +14,11 @@ safety behavior are described in [`configuration.md`](configuration.md) and
 
 ## Prerequisites and configuration check
 
-The runtime is Linux-oriented and expects existing SocketCAN interfaces and,
-when configured, accessible serial device paths. The daemon does not create CAN
-links or set their bitrate. For physical hardware, ensure the service account
-has CAN access and read/write permission for the serial device (prefer stable
+The runtime is Linux-oriented and expects either existing SocketCAN interfaces
+or accessible GS-USB adapters, plus configured serial device paths. The daemon
+does not create SocketCAN links or set their bitrate. For physical hardware,
+ensure the service account can access the selected CAN transport and has
+read/write permission for serial devices (prefer stable
 `/dev/serial/by-id/...` names).
 
 Enter the repository environment and validate YAML without opening hardware:
@@ -28,7 +29,7 @@ cargo run -p bello-hardwared -- \
   --check --config components/bello-hardwared/config/bello.yaml
 ```
 
-Validation is strict: unknown YAML fields, duplicate physical interfaces/ports,
+Validation is strict: unknown YAML fields, duplicate CAN assignments or serial ports,
 invalid references, unsupported actuator limits, unsafe timing, and excessive
 CAN utilization are rejected. The configured CAN `bitrate` is used for timing
 and utilization calculations and must match the externally configured physical
@@ -37,8 +38,8 @@ explicit.
 
 ## Physical startup
 
-Configure the CAN link before starting hardwared. Adjust interface, bitrate,
-and restart policy for the actual adapter and network:
+For SocketCAN, configure the link before starting hardwared. Adjust interface,
+bitrate, and restart policy for the actual adapter and network:
 
 ```sh
 sudo scripts/setup-can.sh
@@ -66,6 +67,11 @@ sudo ip link set can0 txqueuelen 64
 sudo ip link set can0 up
 ip -details -statistics link show can0
 ```
+
+For direct GS-USB access, set `bus_transports` to `type: gsusb` with the
+adapter's serial number and channel. The daemon configures that channel's
+nominal bitrate. `gsusbio` detaches the Linux `gs_usb` driver while it owns the
+USB interface, so do not also bind the same adapter through SocketCAN.
 
 Confirm serial identity and permissions when using EBIMU:
 

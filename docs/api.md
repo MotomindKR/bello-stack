@@ -178,7 +178,8 @@ and [`conversion.rs`](../components/bello-hardwared/src/api/grpc/conversion.rs).
 `ListHardware` returns buses, serial devices, IMUs, motors, and groups with
 typed current states. IMU inventory includes the configured source and output
 URDF frames. It is an inventory/status snapshot, not a copy of the local
-safety-policy YAML.
+safety-policy YAML. Each bus includes a `transport` label such as
+`socketcan:can0` or `gsusb:SERIAL:0`.
 
 `WatchTelemetryRequest` filters one shared event stream:
 

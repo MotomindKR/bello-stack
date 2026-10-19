@@ -3,7 +3,7 @@
 Bello stack is a Linux-oriented hardware workspace centered on a Rust actuator
 and IMU daemon with Rust and Python clients. Its production hardware component
 is one monolithic daemon that
-owns SocketCAN buses, Robstride actuators, serial devices, EBIMU sensors,
+owns SocketCAN or GS-USB buses, Robstride actuators, serial devices, EBIMU sensors,
 motor-group control, safety, gRPC, and telemetry.
 
 Behavior policy remains outside this repository. Robot-level local pose

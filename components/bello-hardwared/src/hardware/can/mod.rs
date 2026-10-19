@@ -334,7 +334,7 @@ impl BusManager {
             let lifecycle = DeviceLifecycle::new(
                 format!("can/{}", bus.name),
                 DeviceState::Starting,
-                format!("starting CAN supervisor for {}", bus.interface),
+                format!("starting CAN supervisor for {}", bus.transport.label()),
                 telemetry.clone(),
             );
             manager.handles.insert(

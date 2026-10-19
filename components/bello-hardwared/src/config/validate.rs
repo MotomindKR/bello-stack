@@ -66,7 +66,9 @@ impl Config {
             }
             BusSpec::try_from(&super::BusConfig {
                 name: bus.name.clone(),
-                interface: format!("description-{}", bus.name),
+                transport: super::BusTransportConfig::Socketcan {
+                    interface: format!("description-{}", bus.name),
+                },
                 host_id: bus.host_id,
                 bitrate: bus.bitrate,
                 maximum_utilization: bus.maximum_utilization,
@@ -163,7 +165,7 @@ impl Config {
             .filter(|motor| selected_motors.contains(motor.name.as_str()))
             .collect();
 
-        let configured_buses: HashSet<_> = deployment.bus_interfaces.keys().cloned().collect();
+        let configured_buses: HashSet<_> = deployment.bus_transports.keys().cloned().collect();
         for bus in &configured_buses {
             if !logical_buses.contains(bus) {
                 bail!("deployment maps unknown logical bus {bus}");
@@ -185,7 +187,7 @@ impl Config {
             .into_iter()
             .filter(|bus| required_buses.contains(&bus.name))
             .map(|bus| super::BusConfig {
-                interface: deployment.bus_interfaces[&bus.name].clone(),
+                transport: deployment.bus_transports[&bus.name].clone(),
                 name: bus.name,
                 host_id: bus.host_id,
                 bitrate: bus.bitrate,
@@ -339,7 +341,7 @@ mod tests {
                 physical_bus.maximum_utilization,
                 vcan_bus.maximum_utilization
             );
-            assert_ne!(physical_bus.interface, vcan_bus.interface);
+            assert_ne!(physical_bus.transport, vcan_bus.transport);
         }
         let physical_imu = physical
             .serial_devices
@@ -372,10 +374,30 @@ mod tests {
         assert_eq!(milly_vcan.motors.len(), 7);
         assert_eq!(milly_vcan.motor_groups.len(), 1);
         assert_eq!(milly.buses[0].name, "can0");
-        assert_eq!(milly.buses[0].interface, "can0");
-        assert_eq!(milly_vcan.buses[0].interface, "vcan0");
+        assert_eq!(milly.buses[0].transport.label(), "socketcan:can0");
+        assert_eq!(milly_vcan.buses[0].transport.label(), "socketcan:vcan0");
         assert!(milly.serial_devices.is_empty());
         assert!(milly_vcan.serial_devices.is_empty());
+    }
+
+    #[test]
+    fn gsusb_transport_resolves_and_one_adapter_cannot_own_two_buses() {
+        let component = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut config = Config::load_raw(component.join("config/bello-vcan.yaml")).unwrap();
+        config.buses[0].transport = crate::config::BusTransportConfig::Gsusb {
+            serial: "ADAPTER-A".into(),
+            channel: 0,
+        };
+        assert!(ResolvedTopology::resolve(config.clone()).is_ok());
+        config.buses[1].transport = crate::config::BusTransportConfig::Gsusb {
+            serial: "ADAPTER-A".into(),
+            channel: 1,
+        };
+        let error = ResolvedTopology::resolve(config).err().unwrap().to_string();
+        assert!(
+            error.contains("assigned to more than one CAN bus"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -437,7 +459,7 @@ mod tests {
         let description: HardwareDescription = load_yaml(&description_path).unwrap();
         let mut missing_bus: DeploymentConfig =
             load_yaml(&component.join("config/bello-vcan.yaml")).unwrap();
-        missing_bus.bus_interfaces.remove("can1");
+        missing_bus.bus_transports.remove("can1");
         assert!(
             Config::compose(description.clone(), missing_bus, &description_path)
                 .unwrap_err()
@@ -460,7 +482,7 @@ mod tests {
 
     const PREFIX: &str = r#"
 buses:
-  - { name: shared, interface: vcan0, maximum_utilization: 1.0 }
+  - { name: shared, transport: { type: socketcan, interface: vcan0 }, maximum_utilization: 1.0 }
 motors:
   - { name: motor_a, coordinate: left_hip_pitch_joint, bus: shared, id: 1, model: ROBSTRIDE_03 }
   - { name: motor_b, coordinate: right_hip_pitch_joint, bus: shared, id: 2, model: ROBSTRIDE_03 }
@@ -516,7 +538,7 @@ motors:
     fn rejects_control_load_above_the_configured_bus_budget() {
         let text = r#"
 buses:
-  - { name: slow, interface: vcan0, bitrate: 10000, maximum_utilization: 1.0 }
+  - { name: slow, transport: { type: socketcan, interface: vcan0 }, bitrate: 10000, maximum_utilization: 1.0 }
 motors:
   - { name: motor_a, coordinate: left_hip_pitch_joint, bus: slow, id: 1, model: ROBSTRIDE_03 }
   - { name: motor_b, coordinate: right_hip_pitch_joint, bus: slow, id: 2, model: ROBSTRIDE_03 }
@@ -532,7 +554,7 @@ motor_groups:
     fn rejects_control_batch_without_freshness_headroom() {
         let text = r#"
 buses:
-  - { name: saturated, interface: vcan0, bitrate: 10000, maximum_utilization: 1.0 }
+  - { name: saturated, transport: { type: socketcan, interface: vcan0 }, bitrate: 10000, maximum_utilization: 1.0 }
 motors:
   - { name: motor_a, coordinate: left_hip_pitch_joint, bus: saturated, id: 1, model: ROBSTRIDE_03 }
 motor_groups:
@@ -546,7 +568,7 @@ motor_groups:
     fn periodic_load_uses_tx_refresh_rate_instead_of_the_safety_tick_rate() {
         let text = r#"
 buses:
-  - { name: slow, interface: vcan0, bitrate: 10000, maximum_utilization: 1.0 }
+  - { name: slow, transport: { type: socketcan, interface: vcan0 }, bitrate: 10000, maximum_utilization: 1.0 }
 motors:
   - { name: motor_a, coordinate: left_hip_pitch_joint, bus: slow, id: 1, model: ROBSTRIDE_03 }
 motor_groups:
@@ -565,7 +587,7 @@ motor_groups:
     fn periodic_groups_still_enforce_the_shared_bus_load_limit() {
         let text = r#"
 buses:
-  - { name: slow, interface: vcan0, bitrate: 10000, maximum_utilization: 1.0 }
+  - { name: slow, transport: { type: socketcan, interface: vcan0 }, bitrate: 10000, maximum_utilization: 1.0 }
 motors:
   - { name: motor_a, coordinate: left_hip_pitch_joint, bus: slow, id: 1, model: ROBSTRIDE_03 }
   - { name: motor_b, coordinate: right_hip_pitch_joint, bus: slow, id: 2, model: ROBSTRIDE_03 }
@@ -620,8 +642,8 @@ motor_groups:
     fn physical_can_interface_cannot_be_declared_twice() {
         let text = r#"
 buses:
-  - { name: first, interface: can0 }
-  - { name: second, interface: can0 }
+  - { name: first, transport: { type: socketcan, interface: can0 } }
+  - { name: second, transport: { type: socketcan, interface: can0 } }
 motors:
   - { name: motor_a, coordinate: coordinate_a, bus: first, id: 1, model: ROBSTRIDE_03 }
   - { name: motor_b, coordinate: coordinate_b, bus: second, id: 1, model: ROBSTRIDE_03 }
@@ -630,7 +652,7 @@ motor_groups:
 "#;
         let error = parse(text).unwrap_err().to_string();
         assert!(
-            error.contains("CAN interface can0 is configured more than once"),
+            error.contains("CAN transport socketcan:can0 is configured more than once"),
             "{error}"
         );
     }
@@ -651,8 +673,8 @@ motor_groups:
     fn every_can_bus_must_own_a_motor() {
         let text = r#"
 buses:
-  - { name: used, interface: can0 }
-  - { name: unused, interface: can1 }
+  - { name: used, transport: { type: socketcan, interface: can0 } }
+  - { name: unused, transport: { type: socketcan, interface: can1 } }
 motors:
   - { name: motor_a, coordinate: left_hip_pitch_joint, bus: used, id: 1, model: ROBSTRIDE_03 }
 motor_groups:

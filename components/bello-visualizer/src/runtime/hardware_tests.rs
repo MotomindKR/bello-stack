@@ -399,7 +399,7 @@ fn inventory() -> proto::ListHardwareResponse {
         }],
         buses: vec![proto::BusInfo {
             name: BUS.into(),
-            interface: "vcan42".into(),
+            transport: "socketcan:vcan42".into(),
             host_id: 127,
             status: Some(online("bus online", 2)),
         }],
@@ -678,7 +678,7 @@ async fn monitor_publishes_complete_equal_timestamp_state_freezes_and_reconnects
     {
         let display = latest.read();
         let bus = &display.buses[BUS];
-        assert_eq!(bus.interface, "vcan42");
+        assert_eq!(bus.transport, "socketcan:vcan42");
         assert_eq!(bus.host_id, 127);
         assert_eq!(
             bus.status.as_ref().map(|status| status.state),

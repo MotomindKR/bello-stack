@@ -12,7 +12,7 @@ pub fn list(daemon: &HardwareDaemon) -> ListHardwareResponse {
         .buses()
         .map(|(_, bus)| BusInfo {
             name: bus.name.to_string(),
-            interface: bus.interface.clone(),
+            transport: bus.transport.label(),
             host_id: bus.host_id as u32,
             status: daemon
                 .bus_status(&bus.name)

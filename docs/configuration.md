@@ -68,7 +68,7 @@ The deployment's top-level sections are:
 description: path/to/hardware.yaml
 runtime: {}
 grpc: {}
-bus_interfaces: {}   # logical bus name -> SocketCAN interface
+bus_transports: {}   # logical bus name -> SocketCAN or GS-USB transport
 serial_ports: {}     # logical serial name -> host device path
 enabled_groups: []   # explicit selection from the description
 ```
@@ -302,16 +302,26 @@ logical_buses:
 The deployment binds that name to the host:
 
 ```yaml
-bus_interfaces: { can_a: can0 }
+bus_transports: { can_a: { type: socketcan, interface: can0 } }
 ```
 
-The daemon opens the mapped SocketCAN interface; it does not bring the link up
-or set its bitrate. `bitrate` is a timing and validation input and must match
-the externally configured classic-CAN interface. It is in
+For a GS-USB adapter, use its USB serial number and zero-based CAN channel:
+
+```yaml
+bus_transports: { can_a: { type: gsusb, serial: YOUR_ADAPTER_SERIAL, channel: 0 } }
+```
+
+The daemon opens a mapped SocketCAN interface without bringing the link up or
+setting its bitrate. For GS-USB it finds the matching USB device and configures
+the selected channel at the description's `bitrate`. Every GS-USB adapter must
+have a readable, unique serial number. One adapter may be assigned to only one
+logical bus; the current `gsusbio` socket claims the whole USB interface.
+`bitrate` is a timing and validation input and must match the externally
+configured SocketCAN interface when that backend is selected. It is in
 `10000..=1000000`. `maximum_utilization` is finite and in `(0, 1]`.
 
 Defaults are host ID `253` (`0xFD`), bitrate `1000000`, and maximum utilization
-`0.75`. Bus names and physical interface names must both be unique. Each bus
+`0.75`. Bus names and transport assignments must both be unique. Each bus
 must have at least one motor.
 
 The resolver budgets two extended eight-byte frames per motor per transmission

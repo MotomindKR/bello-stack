@@ -34,7 +34,9 @@ description. Its referenced canonical URDF supplies direct and differential
 joint position and velocity limits plus scalar feedforward-torque caps derived
 from effort limits. It also supplies the fixed, coincident transform from each
 IMU's physical source frame to the logical frame published by hardwared. The
-daemon does not create CAN links or change their bitrate.
+daemon does not create SocketCAN links or change their bitrate. A `gsusb` transport is
+configured directly over USB using its serial number and channel; see the
+[configuration guide](../../docs/configuration.md#description-logical_buses).
 
 The physical and vCAN configurations expose `lower_body` and `upper_body`.
 Each arm has six motors, and the sphere end effectors are fixed to the wrist

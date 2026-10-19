@@ -76,16 +76,18 @@ hardware-free actuator testing uses the separate
 
 ## Ownership and execution model
 
-The Tokio runtime handles network-facing and coordination tasks. Device and
-fixed-period group loops use named operating-system threads; this isolates
-blocking I/O but does not make them hard real-time.
+The main Tokio runtime handles network-facing and coordination tasks. Device
+and fixed-period group loops use named operating-system threads. Each GS-USB
+bus also owns a separate current-thread Tokio runtime for USB I/O. This
+isolates bus I/O but does not make it hard real-time.
 
 | Execution context | Cardinality | Responsibility |
 | --- | --- | --- |
-| Tokio runtime | One runtime, multiple tasks | tonic server/RPC streams, lease watchdog, signals |
+| Main Tokio runtime | One runtime, multiple tasks | tonic server/RPC streams, lease watchdog, signals |
 | Group worker | One thread per motor group | FSM, command mailbox, safety clock, active-group motor status polling, safety reaction |
-| CAN supervisor | One persistent thread per bus | Open/reopen SocketCAN sessions and own reconnect state |
-| CAN session workers | One TX and one RX thread while a bus session is open | Priority batches, periodic latest-target clocks, and frame reception |
+| CAN supervisor | One persistent thread per bus | Open/reopen SocketCAN or GS-USB sessions and own reconnect state |
+| SocketCAN session workers | One TX and one RX thread while a bus session is open | Priority batches, periodic latest-target clocks, and frame reception |
+| GS-USB session | One dedicated Tokio runtime and TX thread per connected bus | USB actor, priority batches, periodic latest-target clocks, and async reception |
 | Robstride feedback worker | One shared thread | Route received frames by `(bus, motor id)` and scan motor health |
 | Serial supervisor | One persistent thread per serial device | Open/reopen the port and own reconnect state |
 | Serial session workers | One writer and one reader thread while a session is open | Deadline-bound writes and byte-chunk reception |
@@ -143,7 +145,7 @@ gRPC command stream
   -> accepted command updates the latest targets and performs safety checks
   -> on_update: Robstride ControlBatcher -> bounded CAN control queue
   -> periodic: encode once -> latest-target slot per group per bus
-  -> SocketCAN TX worker (owns periodic repeat clocks)
+  -> selected CAN transport TX worker (owns periodic repeat clocks)
 ```
 
 The API acknowledgement means the group accepted the batch and ran its
@@ -174,7 +176,7 @@ and [`hardware/can/periodic.rs`](../components/bello-hardwared/src/hardware/can/
 ### Motor feedback to state and telemetry
 
 ```text
-SocketCAN RX worker
+selected CAN transport RX worker
   -> timestamped raw frame queue
   -> shared Robstride feedback dispatcher
   -> controller selected by (bus, motor id)
@@ -307,7 +309,7 @@ components/bello-hardwared/
   src/control/             group FSM, worker, command policy, safety
   src/domain/              typed identifiers, commands, states, telemetry
   src/hardware/lifecycle.rs shared device lifecycle
-  src/hardware/can/        SocketCAN queues, sessions, reconnect
+  src/hardware/can/        CAN queues, SocketCAN and GS-USB sessions, reconnect
   src/hardware/serial/     serial queues, sessions, reconnect
   src/hardware/robstride/  motor protocol boundary and feedback health
   src/hardware/imu/        EBIMU configuration, framing, parsing

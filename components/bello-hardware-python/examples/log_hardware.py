@@ -84,7 +84,7 @@ def inventory_record(robot: Robot, endpoint: str) -> dict[str, Any]:
         "buses": [
             {
                 "name": bus.name,
-                "interface": bus.interface,
+                "transport": bus.transport,
                 "host_id": bus.host_id,
                 "status": device_status(bus.status),
             }
