@@ -45,7 +45,10 @@ impl HardwareDaemon {
     pub fn start(topology: ResolvedTopology, telemetry: Telemetry) -> Result<Arc<Self>> {
         let bus_workers = BusManager::start(&topology, telemetry.clone())?;
         let motor_workers = MotorManager::start(&topology, &bus_workers, telemetry.clone())?;
-        let serial_workers = SerialManager::start(&topology, telemetry.clone())?;
+        let serial_workers = SerialManager::start(
+            topology.serial_devices().map(|(_, spec)| spec.clone()),
+            telemetry.clone(),
+        )?;
         let mut imus = HashMap::new();
         let mut imu_workers = Vec::new();
         for (name, imu) in topology.imus() {

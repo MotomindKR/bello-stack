@@ -10,7 +10,6 @@ use crossbeam_channel::{Receiver, Sender, bounded};
 use thiserror::Error;
 use tracing::error;
 
-use crate::config::ResolvedTopology;
 use crate::domain::SerialDeviceName;
 use crate::hardware::lifecycle::{DeviceLifecycle, DeviceState, DeviceStatus};
 use crate::telemetry::Telemetry;
@@ -164,14 +163,17 @@ pub(crate) struct SerialManager {
 }
 
 impl SerialManager {
-    pub(crate) fn start(topology: &ResolvedTopology, telemetry: Telemetry) -> Result<Self> {
+    pub(crate) fn start(
+        specs: impl IntoIterator<Item = SerialSpec>,
+        telemetry: Telemetry,
+    ) -> Result<Self> {
         let shutdown = Arc::new(AtomicBool::new(false));
         let mut manager = Self {
             handles: HashMap::new(),
             shutdown,
             threads: Vec::new(),
         };
-        for (_, spec) in topology.serial_devices() {
+        for spec in specs {
             let (outbound_tx, outbound_rx) = bounded(16);
             let (chunk_tx, chunk_rx) = bounded(1024);
             let (reconnect_tx, reconnect_rx) = bounded(1);
@@ -191,7 +193,6 @@ impl SerialManager {
                     reconnect: reconnect_tx,
                 },
             );
-            let spec = spec.clone();
             let shutdown = manager.shutdown.clone();
             let panic_lifecycle = lifecycle.clone();
             manager.threads.push(
