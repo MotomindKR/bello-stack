@@ -19,7 +19,7 @@ def valid_inventory_response() -> proto.ListHardwareResponse:
     """Return one internally consistent daemon inventory for client tests."""
 
     return proto.ListHardwareResponse(
-        buses=[proto.BusInfo(name="main", interface="vcan0", host_id=0xFD)],
+        buses=[proto.BusInfo(name="main", transport="socketcan:vcan0", host_id=0xFD)],
         motors=[
             proto.MotorInfo(
                 name="hip_motor",

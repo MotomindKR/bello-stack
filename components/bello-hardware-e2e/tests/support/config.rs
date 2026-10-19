@@ -78,7 +78,7 @@ runtime:
 grpc:
 {grpc}
 
-bus_interfaces: {{ e2e_can: {interface} }}
+bus_transports: {{ e2e_can: {{ type: socketcan, interface: {interface} }} }}
 
 enabled_groups: [e2e_group]
 "#,
@@ -114,6 +114,10 @@ pub fn write_canonical_lower_body(
         Value::Sequence(Vec::new()),
     );
     mapping.insert(Value::String("imus".into()), Value::Sequence(Vec::new()));
+    mapping.insert(
+        Value::String("power_boards".into()),
+        Value::Sequence(Vec::new()),
+    );
 
     let description_path = deployment_path.with_file_name("canonical-lower-body-hardware.yaml");
     fs::write(&description_path, serde_yaml::to_string(&description)?)?;
@@ -129,7 +133,7 @@ pub fn write_canonical_lower_body(
     fs::write(
         deployment_path,
         format!(
-            "description: {}\n\ngrpc:\n  listen: [{{ type: tcp, address: {listen} }}]\n  default_lease_ms: 1000\n  maximum_lease_ms: 10000\n\nbus_interfaces: {{ can0: {can0_interface}, can1: {can1_interface} }}\n\nenabled_groups: [lower_body]\n",
+            "description: {}\n\ngrpc:\n  listen: [{{ type: tcp, address: {listen} }}]\n  default_lease_ms: 1000\n  maximum_lease_ms: 10000\n\nbus_transports: {{ can0: {{ type: socketcan, interface: {can0_interface} }}, can1: {{ type: socketcan, interface: {can1_interface} }} }}\n\nenabled_groups: [lower_body]\n",
             description_path
                 .file_name()
                 .context("description path has no file name")?
@@ -186,9 +190,16 @@ fn canonical_emulator(
         bus.host_id
     );
     for motor in motors {
+        // Zero quantizes slightly below the knees' 0.0 rad URDF lower limit.
+        let initial_position =
+            if matches!(motor.name.as_str(), "left_knee_mix_1" | "right_knee_mix_1") {
+                0.1
+            } else {
+                0.0
+            };
         output.push_str(&format!(
-            "  - {{ id: {}, model: {}, direction: {}, initial_position: 0.0 }}\n",
-            motor.id, motor.model, motor.direction
+            "  - {{ id: {}, model: {}, direction: {}, initial_position: {initial_position} }}\n",
+            motor.id, motor.model, motor.direction,
         ));
     }
     output.push_str("\nevents: []\n");

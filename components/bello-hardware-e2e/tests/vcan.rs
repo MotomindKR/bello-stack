@@ -512,7 +512,7 @@ async fn canonical_lower_body_enforces_coupled_ankle_limits_over_two_buses() -> 
             4,
             &fixture.motor_names,
             &initial_positions,
-            0.12,
+            0.20,
         ))
         .await?;
     let rejected = timeout(Duration::from_secs(1), responses.message())

@@ -56,8 +56,11 @@ fn software_video_is_visible_bounded_and_refuses_overwrites() {
         .unwrap();
     assert!(frames.status.success());
     assert_eq!(frames.stdout.len(), 10 * 160 * 120 * 3);
-    let colors: std::collections::BTreeSet<_> =
-        frames.stdout[..160 * 120 * 3].chunks_exact(3).collect();
+    let colors: std::collections::BTreeSet<_> = frames.stdout[..160 * 120 * 3]
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .collect();
     assert!(colors.len() > 30, "rendered frame is blank");
     let original = std::fs::read(&output).unwrap();
     assert!(!render(dir.path()).status.success());

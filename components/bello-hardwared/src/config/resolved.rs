@@ -152,13 +152,19 @@ impl ResolvedTopology {
         }
 
         let mut buses = HashMap::new();
-        let mut can_interfaces = HashSet::new();
+        let mut can_transports = HashSet::new();
+        let mut claimed_usb_serials = HashSet::new();
         for raw in &config.buses {
             let spec = BusSpec::try_from(raw)?;
-            if !can_interfaces.insert(spec.interface.clone()) {
+            if let crate::config::BusTransportConfig::Gsusb { serial, .. } = &spec.transport
+                && !claimed_usb_serials.insert(serial.clone())
+            {
+                bail!("GS-USB device {serial} is assigned to more than one CAN bus");
+            }
+            if !can_transports.insert(spec.transport.clone()) {
                 bail!(
-                    "CAN interface {} is configured more than once",
-                    spec.interface
+                    "CAN transport {} is configured more than once",
+                    spec.transport.label()
                 );
             }
             if buses.insert(spec.name.clone(), spec).is_some() {

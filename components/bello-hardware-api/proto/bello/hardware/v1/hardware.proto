@@ -109,7 +109,7 @@ message MotorAddress {
 
 message BusInfo {
   string name = 1;
-  string interface = 2;
+  string transport = 2;
   uint32 host_id = 3;
   DeviceStatus status = 4;
 }

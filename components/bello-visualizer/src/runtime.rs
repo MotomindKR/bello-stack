@@ -35,7 +35,7 @@ pub struct DisplayDeviceStatus {
 #[derive(Clone, Debug)]
 pub struct DisplayBus {
     pub name: String,
-    pub interface: String,
+    pub transport: String,
     pub host_id: u32,
     pub status: Option<DisplayDeviceStatus>,
 }
@@ -1026,7 +1026,7 @@ fn apply_robot_inventory(
                 bus.name().to_owned(),
                 DisplayBus {
                     name: bus.name().to_owned(),
-                    interface: bus.interface().to_owned(),
+                    transport: bus.transport().to_owned(),
                     host_id: bus.host_id(),
                     status: bus.initial_status().map(display_device_status),
                 },
@@ -1859,7 +1859,7 @@ mod tests {
             "body/can".into(),
             DisplayBus {
                 name: "body/can".into(),
-                interface: "can0".into(),
+                transport: "socketcan:can0".into(),
                 host_id: 1,
                 status: None,
             },

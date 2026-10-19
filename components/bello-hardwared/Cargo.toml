@@ -17,6 +17,7 @@ clap = { workspace = true, features = ["derive"] }
 crossbeam-channel.workspace = true
 futures-core.workspace = true
 nalgebra.workspace = true
+gsusbio.workspace = true
 parking_lot.workspace = true
 robstride-protocol.workspace = true
 serde = { workspace = true, features = ["derive"] }

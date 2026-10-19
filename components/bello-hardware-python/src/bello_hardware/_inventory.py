@@ -81,15 +81,15 @@ class Inventory:
         serial_devices = _index_unique_names(response.serial_devices, "serial device")
         _index_unique_names(response.imus, "IMU")
 
-        interfaces: set[str] = set()
+        transports: set[str] = set()
         for item in response.buses:
-            if not item.interface.strip():
-                raise InventoryError(f"bus {item.name!r} has no interface")
+            if not item.transport.strip():
+                raise InventoryError(f"bus {item.name!r} has no transport")
             if item.host_id > _MAX_CAN_ID:
                 raise InventoryError(f"bus {item.name!r} host ID must be in 0..={_MAX_CAN_ID}")
-            if item.interface in interfaces:
-                raise InventoryError(f"CAN interface {item.interface!r} is assigned more than once")
-            interfaces.add(item.interface)
+            if item.transport in transports:
+                raise InventoryError(f"CAN transport {item.transport!r} is assigned more than once")
+            transports.add(item.transport)
 
         ports: set[str] = set()
         for item in response.serial_devices:
@@ -144,7 +144,7 @@ class Inventory:
             )
 
         self.buses = tuple(
-            Bus(item.name, item.interface, item.host_id, _optional_status(item, "status"))
+            Bus(item.name, item.transport, item.host_id, _optional_status(item, "status"))
             for item in response.buses
         )
         self.serial_devices = tuple(

@@ -270,10 +270,12 @@ from bello_hardware import (
 )
 
 try:
-    control.send({
-        "hip": CoordinateTarget.damping(kd=1.0),
-        "knee": CoordinateTarget.damping(kd=1.0),
-    })
+    control.send(
+        {
+            "hip": CoordinateTarget.damping(kd=1.0),
+            "knee": CoordinateTarget.damping(kd=1.0),
+        }
+    )
 except CommandRejectedError as error:
     print("command rejected:", error.result, error.detail)
 except LeaseLostError:
@@ -316,9 +318,9 @@ receiver; CAN, serial, device FSMs, and fixed-rate motor control stay in
 `Robot.connect` accepts these endpoint forms:
 
 ```python
-Robot.connect("127.0.0.1:50051")          # plaintext gRPC
-Robot.connect("http://127.0.0.1:50051")   # plaintext gRPC
-Robot.connect("https://robot.example")    # TLS with default roots
+Robot.connect("127.0.0.1:50051")  # plaintext gRPC
+Robot.connect("http://127.0.0.1:50051")  # plaintext gRPC
+Robot.connect("https://robot.example")  # TLS with default roots
 Robot.connect("unix:///run/bello/hardwared.sock")
 ```
 
@@ -330,8 +332,8 @@ from bello_hardware import Robot, TlsCredentials
 
 tls = TlsCredentials.from_files(
     ca_certificate="/etc/bello/tls/ca.crt",
-    client_certificate="/etc/bello/tls/client.crt",       # omit both for TLS
-    client_private_key="/etc/bello/tls/client.key",       # without mTLS
+    client_certificate="/etc/bello/tls/client.crt",  # omit both for TLS
+    client_private_key="/etc/bello/tls/client.key",  # without mTLS
 )
 
 with Robot.connect("https://robot.example:50051", tls=tls) as robot:

@@ -14,7 +14,7 @@ grpc:
   default_lease_ms: 1000
   maximum_lease_ms: 5000
 
-bus_interfaces: { can0: vcan0, can1: vcan1 }
+bus_transports: { can0: { type: socketcan, interface: vcan0 }, can1: { type: socketcan, interface: vcan1 } }
 serial_ports: { imu_serial: /dev/ttyIMU, power_board_serial: /dev/ttyPOWER }
 enabled_power_boards: [power_board]
 

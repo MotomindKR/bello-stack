@@ -49,7 +49,7 @@ pub(crate) struct DeploymentConfig {
     #[serde(default)]
     pub grpc: GrpcConfig,
     #[serde(default)]
-    pub bus_interfaces: HashMap<String, String>,
+    pub bus_transports: HashMap<String, BusTransportConfig>,
     #[serde(default)]
     pub serial_ports: HashMap<String, String>,
     pub enabled_groups: Vec<String>,
@@ -200,7 +200,7 @@ pub struct GrpcTlsConfig {
 #[serde(deny_unknown_fields)]
 pub struct BusConfig {
     pub name: String,
-    pub interface: String,
+    pub transport: BusTransportConfig,
     #[serde(default = "default_host_id")]
     pub host_id: u8,
     #[serde(default = "default_bitrate")]
@@ -209,6 +209,22 @@ pub struct BusConfig {
     pub maximum_utilization: f64,
     #[serde(default)]
     pub reconnect: ReconnectConfig,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum BusTransportConfig {
+    Socketcan { interface: String },
+    Gsusb { serial: String, channel: u8 },
+}
+
+impl BusTransportConfig {
+    pub fn label(&self) -> String {
+        match self {
+            Self::Socketcan { interface } => format!("socketcan:{interface}"),
+            Self::Gsusb { serial, channel } => format!("gsusb:{serial}:{channel}"),
+        }
+    }
 }
 fn default_host_id() -> u8 {
     0xFD

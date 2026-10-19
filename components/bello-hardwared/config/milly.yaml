@@ -14,7 +14,7 @@ grpc:
   default_lease_ms: 1000
   maximum_lease_ms: 5000
 
-bus_interfaces: { can0: can0 }
+bus_transports: { can0: { type: socketcan, interface: can0 } }
 serial_ports: {}
 
 enabled_groups: [arm]

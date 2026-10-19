@@ -33,9 +33,9 @@ InventoryMutation = Callable[[proto.ListHardwareResponse], object]
             id="invalid-motor-direction",
         ),
         pytest.param(
-            lambda response: setattr(response.buses[0], "interface", ""),
-            "has no interface",
-            id="empty-can-interface",
+            lambda response: setattr(response.buses[0], "transport", ""),
+            "has no transport",
+            id="empty-can-transport",
         ),
         pytest.param(
             lambda response: setattr(response.buses[0], "host_id", 256),
@@ -44,17 +44,17 @@ InventoryMutation = Callable[[proto.ListHardwareResponse], object]
         ),
         pytest.param(
             lambda response: response.buses.add(
-                name="duplicate_interface",
-                interface="vcan0",
+                name="duplicate_transport",
+                transport="socketcan:vcan0",
                 host_id=0xFC,
             ),
-            "CAN interface .* assigned more than once",
-            id="duplicate-can-interface",
+            "CAN transport .* assigned more than once",
+            id="duplicate-can-transport",
         ),
         pytest.param(
             lambda response: response.buses.add(
                 name="unused",
-                interface="vcan1",
+                transport="socketcan:vcan1",
                 host_id=0xFC,
             ),
             "CAN buses have no motors",

@@ -5,8 +5,8 @@
 `bello-hardwared` separates transport ownership from device protocols:
 
 ```text
-SocketCAN supervisor -> Robstride motor controller -> motor-group controller
-serial supervisor    -> EBIMU sensor worker         -> telemetry
+CAN supervisor    -> Robstride motor controller -> motor-group controller
+serial supervisor -> EBIMU sensor worker         -> telemetry
 ```
 
 Each transport and device publishes a common lifecycle status, but recovery is
@@ -22,12 +22,17 @@ Typical states are `Starting`, `Connecting`, `Online`, `Degraded`, `Fault`,
 group FSM states `Idle`, `Damped`, `Running`, `Fault`, and `Shutdown` in
 [`control/fsm.rs`](../components/bello-hardwared/src/control/fsm.rs).
 
-## SocketCAN transport
+## CAN transports
 
 ### Responsibilities
 
 For every configured logical bus, the CAN manager creates one supervisor and
-three bounded transmit queues. Each online session opens two sockets on the
+three bounded transmit queues. The priority, freshness, and safety behavior is
+shared by both transports.
+
+### SocketCAN
+
+Each online SocketCAN session opens two sockets on the
 already configured interface: a writer with a 20 ms write timeout and a reader
 with a 100 ms read timeout. The daemon does not create the interface, bring it
 up, or set its bitrate. See
@@ -41,12 +46,24 @@ The session then owns two worker threads:
   accepts only eight-byte frames, timestamps them, and publishes them to one
   process-wide bounded frame queue of 8192 entries. Standard-ID devices can
   share the physical bus without entering the Robstride receive path.
-- TX is event-driven. It wakes when a batch arrives; it does not spin at a
-  separately configured CAN frequency.
+- TX waits for queued batches or a periodic target's next deadline.
 
 The supervisor checks the workers' failure channel every 20 ms. A reported
 socket error, receive-queue overflow, disconnected failure channel, or
 indeterminate transmission ends the entire session and schedules a reconnect.
+
+### GS-USB
+
+The GS-USB supervisor owns a dedicated single-thread Tokio runtime. It scans
+supported USB adapters by serial number, configures the selected classic-CAN
+channel at the declared nominal bitrate, and splits a `gsusbio` socket into a
+sender and receiver. The transmit worker retains the same prioritized queues
+and deadlines as SocketCAN; it submits USB sends through that runtime. The
+receiver forwards only extended, eight-byte data frames to Robstride. USB
+disconnects, CAN error frames, and receive overflow end the session and enter
+the normal reconnect path. A completed send confirms the USB transfer, not CAN
+bus acknowledgment. Physical timing and fault response must be validated on
+the selected adapter before deployment.
 
 ### Queue ordering and deadlines
 
@@ -84,7 +101,7 @@ across target updates, and skips missed slots. It reserves wire time against
 the original target deadline and checks lease generation and revocation before
 every frame. Safety transitions revoke their group's slot before enqueueing
 an ordered barrier; other groups sharing the bus retain their slots. A gap of
-four refresh periods without a completed socket write burst latches a group
+four refresh periods without a completed transport write burst latches a group
 transmission fault (13.33 ms at 300 Hz). Both TX and group safety ticks check
 this gap; new policy targets do not reset it. This does not guarantee physical
 wire delivery or motor acknowledgement. See
@@ -371,7 +388,7 @@ gRPC telemetry stream.
 | Motor-group safety | `control_rate_hz`, 1–2000 Hz | Fixed checks; does not necessarily transmit CAN commands |
 | CAN transmission | `command_refresh_rate_hz`, 1–`control_rate_hz` Hz | `on_update`: fallback refresh; `periodic`: independent latest-target clock |
 | CAN TX | Priority/command arrivals and periodic slot deadlines | Safety and configuration preempt normal control; periodic clocks run in TX |
-| CAN RX | SocketCAN input | Blocking/event-driven with a 100 ms OS timeout |
+| CAN RX | SocketCAN or GS-USB input | SocketCAN blocks with a 100 ms OS timeout; GS-USB awaits device events |
 | Motor health scan | `feedback_timeout_ms / 4`, clamped to 1–20 ms | Checks bus state and armed feedback watchdogs |
 | Serial TX | Sensor configuration requests | Event-driven; bounded by `timeout_ms` |
 | gRPC state frames | Client request cadence | Returns one complete latest-cache frame per request |

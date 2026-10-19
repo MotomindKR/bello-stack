@@ -121,7 +121,7 @@ class Motor:
 @dataclass(frozen=True, slots=True)
 class Bus:
     name: str
-    interface: str
+    transport: str
     host_id: int
     status: DeviceStatus | None
 

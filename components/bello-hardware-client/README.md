@@ -134,7 +134,7 @@ name-ordered iterators expose CAN bus, serial transport, motor, and IMU metadata
 let robot = Robot::connect("http://127.0.0.1:50051").await?;
 
 for bus in robot.buses() {
-    println!("{}: {} host {}", bus.name(), bus.interface(), bus.host_id());
+    println!("{}: {} host {}", bus.name(), bus.transport(), bus.host_id());
 }
 for serial in robot.serial_devices() {
     println!("{}: {} at {} baud", serial.name(), serial.port(), serial.baud_rate());

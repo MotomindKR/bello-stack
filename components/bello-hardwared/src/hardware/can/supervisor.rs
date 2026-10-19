@@ -17,6 +17,7 @@ use super::{
     BatchFailure, BusSpec, BusTxQueues, CanFrame, ControlBatch, PriorityBatch, PriorityBatchKind,
     ReceivedFrame,
 };
+use crate::config::BusTransportConfig;
 use crate::domain::BusName;
 use crate::hardware::lifecycle::{DeviceLifecycle, wait_for_stop};
 
@@ -26,6 +27,21 @@ enum Outbound {
     Periodic(PeriodicControl, Arc<PeriodicBatch>),
 }
 
+mod usb;
+
+trait FrameWriter {
+    fn write_frame(&self, frame: CanFrame) -> Result<(), String>;
+}
+
+impl FrameWriter for CanSocket {
+    fn write_frame(&self, frame: CanFrame) -> Result<(), String> {
+        let id = ExtendedId::new(frame.id).ok_or_else(|| "invalid extended CAN id".to_owned())?;
+        let frame = WireFrame::new(id, &frame.data)
+            .ok_or_else(|| "could not construct CAN frame".to_owned())?;
+        Socket::write_frame(self, &frame).map_err(|error| format!("CAN write failed: {error}"))
+    }
+}
+
 pub(super) fn run(
     spec: BusSpec,
     queues: BusTxQueues,
@@ -33,13 +49,28 @@ pub(super) fn run(
     lifecycle: DeviceLifecycle,
     shutdown: Arc<AtomicBool>,
 ) {
+    match &spec.transport {
+        BusTransportConfig::Socketcan { .. } => {
+            run_socketcan(spec, queues, frames, lifecycle, shutdown)
+        }
+        BusTransportConfig::Gsusb { .. } => usb::run(spec, queues, frames, lifecycle, shutdown),
+    }
+}
+
+fn run_socketcan(
+    spec: BusSpec,
+    queues: BusTxQueues,
+    frames: Sender<ReceivedFrame>,
+    lifecycle: DeviceLifecycle,
+    shutdown: Arc<AtomicBool>,
+) {
     let mut failures = 0_u32;
-    lifecycle.mark_connecting(format!("opening SocketCAN interface {}", spec.interface));
+    lifecycle.mark_connecting(format!("opening {}", spec.transport.label()));
     while !shutdown.load(Ordering::Acquire) {
         match open_sockets(&spec) {
             Ok((writer, reader)) => {
                 failures = 0;
-                lifecycle.mark_online(format!("SocketCAN interface {} online", spec.interface));
+                lifecycle.mark_online(format!("{} online", spec.transport.label()));
                 if let Err(detail) = run_session(writer, reader, &spec, &queues, &frames, &shutdown)
                 {
                     if shutdown.load(Ordering::Acquire) {
@@ -63,25 +94,20 @@ pub(super) fn run(
 }
 
 fn open_sockets(spec: &BusSpec) -> Result<(CanSocket, CanSocket)> {
-    let writer = CanSocket::open(&spec.interface).with_context(|| {
-        format!(
-            "opening SocketCAN writer {} ({})",
-            spec.name, spec.interface
-        )
-    })?;
+    let BusTransportConfig::Socketcan { interface } = &spec.transport else {
+        unreachable!("SocketCAN supervisor requires a SocketCAN transport")
+    };
+    let writer = CanSocket::open(interface)
+        .with_context(|| format!("opening SocketCAN writer {} ({})", spec.name, interface))?;
     writer.set_write_timeout(Duration::from_millis(20))?;
-    let reader = CanSocket::open(&spec.interface).with_context(|| {
-        format!(
-            "opening SocketCAN reader {} ({})",
-            spec.name, spec.interface
-        )
-    })?;
+    let reader = CanSocket::open(interface)
+        .with_context(|| format!("opening SocketCAN reader {} ({})", spec.name, interface))?;
     reader
         .set_filters(&[(CAN_EFF_FLAG, CAN_EFF_FLAG)])
         .with_context(|| {
             format!(
                 "restricting SocketCAN reader {} ({}) to extended frames",
-                spec.name, spec.interface
+                spec.name, interface
             )
         })?;
     reader.set_read_timeout(Duration::from_millis(100))?;
@@ -163,8 +189,8 @@ fn run_session(
     result
 }
 
-fn run_tx(
-    writer: CanSocket,
+fn run_tx<W: FrameWriter>(
+    writer: W,
     spec: &BusSpec,
     queues: &BusTxQueues,
     shutdown: &AtomicBool,
@@ -260,8 +286,8 @@ fn transmit_periodic_batch(
     }
 }
 
-fn transmit_control_batch(
-    writer: &CanSocket,
+fn transmit_control_batch<W: FrameWriter>(
+    writer: &W,
     spec: &BusSpec,
     batch: ControlBatch,
 ) -> Result<bool, String> {
@@ -285,8 +311,8 @@ fn transmit_control_batch(
     }
 }
 
-fn transmit_priority_batch(
-    writer: &CanSocket,
+fn transmit_priority_batch<W: FrameWriter>(
+    writer: &W,
     frames: Vec<CanFrame>,
     expires_at: Instant,
 ) -> Result<(), BatchFailure> {
@@ -323,13 +349,8 @@ fn priority_batch_can_finish(spec: &BusSpec, frame_count: usize, expires_at: Ins
         .is_some_and(|completion| completion <= expires_at)
 }
 
-fn write_frame(writer: &CanSocket, frame: CanFrame) -> Result<(), String> {
-    let id = ExtendedId::new(frame.id).ok_or_else(|| "invalid extended CAN id".to_owned())?;
-    let frame = WireFrame::new(id, &frame.data)
-        .ok_or_else(|| "could not construct CAN frame".to_owned())?;
-    writer
-        .write_frame(&frame)
-        .map_err(|error| format!("CAN write failed: {error}"))
+fn write_frame<W: FrameWriter>(writer: &W, frame: CanFrame) -> Result<(), String> {
+    writer.write_frame(frame)
 }
 
 fn run_rx(
@@ -409,7 +430,7 @@ fn prepare_reconnect(
     lifecycle.begin_reconnect(format!("{detail}; retrying in {} ms", delay.as_millis()));
     warn!(bus=%spec.name, %detail, delay_ms=delay.as_millis(), "CAN bus reconnect scheduled");
     if !wait_for_stop(shutdown, delay) {
-        lifecycle.mark_connecting(format!("reopening SocketCAN interface {}", spec.interface));
+        lifecycle.mark_connecting(format!("reopening {}", spec.transport.label()));
     }
 }
 
@@ -478,7 +499,7 @@ mod tests {
 
     fn periodic_fixture(valid_for: Duration) -> (BusSpec, PeriodicControl, Arc<PeriodicBatch>) {
         let config: crate::config::BusConfig = serde_yaml::from_str(
-            "name: can\ninterface: vcan0\nbitrate: 1000000\nmaximum_utilization: 1.0",
+            "name: can\ntransport: { type: socketcan, interface: vcan0 }\nbitrate: 1000000\nmaximum_utilization: 1.0",
         )
         .unwrap();
         let spec = BusSpec::try_from(&config).unwrap();
@@ -740,7 +761,7 @@ mod tests {
     #[test]
     fn freshness_is_checked_for_the_entire_control_batch() {
         let config: crate::config::BusConfig = serde_yaml::from_str(
-            "name: can\ninterface: vcan0\nbitrate: 10000\nmaximum_utilization: 1.0",
+            "name: can\ntransport: { type: socketcan, interface: vcan0 }\nbitrate: 10000\nmaximum_utilization: 1.0",
         )
         .unwrap();
         let spec = BusSpec::try_from(&config).unwrap();
