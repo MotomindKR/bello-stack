@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{Sender, bounded};
+use crossbeam_channel::{Receiver, Sender, TryRecvError, bounded};
 use gsusbio::{Bitrate, CanFrame as UsbFrame, CanId, CanSender, CanSocket, ReceiveEvent};
 use tokio::runtime::{Builder, Handle};
 use tracing::warn;
@@ -113,6 +113,14 @@ fn decode_frame(bus: &BusName, frame: UsbFrame) -> Option<ReceivedFrame> {
     })
 }
 
+fn check_tx_failure(failures: &Receiver<String>) -> Result<(), String> {
+    match failures.try_recv() {
+        Ok(detail) => Err(detail),
+        Err(TryRecvError::Disconnected) => Err("GS-USB transmit worker exited".into()),
+        Err(TryRecvError::Empty) => Ok(()),
+    }
+}
+
 async fn run_session(
     socket: CanSocket,
     spec: &BusSpec,
@@ -161,7 +169,7 @@ async fn run_session(
                         stats.rx_dropped, stats.malformed_frames
                     ));
                 }
-                if let Ok(detail) = failure_rx.try_recv() {
+                if let Err(detail) = check_tx_failure(&failure_rx) {
                     break Err(detail);
                 }
             }
@@ -227,6 +235,17 @@ mod tests {
                 data: [0; 8]
             })
             .is_err()
+        );
+    }
+
+    #[test]
+    fn disconnected_transmit_worker_ends_usb_session() {
+        let (failure_tx, failure_rx) = bounded(1);
+        assert!(check_tx_failure(&failure_rx).is_ok());
+        drop(failure_tx);
+        assert_eq!(
+            check_tx_failure(&failure_rx),
+            Err("GS-USB transmit worker exited".into())
         );
     }
 }
