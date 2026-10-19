@@ -57,7 +57,7 @@ jobs:
       - name: Test portable components
         run: cargo test --locked $PORTABLE_PACKAGES --all-targets
       - name: Build release executables
-        run: cargo build --locked --release -p bello-hardwared -p bello-visualizer
+        run: cargo build --locked --release
       - name: Package executables and robot assets
         run: python scripts/package-desktop.py --platform '${{ matrix.platform }}'
       - uses: actions/upload-artifact@v7

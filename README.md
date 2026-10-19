@@ -31,6 +31,7 @@ Shared Cargo, Nix, Buf, and CI configuration remains at the repository root.
 Component-specific source and examples stay under `components/`.
 
 GS-USB adapters work on all three desktop platforms; SocketCAN is Linux-only.
+The default Cargo build produces the hardware daemon and visualizer.
 See [desktop builds and USB setup](docs/desktop.md) for native build artifacts,
 platform requirements, and the Milly GS-USB deployment. The MuJoCo host
 integration and vCAN tests use Linux.

@@ -16,7 +16,9 @@ needed only to build from source.
 
 The visualizer uses the host's graphics drivers. Linux also needs its desktop
 graphics libraries (Wayland/X11, xkbcommon, EGL/Vulkan, and udev). These are
-native desktop builds, not statically linked Linux distributions. macOS artifacts
+native desktop builds with an Ubuntu 24.04 baseline, not statically linked Linux
+distributions. Binaries built inside Nix can also reference the Nix store;
+use the native CI artifacts when distributing to hosts without Nix. macOS artifacts
 are unsigned; signed/notarized application bundles are not produced by this
 workflow.
 
@@ -75,13 +77,15 @@ macOS install the Xcode command line tools. The Linux Nix shell supplies the
 Linux toolchain and graphics libraries; it is not required on macOS or Windows.
 
 ```sh
-cargo build --locked --release -p bello-hardwared -p bello-visualizer
+cargo build --locked --release
 cargo test --locked -p bello-hardwared -p bello-hardware-client -p bello-visualizer
 python scripts/package-desktop.py --platform linux-x86_64
 ```
 
 The package script reads release executables from `CARGO_TARGET_DIR/release`
 or `target/release`. Pass `--binary-dir` when using a different output directory.
-Use a lowercase platform label such as `windows-x86_64`. Run the full workspace
+Use a lowercase platform label such as `windows-x86_64`. The workspace defaults
+to the two desktop applications; select other programs explicitly with `-p`.
+Run the full workspace
 and vCAN checks on Linux: the MuJoCo host integration and vCAN process tests
 remain Linux-specific.
