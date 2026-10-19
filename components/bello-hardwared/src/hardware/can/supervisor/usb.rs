@@ -66,10 +66,8 @@ async fn connect(spec: &BusSpec) -> Result<CanSocket, String> {
                 continue;
             }
         };
-        if found.as_deref() == Some(serial.as_str()) {
-            if selected.replace(device).is_some() {
-                return Err(format!("more than one GS-USB device has serial {serial}"));
-            }
+        if found.as_deref() == Some(serial.as_str()) && selected.replace(device).is_some() {
+            return Err(format!("more than one GS-USB device has serial {serial}"));
         }
     }
     let device = selected.ok_or_else(|| format!("GS-USB device {serial} was not found"))?;

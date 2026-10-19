@@ -401,6 +401,25 @@ mod tests {
     }
 
     #[test]
+    fn gsusb_deployment_mapping_deserializes() {
+        let component = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let yaml = fs::read_to_string(component.join("config/bello-vcan.yaml"))
+            .unwrap()
+            .replace(
+                "can0: { type: socketcan, interface: vcan0 }",
+                "can0: { type: gsusb, serial: ADAPTER-A, channel: 0 }",
+            );
+        let deployment: DeploymentConfig = serde_yaml::from_str(&yaml).unwrap();
+        assert_eq!(
+            deployment.bus_transports["can0"],
+            crate::config::BusTransportConfig::Gsusb {
+                serial: "ADAPTER-A".into(),
+                channel: 0,
+            }
+        );
+    }
+
+    #[test]
     fn deployment_group_selection_is_strict() {
         let component = Path::new(env!("CARGO_MANIFEST_DIR"));
         let description_path = component.join("../../descriptions/bello/hardware.yaml");

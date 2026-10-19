@@ -46,8 +46,7 @@ The session then owns two worker threads:
   accepts only eight-byte frames, timestamps them, and publishes them to one
   process-wide bounded frame queue of 8192 entries. Standard-ID devices can
   share the physical bus without entering the Robstride receive path.
-- TX is event-driven. It wakes when a batch arrives; it does not spin at a
-  separately configured CAN frequency.
+- TX waits for queued batches or a periodic target's next deadline.
 
 The supervisor checks the workers' failure channel every 20 ms. A reported
 socket error, receive-queue overflow, disconnected failure channel, or
@@ -102,7 +101,7 @@ across target updates, and skips missed slots. It reserves wire time against
 the original target deadline and checks lease generation and revocation before
 every frame. Safety transitions revoke their group's slot before enqueueing
 an ordered barrier; other groups sharing the bus retain their slots. A gap of
-four refresh periods without a completed socket write burst latches a group
+four refresh periods without a completed transport write burst latches a group
 transmission fault (13.33 ms at 300 Hz). Both TX and group safety ticks check
 this gap; new policy targets do not reset it. This does not guarantee physical
 wire delivery or motor acknowledgement. See

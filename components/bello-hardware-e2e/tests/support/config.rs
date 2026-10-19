@@ -114,6 +114,10 @@ pub fn write_canonical_lower_body(
         Value::Sequence(Vec::new()),
     );
     mapping.insert(Value::String("imus".into()), Value::Sequence(Vec::new()));
+    mapping.insert(
+        Value::String("power_boards".into()),
+        Value::Sequence(Vec::new()),
+    );
 
     let description_path = deployment_path.with_file_name("canonical-lower-body-hardware.yaml");
     fs::write(&description_path, serde_yaml::to_string(&description)?)?;

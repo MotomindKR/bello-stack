@@ -13,11 +13,11 @@ use tracing::{error, warn};
 
 use super::PeriodicControl;
 use super::periodic::PeriodicBatch;
-use crate::config::BusTransportConfig;
 use super::{
     BatchFailure, BusSpec, BusTxQueues, CanFrame, ControlBatch, PriorityBatch, PriorityBatchKind,
     ReceivedFrame,
 };
+use crate::config::BusTransportConfig;
 use crate::domain::BusName;
 use crate::hardware::lifecycle::{DeviceLifecycle, wait_for_stop};
 
