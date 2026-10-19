@@ -38,16 +38,7 @@ fn fixture() -> (
     let topology = ResolvedTopology::resolve(raw).unwrap();
     let spec = topology.power_boards().next().unwrap().1.clone();
     let telemetry = Telemetry::new(4096);
-    let serial_specs = topology.serial_devices().map(|(_, spec)| spec.clone());
-    // macOS pseudo-terminals reject the IOSSIOSPEED ioctl used for physical
-    // serial ports. A zero baud rate tells serialport to skip that ioctl for
-    // this test fixture; real configurations still require a positive rate.
-    #[cfg(target_os = "macos")]
-    let serial_specs = serial_specs.map(|mut spec| {
-        spec.baud_rate = 0;
-        spec
-    });
-    let manager = SerialManager::start(serial_specs, telemetry.clone()).unwrap();
+    let manager = SerialManager::start(&topology, telemetry.clone()).unwrap();
     let handle = manager.handle(&spec.serial_device).unwrap();
     (master, manager, handle, spec, telemetry)
 }
@@ -82,11 +73,7 @@ fn serial_transport_delivers_heartbeat_samples_corruption_and_reconnect() {
         if let Ok(n) = master.read(&mut buf) {
             received.extend_from_slice(&buf[..n]);
         }
-        assert!(
-            Instant::now() < deadline,
-            "no initial AGX sync; serial status: {:?}",
-            handle.status()
-        );
+        assert!(Instant::now() < deadline, "no initial AGX sync");
     }
     let data: Vec<u8> = [48.5f32, -1.25, 73.0]
         .into_iter()
