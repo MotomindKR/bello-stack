@@ -37,6 +37,19 @@ pub(crate) struct ResolvedTopology {
 }
 
 impl ResolvedTopology {
+    pub(crate) fn validate_platform(&self) -> Result<()> {
+        for (name, bus) in &self.buses {
+            if !cfg!(target_os = "linux")
+                && matches!(bus.transport, super::BusTransportConfig::Socketcan { .. })
+            {
+                bail!(
+                    "CAN bus {name}: SocketCAN requires Linux; select type: gsusb on this platform"
+                );
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn load(path: impl AsRef<Path>) -> Result<Self> {
         Self::resolve(Config::load_raw(path)?)
     }

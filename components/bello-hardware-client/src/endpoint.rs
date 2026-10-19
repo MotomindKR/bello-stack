@@ -132,6 +132,12 @@ impl ConnectOptions {
             ));
         }
         if unix {
+            if !cfg!(unix) {
+                return Err(Error::InvalidArgument(
+                    "Unix endpoints are unavailable on this platform; use http:// or https://"
+                        .into(),
+                ));
+            }
             if !self.endpoint.starts_with("unix:///") {
                 return Err(Error::InvalidArgument(
                     "Unix endpoint must use unix:///absolute/path".into(),
@@ -204,10 +210,11 @@ mod tests {
                 .into_endpoint()
                 .is_ok()
         );
-        assert!(
+        assert_eq!(
             ConnectOptions::new("unix:///run/bello/hardwared.sock")
                 .into_endpoint()
-                .is_ok()
+                .is_ok(),
+            cfg!(unix)
         );
     }
 

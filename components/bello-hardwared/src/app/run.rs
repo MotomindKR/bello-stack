@@ -17,13 +17,14 @@ use bello_hardware_api::hardware_service_server::HardwareServiceServer;
 
 pub fn check(config_path: impl AsRef<Path>) -> Result<()> {
     let config_path = config_path.as_ref();
-    ResolvedTopology::load(config_path)?;
+    ResolvedTopology::load(config_path)?.validate_platform()?;
     println!("{}: configuration is valid", config_path.display());
     Ok(())
 }
 
 pub async fn run(config_path: impl AsRef<Path>) -> Result<()> {
     let topology = ResolvedTopology::load(config_path)?;
+    topology.validate_platform()?;
     let listen = topology.grpc().listen().to_vec();
     let mut listeners = Vec::with_capacity(listen.len());
     for spec in &listen {

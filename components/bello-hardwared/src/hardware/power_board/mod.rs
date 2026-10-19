@@ -245,7 +245,7 @@ fn run(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests;
 
 #[cfg(test)]

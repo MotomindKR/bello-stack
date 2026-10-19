@@ -1,0 +1,24 @@
+description: ../../../descriptions/milly/hardware.yaml
+
+runtime:
+  telemetry_capacity: 4096
+  motor_velocity_filter:
+    cutoff_hz: 10.0
+  imu_filter:
+    orientation_cutoff_hz: 10.0
+    gyro_cutoff_hz: 10.0
+    acceleration_cutoff_hz: 10.0
+
+grpc:
+  listen: [{ type: tcp, address: 127.0.0.1:50051 }]
+  default_lease_ms: 1000
+  maximum_lease_ms: 5000
+
+bus_transports:
+  can0:
+    type: gsusb
+    serial: REPLACE_WITH_ADAPTER_SERIAL
+    channel: 0
+
+serial_ports: {}
+enabled_groups: [arm]

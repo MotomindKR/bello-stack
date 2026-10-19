@@ -1,7 +1,7 @@
 # Bello stack
 
-Bello stack is a Linux-oriented hardware workspace centered on a Rust actuator
-and IMU daemon with Rust and Python clients. Its production hardware component
+Bello stack provides a Rust actuator and IMU daemon and native visualizer for
+Linux, macOS, and Windows, with Rust and Python clients. Its production hardware component
 is one monolithic daemon that
 owns SocketCAN or GS-USB buses, Robstride actuators, serial devices, EBIMU sensors,
 motor-group control, safety, gRPC, and telemetry.
@@ -29,6 +29,11 @@ in hardware command safety.
 
 Shared Cargo, Nix, Buf, and CI configuration remains at the repository root.
 Component-specific source and examples stay under `components/`.
+
+GS-USB adapters work on all three desktop platforms; SocketCAN is Linux-only.
+See [desktop builds and USB setup](docs/desktop.md) for native build artifacts,
+platform requirements, and the Milly GS-USB deployment. The MuJoCo host
+integration and vCAN tests use Linux.
 
 ## Quick start
 

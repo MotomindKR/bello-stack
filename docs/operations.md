@@ -14,8 +14,10 @@ safety behavior are described in [`configuration.md`](configuration.md) and
 
 ## Prerequisites and configuration check
 
-The runtime is Linux-oriented and expects either existing SocketCAN interfaces
-or accessible GS-USB adapters, plus configured serial device paths. The daemon
+The daemon supports Linux, macOS, and Windows with accessible GS-USB adapters
+and configured serial device paths. SocketCAN is available only on Linux;
+`--check` rejects a SocketCAN deployment on other platforms. See
+[desktop setup](desktop.md) for native executables and USB driver setup. The daemon
 does not create SocketCAN links or set their bitrate. For physical hardware,
 ensure the service account can access the selected CAN transport and has
 read/write permission for serial devices (prefer stable
