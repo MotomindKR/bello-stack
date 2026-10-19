@@ -392,12 +392,16 @@ mod tests {
     #[test]
     fn mini_profiles_resolve_all_motors_and_enforce_ankle_joint_limits() {
         for filename in ["bello-mini.yaml", "bello-mini-vcan.yaml"] {
-            let topology = ResolvedTopology::load(
+            let mut config = Config::load_raw(
                 Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join("config")
                     .join(filename),
             )
             .unwrap();
+            // Exercise the robot topology with a portable TCP listener rather
+            // than the deployment's host-specific Unix socket path.
+            config.grpc = Default::default();
+            let topology = ResolvedTopology::resolve(config).unwrap();
             assert_eq!(topology.motors.len(), 28);
             assert_eq!(topology.groups.len(), 2);
             let lower = &topology.groups[&GroupName::from("lower_body")];
