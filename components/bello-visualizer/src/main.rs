@@ -729,7 +729,14 @@ fn update_model_pose(
             );
         }
     }
-    scene.set_joint_positions(&positions);
+    match scene.set_joint_positions(&positions) {
+        Ok(()) => {
+            warnings.remove("linkage");
+        }
+        Err(error) => {
+            warnings.insert("linkage".into(), error.to_string());
+        }
+    }
 }
 
 #[cfg(test)]

@@ -21,6 +21,7 @@ struct MovingJoint {
 pub struct ModelScene {
     root: SceneNode3d,
     moving_joints: BTreeMap<String, MovingJoint>,
+    description: RobotDescription,
 }
 
 impl ModelScene {
@@ -33,17 +34,29 @@ impl ModelScene {
             description.root_link(),
             &mut moving_joints,
         )?;
-        Ok(Self {
+        let mut model = Self {
             root,
             moving_joints,
-        })
+            description: description.clone(),
+        };
+        // Passive joints must already agree with the crank before feedback arrives.
+        let initial = description
+            .joints()
+            .filter(|joint| {
+                joint.kind != JointKind::Fixed && !description.is_passive_joint(&joint.name)
+            })
+            .map(|joint| (joint.name.clone(), 0.0))
+            .collect();
+        model.set_joint_positions(&initial)?;
+        Ok(model)
     }
 
     pub fn set_root_transform(&mut self, transform: Transform) {
         set_transform(&mut self.root, transform);
     }
 
-    pub fn set_joint_positions(&mut self, positions: &BTreeMap<String, f64>) {
+    pub fn set_joint_positions(&mut self, positions: &BTreeMap<String, f64>) -> anyhow::Result<()> {
+        let positions = self.description.resolve_passive_positions(positions)?;
         for (name, moving) in &mut self.moving_joints {
             let Some(value) = positions
                 .get(name)
@@ -68,6 +81,7 @@ impl ModelScene {
                 JointKind::Fixed => {}
             }
         }
+        Ok(())
     }
 }
 

@@ -8,6 +8,8 @@ use roxmltree::{Document, Node};
 
 mod simple_transmission;
 pub use simple_transmission::{CoordinateMapping, SimpleTransmission};
+mod slider_crank;
+pub use slider_crank::SliderCrank;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum JointKind {
@@ -164,6 +166,7 @@ pub struct RobotDescription {
     children: BTreeMap<String, Vec<String>>,
     transmissions: Vec<DifferentialTransmission>,
     simple_transmissions: Vec<SimpleTransmission>,
+    slider_cranks: Vec<SliderCrank>,
 }
 
 impl RobotDescription {
@@ -183,6 +186,12 @@ impl RobotDescription {
         let transmissions = parse_transmissions(robot)?;
         validate_description(&links, &joints, &transmissions)?;
         let simple_transmissions = simple_transmission::parse(robot, &joints, &transmissions)?;
+        let transmitted = transmissions
+            .iter()
+            .flat_map(|t| t.joints.iter().map(String::as_str))
+            .chain(simple_transmissions.iter().map(|t| t.joint.as_str()))
+            .collect();
+        let slider_cranks = slider_crank::parse(robot, &joints, &transmitted)?;
 
         let child_links = joints
             .values()
@@ -214,6 +223,7 @@ impl RobotDescription {
             children,
             transmissions,
             simple_transmissions,
+            slider_cranks,
         })
     }
 
@@ -247,6 +257,80 @@ impl RobotDescription {
             .into_iter()
             .flatten()
             .filter_map(|name| self.joints.get(name))
+    }
+
+    pub fn slider_cranks(&self) -> &[SliderCrank] {
+        &self.slider_cranks
+    }
+
+    pub fn is_passive_joint(&self, name: &str) -> bool {
+        self.slider_cranks
+            .iter()
+            .any(|linkage| linkage.passive_joints().any(|joint| joint == name))
+    }
+
+    /// Expand measured model-joint positions with the closed linkage's passive
+    /// joints. Missing drivers are left untouched so callers can hold their pose.
+    pub fn resolve_passive_positions(
+        &self,
+        positions: &BTreeMap<String, f64>,
+    ) -> anyhow::Result<BTreeMap<String, f64>> {
+        let mut resolved = positions.clone();
+        for linkage in &self.slider_cranks {
+            if let Some(position) = positions.get(&linkage.driver) {
+                for (name, state) in linkage.resolve(CoordinateState {
+                    position: *position,
+                    velocity: 0.0,
+                })? {
+                    resolved.insert(name, state.position);
+                }
+            }
+        }
+        Ok(resolved)
+    }
+
+    /// Forward kinematics using model-joint positions, including passive gripper
+    /// closure. Motor transmission reconstruction is performed before this call.
+    pub fn link_transform(
+        &self,
+        base: &str,
+        target: &str,
+        positions: &BTreeMap<String, f64>,
+    ) -> anyhow::Result<Isometry3<f64>> {
+        if !self.links.contains_key(base) || !self.links.contains_key(target) {
+            bail!("unknown link in transform {base:?} -> {target:?}");
+        }
+        let positions = self.resolve_passive_positions(positions)?;
+        let mut transform = Isometry3::identity();
+        for joint in path_to(&self.joints, base, target)? {
+            transform *= joint.origin;
+            if joint.kind == JointKind::Fixed {
+                continue;
+            }
+            let position = *positions
+                .get(&joint.name)
+                .with_context(|| format!("missing position for joint {:?}", joint.name))?;
+            if !position.is_finite() {
+                bail!("non-finite position for joint {:?}", joint.name);
+            }
+            match joint.kind {
+                JointKind::Revolute => {
+                    transform *= Isometry3::from_parts(
+                        Translation3::identity(),
+                        UnitQuaternion::from_axis_angle(&joint.axis, position),
+                    )
+                }
+                JointKind::Prismatic => {
+                    transform *= Isometry3::translation(
+                        joint.axis.x * position,
+                        joint.axis.y * position,
+                        joint.axis.z * position,
+                    )
+                }
+                JointKind::Fixed => unreachable!(),
+            }
+        }
+        Ok(transform)
     }
 
     /// Return `base_from_target` when `target` is rigidly attached below `base`.
@@ -320,6 +404,7 @@ impl RobotDescription {
         let mut coordinates: BTreeSet<_> = self
             .joints()
             .filter(|j| j.kind != JointKind::Fixed)
+            .filter(|j| !self.is_passive_joint(&j.name))
             .map(|j| j.name.as_str())
             .collect();
         for t in &self.transmissions {
@@ -346,7 +431,7 @@ impl RobotDescription {
     fn direct_coordinate_joint(&self, coordinate: &str) -> Option<&Joint> {
         let joint = self
             .joint(coordinate)
-            .filter(|j| j.kind != JointKind::Fixed)?;
+            .filter(|j| j.kind != JointKind::Fixed && !self.is_passive_joint(&j.name))?;
         if self
             .simple_transmissions
             .iter()
