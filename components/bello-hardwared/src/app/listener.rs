@@ -1,8 +1,10 @@
-use std::fs;
-use std::io::ErrorKind;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(unix)]
+use std::{fs, io::ErrorKind, path::PathBuf};
 
-use anyhow::{Context, Result, anyhow, bail};
+#[cfg(unix)]
+use anyhow::Context;
+use anyhow::{Result, anyhow, bail};
 use tonic::transport::server::TcpIncoming;
 
 use crate::api::grpc::GrpcListenSpec;
@@ -144,11 +146,13 @@ mod tests {
     #[tokio::test]
     async fn tcp_connections_disable_nagle() {
         let spec = GrpcListenSpec::Tcp("127.0.0.1:0".parse().expect("valid test address"));
-        let GrpcIncoming::Tcp(mut incoming) =
-            GrpcIncoming::bind(&spec).expect("bind test listener")
-        else {
+        let incoming = GrpcIncoming::bind(&spec).expect("bind test listener");
+        #[cfg(unix)]
+        let GrpcIncoming::Tcp(mut incoming) = incoming else {
             panic!("TCP listen spec produced a Unix listener");
         };
+        #[cfg(not(unix))]
+        let GrpcIncoming::Tcp(mut incoming) = incoming;
         let address = incoming.local_addr().expect("test listener address");
         let client = tokio::spawn(tokio::net::TcpStream::connect(address));
         let accepted = incoming

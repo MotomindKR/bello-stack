@@ -525,6 +525,7 @@ motors:
     }
 
     #[test]
+    #[cfg(unix)]
     fn unix_listener_rejects_tls() {
         let source = one_group(&format!(
             "{PREFIX}\ngrpc:\n  listen: [{{ type: unix, path: /tmp/hardwared.sock }}]\n  tls:\n    certificate: missing-cert.pem\n    private_key: missing-key.pem"

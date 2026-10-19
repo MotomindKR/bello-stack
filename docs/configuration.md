@@ -311,6 +311,10 @@ For a GS-USB adapter, use its USB serial number and zero-based CAN channel:
 bus_transports: { can_a: { type: gsusb, serial: YOUR_ADAPTER_SERIAL, channel: 0 } }
 ```
 
+GS-USB is supported on Linux, macOS, and Windows. SocketCAN is Linux-only;
+selecting it on another platform fails configuration checking and startup.
+The maintained `milly-gsusb.yaml` deployment is a portable example.
+
 The daemon opens a mapped SocketCAN interface without bringing the link up or
 setting its bitrate. For GS-USB it finds the matching USB device and configures
 the selected channel at the description's `bitrate`. Every GS-USB adapter must

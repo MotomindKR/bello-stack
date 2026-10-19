@@ -15,6 +15,7 @@ source comments.
 | Monitor or command against the robot description | [`bello-visualizer`](../components/bello-visualizer) | [Configuration](configuration.md), [API](api.md) |
 | Diagnose CAN, motor, serial, or IMU faults | [Hardware](hardware.md) | [Operations](operations.md) |
 | Run or test the stack | [Operations](operations.md) | [Development](development.md) |
+| Run on Linux, macOS, or Windows | [Desktop builds](desktop.md) | [Operations](operations.md) |
 | Review or modify the code | [Architecture](architecture.md) | [Development](development.md) |
 
 ## Guide map

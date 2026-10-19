@@ -1,0 +1,68 @@
+name: Desktop
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: Desktop (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux-x86_64
+          - os: macos-15
+            platform: macos-arm64
+          - os: windows-2025
+            platform: windows-x86_64
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      PORTABLE_PACKAGES: >-
+        -p bello-hardwared -p bello-visualizer -p bello-hardware-client
+        -p bello-hardware-api -p bello-pose-api -p bello-robot-description
+        -p cog-protocol -p robstride-protocol
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: arduino/setup-protoc@v3
+        with:
+          version: "35.1"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes pkg-config libudev-dev libwayland-dev libxkbcommon-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libegl1-mesa-dev
+      - name: Clippy
+        run: cargo clippy --locked $PORTABLE_PACKAGES --all-targets -- -D warnings
+      - name: Test portable components
+        run: cargo test --locked $PORTABLE_PACKAGES --all-targets
+      - name: Build release executables
+        run: cargo build --locked --release
+      - name: Package executables and robot assets
+        run: python scripts/package-desktop.py --platform '${{ matrix.platform }}'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bello-desktop-${{ matrix.platform }}
+          path: dist/bello-desktop-${{ matrix.platform }}.zip
+          compression-level: 0
+          if-no-files-found: error

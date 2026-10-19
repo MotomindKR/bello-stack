@@ -10,6 +10,13 @@ documented in [`operations.md`](operations.md), the external contract in
 
 ## Nix and direnv
 
+For native Windows/macOS builds and downloadable desktop artifacts, see
+[desktop builds](desktop.md). The full workspace, MuJoCo host integration,
+and vCAN tests are checked on Linux. The Desktop CI workflow builds, lints,
+and tests the daemon, visualizer, protocol libraries, and Rust client natively
+on all three operating systems and packages the two release executables with
+their robot assets.
+
 The checked-in Nix flake supplies Rust/Cargo, rustfmt, Clippy, Python, gRPC
 Python tooling, pytest, Ruff, mypy, system `protoc`, Buf, `grpcurl`, can-utils,
 iproute2, and native build dependencies. Enter it automatically:
