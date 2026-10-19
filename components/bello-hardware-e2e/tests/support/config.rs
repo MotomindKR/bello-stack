@@ -190,9 +190,16 @@ fn canonical_emulator(
         bus.host_id
     );
     for motor in motors {
+        // Zero quantizes slightly below the knees' 0.0 rad URDF lower limit.
+        let initial_position =
+            if matches!(motor.name.as_str(), "left_knee_mix_1" | "right_knee_mix_1") {
+                0.1
+            } else {
+                0.0
+            };
         output.push_str(&format!(
-            "  - {{ id: {}, model: {}, direction: {}, initial_position: 0.0 }}\n",
-            motor.id, motor.model, motor.direction
+            "  - {{ id: {}, model: {}, direction: {}, initial_position: {initial_position} }}\n",
+            motor.id, motor.model, motor.direction,
         ));
     }
     output.push_str("\nevents: []\n");
