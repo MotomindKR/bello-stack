@@ -146,11 +146,13 @@ mod tests {
     #[tokio::test]
     async fn tcp_connections_disable_nagle() {
         let spec = GrpcListenSpec::Tcp("127.0.0.1:0".parse().expect("valid test address"));
-        let mut incoming = match GrpcIncoming::bind(&spec).expect("bind test listener") {
-            GrpcIncoming::Tcp(incoming) => incoming,
-            #[cfg(unix)]
-            GrpcIncoming::Unix { .. } => panic!("TCP listen spec produced a Unix listener"),
+        let incoming = GrpcIncoming::bind(&spec).expect("bind test listener");
+        #[cfg(unix)]
+        let GrpcIncoming::Tcp(mut incoming) = incoming else {
+            panic!("TCP listen spec produced a Unix listener");
         };
+        #[cfg(not(unix))]
+        let GrpcIncoming::Tcp(mut incoming) = incoming;
         let address = incoming.local_addr().expect("test listener address");
         let client = tokio::spawn(tokio::net::TcpStream::connect(address));
         let accepted = incoming
