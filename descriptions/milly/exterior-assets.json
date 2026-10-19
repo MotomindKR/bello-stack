@@ -1,0 +1,675 @@
+{
+  "source_file": "Milly_Assem_0914_Case Only.STEP",
+  "source_sha256": "9ce92b12ed36bbb7daf16116596f757f20f34a90085ee3a43f3fe9b6506be7dc",
+  "source_units": "mm",
+  "output_units": "m",
+  "tessellation": {
+    "linear_deflection_mm": 0.1,
+    "angular_deflection_rad": 0.15
+  },
+  "cad_to_link": {
+    "link_1": [
+      [
+        -1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        1.0,
+        0.0,
+        0.0575
+      ],
+      [
+        0.0,
+        0.0,
+        -1.0,
+        0.072
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "base_link": [
+      [
+        -1.0,
+        3.3306690999999963e-16,
+        1.5457704126800887e-23,
+        1.915134621204528e-17
+      ],
+      [
+        -3.3306691e-16,
+        -0.999999999999999,
+        -4.641020666628482e-08,
+        -0.09499999665846506
+      ],
+      [
+        1.4693679385278594e-39,
+        -4.641020666628482e-08,
+        0.999999999999999,
+        -2.668586809861928e-09
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "link_2": [
+      [
+        -2.679489647285944e-08,
+        -0.9999999999985109,
+        1.7255589998784599e-06,
+        -0.05749984766563732
+      ],
+      [
+        -2.679494273225536e-08,
+        -1.7255589991919248e-06,
+        -0.9999999999985107,
+        0.1380000611578061
+      ],
+      [
+        0.9999999999999993,
+        -2.6794942732255365e-08,
+        -2.6794896472859438e-08,
+        0.09789251315700134
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "link_3": [
+      [
+        3.660253109442702e-08,
+        0.5000000200621741,
+        0.8660253922015357,
+        -0.29984283160116065
+      ],
+      [
+        5.6217858649344135e-08,
+        0.8660253922015342,
+        -0.5000000200621754,
+        -0.09634301413222926
+      ],
+      [
+        -0.9999999999999978,
+        6.698735939024991e-08,
+        3.589790870914191e-09,
+        0.027999992371699964
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "link_4": [
+      [
+        -0.9990242344392749,
+        6.775071872050211e-08,
+        0.04416535976324324,
+        -0.010519289858047527
+      ],
+      [
+        0.04416535976324622,
+        4.258216999350834e-08,
+        0.9990242344392756,
+        -0.23794708814790796
+      ],
+      [
+        6.580395302413481e-08,
+        0.9999999999999969,
+        -4.55328545505991e-08,
+        -0.024229366775445238
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "link_5": [
+      [
+        3.9035202195631315e-08,
+        0.9999999999999982,
+        -4.434944831279441e-08,
+        0.025270633572371536
+      ],
+      [
+        -0.04416540612816735,
+        -4.258216809274011e-08,
+        -0.9990242323895508,
+        0.23794708875034523
+      ],
+      [
+        -0.9990242323895516,
+        4.095582423678163e-08,
+        0.04416540612816558,
+        0.012980698421654913
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "link_6": [
+      [
+        0.9958456779308217,
+        -3.121873300901346e-08,
+        0.09105704666032911,
+        -0.021884220550926318
+      ],
+      [
+        0.09105704666032767,
+        -4.747452753895278e-08,
+        -0.9958456779308206,
+        0.23911501543163788
+      ],
+      [
+        3.541193068026122e-08,
+        0.9999999999999983,
+        -4.443461735290516e-08,
+        0.09407618959289504
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "gripper_base": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        -0.2381795
+      ],
+      [
+        0.0,
+        -1.0,
+        0.0,
+        -0.1985206
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "gripper_drive": [
+      [
+        -0.5885011172553459,
+        0.0,
+        -0.8084964038195901,
+        0.19256726921354805
+      ],
+      [
+        0.8084964038195901,
+        0.0,
+        -0.5885011172553459,
+        0.14016890185731967
+      ],
+      [
+        0.0,
+        -1.0,
+        0.0,
+        -0.1985206
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "finger_1": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        -0.07201569696731668
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        -0.2381795
+      ],
+      [
+        0.0,
+        -1.0,
+        0.0,
+        -0.1985206
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "gripper_rod_1": [
+      [
+        0.9997639047680003,
+        0.0,
+        0.02172866132647933,
+        -0.03247821735361445
+      ],
+      [
+        -0.02172866132647933,
+        0.0,
+        0.9997639047680004,
+        -0.25055515693284874
+      ],
+      [
+        0.0,
+        -1.0,
+        0.0,
+        -0.1985206
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "finger_2": [
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.07201569696731668
+      ],
+      [
+        0.0,
+        0.0,
+        1.0,
+        -0.2381795
+      ],
+      [
+        0.0,
+        -1.0,
+        0.0,
+        -0.1985206
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "gripper_rod_2": [
+      [
+        -0.9997639047680003,
+        0.0,
+        -0.021728661326479,
+        -0.022127573972794155
+      ],
+      [
+        0.021728661326479,
+        0.0,
+        -0.9997639047680004,
+        0.22569137697853112
+      ],
+      [
+        0.0,
+        -1.0,
+        0.0,
+        -0.1985206
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "camera_link": [
+      [
+        -0.0,
+        -0.8660254037844388,
+        -0.5000000000000001,
+        0.013063724550338537
+      ],
+      [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        -0.5000000000000001,
+        0.8660254037844387,
+        -0.35604583465727124
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ]
+  },
+  "visuals": [
+    {
+      "mesh": "base.stl",
+      "link": "base_link",
+      "material": "milly_base",
+      "instances": [
+        "01_Milly_Assem_0914_Case Only/01_ASM_J1/02_Base_Mount",
+        "01_Milly_Assem_0914_Case Only/01_ASM_J1/03_Base"
+      ],
+      "triangles": 12980
+    },
+    {
+      "mesh": "shoulder_frame.stl",
+      "link": "link_1",
+      "material": "milly_black",
+      "instances": [
+        "01_Milly_Assem_0914_Case Only/02_ASM_J2/03_AL5_J2_INNER_FRAME"
+      ],
+      "triangles": 2476
+    },
+    {
+      "mesh": "shoulder_shroud.stl",
+      "link": "link_2",
+      "material": "milly_black",
+      "instances": [
+        "01_Milly_Assem_0914_Case Only/02_ASM_J2/01_PLA1_Motor03_SPACER"
+      ],
+      "triangles": 412
+    },
+    {
+      "mesh": "upper_arm_case.stl",
+      "link": "link_2",
+      "material": "milly_white",
+      "instances": [
+        "01_Milly_Assem_0914_Case Only/03_Part1",
+        "01_Milly_Assem_0914_Case Only/04_Part1.1"
+      ],
+      "triangles": 66622
+    },
+    {
+      "mesh": "elbow_frame.stl",
+      "link": "link_3",
+      "material": "milly_black",
+      "instances": [
+        "01_Milly_Assem_0914_Case Only/05_ASM_J3/01_PLA2_Motor06_SPACER",
+        "01_Milly_Assem_0914_Case Only/05_ASM_J3/03_AL9_J2_INNER_FRAME_R",
+        "01_Milly_Assem_0914_Case Only/05_ASM_J3/04_AL10_J2_INNER_FRAME_L"
+      ],
+      "triangles": 5192
+    },
+    {
+      "mesh": "forearm_case.stl",
+      "link": "link_3",
+      "material": "milly_white",
+      "instances": [
+        "01_Milly_Assem_0914_Case Only/06_Part2",
+        "01_Milly_Assem_0914_Case Only/07_Part2.1"
+      ],
+      "triangles": 20478
+    },
+    {
+      "mesh": "wrist_roll.stl",
+      "link": "link_4",
+      "material": "milly_black",
+      "instances": [
+        "01_Milly_Assem_0914_Case Only/08_ASM_J456/01_ASM_J4/01_Motor00",
+        "01_Milly_Assem_0914_Case Only/08_ASM_J456/01_ASM_J4/02_AL12_J4_BTM_OUTER_LIMITER",
+        "01_Milly_Assem_0914_Case Only/08_ASM_J456/01_ASM_J4/04_AL14_J5_INNER_FRAME"
+      ],
+      "triangles": 3932
+    },
+    {
+      "mesh": "wrist_pitch.stl",
+      "link": "link_5",
+      "material": "milly_black",
+      "instances": [
+        "01_Milly_Assem_0914_Case Only/08_ASM_J456/02_ASM_J5/01_ASM_RS00_JOINT/01_Motor00",
+        "01_Milly_Assem_0914_Case Only/08_ASM_J456/03_ASM_J6/01_Motor05",
+        "01_Milly_Assem_0914_Case Only/08_ASM_J456/03_ASM_J6/03_Arm_End_Plate"
+      ],
+      "triangles": 14278
+    },
+    {
+      "mesh": "wrist_case.stl",
+      "link": "link_5",
+      "material": "milly_white",
+      "instances": [
+        "01_Milly_Assem_0914_Case Only/09_Part3"
+      ],
+      "triangles": 26884
+    },
+    {
+      "mesh": "gripper_body.stl",
+      "link": "gripper_base",
+      "material": "milly_black",
+      "instances": [
+        "01_Milly_Assem_0914_Case Only/10_ASM_Gripper/01_Motor_00MINI.2",
+        "01_Milly_Assem_0914_Case Only/10_ASM_Gripper/11_Part1.1.2.3"
+      ],
+      "triangles": 9096
+    },
+    {
+      "mesh": "gripper_rail.stl",
+      "link": "gripper_base",
+      "material": "milly_metal",
+      "instances": [
+        "01_Milly_Assem_0914_Case Only/10_ASM_Gripper/06_Linear rail"
+      ],
+      "triangles": 7292
+    },
+    {
+      "mesh": "gripper_crank.stl",
+      "link": "gripper_drive",
+      "material": "milly_metal",
+      "instances": [
+        "01_Milly_Assem_0914_Case Only/10_ASM_Gripper/12_Part1.1.2"
+      ],
+      "triangles": 1456
+    },
+    {
+      "mesh": "finger_1_carriage.stl",
+      "link": "finger_1",
+      "material": "milly_metal",
+      "instances": [
+        "01_Milly_Assem_0914_Case Only/10_ASM_Gripper/09_Linear guide block"
+      ],
+      "triangles": 40300
+    },
+    {
+      "mesh": "finger_2_carriage.stl",
+      "link": "finger_2",
+      "material": "milly_metal",
+      "instances": [
+        "01_Milly_Assem_0914_Case Only/10_ASM_Gripper/04_Linear guide block"
+      ],
+      "triangles": 40300
+    },
+    {
+      "mesh": "gripper_rod_1.stl",
+      "link": "gripper_rod_1",
+      "material": "milly_metal",
+      "instances": [
+        "01_Milly_Assem_0914_Case Only/10_ASM_Gripper/10_Gripper_SwingArm"
+      ],
+      "triangles": 1020
+    },
+    {
+      "mesh": "gripper_rod_2.stl",
+      "link": "gripper_rod_2",
+      "material": "milly_metal",
+      "instances": [
+        "01_Milly_Assem_0914_Case Only/10_ASM_Gripper/05_Gripper_SwingArm"
+      ],
+      "triangles": 1020
+    },
+    {
+      "mesh": "camera.stl",
+      "link": "camera_link",
+      "material": "milly_black",
+      "instances": [
+        "01_Milly_Assem_0914_Case Only/10_ASM_Gripper/13_USB Camera"
+      ],
+      "triangles": 3930
+    }
+  ],
+  "omitted_instances": [
+    "01_Milly_Assem_0914_Case Only/01_ASM_J1/01_AL1_J1_TOP_BRKT",
+    "01_Milly_Assem_0914_Case Only/02_ASM_J2/02_AL4_J2_TOP_BRKT",
+    "01_Milly_Assem_0914_Case Only/05_ASM_J3/02_AL8_J3_TOP_BRKT",
+    "01_Milly_Assem_0914_Case Only/08_ASM_J456/01_ASM_J4/03_AL13_J4_TOP_BRKT",
+    "01_Milly_Assem_0914_Case Only/08_ASM_J456/02_ASM_J5/01_ASM_RS00_JOINT/02_PLA3_Motor00_SPACER",
+    "01_Milly_Assem_0914_Case Only/08_ASM_J456/02_ASM_J5/02_AL19_J5_TOP_BRKT.1",
+    "01_Milly_Assem_0914_Case Only/08_ASM_J456/03_ASM_J6/02_AL15_J5_OUTER_FRAME",
+    "01_Milly_Assem_0914_Case Only/08_ASM_J456/03_ASM_J6/04_Axis7_Limit_Frame_H",
+    "01_Milly_Assem_0914_Case Only/10_ASM_Gripper/02_Griper Finger/01_Finger",
+    "01_Milly_Assem_0914_Case Only/10_ASM_Gripper/03_Gripper Finger Bracket",
+    "01_Milly_Assem_0914_Case Only/10_ASM_Gripper/07_Griper Finger/01_Finger",
+    "01_Milly_Assem_0914_Case Only/10_ASM_Gripper/08_Gripper Finger Bracket"
+  ],
+  "omission_reason": "Internal mounting plates, spacers and limit hardware are covered by the exterior cases. STEP fingers and finger brackets are replaced by the rounded legacy jaw assemblies matching the robot photo.",
+  "retained_legacy_meshes": [
+    {
+      "mesh": "base_connector.stl",
+      "source_mesh": "base_link__001__Connector_Cnlinko_LP-20_4_poles.1.stl",
+      "link": "base_link",
+      "mesh_to_link": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "sha256": "6f928b9fd84b71405951f9e3529bef66cb6331efcdce235008bc868ad460a1cc"
+    },
+    {
+      "mesh": "finger_1.stl",
+      "source_mesh": "finger_1__000__Gripper_Finger.1.stl",
+      "link": "finger_1",
+      "mesh_to_link": [
+        [
+          0.9958456779308216,
+          0.09105704666032763,
+          3.541193060679382e-08,
+          -0.006000813955602452
+        ],
+        [
+          0.09105704666032924,
+          -0.9958456779308216,
+          -4.443461743319587e-08,
+          -0.00017828113464052765
+        ],
+        [
+          3.121873308948669e-08,
+          4.7474527465685405e-08,
+          -0.9999999999999986,
+          0.010750021355116796
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "sha256": "fed16c9686a8369fc6ec975190e27b810735586e3d553a5e52713eec489640e7"
+    },
+    {
+      "mesh": "finger_2.stl",
+      "source_mesh": "finger_2__000__Gripper_Finger.2.stl",
+      "link": "finger_2",
+      "mesh_to_link": [
+        [
+          0.9958456779308216,
+          0.09105704666032763,
+          3.541193060679382e-08,
+          0.006000391478851355
+        ],
+        [
+          0.09105704666032924,
+          -0.9958456779308216,
+          -4.443461743319587e-08,
+          0.000178292853715667
+        ],
+        [
+          3.121873308948669e-08,
+          4.7474527465685405e-08,
+          -0.9999999999999986,
+          0.010750016663828688
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "sha256": "0371c70af622d2ffba6fb4bf625bfc464a623a349c1a10bea0851e036c70482c"
+    }
+  ],
+  "gripper": {
+    "crank_radius_m": 0.03,
+    "rod_length_m": 0.045,
+    "slider_offset_m": 0.014,
+    "cad_crank_angle_rad": 0.4490097737830423,
+    "motor_at_cad_pose_rad": -2.2,
+    "encoder_phase_status": "Legacy open endpoint assumption; requires physical calibration."
+  },
+  "camera": {
+    "lens_centre_cad_m": [
+      0.0,
+      -0.1667094,
+      0.3148766
+    ],
+    "optical_forward_cad": [
+      0,
+      -0.8660254037844386,
+      -0.5
+    ],
+    "status": "Nominal CAD lens frame; not a measured optical calibration."
+  }
+}

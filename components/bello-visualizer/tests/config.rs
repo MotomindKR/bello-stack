@@ -219,7 +219,7 @@ fn maintained_milly_example_configuration_loads_the_canonical_description() {
             _ => None,
         })
         .collect::<Vec<_>>();
-    assert_eq!(visual_meshes.len(), 139);
+    assert_eq!(visual_meshes.len(), 20);
     for path in visual_meshes {
         let mesh = stl_io::read_stl(&mut BufReader::new(File::open(path).unwrap())).unwrap();
         assert!(

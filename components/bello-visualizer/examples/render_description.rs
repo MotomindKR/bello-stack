@@ -27,7 +27,7 @@ async fn main() {
         .add_light(Light::point(20.0).with_intensity(3.0))
         .set_position(Vec3::new(2.0, -3.0, 3.0));
     let mut model = ModelScene::build(&mut scene, &description).unwrap();
-    model.set_joint_positions(&positions);
+    model.set_joint_positions(&positions).unwrap();
     let mut camera = OrbitCamera3d::new(Vec3::new(1.6, -2.0, 0.8), Vec3::new(0.0, 0.0, 0.0));
     camera.set_up_axis_dir(Vec3::Z);
     surface.render_3d(&mut scene, &mut camera).await;
