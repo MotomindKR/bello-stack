@@ -33,6 +33,8 @@ The maintained examples are:
 - [canonical Bello hardware description](../descriptions/bello/hardware.yaml)
 - [Milly single-arm hardware](../components/bello-hardwared/config/milly.yaml)
 - [Milly single-arm vCAN deployment](../components/bello-hardwared/config/milly-vcan.yaml)
+- [Dual-Milly hardware](../components/bello-hardwared/config/milly-dual.yaml)
+- [Dual-Milly vCAN deployment](../components/bello-hardwared/config/milly-dual-vcan.yaml)
 - [canonical Milly hardware description](../descriptions/milly/hardware.yaml)
 - [provisional Bello Mini physical bindings](../components/bello-hardwared/config/bello-mini.yaml)
 - [provisional Bello Mini vCAN deployment](../components/bello-hardwared/config/bello-mini-vcan.yaml)

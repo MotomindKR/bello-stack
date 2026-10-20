@@ -342,3 +342,183 @@ fn live_position_limits_are_intersected_with_direct_and_differential_urdf_limits
         }
     );
 }
+
+#[test]
+fn maintained_dual_milly_example_loads_both_arms_and_atomic_group() {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("config/milly-dual.example.yaml");
+    let config = VisualizerConfig::load(path).unwrap();
+    assert_eq!(config.hardware.endpoint, "http://127.0.0.1:50051");
+    assert!(matches!(config.root, RootConfig::Fixed { .. }));
+
+    let description = RobotDescription::load(&config.urdf).unwrap();
+    assert_eq!(description.name(), "milly_dual_control");
+    assert_eq!(description.root_link(), "dual_milly_base");
+    for (side, expected_y) in [("left", -0.2215), ("right", 0.2215)] {
+        for coordinate in [
+            "joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6", "gripper",
+        ] {
+            assert!(description.joint(&format!("{side}_{coordinate}")).is_some());
+        }
+        assert!(
+            !description
+                .link(&format!("{side}_base_link"))
+                .unwrap()
+                .visuals
+                .is_empty()
+        );
+        let mount = description.joint(&format!("{side}_mount")).unwrap();
+        assert_eq!(mount.parent, "dual_milly_base");
+        assert_eq!(mount.child, format!("{side}_base_link"));
+        assert!((mount.origin.translation.vector.y - expected_y).abs() < 1.0e-12);
+        let (_, _, yaw) = mount.origin.rotation.euler_angles();
+        assert!((yaw - std::f64::consts::FRAC_PI_2).abs() < 1.0e-12);
+    }
+    let camera = description.link("center_d405_link").unwrap();
+    let camera_size = camera
+        .visuals
+        .iter()
+        .find_map(|visual| match &visual.geometry {
+            Geometry::Box { size } => Some(size),
+            _ => None,
+        })
+        .unwrap();
+    assert!((camera_size.x - 0.023).abs() < 1.0e-12);
+    assert!((camera_size.y - 0.042).abs() < 1.0e-12);
+    assert!((camera_size.z - 0.042).abs() < 1.0e-12);
+    assert!(
+        description
+            .link("center_d405_color_optical_frame")
+            .is_some()
+    );
+    let camera_mount = description.joint("center_d405_mount").unwrap();
+    assert_eq!(camera_mount.parent, "dual_milly_base");
+    assert_eq!(camera_mount.child, "center_d405_link");
+    assert!((camera_mount.origin.translation.vector.x - 0.040).abs() < 1.0e-12);
+    assert!((camera_mount.origin.translation.vector.y + 0.009).abs() < 1.0e-12);
+    assert!((camera_mount.origin.translation.vector.z - 0.35937731).abs() < 1.0e-12);
+    // Compare rotations directly: Euler extraction may represent yaw pi as
+    // negative pi even though the physical rotation is identical.
+    let expected_camera_rotation =
+        nalgebra::UnitQuaternion::from_euler_angles(0.0, 0.44660681555959347, std::f64::consts::PI);
+    assert!(
+        camera_mount
+            .origin
+            .rotation
+            .angle_to(&expected_camera_rotation)
+            < 1.0e-12
+    );
+    let optical = description
+        .joint("center_d405_color_optical_joint")
+        .unwrap();
+    assert_eq!(optical.parent, "center_d405_link");
+    assert_eq!(optical.child, "center_d405_color_optical_frame");
+    let (optical_roll, optical_pitch, optical_yaw) = optical.origin.rotation.euler_angles();
+    assert!((optical_roll + std::f64::consts::FRAC_PI_2).abs() < 1.0e-12);
+    assert!(optical_pitch.abs() < 1.0e-12);
+    assert!((optical_yaw + std::f64::consts::FRAC_PI_2).abs() < 1.0e-12);
+    for (link_name, joint_name, expected_center, expected_size) in [
+        (
+            "center_d405_keepout_link",
+            "center_d405_keepout_joint",
+            [0.040, -0.009, 0.35937731],
+            [0.100, 0.100, 0.100],
+        ),
+        (
+            "center_d405_support_post_link",
+            "center_d405_support_post_joint",
+            [0.040, -0.009, 0.154688655],
+            [0.040, 0.040, 0.30937731],
+        ),
+    ] {
+        let obstacle = description.link(link_name).unwrap();
+        assert!(
+            obstacle.visuals.is_empty(),
+            "{link_name} must remain collision-only"
+        );
+        assert_eq!(obstacle.collisions.len(), 1);
+        let collision = &obstacle.collisions[0];
+        assert!(collision.origin.translation.vector.norm() < 1.0e-12);
+        assert!(collision.origin.rotation.angle() < 1.0e-12);
+        let Geometry::Box { size } = &collision.geometry else {
+            panic!("{link_name} collision must be a box");
+        };
+        assert!((size.x - expected_size[0]).abs() < 1.0e-12);
+        assert!((size.y - expected_size[1]).abs() < 1.0e-12);
+        assert!((size.z - expected_size[2]).abs() < 1.0e-12);
+
+        let joint = description.joint(joint_name).unwrap();
+        assert_eq!(joint.parent, "dual_milly_base");
+        assert_eq!(joint.child, link_name);
+        assert!((joint.origin.translation.vector.x - expected_center[0]).abs() < 1.0e-12);
+        assert!((joint.origin.translation.vector.y - expected_center[1]).abs() < 1.0e-12);
+        assert!((joint.origin.translation.vector.z - expected_center[2]).abs() < 1.0e-12);
+        assert!(joint.origin.rotation.angle() < 1.0e-12);
+    }
+    let visual_meshes = description
+        .links()
+        .flat_map(|link| &link.visuals)
+        .filter_map(|visual| match &visual.geometry {
+            Geometry::Mesh { path, .. } => Some(path),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let single = RobotDescription::load(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../descriptions/milly/urdf/milly.urdf"),
+    )
+    .unwrap();
+    let single_meshes = single
+        .links()
+        .flat_map(|link| &link.visuals)
+        .filter(|v| matches!(v.geometry, Geometry::Mesh { .. }))
+        .count();
+    assert_eq!(visual_meshes.len(), 2 * single_meshes);
+    assert_eq!(description.slider_cranks().len(), 2);
+    assert_eq!(description.motor_coordinates().len(), 14);
+    assert_eq!(
+        description
+            .links()
+            .map(|l| l.collisions.len())
+            .sum::<usize>(),
+        50
+    );
+    for side in ["left", "right"] {
+        for link in single.links() {
+            let cloned = description.link(&format!("{side}_{}", link.name)).unwrap();
+            assert_eq!(cloned.visuals.len(), link.visuals.len());
+            assert_eq!(cloned.collisions.len(), link.collisions.len());
+        }
+    }
+    // Each loop must resolve its own driver, without coupling the two arms.
+    let drivers = std::collections::BTreeMap::from([
+        ("left_gripper".into(), -2.2),
+        ("right_gripper".into(), 0.0),
+    ]);
+    let resolved = description.resolve_passive_positions(&drivers).unwrap();
+    for (side, q) in [("left", -2.2), ("right", 0.0)] {
+        let expected = single
+            .resolve_passive_positions(&std::collections::BTreeMap::from([("gripper".into(), q)]))
+            .unwrap();
+        for (name, value) in expected {
+            assert!((resolved[&format!("{side}_{name}")] - value).abs() < 1e-12);
+        }
+    }
+    assert!(visual_meshes.iter().all(|path| path.is_file()));
+    assert_eq!(
+        visual_meshes
+            .iter()
+            .map(|path| path.as_path())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        single_meshes
+    );
+    assert_eq!(
+        config
+            .control_profiles
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["dual_arm"]
+    );
+}
