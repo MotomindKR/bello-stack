@@ -1,0 +1,31 @@
+# Fixed-base Milly physics. SDK mass properties are mapped into the canonical
+# URDF, including the wrist/linkage mass partition. Damping remains estimated.
+hardware: ../../../descriptions/milly/hardware.yaml
+root: fixed
+floor: true
+timestep_seconds: 0.001
+initial_root_position: [0, 0, 0]
+initial_root_quaternion: [1, 0, 0, 0]
+initial_joint_positions:
+  joint_1: 0.0
+  joint_2: 0.0
+  joint_3: 0.0
+  joint_4: 0.0
+  joint_5: 0.0
+  joint_6: 0.0
+  gripper: 0.0
+neighbor_exclusion_depth: 2
+physics:
+  # Activate compliant stops inside the safety boundary; leave hardware limits unchanged.
+  joint_dynamics:
+    joint_1: {damping: 0.1, armature: 0.01, limit_margin: 0.02, limit_time_constant: 0.004}
+    joint_2: {damping: 0.1, armature: 0.01, limit_margin: 0.02, limit_time_constant: 0.004}
+    joint_3: {damping: 0.1, armature: 0.01, limit_margin: 0.02, limit_time_constant: 0.004}
+    joint_4: {damping: 0.05, armature: 0.001, limit_margin: 0.02, limit_time_constant: 0.004}
+    joint_5: {damping: 0.05, armature: 0.001, limit_margin: 0.02, limit_time_constant: 0.004}
+    joint_6: {damping: 0.05, armature: 0.001, limit_margin: 0.02, limit_time_constant: 0.004}
+    gripper: {damping: 0.002, armature: 0.000001, limit_margin: 0.02, limit_time_constant: 0.004}
+    gripper_rod_1_joint: {damping: 0.002, armature: 0.000001}
+    gripper_rod_2_joint: {damping: 0.002, armature: 0.000001}
+    finger_1_joint: {damping: 0.002, armature: 0.000001}
+    finger_2_joint: {damping: 0.002, armature: 0.000001}

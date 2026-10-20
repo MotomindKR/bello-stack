@@ -11,6 +11,8 @@ use robstride_protocol::MotorParams;
 use serde::Deserialize;
 
 use crate::Simulation;
+pub use crate::model_physics::PhysicsConfig;
+use crate::model_physics::{add_slider_cranks, apply_physics};
 
 fn imported_spec(urdf: &Path) -> Result<MjSpec> {
     fn replace_visual_meshes(element: &mut xmltree::Element, urdf: &Path) -> Result<bool> {
@@ -39,6 +41,7 @@ fn imported_spec(urdf: &Path) -> Result<MjSpec> {
                 element
                     .attributes
                     .insert("filename".into(), path.to_string_lossy().into());
+                changed = true;
             }
         }
         for child in &mut element.children {
@@ -72,6 +75,8 @@ pub struct ModelConfig {
     pub neighbor_exclusion_depth: usize,
     #[serde(default)]
     pub payloads: Vec<Payload>,
+    #[serde(default)]
+    pub physics: PhysicsConfig,
     #[serde(default)]
     pub torso_guide: Option<crate::guide::Config>,
 }
@@ -145,6 +150,7 @@ pub struct Hardware {
     pub robot_description: PathBuf,
     pub logical_buses: Vec<Bus>,
     pub motors: Vec<Motor>,
+    #[serde(default)]
     pub imus: Vec<Imu>,
     #[serde(default)]
     pub power_boards: Vec<PowerBoard>,
@@ -227,7 +233,7 @@ fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Re
     let description = RobotDescription::load(&urdf)?;
     let moving: BTreeSet<_> = description
         .joints()
-        .filter(|j| j.kind != JointKind::Fixed)
+        .filter(|j| j.kind != JointKind::Fixed && !description.is_passive_joint(&j.name))
         .map(|j| j.name.as_str())
         .collect();
     ensure!(
@@ -237,7 +243,7 @@ fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Re
                 .keys()
                 .map(String::as_str)
                 .collect(),
-        "initial_joint_positions must cover every movable URDF joint exactly"
+        "initial_joint_positions must cover every independent movable URDF joint exactly"
     );
     for (name, position) in &config.initial_joint_positions {
         let limits = description
@@ -251,6 +257,8 @@ fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Re
             "initial position for {name} is outside URDF limits"
         );
     }
+    let initial_positions =
+        description.resolve_passive_positions(&config.initial_joint_positions)?;
     let buses: BTreeSet<_> = hardware
         .logical_buses
         .iter()
@@ -327,7 +335,12 @@ fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Re
                 .parse::<f64>()?;
         } else {
             ensure!(
-                (config.root == RootMode::Fixed && name == description.root_link())
+                config
+                    .physics
+                    .additional_inertias
+                    .iter()
+                    .any(|i| i.frame == name)
+                    || (config.root == RootMode::Fixed && name == description.root_link())
                     || description
                         .joints()
                         .any(|j| j.child == name && j.kind == JointKind::Fixed),
@@ -342,10 +355,14 @@ fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Re
         }
     }
     let payload_mass = add_payloads(&mut spec, &config.payloads)?;
+    let extra_mass = apply_physics(&mut spec, &config.physics)?;
+    add_slider_cranks(&mut spec, &description, &initial_positions)?;
     ensure!(
-        spec.geom_iter().all(
-            |g| g.type_() != MjtGeom::mjGEOM_MESH || (g.contype() == 0 && g.conaffinity() == 0)
-        ),
+        config.physics.allow_mesh_collisions
+            || spec
+                .geom_iter()
+                .all(|g| g.type_() != MjtGeom::mjGEOM_MESH
+                    || (g.contype() == 0 && g.conaffinity() == 0)),
         "robot collisions must use primitives"
     );
     while let Some(geom) = spec
@@ -357,7 +374,10 @@ fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Re
             geom.delete()?;
         }
     }
-    while let Some(mesh) = spec.mesh_iter_mut().find(|_| !visuals) {
+    while let Some(mesh) = spec
+        .mesh_iter_mut()
+        .find(|_| !visuals && !config.physics.allow_mesh_collisions)
+    {
         // All mesh geoms were removed; there are no other live handles.
         unsafe {
             mesh.delete()?;
@@ -461,11 +481,12 @@ fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Re
     }
     let model = spec.compile()?;
     ensure!(
-        (model.body_mass().iter().sum::<f64>() - source_mass - payload_mass).abs() < 1e-9,
+        (model.body_mass().iter().sum::<f64>() - source_mass - payload_mass - extra_mass).abs()
+            < 1e-9,
         "native compilation changed URDF plus payload mass"
     );
     let mut qpos = model.qpos0().to_vec();
-    for (name, position) in &config.initial_joint_positions {
+    for (name, position) in &initial_positions {
         let id = model
             .name_to_id(MjtObj::mjOBJ_JOINT, name)
             .context("compiled joint missing")?;
@@ -638,8 +659,14 @@ fn validate_home(simulation: &Simulation) -> Result<()> {
         {
             anyhow::bail!(
                 "initial pose self-collides: {:?} / {:?} ({:.6} m)",
-                model.id_to_name(MjtObj::mjOBJ_GEOM, contact.geom[0] as usize),
-                model.id_to_name(MjtObj::mjOBJ_GEOM, contact.geom[1] as usize),
+                model.id_to_name(
+                    MjtObj::mjOBJ_BODY,
+                    model.geom_bodyid()[contact.geom[0] as usize] as usize
+                ),
+                model.id_to_name(
+                    MjtObj::mjOBJ_BODY,
+                    model.geom_bodyid()[contact.geom[1] as usize] as usize
+                ),
                 -contact.dist
             );
         }
@@ -697,9 +724,206 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
                 ]),
                 neighbor_exclusion_depth: 2,
                 payloads: Vec::new(),
+                physics: PhysicsConfig::default(),
                 torso_guide: None,
             },
         )
+    }
+
+    #[test]
+    fn milly_native_physics_closes_gripper_under_gravity_and_exports() {
+        let config_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("config/milly.yaml");
+        let config = ModelConfig::load(&config_path).unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let mut robot = build(&config, Some(&directory.path().join("physics.xml"))).unwrap();
+        assert_eq!(robot.simulation.model().nu, 7);
+        assert_eq!(robot.simulation.model().neq, 2);
+        assert_eq!(robot.simulation.model().nq, 11);
+        assert_eq!(robot.simulation.model().nmesh, 0);
+        let mass: f64 = robot.simulation.data.model().body_mass().iter().sum();
+        assert!(
+            (mass - 5.449411285057828).abs() < 1e-12,
+            "SDK mass changed: {mass}"
+        );
+        assert!(robot.hardware.imus.is_empty());
+        let mut max_error: f64 = 0.;
+        for step in 0..6000 {
+            let target = -1.1 * (1. - (std::f64::consts::TAU * step as f64 / 6000.).cos());
+            for (name, coordinate) in &robot.coordinates {
+                robot
+                    .simulation
+                    .set_impedance(
+                        coordinate.actuator,
+                        robstride_protocol::ControlCommand {
+                            position: if name == "gripper" {
+                                target
+                            } else {
+                                config.initial_joint_positions[name]
+                            },
+                            kp: if name == "gripper" { 20. } else { 100. },
+                            kd: if name == "gripper" { 0.5 } else { 5. },
+                            ..Default::default()
+                        },
+                        if name == "gripper" { 5.5 } else { 30. },
+                    )
+                    .unwrap();
+            }
+            robot.simulation.step();
+            robot.simulation.forward();
+            assert!(robot.simulation.data.qpos().iter().all(|v| v.is_finite()));
+            for side in 0..2 {
+                let site = |suffix: &str| {
+                    let id = robot
+                        .simulation
+                        .id(
+                            MjtObj::mjOBJ_SITE,
+                            &format!("milly_gripper_{suffix}_{side}"),
+                        )
+                        .unwrap() as usize;
+                    nalgebra::Vector3::from(robot.simulation.data.site_xpos()[id])
+                };
+                max_error = max_error.max((site("rod") - site("slider")).norm());
+            }
+        }
+        assert!(max_error < 0.0001, "loop error {max_error} m");
+        let q = robot
+            .simulation
+            .actuator_state(robot.coordinates["gripper"].actuator)
+            .unwrap()
+            .0;
+        assert!(q.abs() < 0.1, "gripper did not close: {q}");
+        robot.simulation.reset_home().unwrap();
+        for coordinate in robot.coordinates.values() {
+            robot
+                .simulation
+                .set_impedance(coordinate.actuator, Default::default(), 30.)
+                .unwrap();
+        }
+        for _ in 0..200 {
+            robot.simulation.step();
+        }
+        robot.simulation.forward();
+        assert!(
+            robot
+                .coordinates
+                .iter()
+                .any(|(name, coordinate)| name != "gripper"
+                    && (robot
+                        .simulation
+                        .actuator_state(coordinate.actuator)
+                        .unwrap()
+                        .0
+                        - config.initial_joint_positions[name])
+                        .abs()
+                        > 0.01),
+            "unpowered arm must respond to gravity"
+        );
+    }
+
+    #[test]
+    fn milly_primitives_leave_commanded_gripper_sweep_clear() {
+        let mut config =
+            ModelConfig::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("config/milly.yaml"))
+                .unwrap();
+        for arm_angle in [0., 1.] {
+            config
+                .initial_joint_positions
+                .insert("joint_2".into(), arm_angle);
+            config
+                .initial_joint_positions
+                .insert("joint_3".into(), arm_angle);
+            let mut robot = build(&config, None).unwrap();
+            let description = RobotDescription::load(
+                &config
+                    .hardware
+                    .parent()
+                    .unwrap()
+                    .join(&robot.hardware.robot_description),
+            )
+            .unwrap();
+            for step in 0..=100 {
+                let q = -2.2 + 2.2 * step as f64 / 100.;
+                let mut positions = config.initial_joint_positions.clone();
+                positions.insert("gripper".into(), q);
+                for (name, position) in description.resolve_passive_positions(&positions).unwrap() {
+                    let model = robot.simulation.data.model();
+                    let id = model.name_to_id(MjtObj::mjOBJ_JOINT, &name).unwrap();
+                    let address = model.jnt_qposadr()[id] as usize;
+                    robot.simulation.data.qpos_mut()[address] = position;
+                }
+                robot.simulation.forward();
+                validate_home(&robot.simulation)
+                    .unwrap_or_else(|e| panic!("gripper={q}, arm={arm_angle}: {e}"));
+            }
+        }
+    }
+
+    #[test]
+    fn milly_arm_motion_at_ui_gains_stays_inside_hardware_safety_limits() {
+        let mut config =
+            ModelConfig::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("config/milly.yaml"))
+                .unwrap();
+        config.initial_joint_positions.insert("joint_2".into(), 1.);
+        config.initial_joint_positions.insert("joint_3".into(), 1.);
+        let hardware: serde_yaml::Value =
+            serde_yaml::from_str(&std::fs::read_to_string(&config.hardware).unwrap()).unwrap();
+        let limits: BTreeMap<String, (f64, f64)> = hardware["motors"]
+            .as_sequence()
+            .unwrap()
+            .iter()
+            .map(|m| {
+                (
+                    m["coordinate"].as_str().unwrap().to_owned(),
+                    (
+                        m["health"]["safe_position_min"].as_f64().unwrap(),
+                        m["health"]["safe_position_max"].as_f64().unwrap(),
+                    ),
+                )
+            })
+            .collect();
+        let mut robot = build(&config, None).unwrap();
+        for step in 0..6000 {
+            for (name, coordinate) in &robot.coordinates {
+                let position = if name == "joint_2" {
+                    (1. - step as f64 * 0.0005).max(0.)
+                } else {
+                    config.initial_joint_positions[name]
+                };
+                robot
+                    .simulation
+                    .set_impedance(
+                        coordinate.actuator,
+                        robstride_protocol::ControlCommand {
+                            position,
+                            kp: 20.,
+                            kd: 0.5,
+                            ..Default::default()
+                        },
+                        if name == "gripper" || name == "joint_6" {
+                            5.5
+                        } else if name == "joint_4" || name == "joint_5" {
+                            14.
+                        } else {
+                            30.
+                        },
+                    )
+                    .unwrap();
+            }
+            robot.simulation.step();
+            robot.simulation.forward();
+            for (name, coordinate) in &robot.coordinates {
+                let q = robot
+                    .simulation
+                    .actuator_state(coordinate.actuator)
+                    .unwrap()
+                    .0;
+                let (lower, upper) = limits[name];
+                assert!(
+                    q >= lower && q <= upper,
+                    "{name} outside hardware safety limits at step {step}: {q} not in [{lower}, {upper}]"
+                );
+            }
+        }
     }
 
     #[test]
@@ -944,7 +1168,7 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
                 .err()
                 .unwrap()
                 .to_string()
-                .contains("cover every movable")
+                .contains("cover every independent movable")
         );
     }
 }

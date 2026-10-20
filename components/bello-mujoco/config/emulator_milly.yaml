@@ -1,0 +1,17 @@
+model: milly.yaml
+bus_interfaces: {can0: vcan0}
+feedback_rate_hz: 100
+temperature_c: 25
+command_latency_seconds: 0.0
+motor_kp_scale: 1.0
+motor_kd_scale: 1.0
+imu: null
+power_board: null
+pose:
+  listen: 127.0.0.1:50052
+  reference_frame: odom
+  tracked_frame: base_link
+  rate_hz: 100
+torso_guide: null
+fault_events: {}
+video: null

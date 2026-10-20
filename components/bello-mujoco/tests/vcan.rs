@@ -81,7 +81,9 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
     for (bus, interface) in config.bus_interfaces.keys().zip(&interfaces) {
         yaml["bus_interfaces"][bus.as_str()] = interface.clone().into();
     }
-    yaml["imu"]["device"] = device.to_string_lossy().into_owned().into();
+    if config.imu.is_some() {
+        yaml["imu"]["device"] = device.to_string_lossy().into_owned().into();
+    }
     if config.power_board.is_some() {
         yaml["power_board"]["device"] = power_device.to_string_lossy().into_owned().into();
     }
@@ -184,18 +186,20 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
     if config.power_board.is_some() {
         assert_eq!(power_kinds, [1, 2, 3, 5, 6, 7, 8].into_iter().collect());
     }
-    let text = std::str::from_utf8(&serial_bytes).unwrap();
-    assert!(text.contains("<ok>"));
-    let records: Vec<_> = text
-        .lines()
-        .filter_map(|line| line.find('*').map(|i| &line[i + 1..]))
-        .collect();
-    assert!(records.len() > 20, "missing EBIMU samples");
-    for line in records.iter().take(20) {
-        assert_eq!(
-            line.split(',').filter(|v| v.parse::<f64>().is_ok()).count(),
-            11
-        );
+    if config.imu.is_some() {
+        let text = std::str::from_utf8(&serial_bytes).unwrap();
+        assert!(text.contains("<ok>"));
+        let records: Vec<_> = text
+            .lines()
+            .filter_map(|line| line.find('*').map(|i| &line[i + 1..]))
+            .collect();
+        assert!(records.len() > 20, "missing EBIMU samples");
+        for line in records.iter().take(20) {
+            assert_eq!(
+                line.split(',').filter(|v| v.parse::<f64>().is_ok()).count(),
+                11
+            );
+        }
     }
     let a = tokio::time::timeout(Duration::from_secs(1), poses.message())
         .await

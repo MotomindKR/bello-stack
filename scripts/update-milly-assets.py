@@ -22,6 +22,8 @@ from pathlib import Path
 import cadquery as cq
 import numpy as np
 import trimesh
+from milly_collisions import apply_collisions
+from milly_mass_properties import apply_mass_properties
 from OCP.IFSelect import IFSelect_RetDone
 from OCP.STEPCAFControl import STEPCAFControl_Reader
 from OCP.TCollection import TCollection_ExtendedString
@@ -175,7 +177,7 @@ def main():
         )
 
     links = {link.get("name"): link for link in root.findall("link")}
-    # Preserve arm joint frames, limits, inertials and existing arm collisions.
+    # Preserve arm joint frames and limits; reapply SDK mass properties below.
     # Registration is fixed from matching CAD shoulder axes and origins, not ICP.
     transforms = {"link_1": pose()}
     transforms["link_1"][:3, :3] = np.diag([-1.0, 1.0, -1.0])
@@ -367,13 +369,11 @@ def main():
         ("camera_link", "milly_black", [38], "camera"),
     ]
     manifest = []
-    meshes_by_link = {}
     used = set()
     for link, material, indices, filename in groups:
         mesh = trimesh.util.concatenate([parts[i]["mesh"] for i in indices])
         mesh.apply_transform(transforms[link])
         mesh.export(visual_dir / f"{filename}.stl")
-        meshes_by_link.setdefault(link, []).append(mesh)
         visual = ET.SubElement(links[link], "visual", name=filename)
         geometry = ET.SubElement(visual, "geometry")
         ET.SubElement(
@@ -419,25 +419,6 @@ def main():
                 relative,
             )
         )
-        # Keep the legacy jaw's mass and inertia, expressed in its new slider
-        # frame. Inertias for the newly separated rods/crank remain uncalibrated.
-        sign = -1 if i == 1 else 1
-        inertial = ET.SubElement(links[f"finger_{i}"], "inertial")
-        origin(
-            inertial,
-            relative @ pose((sign * 0.005194708, sign * 0.00075891759, -0.037183623)),
-        )
-        ET.SubElement(inertial, "mass", value=".057499098")
-        ET.SubElement(
-            inertial,
-            "inertia",
-            ixx="4.0813076e-05",
-            iyy="3.7529256e-05",
-            izz="6.4511331e-06",
-            ixy="4.3352204e-07",
-            ixz=str(sign * 4.2725828e-06),
-            iyz=str(sign * 2.1728211e-07),
-        )
     retained_manifest = []
     for link, name, original, relative in legacy:
         source = dest / "meshes/visual/parts" / original
@@ -448,7 +429,6 @@ def main():
             raise ValueError(f"Missing retained legacy mesh: {target}")
         mesh = trimesh.load_mesh(target)
         mesh.apply_transform(relative)
-        meshes_by_link.setdefault(link, []).append(mesh)
         visual = ET.SubElement(links[link], "visual", name=name)
         origin(visual, relative)
         geometry = ET.SubElement(visual, "geometry")
@@ -466,22 +446,9 @@ def main():
             }
         )
 
-    # The arm's collision geometry and inertial parameters stay with its joint
-    # frames. New moving gripper pieces need colliders in their new local frames.
-    for link in [
-        "gripper_base",
-        "finger_1",
-        "finger_2",
-        "gripper_drive",
-        "gripper_rod_1",
-        "gripper_rod_2",
-        "camera_link",
-    ]:
-        mesh = trimesh.util.concatenate(meshes_by_link[link]).convex_hull
-        mesh.export(dest / f"meshes/collision/{link}.stl")
-        collision = ET.SubElement(links[link], "collision")
-        geometry = ET.SubElement(collision, "geometry")
-        ET.SubElement(geometry, "mesh", filename=f"../meshes/collision/{link}.stl")
+    # Reapply the reviewed primitive recipe after regenerating link frames.
+    apply_collisions(root, dest)
+    apply_mass_properties(root, dest, transforms)
     ET.indent(root, space="  ")
     ET.ElementTree(root).write(urdf, encoding="utf-8", xml_declaration=True)
     with urdf.open("a") as f:
@@ -515,13 +482,12 @@ def main():
         },
     }
     (dest / "exterior-assets.json").write_text(json.dumps(metadata, indent=2) + "\n")
-    # Delete only the replaced, formerly referenced visual assets and stale collider.
+    # Delete only the replaced, formerly referenced visual assets.
     old_parts = dest / "meshes/visual/parts"
     if old_parts.exists():
         for old in old_parts.glob("*.stl"):
             old.unlink()
         old_parts.rmdir()
-    (dest / "meshes/collision/link_6.stl").unlink(missing_ok=True)
     for replaced in ["base_connector.stl", "finger_1.stl", "finger_2.stl"]:
         (visual_dir / replaced).unlink(missing_ok=True)
     print(

@@ -12,6 +12,7 @@ use robstride_protocol::ControlCommand;
 pub mod ebimu;
 pub mod guide;
 pub mod model;
+mod model_physics;
 pub mod pose;
 pub mod power_board;
 pub mod robstride;

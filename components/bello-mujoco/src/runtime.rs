@@ -30,7 +30,7 @@ pub struct Config {
     pub command_latency_seconds: f64,
     pub motor_kp_scale: f64,
     pub motor_kd_scale: f64,
-    pub imu: ImuConfig,
+    pub imu: Option<ImuConfig>,
     pub power_board: Option<crate::power_board::Config>,
     pub pose: PoseConfig,
     pub torso_guide: Option<guide::Config>,
@@ -68,17 +68,21 @@ impl Config {
             .canonicalize()?;
         if let Some(power) = &config.power_board {
             power.validate()?;
-            ensure!(
-                power.device != config.imu.device,
-                "IMU and power UART must be distinct"
-            );
+            if let Some(imu) = &config.imu {
+                ensure!(
+                    power.device != imu.device,
+                    "IMU and power UART must be distinct"
+                );
+            }
         }
-        for (name, value) in [
-            ("latency", config.command_latency_seconds),
-            ("orientation noise", config.imu.orientation_std_radians),
-            ("acceleration noise", config.imu.acceleration_std_mps2),
-        ] {
-            ensure!(value.is_finite() && value >= 0., "invalid {name}");
+        ensure!(
+            config.command_latency_seconds.is_finite() && config.command_latency_seconds >= 0.,
+            "invalid latency"
+        );
+        if let Some(imu) = &config.imu {
+            for value in [imu.orientation_std_radians, imu.acceleration_std_mps2] {
+                ensure!(value.is_finite() && value >= 0., "invalid IMU noise");
+            }
         }
         ensure!(
             config.command_latency_seconds <= 1.,
@@ -205,18 +209,16 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
                 .collect(),
         "interface mapping must cover every logical bus exactly"
     );
-    ensure!(
-        robot
-            .hardware
-            .imus
-            .iter()
-            .any(|i| i.name == config.imu.name),
-        "unknown IMU name"
-    );
-    ensure!(
-        robot.hardware.imus.len() == 1,
-        "runtime currently supports one EBIMU serial endpoint"
-    );
+    match &config.imu {
+        Some(imu) => ensure!(
+            robot.hardware.imus.len() == 1 && robot.hardware.imus[0].name == imu.name,
+            "runtime IMU must match the single canonical IMU"
+        ),
+        None => ensure!(
+            robot.hardware.imus.is_empty(),
+            "canonical IMU requires an emulator endpoint"
+        ),
+    }
     let pose_body = robot
         .simulation
         .id(crate::ffi::mjtObj::mjOBJ_BODY, &config.pose.tracked_frame)?
@@ -267,8 +269,11 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
     let mut physics = RobstrideSimulation::new(robot.simulation, buses)?;
     physics.set_gain_scales(config.motor_kp_scale, config.motor_kd_scale)?;
     let mut guide = robot.guide;
-    let mut serial =
-        ebimu::Serial::open(&config.imu.device, config.imu.rate_hz, config.temperature_c)?;
+    let mut serial = config
+        .imu
+        .as_ref()
+        .map(|imu| ebimu::Serial::open(&imu.device, imu.rate_hz, config.temperature_c))
+        .transpose()?;
     let mut power_serial = config
         .power_board
         .map(crate::power_board::Serial::open)
@@ -320,7 +325,7 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
         let timestep = Duration::from_secs_f64(physics.simulation.model().opt.timestep);
         let pose_period = Duration::from_secs_f64(1. / config.pose.rate_hz);
         let delay = Duration::from_secs_f64(config.command_latency_seconds);
-        let mut random = StdRng::seed_from_u64(config.imu.seed);
+        let mut random = StdRng::seed_from_u64(config.imu.as_ref().map_or(0, |imu| imu.seed));
         let mut deadline = Instant::now();
         let mut next_pose = deadline;
         let mut sequence = 0;
@@ -387,15 +392,16 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
                 let (_, (bus, frame)) = queues.feedback.pop_first().unwrap();
                 endpoints[&bus].write(frame)?;
             }
-            let mut sample = ebimu::Sample::read(&physics.simulation, &config.imu.name)?;
-            let mut gaussian = || -> f64 { StandardNormal.sample(&mut random) };
-            sample.orientation *= UnitQuaternion::from_scaled_axis(
-                Vector3::new(gaussian(), gaussian(), gaussian())
-                    * config.imu.orientation_std_radians,
-            );
-            sample.specific_force +=
-                Vector3::new(gaussian(), gaussian(), gaussian()) * config.imu.acceleration_std_mps2;
-            serial.update(&sample)?;
+            if let (Some(imu), Some(serial)) = (&config.imu, &mut serial) {
+                let mut sample = ebimu::Sample::read(&physics.simulation, &imu.name)?;
+                let mut gaussian = || -> f64 { StandardNormal.sample(&mut random) };
+                sample.orientation *= UnitQuaternion::from_scaled_axis(
+                    Vector3::new(gaussian(), gaussian(), gaussian()) * imu.orientation_std_radians,
+                );
+                sample.specific_force +=
+                    Vector3::new(gaussian(), gaussian(), gaussian()) * imu.acceleration_std_mps2;
+                serial.update(&sample)?;
+            }
             if let Some(power) = &mut power_serial {
                 power.update(epoch.elapsed())?;
             }
