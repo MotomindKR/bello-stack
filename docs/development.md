@@ -81,10 +81,10 @@ The Cargo workspace includes these core components:
 The adjacent
 [`bello-hardware-python`](../components/bello-hardware-python) component is a
 pure-Python package rather than a Cargo workspace member. It uses generated
-blocking gRPC bindings behind a small robot/group API. The
-[`bello-upper-body-teleop`](../components/bello-upper-body-teleop) application
-owns the Dynamixel teaching-arm port and consumes that API; it never opens CAN
-or bypasses daemon group leases.
+blocking gRPC bindings behind a small robot/group API. Cartesian teleoperation
+is maintained separately in
+[`MotomindKR/bello-teleop`](https://github.com/MotomindKR/bello-teleop), which pins
+this stack and commands the daemon through leased hardware-client sessions.
 
 Conceptually, configuration assembles transport and device workers, group
 control consumes narrow hardware handles, and the API presents daemon
@@ -110,18 +110,10 @@ ruff check .
 mypy src/bello_hardware tests
 pytest
 python -m hatchling build
-cd ../bello-upper-body-teleop
-ruff format --check .
-ruff check .
-mypy src/bello_upper_body_teleop tests
-pytest
-python -m hatchling build
 ```
 
-Both Python distributions are private and include the repository's proprietary
-license notice in their source and wheel metadata. The teleop artifacts also
-record the exact Git commit and digest of their embedded URDF; packaging rejects
-an uncommitted change to that source asset.
+The Python client distribution is private and includes the repository's
+proprietary license notice in its source and wheel metadata.
 
 During iteration, use focused package/test commands first, then finish with the
 workspace commands. Configuration-only validation is quick and does not open
