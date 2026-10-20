@@ -104,3 +104,16 @@ without opening a GPU window.
 `config/milly.example.yaml` is the maintained fixed-root visualizer profile for
 the single-arm Milly hardware description. It connects to hardwared on
 localhost and exposes the atomic `arm` group with conservative editor gains.
+
+`config/milly-dual.example.yaml` loads two copies of the revised Milly arm and
+exposes the atomic `dual_arm` group. Pair it with hardwared's `milly-dual.yaml`
+(two physical CAN buses) or `milly-dual-vcan.yaml` (two virtual CAN buses).
+Regenerate the combined URDF after single-arm asset or mass changes with
+`python3 descriptions/milly-dual/generate_urdf.py`; `--check` detects stale output.
+Each arm inherits the 24 primitive colliders, SDK inertias, camera frames and
+its own gripper loop. The imported fixture retains 443 mm base spacing and the
+center D405 frame, keepout box and support post. The generator comes from
+`feat/milly-camera-streaming` at `81e4d8a`; camera streaming and remote-controller
+services from that branch are separate from these hardware/visualizer profiles.
+CAN transports use the current schema; out-of-range commands use `reject`,
+matching the canonical single-arm policy (the older branch used `clamp`).

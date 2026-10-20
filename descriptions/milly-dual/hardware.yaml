@@ -1,0 +1,105 @@
+# Two independent Milly arms on separate CAN buses, exposed as one atomic group.
+robot_description: urdf/milly-dual.urdf
+
+logical_buses:
+  - name: can0
+    host_id: 0
+    bitrate: 1000000
+    maximum_utilization: 0.75
+    reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
+  - name: can1
+    host_id: 0
+    bitrate: 1000000
+    maximum_utilization: 0.75
+    reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
+
+motors:
+  - name: left_joint_1
+    coordinate: left_joint_1
+    bus: can0
+    id: 1
+    model: ROBSTRIDE_06
+    direction: 1
+    limits: &joint_1_limits { position_min: -2.62, position_max: 2.62, velocity_abs: 20.0, torque_abs: 30.0 }
+    health: &joint_1_health { safe_position_min: -2.72, safe_position_max: 2.72, temperature_warning_c: 60.0, maximum_temperature_c: 75.0, temperature_recovery_c: 70.0, temperature_recovery_duration_ms: 2000 }
+    command_policy: &command_policy { maximum_position_step: 3.0, limit: reject, position_step: fault }
+    fault_damping_kd: 10.0
+  - name: left_joint_2
+    coordinate: left_joint_2
+    bus: can0
+    id: 2
+    model: ROBSTRIDE_03
+    direction: -1
+    limits: &joint_2_limits { position_min: 0.0, position_max: 3.14, velocity_abs: 20.0, torque_abs: 30.0 }
+    health: &joint_2_health { safe_position_min: -0.1, safe_position_max: 3.24, temperature_warning_c: 60.0, maximum_temperature_c: 75.0, temperature_recovery_c: 70.0, temperature_recovery_duration_ms: 2000 }
+    command_policy: *command_policy
+    fault_damping_kd: 20.0
+  - name: left_joint_3
+    coordinate: left_joint_3
+    bus: can0
+    id: 3
+    model: ROBSTRIDE_06
+    direction: -1
+    limits: &joint_3_limits { position_min: 0.0, position_max: 2.97, velocity_abs: 20.0, torque_abs: 30.0 }
+    health: &joint_3_health { safe_position_min: -0.1, safe_position_max: 3.07, temperature_warning_c: 60.0, maximum_temperature_c: 75.0, temperature_recovery_c: 70.0, temperature_recovery_duration_ms: 2000 }
+    command_policy: *command_policy
+    fault_damping_kd: 20.0
+  - name: left_joint_4
+    coordinate: left_joint_4
+    bus: can0
+    id: 4
+    model: ROBSTRIDE_00
+    direction: 1
+    limits: &joint_4_limits { position_min: -1.70, position_max: 1.70, velocity_abs: 20.0, torque_abs: 14.0 }
+    health: &joint_4_health { safe_position_min: -1.85, safe_position_max: 1.85, temperature_warning_c: 60.0, maximum_temperature_c: 75.0, temperature_recovery_c: 70.0, temperature_recovery_duration_ms: 2000 }
+    command_policy: *command_policy
+    fault_damping_kd: 10.0
+  - name: left_joint_5
+    coordinate: left_joint_5
+    bus: can0
+    id: 5
+    model: ROBSTRIDE_00
+    direction: -1
+    limits: &joint_5_limits { position_min: -1.72, position_max: 1.77, velocity_abs: 20.0, torque_abs: 14.0 }
+    health: &joint_5_health { safe_position_min: -1.87, safe_position_max: 1.92, temperature_warning_c: 60.0, maximum_temperature_c: 75.0, temperature_recovery_c: 70.0, temperature_recovery_duration_ms: 2000 }
+    command_policy: *command_policy
+    fault_damping_kd: 15.0
+  - name: left_joint_6
+    coordinate: left_joint_6
+    bus: can0
+    id: 6
+    model: ROBSTRIDE_05
+    direction: 1
+    limits: &joint_6_limits { position_min: -1.5, position_max: 1.5, velocity_abs: 20.0, torque_abs: 5.5 }
+    health: &joint_6_health { safe_position_min: -1.6, safe_position_max: 1.6, temperature_warning_c: 60.0, maximum_temperature_c: 75.0, temperature_recovery_c: 70.0, temperature_recovery_duration_ms: 2000 }
+    command_policy: *command_policy
+    fault_damping_kd: 10.0
+  - name: left_gripper
+    coordinate: left_gripper
+    bus: can0
+    id: 7
+    model: ROBSTRIDE_05
+    direction: -1
+    limits: &gripper_limits { position_min: -2.3, position_max: 0.0, velocity_abs: 20.0, torque_abs: 5.5 }
+    health: &gripper_health { safe_position_min: -2.4, safe_position_max: 0.1, temperature_warning_c: 60.0, maximum_temperature_c: 75.0, temperature_recovery_c: 70.0, temperature_recovery_duration_ms: 2000 }
+    command_policy: *command_policy
+    fault_damping_kd: 5.0
+
+  - { name: right_joint_1, coordinate: right_joint_1, bus: can1, id: 1, model: ROBSTRIDE_06, direction: 1, limits: *joint_1_limits, health: *joint_1_health, command_policy: *command_policy, fault_damping_kd: 10.0 }
+  - { name: right_joint_2, coordinate: right_joint_2, bus: can1, id: 2, model: ROBSTRIDE_03, direction: -1, limits: *joint_2_limits, health: *joint_2_health, command_policy: *command_policy, fault_damping_kd: 20.0 }
+  - { name: right_joint_3, coordinate: right_joint_3, bus: can1, id: 3, model: ROBSTRIDE_06, direction: -1, limits: *joint_3_limits, health: *joint_3_health, command_policy: *command_policy, fault_damping_kd: 20.0 }
+  - { name: right_joint_4, coordinate: right_joint_4, bus: can1, id: 4, model: ROBSTRIDE_00, direction: 1, limits: *joint_4_limits, health: *joint_4_health, command_policy: *command_policy, fault_damping_kd: 10.0 }
+  - { name: right_joint_5, coordinate: right_joint_5, bus: can1, id: 5, model: ROBSTRIDE_00, direction: -1, limits: *joint_5_limits, health: *joint_5_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
+  - { name: right_joint_6, coordinate: right_joint_6, bus: can1, id: 6, model: ROBSTRIDE_05, direction: 1, limits: *joint_6_limits, health: *joint_6_health, command_policy: *command_policy, fault_damping_kd: 10.0 }
+  - { name: right_gripper, coordinate: right_gripper, bus: can1, id: 7, model: ROBSTRIDE_05, direction: -1, limits: *gripper_limits, health: *gripper_health, command_policy: *command_policy, fault_damping_kd: 5.0 }
+
+motor_groups:
+  - name: dual_arm
+    motors: [left_joint_1, left_joint_2, left_joint_3, left_joint_4, left_joint_5, left_joint_6, left_gripper, right_joint_1, right_joint_2, right_joint_3, right_joint_4, right_joint_5, right_joint_6, right_gripper]
+    control_rate_hz: 100.0
+    command_refresh_rate_hz: 100.0
+    command_timeout_ms: 100
+    feedback_timeout_ms: 250
+    enable_timeout_ms: 500
+    enable_retries: 3
+    fault_policy: { default: damping }

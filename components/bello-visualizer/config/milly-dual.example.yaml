@@ -1,0 +1,18 @@
+# Two side-by-side Milly arms exposed by bello-hardwared as one atomic group.
+urdf: ../../../descriptions/milly-dual/urdf/milly-dual.urdf
+hardware:
+  endpoint: http://127.0.0.1:50051
+root:
+  source: fixed
+refresh_hz: 60
+
+control_profiles:
+  dual_arm:
+    command_rate_hz: 50
+    validity_ms: 500
+    telemetry_staleness_ms: 250
+    position_slew_rate: 0.5
+    velocity: { min: -2.0, max: 2.0, default: 0.0 }
+    torque_feedforward: { min: -5.0, max: 5.0, default: 0.0 }
+    kp: { min: 0.0, max: 100.0, default: 20.0 }
+    kd: { min: 0.0, max: 1.0, default: 0.5 }
