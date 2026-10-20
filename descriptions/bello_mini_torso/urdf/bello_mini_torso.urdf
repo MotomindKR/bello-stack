@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
-<robot name="bello_mini_torso">
+<robot xmlns:bello="https://motomind.kr/bello/urdf" name="bello_mini_torso">
   <material name="milly_white">
     <color rgba="0.88 0.90 0.89 1" />
   </material>
@@ -1018,20 +1018,26 @@
     </visual>
   </link>
   <link name="left_gripper_rod_2_tip" />
-  <joint name="left_gripper" type="fixed">
+  <joint name="left_gripper" type="revolute">
     <parent link="left_gripper_base" />
     <child link="left_gripper_drive" />
-    <origin xyz="0 0 0" rpy="0 0 -2.2" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.4" upper="0.1" effort="20" velocity="20" />
   </joint>
-  <joint name="left_finger_1_joint" type="fixed">
+  <joint name="left_finger_1_joint" type="prismatic">
     <parent link="left_gripper_base" />
     <child link="left_finger_1" />
-    <origin xyz="0.0720156969673545 0 0" rpy="0 0 0" />
+    <origin xyz="0.0720156969673 0 0" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.065" upper="0.005" effort="100" velocity="2" />
   </joint>
-  <joint name="left_gripper_rod_1_joint" type="fixed">
+  <joint name="left_gripper_rod_1_joint" type="revolute">
     <parent link="left_gripper_drive" />
     <child link="left_gripper_rod_1" />
-    <origin xyz="-0.0264334304016 0.0141870982658 0" rpy="0 0 2.22173037150093" />
+    <origin xyz="-0.0264334304016 0.0141870982658 0" rpy="0 0 2.64900977378" />
+    <axis xyz="0 0 1" />
+    <limit lower="-4" upper="1" effort="100" velocity="100" />
   </joint>
   <joint name="left_gripper_rod_1_tip_mount" type="fixed">
     <parent link="left_gripper_rod_1" />
@@ -1043,15 +1049,19 @@
     <child link="left_finger_1_pin" />
     <origin xyz="0 0.014 0.004025" rpy="0 0 0" />
   </joint>
-  <joint name="left_finger_2_joint" type="fixed">
+  <joint name="left_finger_2_joint" type="prismatic">
     <parent link="left_gripper_base" />
     <child link="left_finger_2" />
-    <origin xyz="-0.0720156969673545 0 0" rpy="0 0 0" />
+    <origin xyz="-0.0720156969673 0 0" rpy="0 0 0" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-0.065" upper="0.005" effort="100" velocity="2" />
   </joint>
-  <joint name="left_gripper_rod_2_joint" type="fixed">
+  <joint name="left_gripper_rod_2_joint" type="revolute">
     <parent link="left_gripper_drive" />
     <child link="left_gripper_rod_2" />
-    <origin xyz="0.0264334304016 -0.0141870982658 0" rpy="0 0 -0.919862282086074" />
+    <origin xyz="0.0264334304016 -0.0141870982658 0" rpy="0 0 -0.492582879807" />
+    <axis xyz="0 0 1" />
+    <limit lower="-4" upper="1" effort="100" velocity="100" />
   </joint>
   <joint name="left_gripper_rod_2_tip_mount" type="fixed">
     <parent link="left_gripper_rod_2" />
@@ -1073,6 +1083,7 @@
     <child link="left_camera_optical_frame" />
     <origin xyz="0 0 0" rpy="-1.57079632679 0 -1.57079632679" />
   </joint>
+  <bello:slider_crank name="left_milly_gripper" driver="left_gripper" sliders="left_finger_1_joint left_finger_2_joint" rods="left_gripper_rod_1_joint left_gripper_rod_2_joint" crank_radius="0.03" rod_length="0.045" slider_offset="0.014" phase="2.64900977378" slider_reference="0.0720156969673" />
   <joint name="left_gripper_mount" type="fixed">
     <parent link="left_wrist_roll_link" />
     <child link="left_gripper_base" />
@@ -1261,20 +1272,26 @@
     </visual>
   </link>
   <link name="right_gripper_rod_2_tip" />
-  <joint name="right_gripper" type="fixed">
+  <joint name="right_gripper" type="revolute">
     <parent link="right_gripper_base" />
     <child link="right_gripper_drive" />
-    <origin xyz="0 0 0" rpy="0 0 -2.2" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.4" upper="0.1" effort="20" velocity="20" />
   </joint>
-  <joint name="right_finger_1_joint" type="fixed">
+  <joint name="right_finger_1_joint" type="prismatic">
     <parent link="right_gripper_base" />
     <child link="right_finger_1" />
-    <origin xyz="0.0720156969673545 0 0" rpy="0 0 0" />
+    <origin xyz="0.0720156969673 0 0" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.065" upper="0.005" effort="100" velocity="2" />
   </joint>
-  <joint name="right_gripper_rod_1_joint" type="fixed">
+  <joint name="right_gripper_rod_1_joint" type="revolute">
     <parent link="right_gripper_drive" />
     <child link="right_gripper_rod_1" />
-    <origin xyz="-0.0264334304016 0.0141870982658 0" rpy="0 0 2.22173037150093" />
+    <origin xyz="-0.0264334304016 0.0141870982658 0" rpy="0 0 2.64900977378" />
+    <axis xyz="0 0 1" />
+    <limit lower="-4" upper="1" effort="100" velocity="100" />
   </joint>
   <joint name="right_gripper_rod_1_tip_mount" type="fixed">
     <parent link="right_gripper_rod_1" />
@@ -1286,15 +1303,19 @@
     <child link="right_finger_1_pin" />
     <origin xyz="0 0.014 0.004025" rpy="0 0 0" />
   </joint>
-  <joint name="right_finger_2_joint" type="fixed">
+  <joint name="right_finger_2_joint" type="prismatic">
     <parent link="right_gripper_base" />
     <child link="right_finger_2" />
-    <origin xyz="-0.0720156969673545 0 0" rpy="0 0 0" />
+    <origin xyz="-0.0720156969673 0 0" rpy="0 0 0" />
+    <axis xyz="-1 0 0" />
+    <limit lower="-0.065" upper="0.005" effort="100" velocity="2" />
   </joint>
-  <joint name="right_gripper_rod_2_joint" type="fixed">
+  <joint name="right_gripper_rod_2_joint" type="revolute">
     <parent link="right_gripper_drive" />
     <child link="right_gripper_rod_2" />
-    <origin xyz="0.0264334304016 -0.0141870982658 0" rpy="0 0 -0.919862282086074" />
+    <origin xyz="0.0264334304016 -0.0141870982658 0" rpy="0 0 -0.492582879807" />
+    <axis xyz="0 0 1" />
+    <limit lower="-4" upper="1" effort="100" velocity="100" />
   </joint>
   <joint name="right_gripper_rod_2_tip_mount" type="fixed">
     <parent link="right_gripper_rod_2" />
@@ -1316,6 +1337,7 @@
     <child link="right_camera_optical_frame" />
     <origin xyz="0 0 0" rpy="-1.57079632679 0 -1.57079632679" />
   </joint>
+  <bello:slider_crank name="right_milly_gripper" driver="right_gripper" sliders="right_finger_1_joint right_finger_2_joint" rods="right_gripper_rod_1_joint right_gripper_rod_2_joint" crank_radius="0.03" rod_length="0.045" slider_offset="0.014" phase="2.64900977378" slider_reference="0.0720156969673" />
   <joint name="right_gripper_mount" type="fixed">
     <parent link="right_wrist_roll_link" />
     <child link="right_gripper_base" />

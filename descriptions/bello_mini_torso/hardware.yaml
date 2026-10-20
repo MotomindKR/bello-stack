@@ -254,6 +254,44 @@ motors:
   health: *id001
   command_policy: *id002
   fault_damping_kd: 2.1
+- name: left_gripper
+  coordinate: left_gripper
+  bus: can2
+  id: 38
+  model: ROBSTRIDE_05
+  direction: -1
+  limits: { position_min: -2.3, position_max: 0.0, velocity_abs: 20.0, torque_abs: 5.5 }
+  health:
+    safe_position_min: -2.4
+    safe_position_max: 0.1
+    temperature_warning_c: 60.0
+    maximum_temperature_c: 75.0
+    temperature_recovery_c: 70.0
+    temperature_recovery_duration_ms: 2000
+  command_policy:
+    maximum_position_step: 3.0
+    limit: reject
+    position_step: fault
+  fault_damping_kd: 5.0
+- name: right_gripper
+  coordinate: right_gripper
+  bus: can3
+  id: 48
+  model: ROBSTRIDE_05
+  direction: -1
+  limits: { position_min: -2.3, position_max: 0.0, velocity_abs: 20.0, torque_abs: 5.5 }
+  health:
+    safe_position_min: -2.4
+    safe_position_max: 0.1
+    temperature_warning_c: 60.0
+    maximum_temperature_c: 75.0
+    temperature_recovery_c: 70.0
+    temperature_recovery_duration_ms: 2000
+  command_policy:
+    maximum_position_step: 3.0
+    limit: reject
+    position_step: fault
+  fault_damping_kd: 5.0
 motor_groups:
 - name: torso_pitch
   motors:
@@ -285,6 +323,28 @@ motor_groups:
   fault_policy:
     default: damping
     overrides: {}
+- name: left_gripper
+  motors:
+  - left_gripper
+  control_rate_hz: 100.0
+  command_refresh_rate_hz: 100.0
+  command_timeout_ms: 100
+  feedback_timeout_ms: 250
+  enable_timeout_ms: 500
+  enable_retries: 3
+  fault_policy:
+    default: damping
+- name: right_gripper
+  motors:
+  - right_gripper
+  control_rate_hz: 100.0
+  command_refresh_rate_hz: 100.0
+  command_timeout_ms: 100
+  feedback_timeout_ms: 250
+  enable_timeout_ms: 500
+  enable_retries: 3
+  fault_policy:
+    default: damping
 - name: upper_body
   motors:
   - left_shoulder_pitch_motor

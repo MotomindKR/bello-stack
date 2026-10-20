@@ -821,6 +821,60 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
     }
 
     #[test]
+    fn mini_torso_gripper_linkages_compile_and_sweep_independently() {
+        let config = ModelConfig::load(
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("config/bello_mini_torso.yaml"),
+        )
+        .unwrap();
+        let mut robot = build(&config, None).unwrap();
+        let description = RobotDescription::load(
+            &config
+                .hardware
+                .parent()
+                .unwrap()
+                .join(&robot.hardware.robot_description),
+        )
+        .unwrap();
+        assert_eq!(
+            robot.simulation.model().neq as usize,
+            2 * description.slider_cranks().len()
+        );
+        for linkage in description.slider_cranks() {
+            assert!(robot.coordinates.contains_key(&linkage.driver));
+            for passive in linkage.passive_joints() {
+                assert!(!robot.coordinates.contains_key(passive));
+            }
+            for step in 0..=100 {
+                let mut positions = config.initial_joint_positions.clone();
+                positions.insert(linkage.driver.clone(), -2.2 + 2.2 * step as f64 / 100.);
+                for (name, position) in description.resolve_passive_positions(&positions).unwrap() {
+                    let model = robot.simulation.data.model();
+                    let id = model.name_to_id(MjtObj::mjOBJ_JOINT, &name).unwrap();
+                    let address = model.jnt_qposadr()[id] as usize;
+                    robot.simulation.data.qpos_mut()[address] = position;
+                }
+                robot.simulation.forward();
+                validate_home(&robot.simulation).unwrap();
+                for mechanism in description.slider_cranks() {
+                    for finger in 0..2 {
+                        let site = |suffix| {
+                            let id = robot
+                                .simulation
+                                .id(
+                                    MjtObj::mjOBJ_SITE,
+                                    &format!("{}_{suffix}_{finger}", mechanism.name),
+                                )
+                                .unwrap() as usize;
+                            nalgebra::Vector3::from(robot.simulation.data.site_xpos()[id])
+                        };
+                        assert!((site("rod") - site("slider")).norm() < 1e-10);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn milly_primitives_leave_commanded_gripper_sweep_clear() {
         let mut config =
             ModelConfig::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("config/milly.yaml"))

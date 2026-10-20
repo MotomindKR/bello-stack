@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mount open Milly grippers and wrist cameras on Mini Torso's hand interfaces.
+"""Mount articulated Milly grippers and wrist cameras on Mini Torso.
 
 uv run --with numpy --with scipy --with trimesh scripts/mini_torso_grippers.py
 The direct mounts and SDK wrist aggregate used for mass are provisional.
@@ -17,10 +17,11 @@ from scipy.spatial.transform import Rotation
 ROOT = Path(__file__).resolve().parents[1]
 DESCRIPTION = ROOT / "descriptions/bello_mini_torso"
 URDF = DESCRIPTION / "urdf/bello_mini_torso.urdf"
-OPEN = -2.2
 ATTACHMENT_Z = -0.037497803653348316
 HOUSING_REAR_Z = -0.05525
 TCP_Z = 0.0795
+BELLO_NAMESPACE = "https://motomind.kr/bello/urdf"
+ET.register_namespace("bello", BELLO_NAMESPACE)
 
 
 def numbers(values):
@@ -48,29 +49,9 @@ def set_origin(node, frame):
 def main():
     source = ET.parse(ROOT / "descriptions/milly/urdf/milly.urdf").getroot()
     root = ET.parse(URDF).getroot()
-    linkage = source.find("{https://motomind.kr/bello/urdf}slider_crank")
-    r, length, h, phase, reference = (
-        float(linkage.get(key))
-        for key in (
-            "crank_radius",
-            "rod_length",
-            "slider_offset",
-            "phase",
-            "slider_reference",
-        )
-    )
-    theta = OPEN + phase
-    v = h - r * math.sin(theta)
-    d = math.sqrt(length * length - v * v)
-    positions = {linkage.get("driver"): OPEN}
-    positions.update(
-        dict.fromkeys(
-            linkage.get("sliders").split(), r * math.cos(theta) + d - reference
-        )
-    )
-    positions.update(
-        dict.fromkeys(linkage.get("rods").split(), math.atan2(v, d) - theta)
-    )
+    linkage = source.find(f"{{{BELLO_NAMESPACE}}}slider_crank")
+    if linkage is None:
+        raise ValueError("Milly description is missing its slider-crank linkage")
     # Copy the gripper tree and the wrist-fixed camera, preserving their registration.
     links = {"gripper_base"}
     joints = []
@@ -148,26 +129,22 @@ def main():
                 flip = np.eye(4)
                 flip[:3, :3] = Rotation.from_euler("z", math.pi).as_matrix()
                 frame = flip @ frame
-            if name in positions:
-                motion = np.eye(4)
-                axis = np.fromstring(joint.find("axis").get("xyz"), sep=" ")
-                if joint.get("type") == "prismatic":
-                    motion[:3, 3] = axis * positions[name]
-                else:
-                    motion[:3, :3] = Rotation.from_rotvec(
-                        axis * positions[name]
-                    ).as_matrix()
-                frame = frame @ motion
             set_origin(joint, frame)
-            joint.set("type", "fixed")
             joint.set("name", prefix + name)
             for tag in ("parent", "child"):
                 node = joint.find(tag)
                 node.set("link", prefix + node.get("link"))
-            for tag in ("axis", "limit", "dynamics", "mimic"):
-                for node in joint.findall(tag):
-                    joint.remove(node)
+            mimic = joint.find("mimic")
+            if mimic is not None:
+                mimic.set("joint", prefix + mimic.get("joint"))
             root.append(joint)
+        side_linkage = deepcopy(linkage)
+        for attribute in ("name", "driver", "sliders", "rods"):
+            side_linkage.set(
+                attribute,
+                " ".join(prefix + name for name in linkage.get(attribute).split()),
+            )
+        root.append(side_linkage)
         mount = ET.SubElement(
             root, "joint", name=prefix + "gripper_mount", type="fixed"
         )

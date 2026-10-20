@@ -330,6 +330,62 @@ mod tests {
     }
 
     #[test]
+    fn mini_torso_grippers_close_independently_with_fixed_cameras_and_tcps() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../descriptions/bello_mini_torso/urdf/bello_mini_torso.urdf");
+        let robot = super::super::RobotDescription::load(&path).unwrap();
+        let milly = canonical();
+        assert_eq!(robot.slider_cranks().len(), 2);
+        for side in ["left", "right"] {
+            let driver = format!("{side}_gripper");
+            let base = format!("{side}_wrist_roll_link");
+            assert!(robot.motor_coordinates().contains(driver.as_str()));
+            let linkage = robot
+                .slider_cranks()
+                .iter()
+                .find(|linkage| linkage.driver == driver)
+                .unwrap();
+            for passive in linkage.passive_joints() {
+                assert!(robot.coordinate_mapping(passive).is_none());
+            }
+            let limits = robot.joint(&driver).unwrap().limits.as_ref().unwrap();
+            for step in 0..=100 {
+                let q = limits.lower + (limits.upper - limits.lower) * step as f64 / 100.;
+                let positions = BTreeMap::from([(driver.clone(), q)]);
+                let resolved = robot.resolve_passive_positions(&positions).unwrap();
+                let reference = milly
+                    .resolve_passive_positions(&BTreeMap::from([("gripper".into(), q)]))
+                    .unwrap();
+                for passive in linkage.passive_joints() {
+                    let source_name = passive.strip_prefix(&format!("{side}_")).unwrap();
+                    assert!((resolved[passive] - reference[source_name]).abs() < 1e-12);
+                }
+                let other = if side == "left" { "right" } else { "left" };
+                assert!(!resolved.keys().any(|name| name.starts_with(other)));
+                for finger in [1, 2] {
+                    let tip = robot
+                        .link_transform(
+                            &base,
+                            &format!("{side}_gripper_rod_{finger}_tip"),
+                            &positions,
+                        )
+                        .unwrap();
+                    let pin = robot
+                        .link_transform(&base, &format!("{side}_finger_{finger}_pin"), &positions)
+                        .unwrap();
+                    assert!((tip.translation.vector - pin.translation.vector).norm() < 1e-10);
+                }
+                for frame in ["camera_optical_frame", "gripper_tcp"] {
+                    let frame = format!("{side}_{frame}");
+                    let fixed = robot.fixed_transform(&base, &frame).unwrap();
+                    let actual = robot.link_transform(&base, &frame, &positions).unwrap();
+                    assert!((fixed.to_homogeneous() - actual.to_homogeneous()).norm() < 1e-12);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn malformed_linkage_metadata_is_rejected() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../descriptions/milly/urdf/milly.urdf");

@@ -28,6 +28,8 @@ initial_joint_positions:
   left_wrist_yaw_joint: 0.0
   left_wrist_pitch_joint: 0.0
   left_wrist_roll_joint: 0.0
+  left_gripper: -2.2
+  right_gripper: -2.2
 neighbor_exclusion_depth: 2
 payloads: []
 root: fixed

@@ -28,3 +28,5 @@ enabled_groups:
 - torso_pitch
 - waist
 - upper_body
+- left_gripper
+- right_gripper

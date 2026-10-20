@@ -22,7 +22,7 @@ are the exception described below.
 Inherited geometry and mass approximations are documented in the
 [Mini provenance](../bello_mini/ASSET_PROVENANCE.md).
 
-## Milly grippers, held open
+## Articulated Milly grippers
 
 The gripper subtrees come from Milly's updated URDF on stack `main` at
 `de0369a`, including the exterior meshes, rounded jaws, primitive colliders,
@@ -30,12 +30,20 @@ crank, rods, pin frames, wrist camera/bracket and jaw mass properties. Assets re
 `scripts/mini_torso_grippers.py` applies this integration using structured XML.
 Run it with `uv run --with numpy --with scipy --with trimesh` to regenerate.
 
-Both grippers are locked at Milly's operational open angle, **-2.2 rad**. The
-nonlinear slider-crank equations in Milly's declaration determine all four
-passive positions before baking each transform into a fixed joint. Rod tips
-and slider pins coincide. This is an open-gripper arm-IK model: there are no
-gripper motor declarations or open/close commands, and no extra optimization
-coordinates. All 17 moving torso/arm joints and both hip motors remain active.
+Both grippers retain Milly's revolute crank, two prismatic fingers and two
+passive revolute rods, with separately prefixed `bello:slider_crank` declarations.
+The nonlinear linkage equations determine all four passive positions from each
+gripper motor angle, keeping rod tips and slider pins coincident throughout
+the motion. The dimensions, phase, joint origins, axes and limits match Milly.
+The emulator starts at Milly's operational open angle, **-2.2 rad**; the joints
+are no longer baked into fixed open transforms.
+
+`left_gripper` is motor ID **38 on can2**, and `right_gripper` is motor ID
+**48 on can3**. Each owns a separate motor group. Motor model, direction,
+command limits, health thresholds and damping inherit the Milly gripper
+configuration. These are software assignments, not a measurement or programming
+of the installed actuators. The 17 torso/arm joints and both hip motors remain
+active; the grippers add two independent coordinates and eight passive joints.
 
 The user approved a **provisional direct mount** at the former hand attachment.
 The existing attachment is `[0, 0, -0.037497803653348316]` in
@@ -111,7 +119,8 @@ also uses a fixed identity root; no foot-contact pose estimator is required.
 
 ## Parallel hip actuation
 
-There are **17 independent movable joints and 18 actuator declarations**.
+Including the grippers, there are **19 independent movable joints and 20 actuator
+declarations**, plus eight passive linkage joints.
 Two separate `transmission_interface/SimpleTransmission` elements name
 `left_hip_pitch_motor` and `right_hip_pitch_motor` and both reference
 `torso_pitch_joint`. The remaining 16 transmissions name the existing arm and

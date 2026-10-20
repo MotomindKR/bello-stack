@@ -2,15 +2,36 @@
 
 The fixed-base torso retains both seven-joint arms, waist yaw/roll, pelvis,
 head, camera, and IMU. The two active hip-pitch motors drive one shared pitch
-joint: 18 actuators control 17 movable joints. The user specified an invisible
+joint. Including the two grippers, 20 actuators control 19 independent joints
+and eight passive linkage joints. The user specified an invisible
 base at the hip-pitch origin, upright zero, 60 degrees forward travel, and
-30 degrees backward travel. The hands are replaced by Milly grippers held open
-for arm IK, including Milly's wrist camera brackets, collision shapes and optical
+30 degrees backward travel. The hands are replaced by articulated Milly grippers,
+including Milly's wrist camera brackets, collision shapes and optical
 frames on both sides. Modeled moving mass is approximately 28.177 kg with the provisional
 gripper mass allocation described in the provenance.
 
 Geometry, coordinate conventions, inherited calibration assumptions, and torque
 sharing are recorded in [ASSET_PROVENANCE.md](ASSET_PROVENANCE.md).
+
+## Gripper control
+
+| Coordinate and motor group | Logical bus | Motor ID |
+| --- | --- | --- |
+| `left_gripper` | `can2` | 38 |
+| `right_gripper` | `can3` | 48 |
+
+Each gripper has its own lease and uses Milly's motor configuration
+(`ROBSTRIDE_05`, direction -1) and 100 Hz control/refresh rates. Its commanded
+range is -2.3 to 0 rad; -2.2 rad is the nominal open pose and 0 rad is closed.
+The emulator initializes both hands open. The physical daemon reads their
+actual positions; declaring the IDs does not program motor addresses or zeros.
+Confirm the installed motor model, CAN address, direction, and zero before use.
+
+Each URDF `bello:slider_crank` declaration preserves Milly's crank radius,
+rod length, slider offset, phase and reference. Only the crank is a motor
+coordinate; both fingers and rods are passive. The viewer and native emulator
+resolve these linkages independently for each hand. Arm IK consumers can hold
+the gripper coordinates at the measured or desired opening.
 
 ## Validate without hardware
 
