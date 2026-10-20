@@ -1,11 +1,48 @@
 # Milly asset provenance
 
-The Milly arm kinematic origins and collision meshes in this directory were
+The Milly arm kinematic origins and original collision meshes were
 adapted from `platform/ros2/src/milly_ros/milly_description` at commit
 `74d6c46176a91e11564e4cbbf7d183080d7cfb95` of
 `MotomindKR/motomind_platform`. The calibrated motor and safety envelopes were
 adapted from `configs/robots/motomind_milly/milly_teleop.yaml` at commit
 `61292d0b514a09a1623be7cb5f477d0247a70d65` in the same repository.
+
+## SDK mass properties
+
+Mass, center of mass and inertia come from
+[`MILLY.urdf` at `4c70a0a84fd27719b70a2395c3d04eeb10053985`](https://github.com/MotomindKR/motomind_platform/blob/4c70a0a84fd27719b70a2395c3d04eeb10053985/platform/python/motomind_milly_sdk/src/motomind_milly/robot/MILLY.urdf).
+[`mass-properties.json`](mass-properties.json) records the exact source values,
+source hash, SDK visual-to-link transforms and the nominal linkage partition.
+Current joint origins, axes, limits, motor signs and hardware control settings
+remain unchanged, as requested. SDK raw-angle conventions are not imported.
+
+The SDK meshes and the exterior STEP use the common CAD assembly frame.
+The existing `exterior-assets.json` registration and SDK visual origins give
+`current_link_from_sdk_link = current_link_from_cad * inverse(sdk_link_from_cad)`.
+COM points are transformed with this full rigid transform. Inertia tensors
+about the COM are rotated, including the source inertial-frame orientation;
+translation does not shift a tensor that remains centered at the COM.
+
+The SDK wrist (`link_6`) combines hardware separated into moving crank/rod
+links here. Their existing nominal 15 g / 10 g / 10 g properties are retained
+but subtracted from the SDK wrist aggregate using first moments and the
+parallel-axis theorem at the CAD reference pose (`gripper = -2.2 rad`).
+The residual wrist mass is 0.3562467995254684 kg. Recombining it with those parts
+preserves the SDK wrist mass, COM and inertia at that pose. The individual
+linkage split remains an estimate. All inertias are positive definite and
+satisfy the principal-moment triangle inequalities.
+
+The entire URDF and native simulation total **5.449411285057828 kg**; no extra
+35 g is added. The simulation profile no longer supplies additional inertias.
+The standalone gripper example reads the canonical URDF's mass properties too.
+
+```sh
+uv run --with numpy --with scipy scripts/milly_mass_properties.py
+```
+
+The STEP asset generator reapplies the same mass recipe after rebuilding links,
+so regeneration cannot restore the former jaw inertias. Native checks validate
+the total mass, gripper motion, and arm motion at the existing safety limits.
 
 ## Exterior assets
 
@@ -25,16 +62,15 @@ omitted. Cables and decals absent from the CAD were not synthesized.
 The STEP's ribbed fingers differ from the rounded jaws in the photograph.
 The two original rounded jaw assemblies and the visible base connector are
 retained byte-for-byte under `meshes/visual/retained`. The jaws now translate
-on the rail. Their original inertial frames are transformed into the new
-slider frames. All other exterior meshes are tessellated from 27 STEP instances
+on the rail. Their SDK mass properties are expressed in the new slider
+frames using the common CAD registration. All other exterior meshes are tessellated from 27 STEP instances
 at 0.10 mm linear / 0.15 rad angular deflection and converted from mm to m.
 
 [`exterior-assets.json`](exterior-assets.json) records the instance paths,
 omissions, materials, mesh hashes for retained parts, and CAD-to-link matrices.
 Meshes use the existing arm link frames; the six arm joint origins and limits
-are preserved. Gripper and camera convex-hull colliders use their new frames.
-These hulls are conservative envelopes, including empty space around the rail
-and camera bracket.
+are preserved. Collision geometry now uses the approximate primitive shapes
+listed below; the original convex-hull STL colliders have been removed.
 
 ![Milly exterior](previews/exterior.png)
 
@@ -44,6 +80,50 @@ Regenerate using the separately supplied proprietary STEP:
 uv run --python 3.12 --with cadquery==2.8.0 --with trimesh==5.1.1 --with scipy \
   scripts/update-milly-assets.py --step '/path/Milly_Assem_0914_Case Only.STEP'
 ```
+
+## Primitive collision shapes
+
+![Approximate Milly collision shapes](previews/collision-primitives.png)
+
+[`collision-primitives.json`](collision-primitives.json) defines 24 boxes and
+cylinders in the existing URDF link frames, in metres and radians. Rounded motor
+housings use cylinders; long covers use boxes. Link 2 uses separate shoulder,
+straight neck and bent elbow shapes: its long central beam is 30 mm thick,
+matching mesh cross-sections, rather than the former diagonal 88 mm box.
+Link 2 uses five primitives, with one box per neck/bridge transition.
+The gripper body uses a motor cylinder and one rail assembly box. Each moving
+jaw uses three shapes: a base box, a flat gripping face and a cylindrical
+rounded tip. Small carriage/neck steps are merged into the jaw base. Only the crank and connecting rods have no
+collision geometry; their visual geometry and kinematic links remain intact.
+The camera housing, stalk and mount retain separate shapes. Small holes, jaw
+cutouts and fine surface details are omitted; these shapes are neither exact
+CAD surfaces nor guaranteed enclosing volumes.
+
+![Link 2 collision fit against the exterior](previews/link-2-collision.png)
+
+`python scripts/milly_collisions.py` applies the recipe to the URDF. The STEP
+asset generator calls the same function so regeneration preserves the primitive
+colliders. This changes only collision geometry: visual meshes, joint frames,
+mass properties and limits are preserved. The standalone gripper demo reads the canonical
+inertias independently of the collision approximation.
+
+Generate an offline, interactive whole-arm and gripper view with exterior overlay
+and open/half/closed gripper positions:
+
+```sh
+uv run --with numpy --with scipy --with trimesh --with fast-simplification \
+  --with plotly scripts/milly_collisions.py --preview /tmp/milly-collisions.html
+open /tmp/milly-collisions.html
+```
+
+The preview uses zero arm joint angles and does not command the running robot.
+Labeled camera axes mark +X forward (red), +Y left (green), and +Z up (blue).
+The longer red arrow is also optical-frame +Z, the viewing direction.
+MuJoCo checks the normal -2.2 to 0 rad gripper sweep at zero and bent arm poses
+without the previous four rod/carriage exclusions. Crank and rod collision
+surfaces are omitted entirely. Parent/near-neighbor exclusions retain their
+existing policy. Full-arm contact-free motion is not guaranteed at every
+configuration.
 
 ## Gripper linkage
 
@@ -108,7 +188,7 @@ Add `--with pillow` to the `uv run` dependencies and `--preview` to the script
 arguments to regenerate the motion GIF with an OpenGL renderer (EGL on Linux).
 
 The check covers 101 analytic poses and 6000 driven simulation steps. This
-example uses nominal moving-part masses, no gravity and no contact forces to
+example uses the canonical URDF inertias, no gravity and no contact forces to
 demonstrate loop closure. It is not a calibrated full-arm dynamics model or a
 `bello-mujoco` hardware deployment. The newly separated crank/rod inertias and
 contact model need physical characterization for that use.

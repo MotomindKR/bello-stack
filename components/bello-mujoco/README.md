@@ -91,6 +91,51 @@ cargo test --manifest-path deps/bello-stack/Cargo.toml -p bello-mujoco \
   --test vcan -- --ignored
 ```
 
+## Milly physics over virtual CAN
+
+Use `config/milly.yaml` for `check` and `config/emulator_milly.yaml` for `run`.
+Pair this with hardwared's `config/milly-vcan.yaml` and the visualizer's
+`config/milly-physics.example.yaml`. The model has a fixed base, gravity, floor and
+24 box/cylinder colliders, seven native motor actuators, and two native site-to-site
+`connect` equalities for the gripper. Passive positions are initialized from the
+URDF slider-crank definition; MuJoCo solves them dynamically after startup.
+The physics viewer profile uses kp=100 and kd=3 to reduce gravity sag. The
+native motor joint stops activate 0.02 rad before the URDF limit with a 4 ms
+response time. This leaves room for solver compliance before hardwared's
+unchanged safety envelope; using the default soft stop directly at that boundary
+previously caused joint 2 to cross -0.1 rad during ordinary arm motion.
+These are simulation contact settings, not changes to motor health checks.
+See [MuJoCo joint-limit constraints](https://mujoco.readthedocs.io/en/stable/computation/#limit).
+No IMU or power UART is required (`imu: null`, `power_board: null`). A configured
+canonical IMU still requires a matching runtime endpoint.
+
+```sh
+cargo run -j 2 -p bello-mujoco -- check --config components/bello-mujoco/config/milly.yaml
+cargo run -j 2 -p bello-mujoco -- run --config components/bello-mujoco/config/emulator_milly.yaml
+```
+
+Milly uses the primitive-only collision policy. The collider recipe is
+`descriptions/milly/collision-primitives.json`; regenerate it into the URDF with
+`python scripts/milly_collisions.py`. There are no collision mesh assets or
+extra rod/carriage collision exclusions. The gripper uses compound exterior shapes for the motor housing, rail and
+moving jaws, including rounded jaw tips. Crank and rods retain their moving links,
+inertias and loop constraints but have no collision geometry. The normal -2.2
+to 0 rad gripper sweep is checked for self-penetration at zero and bent arm poses.
+
+Visual geometry is excluded from physics. Mass properties come from the pinned
+SDK URDF at commit `4c70a0a`, transformed into the existing link frames by
+`scripts/milly_mass_properties.py`. The nominal 35 g crank/rod partition is
+subtracted from the SDK wrist aggregate; it is not added to the total. Native
+mass is **5.449411285057828 kg**. All moving inertias now live in the canonical
+URDF; `config/milly.yaml` supplies only simulation damping, armature and stop
+settings. Joint/control conventions are retained. The linkage partition and
+contact surfaces remain approximations, not calibrated payload/contact models.
+
+Physics advances continuously, including gravity when motors are disabled.
+The initial joint angles are zero; an unpowered arm can move from that pose.
+The visualizer reconstructs passive geometry from measured crank feedback;
+it does not display the small constraint compliance of the native simulation.
+
 ## Software video
 
 Keep `video: null` to disable recording. In a local runtime profile, replace it
@@ -118,7 +163,7 @@ which must fit within 64 MiB; reaching the bound fails the run instead of growin
 memory indefinitely. The frame rate cannot exceed the simulation rate.
 
 After CAN, serial and pose endpoints close, a separate process loads the canonical
-visual meshes and renders with verified Mesa llvmpipe. Physics stays mesh-free.
+visual meshes and renders with verified Mesa llvmpipe. Primitive-only profiles keep physics mesh-free.
 The Linux `bello_mujoco` Rust shell supplies Mesa EGL and ffmpeg. Rendering has
 an explicit timeout; Ctrl-C/SIGTERM cancels the renderer and encoder. All failures
 are reported and fail the command. Native macOS/GPU rendering is unsupported.

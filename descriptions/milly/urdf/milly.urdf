@@ -14,16 +14,10 @@
   </material>
   <link name="base_link">
     <inertial>
-      <origin xyz="-1.8874202e-06 -0.052548197 0.049750702" rpy="0 0 0" />
-      <mass value="0.41430094" />
-      <inertia ixx="0.00091328113" ixy="-3.3016852e-08" ixz="1.6326392e-08" iyy="0.00066973613" iyz="-1.3947945e-05" izz="0.0012486106" />
+      <origin xyz="-0.0001241321748860844 -0.04203029467324181 0.04978668837136444" rpy="0 0 0" />
+      <mass value="1.01372171051755" />
+      <inertia ixx="0.001222473948380703" ixy="5.704125615847687e-07" ixz="7.03787041079121e-07" iyy="0.001034384940334247" iyz="9.599059522533496e-06" izz="0.001703404487664201" />
     </inertial>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/collision/base_link.stl" />
-      </geometry>
-    </collision>
     <visual name="base">
       <geometry>
         <mesh filename="../meshes/visual/exterior/base.stl" />
@@ -37,38 +31,44 @@
       </geometry>
       <material name="milly_black" />
     </visual>
+    <collision name="base_link_base_shell">
+      <origin xyz="0 -0.045 0.0405" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.059" length="0.073" />
+      </geometry>
+    </collision>
+    <collision name="base_link_base_connector">
+      <origin xyz="0 -0.1092 0.034" rpy="0 0 0" />
+      <geometry>
+        <box size="0.03 0.0294 0.034" />
+      </geometry>
+    </collision>
   </link>
   <link name="link_1">
     <inertial>
-      <origin xyz="0.0010939844 -2.1025428e-05 0.011275153" rpy="0 0 0" />
-      <mass value="1.1339212" />
-      <inertia ixx="0.001697409" ixy="9.1974456e-07" ixz="0.00011738059" iyy="0.0017432771" iyz="1.0021562e-06" izz="0.0010438341" />
+      <origin xyz="-0.004323933900359966 7.687393629520179e-05 -0.06290636269894848" rpy="0 0 0" />
+      <mass value="1.191749063077993" />
+      <inertia ixx="0.001836921085157454" ixy="-4.52255779073625e-06" ixz="-1.12260196991184e-05" iyy="0.001514459139754772" iyz="4.217015543896721e-06" izz="0.001406349633054645" />
     </inertial>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/collision/link_1.stl" />
-      </geometry>
-    </collision>
     <visual name="shoulder_frame">
       <geometry>
         <mesh filename="../meshes/visual/exterior/shoulder_frame.stl" />
       </geometry>
       <material name="milly_black" />
     </visual>
+    <collision name="link_1_shoulder_motor">
+      <origin xyz="0 0 -0.066" rpy="0 1.57079632679 0" />
+      <geometry>
+        <cylinder radius="0.054" length="0.069" />
+      </geometry>
+    </collision>
   </link>
   <link name="link_2">
     <inertial>
-      <origin xyz="-0.061551037 -0.0069684892 0.10221735" rpy="0 0 0" />
-      <mass value="2.3172105" />
-      <inertia ixx="0.0034679974" ixy="-0.0035676555" ixz="-0.00057045639" iyy="0.027820779" iyz="-7.3794509e-05" izz="0.028739723" />
+      <origin xyz="-0.1483062926574494 -0.01849181910190976 0.09759427368664694" rpy="0 0 0" />
+      <mass value="0.7815897120459003" />
+      <inertia ixx="0.001633916335052286" ixy="-0.001906802222639715" ixz="-8.476845187890086e-06" iyy="0.01165741053820402" iyz="-7.893882732242727e-06" izz="0.01195159644935846" />
     </inertial>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/collision/link_2.stl" />
-      </geometry>
-    </collision>
     <visual name="shoulder_shroud">
       <geometry>
         <mesh filename="../meshes/visual/exterior/shoulder_shroud.stl" />
@@ -81,19 +81,43 @@
       </geometry>
       <material name="milly_white" />
     </visual>
+    <collision name="link_2_shoulder_case">
+      <origin xyz="0 0 0.09789" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.054" length="0.095" />
+      </geometry>
+    </collision>
+    <collision name="link_2_shoulder_neck">
+      <origin xyz="-0.065 -0.0015 0.09789" rpy="0 0 0" />
+      <geometry>
+        <box size="0.05 0.053 0.07" />
+      </geometry>
+    </collision>
+    <collision name="link_2_upper_arm_beam">
+      <origin xyz="-0.15 -0.0015 0.09789" rpy="0 0 0" />
+      <geometry>
+        <box size="0.12 0.053 0.03" />
+      </geometry>
+    </collision>
+    <collision name="link_2_elbow_bridge">
+      <origin xyz="-0.252 -0.022 0.09789" rpy="0 0 0.95" />
+      <geometry>
+        <box size="0.08 0.053 0.088" />
+      </geometry>
+    </collision>
+    <collision name="link_2_elbow_case">
+      <origin xyz="-0.290856 -0.0735 0.09789" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.045" length="0.088" />
+      </geometry>
+    </collision>
   </link>
   <link name="link_3">
     <inertial>
-      <origin xyz="-0.0041964765 -0.016607473 0.026758398" rpy="0 0 0" />
-      <mass value="1.448999" />
-      <inertia ixx="0.0031294059" ixy="-0.00061818167" ixz="6.6736715e-06" iyy="0.0012291329" iyz="1.5809403e-05" izz="0.0034888352" />
+      <origin xyz="-0.02169485986926776 -0.05923475507546579 0.02650395851248238" rpy="0 0 0" />
+      <mass value="1.271552397135363" />
+      <inertia ixx="0.008396391783958448" ixy="-0.00302179023448194" ixz="4.351419901878976e-05" iyy="0.002021206766310417" iyz="0.000109719563412022" izz="0.009768029221245702" />
     </inertial>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/collision/link_3.stl" />
-      </geometry>
-    </collision>
     <visual name="elbow_frame">
       <geometry>
         <mesh filename="../meshes/visual/exterior/elbow_frame.stl" />
@@ -106,38 +130,44 @@
       </geometry>
       <material name="milly_white" />
     </visual>
+    <collision name="link_3_elbow_motor">
+      <origin xyz="0 0 0.028" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.045" length="0.062" />
+      </geometry>
+    </collision>
+    <collision name="link_3_forearm_case">
+      <origin xyz="-0.026176 -0.098697 0.028" rpy="1.57079632679 0 -0.523598775598" />
+      <geometry>
+        <box size="0.057 0.057 0.12913" />
+      </geometry>
+    </collision>
   </link>
   <link name="link_4">
     <inertial>
-      <origin xyz="0.00024448624 2.3074369e-05 0.016377112" rpy="0 0 0" />
-      <mass value="0.59035075" />
-      <inertia ixx="0.00038978018" ixy="2.1808617e-08" ixz="1.0912492e-05" iyy="0.00041075775" iyz="3.1728652e-07" izz="0.00025833691" />
+      <origin xyz="0.0009859770997829292 -2.365115034926596e-05 -0.04573273032225007" rpy="0 0 0" />
+      <mass value="0.3850435382083583" />
+      <inertia ixx="0.0001973526193856333" ixy="1.604894465729405e-06" ixz="6.186875660211891e-07" iyy="0.0002322088300336327" iyz="-1.897813568117843e-07" izz="0.0001905322394397914" />
     </inertial>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/collision/link_4.stl" />
-      </geometry>
-    </collision>
     <visual name="wrist_roll">
       <geometry>
         <mesh filename="../meshes/visual/exterior/wrist_roll.stl" />
       </geometry>
       <material name="milly_black" />
     </visual>
+    <collision name="link_4_wrist_roll">
+      <origin xyz="0 0 -0.016" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.03275" length="0.124" />
+      </geometry>
+    </collision>
   </link>
   <link name="link_5">
     <inertial>
-      <origin xyz="-0.017941338 2.5949683e-05 0.021788034" rpy="0 0 0" />
-      <mass value="0.8541507" />
-      <inertia ixx="0.00053205933" ixy="-5.0721736e-07" ixz="1.8181596e-05" iyy="0.0013667981" iyz="8.0608112e-07" izz="0.0011923774" />
+      <origin xyz="-0.04857371338212793 -1.079796027950489e-05 0.02327872296404614" rpy="0 0 0" />
+      <mass value="0.3370698983420428" />
+      <inertia ixx="0.0002490303626795781" ixy="2.766286885498528e-07" ixz="5.853873297790393e-06" iyy="0.0005034117581304974" iyz="-4.873377044422999e-06" izz="0.0003912896397061188" />
     </inertial>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="../meshes/collision/link_5.stl" />
-      </geometry>
-    </collision>
     <visual name="wrist_pitch">
       <geometry>
         <mesh filename="../meshes/visual/exterior/wrist_pitch.stl" />
@@ -150,12 +180,24 @@
       </geometry>
       <material name="milly_white" />
     </visual>
+    <collision name="link_5_wrist_round_case">
+      <origin xyz="-0.017 0 0.0235" rpy="1.57079632679 0 0" />
+      <geometry>
+        <cylinder radius="0.046" length="0.06" />
+      </geometry>
+    </collision>
+    <collision name="link_5_wrist_rear_case">
+      <origin xyz="-0.0675 0 0.0235" rpy="0 0 0" />
+      <geometry>
+        <box size="0.065 0.06 0.067" />
+      </geometry>
+    </collision>
   </link>
   <link name="link_6">
     <inertial>
-      <origin xyz="0.0020742497 -0.02213079 -0.072751725" rpy="0 0 0" />
-      <mass value="0.34219707" />
-      <inertia ixx="0.00068524091" ixy="2.3020303e-05" ixz="-1.0620021e-05" iyy="0.0004424456" iyz="0.00011231213" izz="0.00072672297" />
+      <origin xyz="0.001161593152570695 -0.004155879332003714 -0.06657769621003048" rpy="0 0 0" />
+      <mass value="0.3562467995254684" />
+      <inertia ixx="0.0004397508282694075" ixy="-3.533558893270019e-06" ixz="-7.723746609440908e-06" iyy="0.0003352527690104802" iyz="1.329613076551826e-05" izz="0.0003033202358509107" />
     </inertial>
   </link>
   <joint name="joint_1" type="revolute">
@@ -213,9 +255,16 @@
       </geometry>
       <material name="milly_metal" />
     </visual>
-    <collision>
+    <collision name="gripper_base_motor_housing">
+      <origin xyz="0 0 -0.03325" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/collision/gripper_base.stl" />
+        <cylinder radius="0.024" length="0.044" />
+      </geometry>
+    </collision>
+    <collision name="gripper_base_rail_assembly">
+      <origin xyz="0 0 -0.00185" rpy="0 0 0" />
+      <geometry>
+        <box size="0.154 0.019 0.0188" />
       </geometry>
     </collision>
   </link>
@@ -225,17 +274,17 @@
     <origin xyz="-0.000196292508331 0.00192499920959 -0.104444420991" rpy="-3.14159260916 -3.54119307211e-08 0.09118335" />
   </joint>
   <link name="gripper_drive">
+    <inertial>
+      <origin xyz="0 0 -0.004" rpy="0 0 0" />
+      <mass value="0.015" />
+      <inertia ixx="2e-06" ixy="0" ixz="0" iyy="3e-06" iyz="0" izz="4e-06" />
+    </inertial>
     <visual name="gripper_crank">
       <geometry>
         <mesh filename="../meshes/visual/exterior/gripper_crank.stl" />
       </geometry>
       <material name="milly_metal" />
     </visual>
-    <collision>
-      <geometry>
-        <mesh filename="../meshes/collision/gripper_drive.stl" />
-      </geometry>
-    </collision>
   </link>
   <joint name="gripper" type="revolute">
     <parent link="gripper_base" />
@@ -245,17 +294,17 @@
     <limit lower="-2.4" upper="0.1" effort="20" velocity="20" />
   </joint>
   <link name="finger_1">
+    <inertial>
+      <origin xyz="-0.006728274898305932 0.004570245470696096 0.02279007026125835" rpy="0 0 0" />
+      <mass value="0.0387190830608586" />
+      <inertia ixx="1.44398992694164e-05" ixy="-1.152295569106406e-07" ixz="2.146742157720557e-06" iyy="1.414825796110789e-05" iyz="7.008217625227696e-07" izz="3.637340685425366e-06" />
+    </inertial>
     <visual name="finger_1_carriage">
       <geometry>
         <mesh filename="../meshes/visual/exterior/finger_1_carriage.stl" />
       </geometry>
       <material name="milly_metal" />
     </visual>
-    <inertial>
-      <origin xyz="-0.0112430475767 0.000104470550764 0.0479336441569" rpy="3.14159260612 -3.12187331541e-08 0.09118335" />
-      <mass value=".057499098" />
-      <inertia ixx="4.0813076e-05" iyy="3.7529256e-05" izz="6.4511331e-06" ixy="4.3352204e-07" ixz="-4.2725828e-06" iyz="-2.1728211e-07" />
-    </inertial>
     <visual name="finger_1">
       <origin xyz="-0.0060008139556 -0.000178281134641 0.0107500213551" rpy="3.14159260612 -3.12187331541e-08 0.09118335" />
       <geometry>
@@ -263,9 +312,22 @@
       </geometry>
       <material name="milly_black" />
     </visual>
-    <collision>
+    <collision name="finger_1_jaw_base">
+      <origin xyz="-0.0075 -0.000175 0.018625" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/collision/finger_1.stl" />
+        <box size="0.022 0.03505 0.02875" />
+      </geometry>
+    </collision>
+    <collision name="finger_1_jaw_contact_face">
+      <origin xyz="-0.012 -0.00015 0.05625" rpy="0 0 0" />
+      <geometry>
+        <box size="0.013 0.029 0.0465" />
+      </geometry>
+    </collision>
+    <collision name="finger_1_jaw_rounded_tip">
+      <origin xyz="-0.0131 -0.00015 0.0795" rpy="0 1.57079632679 0" />
+      <geometry>
+        <cylinder radius="0.0145" length="0.0108" />
       </geometry>
     </collision>
   </link>
@@ -277,17 +339,17 @@
     <limit lower="-0.065" upper="0.005" effort="100" velocity="2" />
   </joint>
   <link name="gripper_rod_1">
+    <inertial>
+      <origin xyz="0.0225 0 0.004025" rpy="0 0 0" />
+      <mass value="0.01" />
+      <inertia ixx="1e-07" ixy="0" ixz="0" iyy="2.3e-06" iyz="0" izz="2.3e-06" />
+    </inertial>
     <visual name="gripper_rod_1">
       <geometry>
         <mesh filename="../meshes/visual/exterior/gripper_rod_1.stl" />
       </geometry>
       <material name="milly_metal" />
     </visual>
-    <collision>
-      <geometry>
-        <mesh filename="../meshes/collision/gripper_rod_1.stl" />
-      </geometry>
-    </collision>
   </link>
   <joint name="gripper_rod_1_joint" type="revolute">
     <parent link="gripper_drive" />
@@ -309,17 +371,17 @@
     <origin xyz="0 0.014 0.004025" rpy="0 0 0" />
   </joint>
   <link name="finger_2">
+    <inertial>
+      <origin xyz="0.008388135513413638 -0.003852094112952488 0.02273941501024205" rpy="0 0 0" />
+      <mass value="0.0387190831442922" />
+      <inertia ixx="1.431552848630381e-05" ixy="-1.104047784268819e-07" ixz="-2.117334095381115e-06" iyy="1.401950658257112e-05" iyz="-6.766744115017851e-07" izz="3.62778234626104e-06" />
+    </inertial>
     <visual name="finger_2_carriage">
       <geometry>
         <mesh filename="../meshes/visual/exterior/finger_2_carriage.stl" />
       </geometry>
       <material name="milly_metal" />
     </visual>
-    <inertial>
-      <origin xyz="0.0112426224664 -0.000104455527209 0.047933639862" rpy="3.14159260612 -3.12187331541e-08 0.09118335" />
-      <mass value=".057499098" />
-      <inertia ixx="4.0813076e-05" iyy="3.7529256e-05" izz="6.4511331e-06" ixy="4.3352204e-07" ixz="4.2725828e-06" iyz="2.1728211e-07" />
-    </inertial>
     <visual name="finger_2">
       <origin xyz="0.00600039147885 0.000178292853716 0.0107500166638" rpy="3.14159260612 -3.12187331541e-08 0.09118335" />
       <geometry>
@@ -327,9 +389,22 @@
       </geometry>
       <material name="milly_black" />
     </visual>
-    <collision>
+    <collision name="finger_2_jaw_base">
+      <origin xyz="0.0075 0.000175 0.018625" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/collision/finger_2.stl" />
+        <box size="0.022 0.03505 0.02875" />
+      </geometry>
+    </collision>
+    <collision name="finger_2_jaw_contact_face">
+      <origin xyz="0.012 0.00015 0.05625" rpy="0 0 0" />
+      <geometry>
+        <box size="0.013 0.029 0.0465" />
+      </geometry>
+    </collision>
+    <collision name="finger_2_jaw_rounded_tip">
+      <origin xyz="0.0131 0.00015 0.0795" rpy="0 1.57079632679 0" />
+      <geometry>
+        <cylinder radius="0.0145" length="0.0108" />
       </geometry>
     </collision>
   </link>
@@ -341,17 +416,17 @@
     <limit lower="-0.065" upper="0.005" effort="100" velocity="2" />
   </joint>
   <link name="gripper_rod_2">
+    <inertial>
+      <origin xyz="0.0225 0 0.004025" rpy="0 0 0" />
+      <mass value="0.01" />
+      <inertia ixx="1e-07" ixy="0" ixz="0" iyy="2.3e-06" iyz="0" izz="2.3e-06" />
+    </inertial>
     <visual name="gripper_rod_2">
       <geometry>
         <mesh filename="../meshes/visual/exterior/gripper_rod_2.stl" />
       </geometry>
       <material name="milly_metal" />
     </visual>
-    <collision>
-      <geometry>
-        <mesh filename="../meshes/collision/gripper_rod_2.stl" />
-      </geometry>
-    </collision>
   </link>
   <joint name="gripper_rod_2_joint" type="revolute">
     <parent link="gripper_drive" />
@@ -379,9 +454,22 @@
       </geometry>
       <material name="milly_black" />
     </visual>
-    <collision>
+    <collision name="camera_link_camera_housing">
+      <origin xyz="-0.01125 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../meshes/collision/camera_link.stl" />
+        <box size="0.0255 0.045 0.045" />
+      </geometry>
+    </collision>
+    <collision name="camera_link_camera_stalk">
+      <origin xyz="-0.0115 0 -0.042" rpy="0 -0.523598775598 0" />
+      <geometry>
+        <box size="0.006 0.022 0.046" />
+      </geometry>
+    </collision>
+    <collision name="camera_link_camera_mount">
+      <origin xyz="0.016 0 -0.08" rpy="0 1.0471975512 0" />
+      <geometry>
+        <cylinder radius="0.03" length="0.006" />
       </geometry>
     </collision>
   </link>

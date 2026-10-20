@@ -268,6 +268,46 @@ mod tests {
     }
 
     #[test]
+    fn uncommanded_physics_keeps_advancing_with_feedback() {
+        let mapping = BTreeMap::from([
+            (
+                1,
+                Coordinate {
+                    actuator: 0,
+                    offset: 0.,
+                },
+            ),
+            (
+                2,
+                Coordinate {
+                    actuator: 1,
+                    offset: 0.,
+                },
+            ),
+        ]);
+        let mut runtime =
+            RobstrideSimulation::new(crate::tests::simulation(), vec![(config(), mapping)])
+                .unwrap();
+        runtime
+            .handle("vcan-test", active_report_frame(0xfd, 1, true))
+            .unwrap();
+        runtime.simulation.data.qvel_mut().fill(0.5);
+        let initial = runtime.simulation.data.qpos().to_vec();
+        for _ in 0..100 {
+            assert!(!runtime.step().unwrap().is_empty());
+        }
+        assert!(runtime.simulation.data().time > 0.);
+        assert_ne!(runtime.simulation.data.qpos(), initial);
+        let time = runtime.simulation.data().time;
+        runtime
+            .handle("vcan-test", stop_frame(0xfd, 1, false))
+            .unwrap();
+        runtime.step().unwrap();
+        assert!(runtime.simulation.data().time > time);
+        assert!(runtime.simulation.data.qvel().iter().any(|v| v.abs() > 0.));
+    }
+
+    #[test]
     fn duplicate_actuator_ownership_fails_before_stepping() {
         let mapping = BTreeMap::from([
             (
