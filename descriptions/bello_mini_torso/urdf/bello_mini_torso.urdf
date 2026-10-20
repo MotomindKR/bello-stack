@@ -1,9 +1,17 @@
 <?xml version='1.0' encoding='utf-8'?>
 <robot name="bello_mini_torso">
-  <!--Derived from bello_mini: fixed base, active shared torso pitch, waist and both arms. See ../ASSET_PROVENANCE.md.-->
-  <!--base_link is the midpoint of the source hip-pitch axes, at world zero. The user requested an invisible base; no base mesh, floor plane, or stand inertia is added.-->
-  <!--The source pelvis frame is preserved by a fixed offset. Its inertia is expressed on torso_pitch_link without changing the physical mass distribution.-->
-  <!--User-specified pitch travel: 60 degrees forward, 30 degrees backward. The 240 Nm effort envelope sums the source hip envelopes; physical calibration remains separate.-->
+  <material name="milly_white">
+    <color rgba="0.88 0.90 0.89 1" />
+  </material>
+  <material name="milly_black">
+    <color rgba="0.055 0.060 0.065 1" />
+  </material>
+  <material name="milly_base">
+    <color rgba="0.26 0.28 0.29 1" />
+  </material>
+  <material name="milly_metal">
+    <color rgba="0.52 0.55 0.58 1" />
+  </material>
   <link name="base_link" />
   <link name="torso_pitch_link">
     <inertial>
@@ -36,11 +44,6 @@
     <child link="right_hip_pitch_mount_frame" />
     <origin xyz="0 -0.033596880771079501 0" rpy="0 0 0" />
   </joint>
-  <!--Designer-provided joint ranges use user-reviewed left-side signs; right roll/yaw signs are mirrored and physical stops require validation.-->
-  <!--Astra Stereo S U3 sensor origins are nominal mechanical values: IR/depth is 2 mm behind the CAD front face; RGB is 2 mm forward of IR/depth. They are not factory-calibrated extrinsics.-->
-  <!--Publish camera sensor TFs from this URDF or from the Orbbec driver, never from both sources simultaneously.-->
-  <!--Left/right mass properties use mirrored spatial-inertia means; central-body inertials are symmetrized about y=0. Existing signed joint conventions are preserved.-->
-  <!--imu_link is the published logical IMU frame; imu_sensor_link is the coincident physical EBIMU frame and records its upside-down mounting.-->
   <mujoco>
     <compiler fusestatic="false" inertiafromgeom="false" discardvisual="false" strippath="false" />
   </mujoco>
@@ -52,9 +55,6 @@
   </material>
   <material name="right_links">
     <color rgba="0.91 0.36 0.18 1" />
-  </material>
-  <material name="anonymous_end_effector">
-    <color rgba="0.85 0.85 0.88 1" />
   </material>
   <link name="left_elbow_link">
     <inertial>
@@ -215,7 +215,7 @@
     <visual name="left_wrist_roll_link_visual">
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../../bello_mini/meshes/left_wrist_roll_link.glb" scale="0.001 0.001 0.001" />
+        <mesh filename="../meshes/left_wrist_roll.glb" scale="0.001 0.001 0.001" />
       </geometry>
     </visual>
     <collision name="left_wrist_roll_link_sphere">
@@ -398,7 +398,7 @@
     <visual name="right_wrist_roll_link_visual">
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="../../bello_mini/meshes/right_wrist_roll_link.glb" scale="0.001 0.001 0.001" />
+        <mesh filename="../meshes/right_wrist_roll.glb" scale="0.001 0.001 0.001" />
       </geometry>
     </visual>
     <collision name="right_wrist_roll_link_sphere">
@@ -427,7 +427,6 @@
       </geometry>
     </collision>
   </link>
-  <!--Head mount inferred on torso centerline above CAD mesh top (z=0.332759 m); 60 mm sphere is an approximate visual/collision/inertia proxy, not measured head geometry.-->
   <link name="head_link">
     <inertial>
       <origin xyz="0 0 0.060" rpy="0 0 0" />
@@ -662,44 +661,6 @@
     <child link="camera_color_optical_frame" />
     <origin xyz="0 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966" />
   </joint>
-  <link name="left_end_effector_sphere_link">
-    <inertial>
-      <origin xyz="0 0 -0.025000000000000001" rpy="0 0 0" />
-      <mass value="0.46999999999999997" />
-      <inertia ixx="0.00011750000000000002" ixy="0" ixz="0" iyy="0.00011750000000000002" iyz="0" izz="0.00011750000000000002" />
-    </inertial>
-    <collision name="left_end_effector_sphere_link_collision">
-      <origin xyz="0 0 -0.025000000000000001" rpy="0 0 0" />
-      <geometry>
-        <sphere radius="0.025000000000000001" />
-      </geometry>
-    </collision>
-  </link>
-  <joint name="left_end_effector_sphere_joint" type="fixed">
-    <parent link="left_wrist_roll_link" />
-    <child link="left_end_effector_sphere_link" />
-    <origin xyz="0 0 -0.037497803653348316" rpy="0 0 0" />
-  </joint>
-  <link name="right_end_effector_sphere_link">
-    <inertial>
-      <origin xyz="0 0 -0.025000000000000001" rpy="0 0 0" />
-      <mass value="0.46999999999999997" />
-      <inertia ixx="0.00011750000000000002" ixy="0" ixz="0" iyy="0.00011750000000000002" iyz="0" izz="0.00011750000000000002" />
-    </inertial>
-    <collision name="right_end_effector_sphere_link_collision">
-      <origin xyz="0 0 -0.025000000000000001" rpy="0 0 0" />
-      <geometry>
-        <sphere radius="0.025000000000000001" />
-      </geometry>
-    </collision>
-  </link>
-  <joint name="right_end_effector_sphere_joint" type="fixed">
-    <parent link="right_wrist_roll_link" />
-    <child link="right_end_effector_sphere_link" />
-    <origin xyz="0 0 -0.037497803653348316" rpy="0 0 0" />
-  </joint>
-  <!--Both hip actuators drive torso_pitch_joint in parallel. Separate SimpleTransmission mappings share one joint; efforts add and motor targets must agree in joint coordinates.-->
-  <!--Hip reductions are -1 in the source normalized joint coordinates because the pelvis now moves relative to the fixed leg-side mounts. Raw encoder directions and zero calibration remain hardware concerns.-->
   <transmission name="left_hip_pitch_transmission">
     <type>transmission_interface/SimpleTransmission</type>
     <joint name="torso_pitch_joint">
@@ -880,4 +841,490 @@
       <mechanicalReduction>1</mechanicalReduction>
     </actuator>
   </transmission>
+  <link name="left_camera_link">
+    <visual name="left_camera">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/exterior/camera.stl" />
+      </geometry>
+      <material name="milly_black" />
+    </visual>
+    <collision name="left_camera_link_camera_housing">
+      <origin xyz="-0.01125 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.0255 0.045 0.045" />
+      </geometry>
+    </collision>
+    <collision name="left_camera_link_camera_stalk">
+      <origin xyz="-0.0115 0 -0.042" rpy="0 -0.523598775598 0" />
+      <geometry>
+        <box size="0.006 0.022 0.046" />
+      </geometry>
+    </collision>
+    <collision name="left_camera_link_camera_mount">
+      <origin xyz="0.016 0 -0.08" rpy="0 1.0471975512 0" />
+      <geometry>
+        <cylinder radius="0.03" length="0.006" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_camera_optical_frame" />
+  <link name="left_finger_1">
+    <inertial>
+      <origin xyz="-0.006728274898305932 0.004570245470696096 0.02279007026125835" rpy="0 0 0" />
+      <mass value="0.0387190830608586" />
+      <inertia ixx="1.44398992694164e-05" ixy="-1.152295569106406e-07" ixz="2.146742157720557e-06" iyy="1.414825796110789e-05" iyz="7.008217625227696e-07" izz="3.637340685425366e-06" />
+    </inertial>
+    <visual name="left_finger_1_carriage">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/exterior/finger_1_carriage.stl" />
+      </geometry>
+      <material name="milly_metal" />
+    </visual>
+    <visual name="left_finger_1">
+      <origin xyz="-0.0060008139556 -0.000178281134641 0.0107500213551" rpy="3.14159260612 -3.12187331541e-08 0.09118335" />
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/retained/finger_1.stl" />
+      </geometry>
+      <material name="milly_black" />
+    </visual>
+    <collision name="left_finger_1_jaw_base">
+      <origin xyz="-0.0075 -0.000175 0.018625" rpy="0 0 0" />
+      <geometry>
+        <box size="0.022 0.03505 0.02875" />
+      </geometry>
+    </collision>
+    <collision name="left_finger_1_jaw_contact_face">
+      <origin xyz="-0.012 -0.00015 0.05625" rpy="0 0 0" />
+      <geometry>
+        <box size="0.013 0.029 0.0465" />
+      </geometry>
+    </collision>
+    <collision name="left_finger_1_jaw_rounded_tip">
+      <origin xyz="-0.0131 -0.00015 0.0795" rpy="0 1.57079632679 0" />
+      <geometry>
+        <cylinder radius="0.0145" length="0.0108" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_finger_1_pin" />
+  <link name="left_finger_2">
+    <inertial>
+      <origin xyz="0.008388135513413638 -0.003852094112952488 0.02273941501024205" rpy="0 0 0" />
+      <mass value="0.0387190831442922" />
+      <inertia ixx="1.431552848630381e-05" ixy="-1.104047784268819e-07" ixz="-2.117334095381115e-06" iyy="1.401950658257112e-05" iyz="-6.766744115017851e-07" izz="3.62778234626104e-06" />
+    </inertial>
+    <visual name="left_finger_2_carriage">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/exterior/finger_2_carriage.stl" />
+      </geometry>
+      <material name="milly_metal" />
+    </visual>
+    <visual name="left_finger_2">
+      <origin xyz="0.00600039147885 0.000178292853716 0.0107500166638" rpy="3.14159260612 -3.12187331541e-08 0.09118335" />
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/retained/finger_2.stl" />
+      </geometry>
+      <material name="milly_black" />
+    </visual>
+    <collision name="left_finger_2_jaw_base">
+      <origin xyz="0.0075 0.000175 0.018625" rpy="0 0 0" />
+      <geometry>
+        <box size="0.022 0.03505 0.02875" />
+      </geometry>
+    </collision>
+    <collision name="left_finger_2_jaw_contact_face">
+      <origin xyz="0.012 0.00015 0.05625" rpy="0 0 0" />
+      <geometry>
+        <box size="0.013 0.029 0.0465" />
+      </geometry>
+    </collision>
+    <collision name="left_finger_2_jaw_rounded_tip">
+      <origin xyz="0.0131 0.00015 0.0795" rpy="0 1.57079632679 0" />
+      <geometry>
+        <cylinder radius="0.0145" length="0.0108" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_finger_2_pin" />
+  <link name="left_gripper_base">
+    <inertial>
+      <origin xyz="0.000798539066369338 0.00617925998924174 -0.037866725027235" rpy="3.14159260612007 -3.12191723583766e-08 0.0911833500000014" />
+      <mass value="0.3562467995254684" />
+      <inertia ixx="0.0004397508282694075" ixy="-3.533558893270019e-06" ixz="-7.723746609440908e-06" iyy="0.0003352527690104802" iyz="1.329613076551826e-05" izz="0.0003033202358509107" />
+    </inertial>
+    <visual name="left_gripper_body">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/exterior/gripper_body.stl" />
+      </geometry>
+      <material name="milly_black" />
+    </visual>
+    <visual name="left_gripper_rail">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/exterior/gripper_rail.stl" />
+      </geometry>
+      <material name="milly_metal" />
+    </visual>
+    <collision name="left_gripper_base_motor_housing">
+      <origin xyz="0 0 -0.03325" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.024" length="0.044" />
+      </geometry>
+    </collision>
+    <collision name="left_gripper_base_rail_assembly">
+      <origin xyz="0 0 -0.00185" rpy="0 0 0" />
+      <geometry>
+        <box size="0.154 0.019 0.0188" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_gripper_drive">
+    <inertial>
+      <origin xyz="0 0 -0.004" rpy="0 0 0" />
+      <mass value="0.015" />
+      <inertia ixx="2e-06" ixy="0" ixz="0" iyy="3e-06" iyz="0" izz="4e-06" />
+    </inertial>
+    <visual name="left_gripper_crank">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/exterior/gripper_crank.stl" />
+      </geometry>
+      <material name="milly_metal" />
+    </visual>
+  </link>
+  <link name="left_gripper_rod_1">
+    <inertial>
+      <origin xyz="0.0225 0 0.004025" rpy="0 0 0" />
+      <mass value="0.01" />
+      <inertia ixx="1e-07" ixy="0" ixz="0" iyy="2.3e-06" iyz="0" izz="2.3e-06" />
+    </inertial>
+    <visual name="left_gripper_rod_1">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/exterior/gripper_rod_1.stl" />
+      </geometry>
+      <material name="milly_metal" />
+    </visual>
+  </link>
+  <link name="left_gripper_rod_1_tip" />
+  <link name="left_gripper_rod_2">
+    <inertial>
+      <origin xyz="0.0225 0 0.004025" rpy="0 0 0" />
+      <mass value="0.01" />
+      <inertia ixx="1e-07" ixy="0" ixz="0" iyy="2.3e-06" iyz="0" izz="2.3e-06" />
+    </inertial>
+    <visual name="left_gripper_rod_2">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/exterior/gripper_rod_2.stl" />
+      </geometry>
+      <material name="milly_metal" />
+    </visual>
+  </link>
+  <link name="left_gripper_rod_2_tip" />
+  <joint name="left_gripper" type="fixed">
+    <parent link="left_gripper_base" />
+    <child link="left_gripper_drive" />
+    <origin xyz="0 0 0" rpy="0 0 -2.2" />
+  </joint>
+  <joint name="left_finger_1_joint" type="fixed">
+    <parent link="left_gripper_base" />
+    <child link="left_finger_1" />
+    <origin xyz="0.0720156969673545 0 0" rpy="0 0 0" />
+  </joint>
+  <joint name="left_gripper_rod_1_joint" type="fixed">
+    <parent link="left_gripper_drive" />
+    <child link="left_gripper_rod_1" />
+    <origin xyz="-0.0264334304016 0.0141870982658 0" rpy="0 0 2.22173037150093" />
+  </joint>
+  <joint name="left_gripper_rod_1_tip_mount" type="fixed">
+    <parent link="left_gripper_rod_1" />
+    <child link="left_gripper_rod_1_tip" />
+    <origin xyz="0.045 0 0.004025" rpy="0 0 0" />
+  </joint>
+  <joint name="left_finger_1_pin_mount" type="fixed">
+    <parent link="left_finger_1" />
+    <child link="left_finger_1_pin" />
+    <origin xyz="0 0.014 0.004025" rpy="0 0 0" />
+  </joint>
+  <joint name="left_finger_2_joint" type="fixed">
+    <parent link="left_gripper_base" />
+    <child link="left_finger_2" />
+    <origin xyz="-0.0720156969673545 0 0" rpy="0 0 0" />
+  </joint>
+  <joint name="left_gripper_rod_2_joint" type="fixed">
+    <parent link="left_gripper_drive" />
+    <child link="left_gripper_rod_2" />
+    <origin xyz="0.0264334304016 -0.0141870982658 0" rpy="0 0 -0.919862282086074" />
+  </joint>
+  <joint name="left_gripper_rod_2_tip_mount" type="fixed">
+    <parent link="left_gripper_rod_2" />
+    <child link="left_gripper_rod_2_tip" />
+    <origin xyz="0.045 0 0.004025" rpy="0 0 0" />
+  </joint>
+  <joint name="left_finger_2_pin_mount" type="fixed">
+    <parent link="left_finger_2" />
+    <child link="left_finger_2_pin" />
+    <origin xyz="0 -0.014 0.004025" rpy="0 0 0" />
+  </joint>
+  <joint name="left_camera_mount" type="fixed">
+    <parent link="left_gripper_base" />
+    <child link="left_camera_link" />
+    <origin xyz="-7.12823055310507e-16 -0.076697100000194 -0.0318112000001363" rpy="4.0627501363133e-12 -1.04719755118979 1.57079632679453" />
+  </joint>
+  <joint name="left_camera_optical_joint" type="fixed">
+    <parent link="left_camera_link" />
+    <child link="left_camera_optical_frame" />
+    <origin xyz="0 0 0" rpy="-1.57079632679 0 -1.57079632679" />
+  </joint>
+  <joint name="left_gripper_mount" type="fixed">
+    <parent link="left_wrist_roll_link" />
+    <child link="left_gripper_base" />
+    <origin xyz="0 0 -0.09274780365334831" rpy="3.141592653589793 0 0" />
+  </joint>
+  <link name="left_gripper_tcp" />
+  <joint name="left_gripper_tcp_mount" type="fixed">
+    <parent link="left_gripper_base" />
+    <child link="left_gripper_tcp" />
+    <origin xyz="0 0 0.0795" rpy="3.141592653589793 0 0" />
+  </joint>
+  <link name="right_camera_link">
+    <visual name="right_camera">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/exterior/camera.stl" />
+      </geometry>
+      <material name="milly_black" />
+    </visual>
+    <collision name="right_camera_link_camera_housing">
+      <origin xyz="-0.01125 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.0255 0.045 0.045" />
+      </geometry>
+    </collision>
+    <collision name="right_camera_link_camera_stalk">
+      <origin xyz="-0.0115 0 -0.042" rpy="0 -0.523598775598 0" />
+      <geometry>
+        <box size="0.006 0.022 0.046" />
+      </geometry>
+    </collision>
+    <collision name="right_camera_link_camera_mount">
+      <origin xyz="0.016 0 -0.08" rpy="0 1.0471975512 0" />
+      <geometry>
+        <cylinder radius="0.03" length="0.006" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_camera_optical_frame" />
+  <link name="right_finger_1">
+    <inertial>
+      <origin xyz="-0.006728274898305932 0.004570245470696096 0.02279007026125835" rpy="0 0 0" />
+      <mass value="0.0387190830608586" />
+      <inertia ixx="1.44398992694164e-05" ixy="-1.152295569106406e-07" ixz="2.146742157720557e-06" iyy="1.414825796110789e-05" iyz="7.008217625227696e-07" izz="3.637340685425366e-06" />
+    </inertial>
+    <visual name="right_finger_1_carriage">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/exterior/finger_1_carriage.stl" />
+      </geometry>
+      <material name="milly_metal" />
+    </visual>
+    <visual name="right_finger_1">
+      <origin xyz="-0.0060008139556 -0.000178281134641 0.0107500213551" rpy="3.14159260612 -3.12187331541e-08 0.09118335" />
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/retained/finger_1.stl" />
+      </geometry>
+      <material name="milly_black" />
+    </visual>
+    <collision name="right_finger_1_jaw_base">
+      <origin xyz="-0.0075 -0.000175 0.018625" rpy="0 0 0" />
+      <geometry>
+        <box size="0.022 0.03505 0.02875" />
+      </geometry>
+    </collision>
+    <collision name="right_finger_1_jaw_contact_face">
+      <origin xyz="-0.012 -0.00015 0.05625" rpy="0 0 0" />
+      <geometry>
+        <box size="0.013 0.029 0.0465" />
+      </geometry>
+    </collision>
+    <collision name="right_finger_1_jaw_rounded_tip">
+      <origin xyz="-0.0131 -0.00015 0.0795" rpy="0 1.57079632679 0" />
+      <geometry>
+        <cylinder radius="0.0145" length="0.0108" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_finger_1_pin" />
+  <link name="right_finger_2">
+    <inertial>
+      <origin xyz="0.008388135513413638 -0.003852094112952488 0.02273941501024205" rpy="0 0 0" />
+      <mass value="0.0387190831442922" />
+      <inertia ixx="1.431552848630381e-05" ixy="-1.104047784268819e-07" ixz="-2.117334095381115e-06" iyy="1.401950658257112e-05" iyz="-6.766744115017851e-07" izz="3.62778234626104e-06" />
+    </inertial>
+    <visual name="right_finger_2_carriage">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/exterior/finger_2_carriage.stl" />
+      </geometry>
+      <material name="milly_metal" />
+    </visual>
+    <visual name="right_finger_2">
+      <origin xyz="0.00600039147885 0.000178292853716 0.0107500166638" rpy="3.14159260612 -3.12187331541e-08 0.09118335" />
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/retained/finger_2.stl" />
+      </geometry>
+      <material name="milly_black" />
+    </visual>
+    <collision name="right_finger_2_jaw_base">
+      <origin xyz="0.0075 0.000175 0.018625" rpy="0 0 0" />
+      <geometry>
+        <box size="0.022 0.03505 0.02875" />
+      </geometry>
+    </collision>
+    <collision name="right_finger_2_jaw_contact_face">
+      <origin xyz="0.012 0.00015 0.05625" rpy="0 0 0" />
+      <geometry>
+        <box size="0.013 0.029 0.0465" />
+      </geometry>
+    </collision>
+    <collision name="right_finger_2_jaw_rounded_tip">
+      <origin xyz="0.0131 0.00015 0.0795" rpy="0 1.57079632679 0" />
+      <geometry>
+        <cylinder radius="0.0145" length="0.0108" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_finger_2_pin" />
+  <link name="right_gripper_base">
+    <inertial>
+      <origin xyz="0.000798539066369338 0.00617925998924174 -0.037866725027235" rpy="3.14159260612007 -3.12191723583766e-08 0.0911833500000014" />
+      <mass value="0.3562467995254684" />
+      <inertia ixx="0.0004397508282694075" ixy="-3.533558893270019e-06" ixz="-7.723746609440908e-06" iyy="0.0003352527690104802" iyz="1.329613076551826e-05" izz="0.0003033202358509107" />
+    </inertial>
+    <visual name="right_gripper_body">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/exterior/gripper_body.stl" />
+      </geometry>
+      <material name="milly_black" />
+    </visual>
+    <visual name="right_gripper_rail">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/exterior/gripper_rail.stl" />
+      </geometry>
+      <material name="milly_metal" />
+    </visual>
+    <collision name="right_gripper_base_motor_housing">
+      <origin xyz="0 0 -0.03325" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.024" length="0.044" />
+      </geometry>
+    </collision>
+    <collision name="right_gripper_base_rail_assembly">
+      <origin xyz="0 0 -0.00185" rpy="0 0 0" />
+      <geometry>
+        <box size="0.154 0.019 0.0188" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_gripper_drive">
+    <inertial>
+      <origin xyz="0 0 -0.004" rpy="0 0 0" />
+      <mass value="0.015" />
+      <inertia ixx="2e-06" ixy="0" ixz="0" iyy="3e-06" iyz="0" izz="4e-06" />
+    </inertial>
+    <visual name="right_gripper_crank">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/exterior/gripper_crank.stl" />
+      </geometry>
+      <material name="milly_metal" />
+    </visual>
+  </link>
+  <link name="right_gripper_rod_1">
+    <inertial>
+      <origin xyz="0.0225 0 0.004025" rpy="0 0 0" />
+      <mass value="0.01" />
+      <inertia ixx="1e-07" ixy="0" ixz="0" iyy="2.3e-06" iyz="0" izz="2.3e-06" />
+    </inertial>
+    <visual name="right_gripper_rod_1">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/exterior/gripper_rod_1.stl" />
+      </geometry>
+      <material name="milly_metal" />
+    </visual>
+  </link>
+  <link name="right_gripper_rod_1_tip" />
+  <link name="right_gripper_rod_2">
+    <inertial>
+      <origin xyz="0.0225 0 0.004025" rpy="0 0 0" />
+      <mass value="0.01" />
+      <inertia ixx="1e-07" ixy="0" ixz="0" iyy="2.3e-06" iyz="0" izz="2.3e-06" />
+    </inertial>
+    <visual name="right_gripper_rod_2">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/exterior/gripper_rod_2.stl" />
+      </geometry>
+      <material name="milly_metal" />
+    </visual>
+  </link>
+  <link name="right_gripper_rod_2_tip" />
+  <joint name="right_gripper" type="fixed">
+    <parent link="right_gripper_base" />
+    <child link="right_gripper_drive" />
+    <origin xyz="0 0 0" rpy="0 0 -2.2" />
+  </joint>
+  <joint name="right_finger_1_joint" type="fixed">
+    <parent link="right_gripper_base" />
+    <child link="right_finger_1" />
+    <origin xyz="0.0720156969673545 0 0" rpy="0 0 0" />
+  </joint>
+  <joint name="right_gripper_rod_1_joint" type="fixed">
+    <parent link="right_gripper_drive" />
+    <child link="right_gripper_rod_1" />
+    <origin xyz="-0.0264334304016 0.0141870982658 0" rpy="0 0 2.22173037150093" />
+  </joint>
+  <joint name="right_gripper_rod_1_tip_mount" type="fixed">
+    <parent link="right_gripper_rod_1" />
+    <child link="right_gripper_rod_1_tip" />
+    <origin xyz="0.045 0 0.004025" rpy="0 0 0" />
+  </joint>
+  <joint name="right_finger_1_pin_mount" type="fixed">
+    <parent link="right_finger_1" />
+    <child link="right_finger_1_pin" />
+    <origin xyz="0 0.014 0.004025" rpy="0 0 0" />
+  </joint>
+  <joint name="right_finger_2_joint" type="fixed">
+    <parent link="right_gripper_base" />
+    <child link="right_finger_2" />
+    <origin xyz="-0.0720156969673545 0 0" rpy="0 0 0" />
+  </joint>
+  <joint name="right_gripper_rod_2_joint" type="fixed">
+    <parent link="right_gripper_drive" />
+    <child link="right_gripper_rod_2" />
+    <origin xyz="0.0264334304016 -0.0141870982658 0" rpy="0 0 -0.919862282086074" />
+  </joint>
+  <joint name="right_gripper_rod_2_tip_mount" type="fixed">
+    <parent link="right_gripper_rod_2" />
+    <child link="right_gripper_rod_2_tip" />
+    <origin xyz="0.045 0 0.004025" rpy="0 0 0" />
+  </joint>
+  <joint name="right_finger_2_pin_mount" type="fixed">
+    <parent link="right_finger_2" />
+    <child link="right_finger_2_pin" />
+    <origin xyz="0 -0.014 0.004025" rpy="0 0 0" />
+  </joint>
+  <joint name="right_camera_mount" type="fixed">
+    <parent link="right_gripper_base" />
+    <child link="right_camera_link" />
+    <origin xyz="7.03430369508595e-16 0.076697100000194 -0.0318112000001363" rpy="4.06241706940591e-12 -1.04719755118979 -1.57079632679526" />
+  </joint>
+  <joint name="right_camera_optical_joint" type="fixed">
+    <parent link="right_camera_link" />
+    <child link="right_camera_optical_frame" />
+    <origin xyz="0 0 0" rpy="-1.57079632679 0 -1.57079632679" />
+  </joint>
+  <joint name="right_gripper_mount" type="fixed">
+    <parent link="right_wrist_roll_link" />
+    <child link="right_gripper_base" />
+    <origin xyz="0 0 -0.09274780365334831" rpy="3.141592653589793 0 0" />
+  </joint>
+  <link name="right_gripper_tcp" />
+  <joint name="right_gripper_tcp_mount" type="fixed">
+    <parent link="right_gripper_base" />
+    <child link="right_gripper_tcp" />
+    <origin xyz="0 0 0.0795" rpy="3.141592653589793 0 0" />
+  </joint>
 </robot>

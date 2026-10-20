@@ -4,7 +4,10 @@ The fixed-base torso retains both seven-joint arms, waist yaw/roll, pelvis,
 head, camera, and IMU. The two active hip-pitch motors drive one shared pitch
 joint: 18 actuators control 17 movable joints. The user specified an invisible
 base at the hip-pitch origin, upright zero, 60 degrees forward travel, and
-30 degrees backward travel. Modeled moving mass is 28.180 kg.
+30 degrees backward travel. The hands are replaced by Milly grippers held open
+for arm IK, including Milly's wrist camera brackets, collision shapes and optical
+frames on both sides. Modeled moving mass is approximately 28.177 kg with the provisional
+gripper mass allocation described in the provenance.
 
 Geometry, coordinate conventions, inherited calibration assumptions, and torque
 sharing are recorded in [ASSET_PROVENANCE.md](ASSET_PROVENANCE.md).
@@ -69,7 +72,7 @@ encoder-disagreement tolerance before enabling the physical group.
 Local review images are written to the ignored
 `outputs/bello_mini_torso_review/` directory. `review.png` shows front, side,
 and three-quarter views plus the forward/backward limits. The review uses the
-canonical GLB visuals, including their detailed head and hands. Native MuJoCo
+canonical GLB visuals, including the detailed head and open grippers. Native MuJoCo
 video uses the retained companion STLs as described in the
 [Mini provenance](../bello_mini/ASSET_PROVENANCE.md). Generated images and
 inspection MJCF files are review artifacts rather than source descriptions.

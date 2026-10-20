@@ -8,18 +8,82 @@ motors drive the same torso-pitch motion and contribute torque in parallel.
 ## Retained assembly
 
 The description retains the pelvis, waist yaw and roll, both seven-joint arms,
-head, hand proxies, camera, and IMU frames. Both complete leg subtrees are
+head, camera, and IMU frames. Milly grippers replace the hand proxies. Both complete leg subtrees are
 removed, starting at `left_hip_pitch_link` and `right_hip_pitch_link`, along with
 their ankle transmissions. The source hip-pitch child-link inertias belong to
 the removed leg assemblies; the hip-pitch motors themselves are already
 included in the source pelvis inertia and are retained without adding mass.
 
-The modeled moving assembly mass is **28.180 kg**: the source's 48.580 kg minus
+Before the gripper replacement, the modeled moving mass was **28.180 kg**: the source's 48.580 kg minus
 two 10.200 kg leg assemblies. This is a derivation from the full robot's mass
 allocation, not a separate measurement of the torso variant. Shared meshes are
-referenced directly from `../bello_mini/meshes/`; no mesh assets are copied.
+referenced directly from the Mini and Milly descriptions. Trimmed wrist visuals
+are the exception described below.
 Inherited geometry and mass approximations are documented in the
 [Mini provenance](../bello_mini/ASSET_PROVENANCE.md).
+
+## Milly grippers, held open
+
+The gripper subtrees come from Milly's updated URDF on stack `main` at
+`de0369a`, including the exterior meshes, rounded jaws, primitive colliders,
+crank, rods, pin frames, wrist camera/bracket and jaw mass properties. Assets reference Milly directly.
+`scripts/mini_torso_grippers.py` applies this integration using structured XML.
+Run it with `uv run --with numpy --with scipy --with trimesh` to regenerate.
+
+Both grippers are locked at Milly's operational open angle, **-2.2 rad**. The
+nonlinear slider-crank equations in Milly's declaration determine all four
+passive positions before baking each transform into a fixed joint. Rod tips
+and slider pins coincide. This is an open-gripper arm-IK model: there are no
+gripper motor declarations or open/close commands, and no extra optimization
+coordinates. All 17 moving torso/arm joints and both hip motors remain active.
+
+The user approved a **provisional direct mount** at the former hand attachment.
+The existing attachment is `[0, 0, -0.037497803653348316]` in
+`wrist_roll_link`. Milly's rear housing face is at gripper-local Z = -0.05525 m
+(the exterior mesh and housing primitive agree). Aligning that face with the
+attachment gives `wrist_roll_link` to `gripper_base` translation
+`[0, 0, -0.09274780365334832]` metres and rotation `[pi, 0, 0]`. Gripper +Z points along the former hand's -Z;
+the jaw travel axis is wrist +X. Both sides use the same physical gripper,
+without mirroring its mechanism. No adapter mass or dimensions are invented.
+Confirm this transform against the installed mount before hardware use.
+
+`left_gripper_tcp` and `right_gripper_tcp` replace the old sphere tool frames.
+Each TCP is at the midpoint of the rounded jaw-tip centres, `[0, 0, 0.0795]` in the
+gripper base, with axes aligned to its wrist. This is a nominal geometric TCP,
+not a measured grasp frame. Payloads attach here. The open jaws' collision
+shapes participate in self and optional ground clearance with the existing
+rigid-body/neighbor exclusions. Milly's primitives are approximations, not
+guaranteed enclosing surfaces; its crank/rods have no collision geometry.
+
+Each 0.470 kg hand proxy is removed. Each new gripper assembly uses 0.468684965731
+kg: Milly's 0.356246799525 kg residual SDK wrist aggregate, 15 g crank, two 10 g
+rods and two approximately 38.719 g jaws. The residual inertia is rigidly
+transformed from Milly's wrist into the gripper base without adding it twice.
+**The residual includes Milly wrist hardware and is not a measured standalone
+gripper inertia.** It is an explicit provisional mass proxy, pending gripper-only
+mass/COM/inertia and adapter measurements. Gravity compensation now includes
+this estimate; it is not calibrated for the replacement hardware. The resulting
+modeled moving mass is approximately **28.177370 kg**.
+
+Each gripper also carries Milly's complete `camera.stl` bracket/housing mesh
+and its three primitive colliders (housing, stalk and mounting foot).
+`left_camera_link` / `right_camera_link` and their `*_camera_optical_frame`
+children start from Milly's lens position and orientation relative to the
+gripper base. At the user's request, the entire left camera/bracket is then
+rotated 180 degrees about gripper +Z, putting it on the outer side of the left
+wrist. The right camera retains its original mount. The fixed mount transform is `inverse(milly_wrist_from_gripper) *
+milly_wrist_from_camera`, composed with the provisional torso gripper mount.
+For the left side, this transform is pre-multiplied by `Rz(pi)`.
+Camera +X is forward; optical +Z is forward, +X right and +Y down. These
+nominal CAD extrinsics require calibration on the installed bracket. The camera
+has no separately measured inertia; it remains included in the residual SDK
+wrist aggregate proxy, without an added duplicate mass. The existing torso
+camera and IMU frames are retained.
+
+The original wrist GLBs contain full hands. The generator retains only named
+wrist cases, the outer frame and wrist brackets, excluding the old hands and
+temporary wrist adapter. These filtered GLBs and matching STL companions live
+in `meshes/`; all other Mini visuals and wrist inertias/colliders are unchanged.
 
 ## Mounting and coordinates
 
