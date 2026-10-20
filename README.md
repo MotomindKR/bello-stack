@@ -97,7 +97,7 @@ pytest
 ```
 
 Cartesian teleoperation lives in the separate
-[`MotomindKR/bello-teleop`](https://github.com/MotomindKR/bello-teleop) repository,
+[`MotomindKR/bello_torso_control`](https://github.com/MotomindKR/bello_torso_control) repository,
 which pins this stack as a submodule and uses its leased hardware client.
 
 The host-vCAN end-to-end scenario is explicit because it requires a Linux CAN

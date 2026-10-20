@@ -83,7 +83,7 @@ The adjacent
 pure-Python package rather than a Cargo workspace member. It uses generated
 blocking gRPC bindings behind a small robot/group API. Cartesian teleoperation
 is maintained separately in
-[`MotomindKR/bello-teleop`](https://github.com/MotomindKR/bello-teleop), which pins
+[`MotomindKR/bello_torso_control`](https://github.com/MotomindKR/bello_torso_control), which pins
 this stack and commands the daemon through leased hardware-client sessions.
 
 Conceptually, configuration assembles transport and device workers, group
