@@ -30,6 +30,9 @@ pub struct Config {
     pub command_latency_seconds: f64,
     pub motor_kp_scale: f64,
     pub motor_kd_scale: f64,
+    /// Simulation fixture: hold the initial pose until every motor is commanded once.
+    #[serde(default)]
+    pub startup_hold_until_commanded: bool,
     pub imu: Option<ImuConfig>,
     pub power_board: Option<crate::power_board::Config>,
     pub pose: PoseConfig,
@@ -268,6 +271,10 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
     }
     let mut physics = RobstrideSimulation::new(robot.simulation, buses)?;
     physics.set_gain_scales(config.motor_kp_scale, config.motor_kd_scale)?;
+    if config.startup_hold_until_commanded {
+        physics.hold_for_startup();
+        eprintln!("Startup support active; waiting for commands to every motor.");
+    }
     let mut guide = robot.guide;
     let mut serial = config
         .imu

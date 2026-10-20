@@ -26,6 +26,7 @@ pub struct RobstrideSimulation {
     pub simulation: Simulation,
     buses: BTreeMap<String, Bus>,
     gains: [f64; 2],
+    startup_positions: Option<Vec<f64>>,
 }
 
 impl RobstrideSimulation {
@@ -100,6 +101,7 @@ impl RobstrideSimulation {
             simulation,
             buses,
             gains: [1., 1.],
+            startup_positions: None,
         })
     }
 
@@ -121,10 +123,21 @@ impl RobstrideSimulation {
         Ok(())
     }
 
+    /// One-shot kinematic fixture. Feedback and protocol clocks continue while held.
+    /// Stop/fault/disable after release never reengages this support.
+    pub fn hold_for_startup(&mut self) {
+        self.startup_positions = Some(self.simulation.data.qpos().to_vec());
+        self.simulation.data.qvel_mut().fill(0.);
+        self.simulation.forward();
+    }
+
     pub fn step(&mut self) -> Result<Vec<(String, ScheduledFrame)>> {
+        let mut all_commanded = true;
         for bus in self.buses.values() {
             for binding in &bus.bindings {
-                let mut command = bus.protocol.command(binding.motor)?.unwrap_or_default();
+                let active = bus.protocol.command(binding.motor)?;
+                all_commanded &= active.is_some();
+                let mut command = active.unwrap_or_default();
                 command.position -= binding.offset;
                 command.kp *= self.gains[0];
                 command.kd *= self.gains[1];
@@ -132,7 +145,15 @@ impl RobstrideSimulation {
                     .set_impedance(binding.actuator, command, binding.torque_limit)?;
             }
         }
+        if all_commanded && self.startup_positions.take().is_some() {
+            eprintln!("Startup support released; every motor has an active command.");
+        }
         self.simulation.step();
+        if let Some(positions) = &self.startup_positions {
+            self.simulation.data.qpos_mut().copy_from_slice(positions);
+            self.simulation.data.qvel_mut().fill(0.);
+            self.simulation.data.qacc_warmstart_mut().fill(0.);
+        }
         self.simulation.forward();
         let elapsed = Duration::from_secs_f64(self.simulation.model().opt.timestep);
         let mut feedback = Vec::new();
@@ -305,6 +326,72 @@ mod tests {
         runtime.step().unwrap();
         assert!(runtime.simulation.data().time > time);
         assert!(runtime.simulation.data.qvel().iter().any(|v| v.abs() > 0.));
+    }
+
+    #[test]
+    fn startup_support_waits_for_all_buses_then_never_reengages() {
+        let buses = (1..=2)
+            .map(|motor| {
+                let mut bus = config();
+                bus.interface = format!("test{motor}");
+                bus.actuators.retain(|actuator| actuator.id == motor);
+                let mapping = BTreeMap::from([(
+                    motor,
+                    Coordinate {
+                        actuator: usize::from(motor - 1),
+                        offset: 0.,
+                    },
+                )]);
+                (bus, mapping)
+            })
+            .collect();
+        let mut runtime = RobstrideSimulation::new(crate::tests::simulation(), buses).unwrap();
+        runtime.hold_for_startup();
+        let initial = runtime.simulation.data.qpos().to_vec();
+        for motor in 1..=2 {
+            let bus = format!("test{motor}");
+            for frame in [
+                active_report_frame(0xfd, motor, true),
+                param_write_u8_frame(0xfd, motor, 0x7005, 0),
+                enable_frame(0xfd, motor),
+            ] {
+                runtime.handle(&bus, frame).unwrap();
+            }
+        }
+        let command = |motor, direction| {
+            control_frame(
+                MotorParams::for_model("ROBSTRIDE_03", direction).unwrap(),
+                ControlCommand {
+                    motor_id: motor,
+                    position: 0.5,
+                    kp: 100.,
+                    ..Default::default()
+                },
+            )
+        };
+        runtime.handle("test1", command(1, -1)).unwrap();
+        for _ in 0..100 {
+            assert!(!runtime.step().unwrap().is_empty());
+            assert_eq!(runtime.simulation.data.qpos(), initial);
+            assert!(runtime.simulation.data.qvel().iter().all(|v| *v == 0.));
+        }
+        assert!(runtime.simulation.data().time > 0.);
+        runtime.handle("test2", command(2, 1)).unwrap();
+        runtime.step().unwrap();
+        assert!(runtime.startup_positions.is_none());
+        assert_ne!(runtime.simulation.data.qpos(), initial);
+        for motor in 1..=2 {
+            runtime
+                .handle(&format!("test{motor}"), stop_frame(0xfd, motor, false))
+                .unwrap();
+        }
+        runtime.simulation.data.qvel_mut().fill(0.5);
+        let released = runtime.simulation.data.qpos().to_vec();
+        runtime.step().unwrap();
+        assert!(runtime.startup_positions.is_none());
+        assert_ne!(runtime.simulation.data.qpos(), released);
+        runtime.reset_home().unwrap();
+        assert!(runtime.startup_positions.is_none());
     }
 
     #[test]

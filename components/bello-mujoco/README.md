@@ -80,6 +80,22 @@ provides a bounded run. Transport queues are bounded; stale simulation timing or
 an unconsumed serial stream fails explicitly. Pose consumers receive the latest
 sample with its age, not an unbounded history.
 
+### Supported HIL startup
+
+| Runtime field | Behavior |
+| --- | --- |
+| `startup_hold_until_commanded: false` | Default: unpowered physics advances normally. |
+| `startup_hold_until_commanded: true` | One-shot kinematic fixture holds the initial pose with zero velocity while protocol/feedback clocks continue. |
+| Release | Every mapped motor on every bus must be enabled in impedance mode with a received command; enable alone is insufficient. |
+| After release | Ordinary dynamics, gravity, effort limits and fault behavior; stop/disable/reset never automatically reapply support. |
+
+Use this opt-in fixture for parked robots that would fall before controller
+preflight and telemetry initialization finish. It represents external startup
+support, not a motor command, physical backrest or validated contact model.
+The emulator logs activation and release. It does not change the controller's
+travel, startup, collision or deadline checks. A missing motor command leaves
+the fixture held; the integration test must enforce its own startup timeout.
+
 The opt-in Linux transport/video test requires **isolated** virtual interfaces,
 a profile, software Mesa and ffmpeg. It chooses its own PTY and pose port and
 never enables motors:
