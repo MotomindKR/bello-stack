@@ -257,9 +257,13 @@ impl ControlSession {
         Ok(())
     }
 
-    /// Disables a damped or authoritatively discovered group and returns to `Ready`.
+    /// Disables a ready, running, or damped group and returns to `Ready`.
+    /// Running control goes directly to Idle, without inserting damping commands.
     pub async fn disable(&mut self) -> Result<(), Error> {
-        if !matches!(self.state, ControlState::Ready | ControlState::Damped) {
+        if !matches!(
+            self.state,
+            ControlState::Ready | ControlState::Running | ControlState::Damped
+        ) {
             return Err(self.invalid_state("disable"));
         }
         self.command_stream.take();

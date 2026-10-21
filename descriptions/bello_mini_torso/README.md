@@ -13,6 +13,13 @@ gripper mass allocation described in the provenance.
 Geometry, coordinate conventions, inherited calibration assumptions, and torque
 sharing are recorded in [ASSET_PROVENANCE.md](ASSET_PROVENANCE.md).
 
+## Wrist pitch travel
+
+Both wrist-pitch joints have an upper travel limit of +80 degrees
+(1.3962634015954636 rad). Lower travel remains -90 degrees. Consumers must
+apply their normal command margin inside these limits; this does not change
+encoder calibration or program a drive-firmware stop.
+
 ## Gripper control
 
 | Coordinate and motor group | Logical bus | Motor ID |

@@ -219,7 +219,12 @@ the new stream. Normal server EOF remains visible as `None`.
   correlates the response, and returns only for `ACCEPTED`.
 - `ControlSession::stop` leaves the group `Damped` while retaining ownership.
 - `ControlSession::resume` atomically starts a damped group with a fresh
-  complete frame; `disable` explicitly returns it to `Idle`.
+  complete frame.
+- `ControlSession::disable` returns Ready, Running or Damped directly to `Idle`.
+  For an application-managed torque fade, acknowledge the final zero-gain and
+  zero-feedforward frame with `send()`, then `disable()` and `release()`. This
+  avoids the damping step in `stop()` / `shutdown()`; the application decides
+  when torque removal is appropriate.
 - `ControlSession::recover` performs explicit recovery from a latched group
   fault.
 - `ControlSession::shutdown` stops and disables when needed, bounds renewal-task

@@ -518,7 +518,7 @@
     <child link="left_wrist_link" />
     <origin xyz="0 -0.0055279192663852117 -0.093112106490849042" rpy="0 0 0" />
     <axis xyz="0 1 0" />
-    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="14" velocity="33" />
+    <limit lower="-1.5707963267948966" upper="1.3962634015954636" effort="14" velocity="33" />
   </joint>
   <joint name="left_wrist_roll_joint" type="revolute">
     <parent link="left_wrist_link" />
@@ -567,7 +567,7 @@
     <child link="right_wrist_link" />
     <origin xyz="0 0.0055279192663852117 -0.093112106490849042" rpy="0 0 0" />
     <axis xyz="0 1 0" />
-    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="14" velocity="33" />
+    <limit lower="-1.5707963267948966" upper="1.3962634015954636" effort="14" velocity="33" />
   </joint>
   <joint name="right_wrist_roll_joint" type="revolute">
     <parent link="right_wrist_link" />

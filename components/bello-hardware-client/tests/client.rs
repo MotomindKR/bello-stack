@@ -1394,6 +1394,39 @@ async fn ergonomic_resume_rolls_an_ambiguous_start_back_to_damped() {
 }
 
 #[tokio::test]
+async fn running_control_disables_directly_without_a_damping_stop() {
+    let server = FakeServer::start().await;
+    let robot = Robot::connect(&server.endpoint).await.unwrap();
+    let group = robot.group(GROUP).unwrap();
+    let mut control = group.control("torque-release").await.unwrap();
+    let frame = group
+        .frame()
+        .coordinate("coordinate_a", CoordinateTarget::damping(0.0))
+        .unwrap()
+        .build()
+        .unwrap();
+    control.start(frame.clone()).await.unwrap();
+    control.send(frame).await.unwrap();
+    control.disable().await.unwrap();
+    assert_eq!(control.state(), bello_hardware_client::ControlState::Ready);
+    control.release().await.unwrap();
+    {
+        let recorded = server.state.lock().unwrap();
+        assert_eq!(
+            recorded
+                .lifecycle
+                .iter()
+                .map(|call| call.action)
+                .collect::<Vec<_>>(),
+            ["enable", "start", "disable"]
+        );
+        assert_eq!(recorded.commands.len(), 1);
+        assert_eq!(recorded.released.len(), 1);
+    }
+    server.stop().await;
+}
+
+#[tokio::test]
 async fn release_preserves_damping_and_fault_without_disable() {
     for faulted in [false, true] {
         let server = FakeServer::start().await;
