@@ -33,6 +33,20 @@ coordinate; both fingers and rods are passive. The viewer and native emulator
 resolve these linkages independently for each hand. Arm IK consumers can hold
 the gripper coordinates at the measured or desired opening.
 
+## Mount geometry
+
+The camera bracket's wrist-facing mounting face sits flush against the retained
+wrist casing. `mini_torso_grippers.py` derives this seating plane from the visual
+meshes, including the camera bracket's existing 12 mm mounting plate. Using the
+old hand origin embeds the bracket approximately 15.46 mm into the wrist.
+The mount remains provisional pending installed hardware measurements.
+
+```sh
+uv run --with numpy --with scipy --with trimesh scripts/mini_torso_grippers.py
+uv run --with numpy --with scipy --with trimesh \
+  python -m unittest discover -s scripts -p test_mini_torso_grippers.py
+```
+
 ## Validate without hardware
 
 From the stack root in its Linux Nix environment:

@@ -45,15 +45,29 @@ configuration. These are software assignments, not a measurement or programming
 of the installed actuators. The 17 torso/arm joints and both hip motors remain
 active; the grippers add two independent coordinates and eight passive joints.
 
-The user approved a **provisional direct mount** at the former hand attachment.
-The existing attachment is `[0, 0, -0.037497803653348316]` in
-`wrist_roll_link`. Milly's rear housing face is at gripper-local Z = -0.05525 m
-(the exterior mesh and housing primitive agree). Aligning that face with the
-attachment gives `wrist_roll_link` to `gripper_base` translation
-`[0, 0, -0.09274780365334832]` metres and rotation `[pi, 0, 0]`. Gripper +Z points along the former hand's -Z;
-the jaw travel axis is wrist +X. Both sides use the same physical gripper,
-without mirroring its mechanism. No adapter mass or dimensions are invented.
-Confirm this transform against the installed mount before hardware use.
+The user approved a **provisional direct mount**, with the **camera bracket's
+wrist-facing mounting face flush against the wrist exterior**. The generator
+uses the complete `camera.stl` bracket/housing mesh in the gripper frame, not
+the gripper housing rear face. That mounting face is approximately gripper-local
+Z = -0.067249985 m. The housing rear face is 12 mm farther forward; seating the
+housing instead embeds the camera bracket in the wrist.
+
+The distal wrist seating planes come from the retained visual meshes:
+approximately Z = -0.040959354 m (left) and -0.040959476 m (right). With rotation
+`[pi, 0, 0]`, `wrist_roll_link` to `gripper_base` translations are
+`[0, 0, -0.108209339]` m (left) and `[0, 0, -0.108209461]` m (right).
+This moves the assembly approximately 15.462 mm outward from the original
+hand-origin-based mount. The small left/right difference is inherited CAD
+precision. The former hand origin at Z = -0.037497804 m is inside the casing
+and is not a valid seating plane for this assembly.
+
+Gripper +Z points along the former hand's -Z; the jaw travel axis is wrist +X.
+Both sides use the same physical gripper without mirroring its mechanism.
+The complete gripper, TCP, camera, inertial and collision subtrees move together.
+The 12 mm interval between the wrist face and housing is occupied by the
+existing camera bracket. No extra spacer or adapter geometry is added.
+Confirm the CAD-derived seating plane against the installed mount before
+hardware use.
 
 `left_gripper_tcp` and `right_gripper_tcp` replace the old sphere tool frames.
 Each TCP is at the midpoint of the rounded jaw-tip centres, `[0, 0, 0.0795]` in the

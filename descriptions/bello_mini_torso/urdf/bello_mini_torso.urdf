@@ -1087,7 +1087,7 @@
   <joint name="left_gripper_mount" type="fixed">
     <parent link="left_wrist_roll_link" />
     <child link="left_gripper_base" />
-    <origin xyz="0 0 -0.09274780365334831" rpy="3.141592653589793 0 0" />
+    <origin xyz="0 0 -0.108209339122924" rpy="3.141592653589793 0 0" />
   </joint>
   <link name="left_gripper_tcp" />
   <joint name="left_gripper_tcp_mount" type="fixed">
@@ -1341,7 +1341,7 @@
   <joint name="right_gripper_mount" type="fixed">
     <parent link="right_wrist_roll_link" />
     <child link="right_gripper_base" />
-    <origin xyz="0 0 -0.09274780365334831" rpy="3.141592653589793 0 0" />
+    <origin xyz="0 0 -0.10820946119323652" rpy="3.141592653589793 0 0" />
   </joint>
   <link name="right_gripper_tcp" />
   <joint name="right_gripper_tcp_mount" type="fixed">

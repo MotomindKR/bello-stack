@@ -17,8 +17,6 @@ from scipy.spatial.transform import Rotation
 ROOT = Path(__file__).resolve().parents[1]
 DESCRIPTION = ROOT / "descriptions/bello_mini_torso"
 URDF = DESCRIPTION / "urdf/bello_mini_torso.urdf"
-ATTACHMENT_Z = -0.037497803653348316
-HOUSING_REAR_Z = -0.05525
 TCP_Z = 0.0795
 BELLO_NAMESPACE = "https://motomind.kr/bello/urdf"
 ET.register_namespace("bello", BELLO_NAMESPACE)
@@ -65,6 +63,11 @@ def main():
     camera.find("parent").set("link", "gripper_base")
     joints.extend([camera, source.find("joint[@name='camera_optical_joint']")])
     links.update(["camera_link", "camera_optical_frame"])
+    camera_mesh = trimesh.load(
+        ROOT / "descriptions/milly/meshes/visual/exterior/camera.stl"
+    )
+    camera_mesh.apply_transform(transform(camera.find("origin")))
+    camera_mount_rear_z = float(camera_mesh.bounds[0, 2])
     meshes = DESCRIPTION / "meshes"
     meshes.mkdir(exist_ok=True)
     for side in ("left", "right"):
@@ -90,6 +93,9 @@ def main():
             [name for name in scene.geometry if not any(k in name for k in keep)]
         )
         assert len(scene.geometry) >= 3, "missing wrist exterior components"
+        # The old hand origin lies inside the retained wrist casing. Seat the
+        # camera bracket rear face against its distal exterior (GLBs use mm).
+        attachment_z = float(scene.bounds[0, 2]) * 0.001
         scene.export(meshes / f"{side}_wrist_roll.glb")
         scene.to_mesh().export(meshes / f"{side}_wrist_roll.stl")
         wrist = root.find(f"link[@name='{side}_wrist_roll_link']")
@@ -153,7 +159,7 @@ def main():
         ET.SubElement(
             mount,
             "origin",
-            xyz=f"0 0 {ATTACHMENT_Z + HOUSING_REAR_Z}",
+            xyz=f"0 0 {attachment_z + camera_mount_rear_z}",
             rpy=f"{math.pi} 0 0",
         )
         ET.SubElement(root, "link", name=prefix + "gripper_tcp")
