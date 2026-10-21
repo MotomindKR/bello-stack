@@ -399,8 +399,11 @@ fn maintained_dual_milly_example_loads_both_arms_and_atomic_group() {
     assert!((camera_mount.origin.translation.vector.z - 0.35937731).abs() < 1.0e-12);
     // Compare rotations directly: Euler extraction may represent yaw pi as
     // negative pi even though the physical rotation is identical.
-    let expected_camera_rotation =
-        nalgebra::UnitQuaternion::from_euler_angles(0.0, 0.44660681555959347, std::f64::consts::PI);
+    let expected_camera_rotation = nalgebra::UnitQuaternion::from_euler_angles(
+        0.0,
+        0.446_606_815_559_593_5,
+        std::f64::consts::PI,
+    );
     assert!(
         camera_mount
             .origin
