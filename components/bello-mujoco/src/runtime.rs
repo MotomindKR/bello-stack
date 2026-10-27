@@ -39,6 +39,7 @@ pub struct Config {
     pub torso_guide: Option<guide::Config>,
     pub fault_events: BTreeMap<String, Vec<ScheduledEvent>>,
     pub video: Option<crate::video::Config>,
+    pub cameras: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,6 +70,13 @@ impl Config {
             .context("config has no parent")?
             .join(&config.model)
             .canonicalize()?;
+        if let Some(cameras) = &mut config.cameras {
+            *cameras = path
+                .parent()
+                .context("config has no parent")?
+                .join(&*cameras)
+                .canonicalize()?;
+        }
         if let Some(power) = &config.power_board {
             power.validate()?;
             if let Some(imu) = &config.imu {
@@ -194,6 +202,16 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
     );
     model_config.torso_guide = config.torso_guide;
     let robot = model::build(&model_config, None)?;
+    let mut cameras = config
+        .cameras
+        .map(|path| {
+            crate::cameras::Capture::start(
+                crate::cameras::Config::load(&path)?,
+                &model_config,
+                &robot.simulation,
+            )
+        })
+        .transpose()?;
     let mut video = config
         .video
         .map(|config| crate::video::Capture::new(config, &robot.simulation))
@@ -417,6 +435,9 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
                     &physics.simulation,
                     guide.as_ref().is_none_or(|g| !g.active),
                 )?;
+            }
+            if let Some(cameras) = &mut cameras {
+                cameras.sample(&physics.simulation);
             }
             if now >= next_pose {
                 sequence += 1;

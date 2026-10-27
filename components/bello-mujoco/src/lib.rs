@@ -9,10 +9,12 @@ use anyhow::{Context, Result, ensure};
 use mujoco_rs::prelude::{MjData, MjModel, MjtObj};
 use robstride_protocol::ControlCommand;
 
+pub mod cameras;
 pub mod ebimu;
 pub mod guide;
 pub mod model;
 mod model_physics;
+mod model_visual;
 pub mod pose;
 pub mod power_board;
 pub mod robstride;

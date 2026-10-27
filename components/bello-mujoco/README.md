@@ -152,6 +152,34 @@ The initial joint angles are zero; an unpowered arm can move from that pose.
 The visualizer reconstructs passive geometry from measured crank feedback;
 it does not display the small constraint compliance of the native simulation.
 
+## Live camera streams
+
+Set `cameras: /absolute/path/to/cameras_mini_torso.yaml` in the emulator profile.
+Use `config/cameras_mini_torso.yaml` as a provisional three-view configuration;
+measure mounting transforms and intrinsics before using calibrated data.
+
+| Item | Behavior |
+| --- | --- |
+| Views | Bird's-eye and both canonical wrist camera optical frames |
+| Output | JPEG 640x360 at 30 FPS through `bello-camera-api` over a private UDS |
+| Physics boundary | Preallocated, nonblocking state snapshots; no rendering in the physics loop |
+| Renderer | Separate child with its own visual model, MuJoCo data and offscreen OpenGL context |
+| Appearance | Flat gray skybox; robot CAD GLB base colors preserved by material, with physics meshes/inertias unchanged |
+| Context | First EGL device on Linux; accelerated CGL on macOS |
+| Calibration | Optical +X right/+Y down/+Z forward; wxyz mount transform; independent fx/fy and principal point |
+| Isolation | Linux renderer CPUs 0-3, normal scheduling; control/physics scheduling stays independent |
+| Source identity | Original host snapshot time and simulation time retained; driver flags are zero |
+| Failure | Media consumers report stream failure; camera failure does not stop physics |
+
+All three views are rendered from one state snapshot. Lens distortion is not
+emulated. The separate GStreamer media service in `bello_webxr_teleop` forwards
+these frames to WebRTC viewers and the dataset recorder. Physical cameras expose
+the same source contract.
+
+The `camera_preview` example exercises this renderer without CAN or motor
+commands, holding the initial model pose. Existing HIL profiles keep cameras
+disabled until explicitly configured.
+
 ## Software video
 
 Keep `video: null` to disable recording. In a local runtime profile, replace it
@@ -182,7 +210,8 @@ After CAN, serial and pose endpoints close, a separate process loads the canonic
 visual meshes and renders with verified Mesa llvmpipe. Primitive-only profiles keep physics mesh-free.
 The Linux `bello_mujoco` Rust shell supplies Mesa EGL and ffmpeg. Rendering has
 an explicit timeout; Ctrl-C/SIGTERM cancels the renderer and encoder. All failures
-are reported and fail the command. Native macOS/GPU rendering is unsupported.
+are reported and fail the command. This offline video command uses Linux software
+rendering; live cameras use the separate native offscreen renderer described above.
 
 The MP4 is published only after successful encoding and never overwrites a file.
 `outputs/emulator.recording/` retains the compiled visual model, video settings,

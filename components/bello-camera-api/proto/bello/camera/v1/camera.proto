@@ -1,0 +1,53 @@
+syntax = "proto3";
+package bello.camera.v1;
+
+message GetCamerasRequest {}
+message Camera {
+  string name = 1;
+  uint32 width = 2;
+  uint32 height = 3;
+  uint32 fps = 4;
+  // "v4l2" or "mujoco". Source metadata is snapshotted in dataset provenance.
+  string source = 5;
+  string metadata_json = 6;
+}
+message GetCamerasResponse {
+  repeated Camera cameras = 1;
+}
+message WatchFramesRequest {
+  string name = 1;
+  // Preview skips old frames; recording terminates with RESOURCE_EXHAUSTED on lag.
+  bool latest_only = 2;
+}
+message Frame {
+  string name = 1;
+  uint64 sequence = 2;
+  uint64 capture_ns = 3;
+  uint64 received_ns = 4;
+  bytes jpeg = 5;
+  // Original V4L2 flags; zero for simulated images.
+  uint32 flags = 6;
+  optional uint64 simulation_time_ns = 7;
+}
+message WatchFramesResponse {
+  Frame frame = 1;
+}
+service CameraSourceService {
+  rpc GetCameras(GetCamerasRequest) returns (GetCamerasResponse);
+  rpc WatchFrames(WatchFramesRequest) returns (stream WatchFramesResponse);
+}
+message CreateSessionRequest {
+  string sdp = 1;
+}
+message CreateSessionResponse {
+  string session = 1;
+  string sdp = 2;
+}
+message CloseSessionRequest {
+  string session = 1;
+}
+message CloseSessionResponse {}
+service WebRtcService {
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+  rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
+}

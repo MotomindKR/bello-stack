@@ -9,17 +9,20 @@ publish.workspace = true
 [dependencies]
 cog-protocol.workspace = true
 anyhow.workspace = true
+bello-camera-api = { path = "../bello-camera-api" }
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
 bello-robot-description.workspace = true
 clap = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_yaml.workspace = true
 serde_json = "1"
+gltf = { version = "1.4.1", default-features = false, features = ["utils", "names"] }
 roxmltree.workspace = true
 xmltree = "0.12"
 nalgebra.workspace = true
 rand = "0.9"
 rand_distr = "0.5"
-nix = { workspace = true, features = ["term", "poll", "fs", "signal"] }
+nix = { workspace = true, features = ["term", "poll", "fs", "signal", "sched"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "signal", "sync", "net", "time"] }
 tokio-stream = { workspace = true, features = ["net", "sync"] }
 tonic.workspace = true

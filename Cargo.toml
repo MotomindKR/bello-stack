@@ -5,6 +5,7 @@ default-members = [
   "components/bello-visualizer",
 ]
 members = [
+  "components/bello-camera-api",
   "components/cog-protocol",
   "components/bello-hardware-api",
   "components/bello-hardware-client",

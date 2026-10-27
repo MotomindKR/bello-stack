@@ -1,0 +1,16 @@
+# Commissioning defaults, not measured camera calibration.
+# Optical axes: +X right, +Y down, +Z forward. Intrinsics: fx, fy, cx, cy.
+socket: /run/bello/mujoco-cameras.sock
+cameras:
+  - name: birds_eye
+    link: base_link
+    camera_to_link: [0.4, 0.0, 1.4, 0.0, 0.7071067811865476, -0.7071067811865476, 0.0]
+    intrinsics: [320.0, 320.0, 320.0, 180.0]
+  - name: right_gripper
+    link: right_camera_optical_frame
+    camera_to_link: [0.0, 0.0, 0.035, 1.0, 0.0, 0.0, 0.0]
+    intrinsics: [320.0, 320.0, 320.0, 180.0]
+  - name: left_gripper
+    link: left_camera_optical_frame
+    camera_to_link: [0.0, 0.0, 0.035, 1.0, 0.0, 0.0, 0.0]
+    intrinsics: [320.0, 320.0, 320.0, 180.0]

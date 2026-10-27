@@ -598,6 +598,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "bello-camera-api"
+version = "0.1.0"
+dependencies = [
+ "async-stream",
+ "hyper-util",
+ "libc",
+ "prost",
+ "tempfile",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "tower",
+]
+
+[[package]]
 name = "bello-hardware-api"
 version = "0.1.0"
 dependencies = [
@@ -676,11 +693,14 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-stream",
+ "bello-camera-api",
  "bello-pose-api",
  "bello-robot-description",
  "clap",
  "cog-protocol",
  "futures-core",
+ "gltf",
+ "image",
  "khronos-egl",
  "mujoco-rs",
  "nalgebra",

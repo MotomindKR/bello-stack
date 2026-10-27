@@ -47,3 +47,5 @@ pose:
 torso_guide: null
 fault_events: {}
 video: null
+# Set to cameras_mini_torso.yaml to enable the separate 30 Hz renderer.
+cameras: null

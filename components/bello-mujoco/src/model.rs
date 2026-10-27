@@ -6,59 +6,13 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, ensure};
 use bello_robot_description::{JointKind, RobotDescription};
 use mujoco_rs::prelude::*;
-use mujoco_rs::wrappers::mj_editing::MjtLimited;
+use mujoco_rs::wrappers::mj_editing::{MjtBuiltin, MjtLimited};
 use robstride_protocol::MotorParams;
 use serde::Deserialize;
 
 use crate::Simulation;
 pub use crate::model_physics::PhysicsConfig;
 use crate::model_physics::{add_slider_cranks, apply_physics};
-
-fn imported_spec(urdf: &Path) -> Result<MjSpec> {
-    fn replace_visual_meshes(element: &mut xmltree::Element, urdf: &Path) -> Result<bool> {
-        let mut changed = false;
-        if element.name == "mesh"
-            && let Some(filename) = element.attributes.get("filename").cloned()
-        {
-            if filename.to_ascii_lowercase().ends_with(".glb") {
-                let companion = urdf
-                    .parent()
-                    .context("URDF has no parent")?
-                    .join(&filename)
-                    .with_extension("stl")
-                    .canonicalize()
-                    .with_context(|| format!("missing MuJoCo STL companion for {filename}"))?;
-                element
-                    .attributes
-                    .insert("filename".into(), companion.to_string_lossy().into());
-                changed = true;
-            } else {
-                let path = urdf
-                    .parent()
-                    .context("URDF has no parent")?
-                    .join(&filename)
-                    .canonicalize()?;
-                element
-                    .attributes
-                    .insert("filename".into(), path.to_string_lossy().into());
-                changed = true;
-            }
-        }
-        for child in &mut element.children {
-            if let xmltree::XMLNode::Element(child) = child {
-                changed |= replace_visual_meshes(child, urdf)?;
-            }
-        }
-        Ok(changed)
-    }
-    let mut document = xmltree::Element::parse(std::fs::File::open(urdf)?)?;
-    if !replace_visual_meshes(&mut document, urdf)? {
-        return Ok(MjSpec::from_xml(urdf)?);
-    }
-    let mut temporary = tempfile::NamedTempFile::new()?;
-    document.write(&mut temporary)?;
-    Ok(MjSpec::from_xml(temporary.path())?)
-}
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -297,7 +251,17 @@ fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Re
         coordinate_names == expected_coordinates,
         "motor coordinates must match the URDF transmissions exactly"
     );
-    let mut spec = imported_spec(&urdf)?;
+    let (mut spec, _visual_assets) = crate::model_visual::imported_spec(&urdf, visuals)?;
+    if visuals {
+        spec.add_texture()
+            .with_name("bello_camera_sky")
+            .with_type(MjtTexture::mjTEXTURE_SKYBOX)
+            .with_builtin(MjtBuiltin::mjBUILTIN_FLAT)
+            .with_rgb1([0.4, 0.4, 0.4])
+            .with_rgb2([0.4, 0.4, 0.4])
+            .with_width(64)
+            .with_height(384);
+    }
     spec.compiler_mut().set_fusestatic(false);
     spec.option_mut().timestep = config.timestep_seconds;
     spec.option_mut().gravity = [0., 0., -9.81];

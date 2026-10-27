@@ -19,6 +19,7 @@ in hardware command safety.
 | [`bello-hardware-client`](components/bello-hardware-client) | Robot/group/coordinate control and aggregated state; raw gRPC access is an explicit escape hatch | Rust library |
 | [`bello-hardware-python`](components/bello-hardware-python) | Thin blocking robot/group/coordinate client with background lease and telemetry I/O | Pure-Python package |
 | [`bello-pose-api`](components/bello-pose-api) | Neutral streaming contract for external root-pose providers | Rust library and protobuf descriptor |
+| [`bello-camera-api`](components/bello-camera-api) | Shared timestamped camera frames, bounded subscriptions and WebRTC signaling | Rust library and protobuf descriptor |
 | [`bello-state-estimatord`](components/bello-state-estimatord) | URDF/IMU/encoder contact-aided local pose provider | `bello-state-estimatord` binary |
 | [`bello-robot-description`](components/bello-robot-description) | Shared URDF hierarchy, visuals, joint limits, differential transmissions, and kinematics | Rust library |
 | [`bello-visualizer`](components/bello-visualizer) | Native URDF monitor and toggle-controlled multi-group command UI | `bello-visualizer` binary |

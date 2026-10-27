@@ -11,6 +11,13 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Private renderer process; simulation state arrives on a bounded stdin datagram socket.
+    Cameras {
+        #[arg(long)]
+        model: PathBuf,
+        #[arg(long)]
+        config: PathBuf,
+    },
     /// Render a native emulator recording using Linux software Mesa.
     Render {
         #[arg(long)]
@@ -32,6 +39,9 @@ enum Command {
 
 fn main() -> Result<()> {
     let (config, export_physics) = match Args::parse().command {
+        Command::Cameras { model, config } => {
+            return bello_mujoco::cameras::render(&model, &config);
+        }
         Command::Render { recording } => {
             // The renderer starts here before any threads or graphics libraries.
             unsafe {
