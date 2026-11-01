@@ -171,7 +171,9 @@ pub fn telemetry_event(
     value: TelemetryEvent,
     observed_monotonic_ns: u64,
 ) -> proto::WatchTelemetryResponse {
-    let transport_age_ms = observed_monotonic_ns.saturating_sub(value.monotonic_ns) / 1_000_000;
+    let transport_age_ms = observed_monotonic_ns
+        .saturating_sub(value.monotonic_ns)
+        .div_ceil(1_000_000);
     let payload = match value.payload {
         TelemetryPayload::PowerBoard(value) => {
             proto::watch_telemetry_response::Payload::PowerBoard(super::power_board::convert(value))
@@ -231,7 +233,10 @@ pub fn telemetry_event(
         }
     };
     proto::WatchTelemetryResponse {
-        monotonic_ns: value.monotonic_ns,
+        // Sensor ages above are evaluated at publication, so their reference
+        // timestamp must advance too. An event timestamp would charge queueing
+        // twice to clients that reconstruct acquisition time as timestamp - age.
+        monotonic_ns: observed_monotonic_ns,
         payload: Some(payload),
     }
 }
@@ -264,6 +269,39 @@ mod tests {
             panic!("expected motor telemetry");
         };
         assert_eq!(motor.feedback_age_ms, 7);
+        assert_eq!(response.monotonic_ns, 6_000_000);
+    }
+
+    #[test]
+    fn subscriber_queueing_preserves_sensor_acquisition_time() {
+        let event = || TelemetryEvent {
+            monotonic_ns: 100_000_000,
+            payload: TelemetryPayload::Motor(MotorTelemetry {
+                group: GroupName::from("upper_body"),
+                motor: MotorName::from("right_elbow_pitch_motor"),
+                position: 0.,
+                velocity: 0.,
+                torque: 0.,
+                temperature: 25.,
+                fault_bits: 0,
+                mode_status: 0,
+                feedback_age_ms: 2,
+            }),
+        };
+        for queued_ns in [0, 1, 5_000_000, 5_200_000, 25_000_000, 60_000_000] {
+            let response = telemetry_event(event(), 100_000_000 + queued_ns);
+            let Some(proto::watch_telemetry_response::Payload::Motor(motor)) = response.payload
+            else {
+                panic!("expected motor telemetry");
+            };
+            let sample_ns = response.monotonic_ns - motor.feedback_age_ms * 1_000_000;
+            // Millisecond age fields must not round a queued sample newer.
+            assert!(sample_ns <= 98_000_000);
+            assert!(sample_ns > 97_000_000);
+            if queued_ns % 1_000_000 == 0 {
+                assert_eq!(sample_ns, 98_000_000);
+            }
+        }
     }
 
     #[test]

@@ -203,6 +203,12 @@ transitions such as `enable`, `stop`, `command_timeout`, and `lease_loss` as
 well as hard faults. Unchanged timing snapshots are rate-limited to 25 Hz and
 can be slower when the group control rate is below 25 Hz.
 
+`monotonic_ns` is response publication time. Motor `feedback_age_ms` and IMU
+`sample_age_ms` are measured relative to it and include server queueing once.
+Subtract the age from this timestamp to estimate sensor acquisition time;
+client transport delay still contributes to the sample's age at receipt.
+Sub-millisecond server queueing is rounded up, so serialization cannot renew a sample.
+
 Motor velocity in both telemetry events and state frames is the output of the
 configured `runtime.motor_velocity_filter`. The filter consumes every raw
 actuator-reported velocity sample and derives its coefficient from consecutive

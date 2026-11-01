@@ -438,6 +438,8 @@ message HealthTelemetry {
 }
 
 message WatchTelemetryResponse {
+  // Daemon-relative publication time. Motor/IMU ages include time queued on the
+  // server and are referenced to this timestamp, not event creation time.
   uint64 monotonic_ns = 1;
   oneof payload {
     MotorTelemetry motor = 2;
