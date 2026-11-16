@@ -1,10 +1,10 @@
 //! Real-time offscreen cameras. Physics sends bounded snapshots to an isolated child.
 mod context;
+mod jpeg;
 mod projection;
 use crate::{Simulation, model};
 use anyhow::{Context, Result, ensure};
 use bello_camera_api::{FPS, Frames, HEIGHT, WIDTH, monotonic_ns, proto};
-use image::codecs::jpeg::JpegEncoder;
 use mujoco_rs::prelude::*;
 use nalgebra::{Isometry3, Quaternion, Translation3, UnitQuaternion, Vector3};
 use serde::{Deserialize, Serialize};
@@ -30,10 +30,15 @@ pub struct Config {
     #[serde(default)]
     pub listen: Option<std::net::SocketAddr>,
     pub cameras: Vec<Camera>,
+    #[serde(default = "default_samples")]
+    pub offscreen_samples: i32,
     #[serde(default = "default_width")]
     pub width: u32,
     #[serde(default = "default_height")]
     pub height: u32,
+}
+fn default_samples() -> i32 {
+    4
 }
 fn default_width() -> u32 {
     WIDTH
@@ -73,8 +78,12 @@ impl Config {
             "duplicate cameras"
         );
         ensure!(
-            self.width > 0 && self.height > 0 && self.width <= 1920 && self.height <= 1080,
+            self.width > 0 && self.height > 0 && self.width <= 3840 && self.height <= 2160,
             "invalid camera dimensions"
+        );
+        ensure!(
+            [0, 2, 4, 8].contains(&self.offscreen_samples),
+            "invalid MSAA samples"
         );
         for c in &self.cameras {
             ensure!(
@@ -260,6 +269,7 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
     config.validate()?;
     Simulation::check_version()?;
     let mut model = MjModel::from_buffer(&std::fs::read(model_path)?)?;
+    model.vis_mut().quality.offsamples = config.offscreen_samples;
     let nq = model.nq() as usize;
     let nmocap = model.nmocap() as usize;
     let ids = config
@@ -359,6 +369,7 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
             .max()
             .unwrap(),
     );
+    let mut encoder = jpeg::Encoder::new();
     let mut last = Instant::now();
     while !stop.load(Ordering::Acquire) {
         ensure!(
@@ -432,6 +443,7 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
         unsafe { data.ffi_mut() }.time = simtime;
         data.forward();
         for (i, c) in config.cameras.iter().enumerate() {
+            let render_started = Instant::now();
             scene.update(&mut data, &options, &perturb, &mut camera);
             let p = data.xpos()[ids[i]];
             let q = data.xquat()[ids[i]];
@@ -464,8 +476,9 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
             );
             context.read_pixels(Some(&mut pixels), None, &viewport)?;
             let image = projection.image(&pixels);
-            let mut jpeg = Vec::with_capacity(65536);
-            JpegEncoder::new_with_quality(&mut jpeg, 90).encode_image(&image)?;
+            let render_ms = render_started.elapsed().as_secs_f64() * 1000.;
+            let encode_started = Instant::now();
+            let jpeg = encoder.encode(&image)?;
             frames.publish(proto::Frame {
                 name: c.name.clone(),
                 sequence,
@@ -475,7 +488,9 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
                 flags: 0,
                 simulation_time_ns: Some((simtime * 1e9).round() as u64),
                 metadata_json: serde_json::json!({
-                    "image_model": "pinhole", "world_from_optical": {
+                    "image_model": "pinhole",
+                    "render_ms": render_ms,
+                    "jpeg_ms": encode_started.elapsed().as_secs_f64() * 1000., "world_from_optical": {
                         "position": optical.translation.vector.as_slice(),
                         "quaternion_xyzw": optical.rotation.coords.as_slice()
                     },

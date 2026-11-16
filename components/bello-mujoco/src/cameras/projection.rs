@@ -30,8 +30,8 @@ impl Projection {
         let width = (f64::from(output_width) * sx).ceil() as u32;
         let height = (f64::from(output_height) * sy).ceil() as u32;
         ensure!(
-            width <= 1920 && height <= 1080,
-            "camera focal aspect requires offscreen rendering above 1920x1080"
+            width <= 3840 && height <= 2160,
+            "camera focal aspect requires offscreen rendering above 3840x2160"
         );
         Ok(Self {
             width,
@@ -126,6 +126,11 @@ mod tests {
         let output = p.image(&pixels);
         assert_eq!(output.dimensions(), (640, 480));
         assert_eq!(output.get_pixel(0, 479).0, [12, 34, 56]);
+    }
+    #[test]
+    fn usb_native_stereo_dimensions_are_supported() {
+        let p = Projection::for_format(1600, 1200, [711.5, 711.5, 772.7, 611.4]).unwrap();
+        assert_eq!((p.width, p.height), (1600, 1200));
     }
     #[test]
     fn output_flips_opengl_rows_and_has_exact_capture_dimensions() {

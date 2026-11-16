@@ -702,6 +702,7 @@ dependencies = [
  "gltf",
  "image",
  "khronos-egl",
+ "libloading",
  "mujoco-rs",
  "nalgebra",
  "nix 0.29.0",

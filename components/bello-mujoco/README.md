@@ -251,3 +251,15 @@ Model profiles can add simulation-only `environment_boxes`, each containing
 `name`, `position`, `half_size` (all metres) and `rgba`. These world-fixed
 primitive boxes appear in physics and visual models and are suitable for
 near/far stereo validation targets. They do not alter canonical descriptions.
+
+Native per-eye formats up to 3840×2160 are accepted, including the calibrated
+1600×1200 USB stereo format. `offscreen_samples` selects 0/2/4/8 MSAA samples
+(default 4); 0 avoids multisample overhead for a low-latency camera source.
+Frame metadata also reports per-eye `render_ms` and `jpeg_ms` timings.
+
+The renderer dynamically uses libjpeg-turbo when `libturbojpeg.so.0` (Linux) or
+`libturbojpeg.0.dylib` (macOS) is available on the runtime loader path. It emits
+quality-90 4:2:0 JPEG and logs the selected encoder. Otherwise it retains the
+Rust JPEG fallback. No native codec is required to compile the crate. The dev
+profile optimizes both `image` and the `bello-mujoco` caller so generic JPEG
+encoding does not run as unoptimized per-pixel code.
