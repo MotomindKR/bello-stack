@@ -77,6 +77,7 @@ mod tests {
                 "ROBSTRIDE_04",
                 "ROBSTRIDE_05",
                 "ROBSTRIDE_06",
+                "ROBSTRIDE_10P",
             ]
         );
         assert_eq!(model_limits("ROBSTRIDE_04").unwrap().torque_max, 120.0);

@@ -148,3 +148,17 @@ def test_inventory_exposes_imu_frame_contract(
 
     assert inventory.imus[0].source_frame == "imu_sensor_link"
     assert inventory.imus[0].output_frame == "imu_link"
+
+
+def test_inventory_accepts_rs10p(
+    inventory_response: proto.ListHardwareResponse,
+) -> None:
+    inventory_response.motors[0].model = "ROBSTRIDE_10P"
+    limits = inventory_response.motors[0].limits
+    limits.velocity_min, limits.velocity_max = -13.0, 13.0
+    limits.torque_min, limits.torque_max = -42.0, 42.0
+    limits.kp_max, limits.kd_max = 500.0, 5.0
+
+    inventory = Inventory(inventory_response)
+
+    assert inventory.motors[0].model == "ROBSTRIDE_10P"

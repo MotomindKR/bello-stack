@@ -1,0 +1,173 @@
+{
+  "source_repository": "https://github.com/MotomindKR/motomind_milly_sdk_release",
+  "source_commit": "5ffc17f525535b433241a28252b5e685278d51e8",
+  "sources": [
+    "https://github.com/MotomindKR/motomind_milly_sdk_release/blob/5ffc17f525535b433241a28252b5e685278d51e8/README.md",
+    "https://github.com/MotomindKR/motomind_milly_sdk_release/blob/5ffc17f525535b433241a28252b5e685278d51e8/milly_description/README.md"
+  ],
+  "units": "rad",
+  "coordinate_mapping": "q_urdf = direction * q_motor_raw; sort transformed endpoints. Original SDK joints 3..6 become joints 4..7. Directions are unchanged.",
+  "urdf_envelope": "URDF hard limits use the measured-safe envelope because bello-hardwared intersects measured-position health limits with URDF limits. hardware.yaml command bounds use the narrower SDK MIT position range. Preview sliders use the hardware command bounds.",
+  "scope": "Position and measured-position health bounds. Existing lower velocity/feedforward caps, gains, temperatures and command policies remain unchanged.",
+  "inherited_coordinates": [
+    {
+      "sdk_coordinate": "joint_1",
+      "coordinate": "joint_1",
+      "direction": 1,
+      "sdk_command_rad": [
+        -2.8,
+        2.8
+      ],
+      "sdk_measured_safe_rad": [
+        -2.95,
+        2.95
+      ],
+      "command_rad": [
+        -2.8,
+        2.8
+      ],
+      "measured_safe_rad": [
+        -2.95,
+        2.95
+      ]
+    },
+    {
+      "sdk_coordinate": "joint_2",
+      "coordinate": "joint_2",
+      "direction": -1,
+      "sdk_command_rad": [
+        -3.2,
+        0
+      ],
+      "sdk_measured_safe_rad": [
+        -3.35,
+        0.15
+      ],
+      "command_rad": [
+        0,
+        3.2
+      ],
+      "measured_safe_rad": [
+        -0.15,
+        3.35
+      ]
+    },
+    {
+      "sdk_coordinate": "joint_3",
+      "coordinate": "joint_4",
+      "direction": -1,
+      "sdk_command_rad": [
+        -2.75,
+        0
+      ],
+      "sdk_measured_safe_rad": [
+        -2.9,
+        0.15
+      ],
+      "command_rad": [
+        0,
+        2.75
+      ],
+      "measured_safe_rad": [
+        -0.15,
+        2.9
+      ]
+    },
+    {
+      "sdk_coordinate": "joint_4",
+      "coordinate": "joint_5",
+      "direction": 1,
+      "sdk_command_rad": [
+        -2.42,
+        2.42
+      ],
+      "sdk_measured_safe_rad": [
+        -2.57,
+        2.57
+      ],
+      "command_rad": [
+        -2.42,
+        2.42
+      ],
+      "measured_safe_rad": [
+        -2.57,
+        2.57
+      ]
+    },
+    {
+      "sdk_coordinate": "joint_5",
+      "coordinate": "joint_6",
+      "direction": -1,
+      "sdk_command_rad": [
+        -1.84,
+        1.7
+      ],
+      "sdk_measured_safe_rad": [
+        -1.99,
+        1.85
+      ],
+      "command_rad": [
+        -1.7,
+        1.84
+      ],
+      "measured_safe_rad": [
+        -1.85,
+        1.99
+      ]
+    },
+    {
+      "sdk_coordinate": "joint_6",
+      "coordinate": "joint_7",
+      "direction": 1,
+      "sdk_command_rad": [
+        -1.55,
+        1.55
+      ],
+      "sdk_measured_safe_rad": [
+        -1.7,
+        1.7
+      ],
+      "command_rad": [
+        -1.55,
+        1.55
+      ],
+      "measured_safe_rad": [
+        -1.7,
+        1.7
+      ]
+    },
+    {
+      "sdk_coordinate": "gripper",
+      "coordinate": "gripper",
+      "direction": -1,
+      "sdk_command_rad": [
+        0,
+        2.11
+      ],
+      "sdk_measured_safe_rad": [
+        -0.15,
+        2.26
+      ],
+      "command_rad": [
+        -2.11,
+        0
+      ],
+      "measured_safe_rad": [
+        -2.26,
+        0.15
+      ]
+    }
+  ],
+  "added_coordinate": {
+    "coordinate": "joint_3",
+    "command_rad": [
+      -1.5707963267948966,
+      1.5707963267948966
+    ],
+    "measured_safe_rad": [
+      -1.5707963267948966,
+      1.5707963267948966
+    ],
+    "source": "User-specified +/-90 degrees. No SDK counterpart or added travel margin."
+  }
+}

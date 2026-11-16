@@ -30,6 +30,11 @@ generates the protocol lookup table and shared Type-1 position constants.
 (no-load speed, rated voltage, and peak phase current) instead of discarding it
 at build time.
 
+`ROBSTRIDE_10P` uses the RS10P CAN 2.0 private-protocol ranges. This model name
+does not select CAN-FD or the separate standard-ID MIT protocol. See the
+[Milly 7-DOF notes](../../descriptions/milly-7dof/README.md#commissioning-values)
+for the manufacturer source and installation-limit distinction.
+
 Run its focused tests with:
 
 ```sh

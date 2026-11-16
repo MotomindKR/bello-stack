@@ -256,4 +256,42 @@ mod tests {
         assert_eq!(decoded.fault_bits, feedback.fault_bits);
         assert!((decoded.position - feedback.position).abs() < 0.001);
     }
+
+    #[test]
+    fn rs10p_private_control_matches_the_manual_wire_ranges() {
+        let params = MotorParams::for_model("ROBSTRIDE_10P", 1).unwrap();
+        let command = ControlCommand {
+            motor_id: 3,
+            position: 0.0,
+            velocity: 6.5,
+            torque: 21.0,
+            kp: 250.0,
+            kd: 2.5,
+        };
+        // Half-scale position/gains and three-quarter-scale velocity/torque,
+        // using the RS10P CAN 2.0 manual's type-1 field layout and ranges.
+        let encoded = control_frame(params, command);
+        assert_eq!(encoded.id, 0x01bf_ff03);
+        assert_eq!(
+            encoded.data,
+            [0x7f, 0xff, 0xbf, 0xff, 0x7f, 0xff, 0x7f, 0xff]
+        );
+    }
+
+    #[test]
+    fn rs10p_feedback_decodes_manual_bytes_in_both_motor_directions() {
+        let mut wire = frame(CommType::MotorFeedback, 0x8003, 0xfd);
+        wire.data = [0x7f, 0xff, 0xbf, 0xff, 0xbf, 0xff, 0x01, 0x90];
+        for direction in [-1, 1] {
+            let params = MotorParams::for_model("ROBSTRIDE_10P", direction).unwrap();
+            let decoded = parse_feedback(&wire, params).unwrap();
+            assert_eq!(decoded.motor_id, 3);
+            assert_eq!(decoded.mode_status, 2);
+            assert_eq!(decoded.fault_bits, 0);
+            assert!(decoded.position.abs() < 0.0004);
+            assert!((decoded.velocity - 6.5 * f64::from(direction)).abs() < 0.0004);
+            assert!((decoded.torque - 21.0 * f64::from(direction)).abs() < 0.0013);
+            assert_eq!(decoded.temperature, 40.0);
+        }
+    }
 }

@@ -1,0 +1,2251 @@
+{
+  "source_file": "Milly 7dof all in 1.STEP",
+  "source_sha256": "6e1c9937388fddd1f1f73b7dbbdb62402267c39aa77c835aa695c78f28abcb64",
+  "source_units": "mm",
+  "output_units": "m",
+  "base_from_source_cad": [
+    [
+      -1.0,
+      0.0,
+      0.0,
+      -0.015810899103227943
+    ],
+    [
+      0.0,
+      -1.0,
+      0.0,
+      -0.16088924014601755
+    ],
+    [
+      0.0,
+      0.0,
+      1.0,
+      0.050377047023403385
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "registration": "Nominal zero pose: base yaw axis fixes XY, shoulder/RS10P roll axis fixes height; CAD X/Y are reversed to match the canonical root frame.",
+  "tessellation": {
+    "linear_deflection_mm": 0.1,
+    "angular_deflection_rad": 0.15
+  },
+  "visual_only": true,
+  "parts": [
+    {
+      "object_path": "LinkGroup001.Solid.",
+      "part_label": "Base_Case^Base_Milly_Assem_10P ikuhgjkl",
+      "link": "base_link",
+      "name": "base_case",
+      "color": "base",
+      "bounds_mm": [
+        -70.7935647313512,
+        -178.35136457187414,
+        -38.37712758309773,
+        39.17176652457715,
+        -53.38924014601676,
+        26.622872416902275
+      ],
+      "mesh": "meshes/visual/covers/base_case.stl",
+      "mesh_sha256": "fd14855a5ed417294422a0e2c06675a5947d1502060d4f7d3d9b9d291799fc31",
+      "triangles": 17700,
+      "source_triangles": 17700,
+      "link_from_cad": [
+        [
+          -1.0,
+          0.0,
+          0.0,
+          -0.015810899103227943
+        ],
+        [
+          0.0,
+          -1.0,
+          0.0,
+          -0.16088924014601755
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.050377047023403385
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup001.Solid001.",
+      "part_label": "Base_Mount^Base_Milly_Assem_10P ikuhgjkl",
+      "link": "base_link",
+      "name": "base_mount",
+      "color": "dark",
+      "bounds_mm": [
+        -74.81089910351263,
+        -179.3892401461846,
+        -46.37712758309772,
+        43.189100896711935,
+        -52.389240145979684,
+        -38.3771275830977
+      ],
+      "mesh": "meshes/visual/covers/base_mount.stl",
+      "mesh_sha256": "17283bdfbdf8973f44baa09432977e4b89e70ec44f12286edabe31ed9f679ee3",
+      "triangles": 4876,
+      "source_triangles": 4876,
+      "link_from_cad": [
+        [
+          -1.0,
+          0.0,
+          0.0,
+          -0.015810899103227943
+        ],
+        [
+          0.0,
+          -1.0,
+          0.0,
+          -0.16088924014601755
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.050377047023403385
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup001.Solid003.",
+      "part_label": "Main_Connector^Base_Milly_Assem_10P ikuhgjkl",
+      "link": "base_link",
+      "name": "main_connector",
+      "color": "dark",
+      "bounds_mm": [
+        -30.81089910354661,
+        -65.53924014609143,
+        -33.37712758309773,
+        -0.8108991035398478,
+        -36.98924012053959,
+        -0.6771275830977252
+      ],
+      "mesh": "meshes/visual/covers/main_connector.stl",
+      "mesh_sha256": "e7e4cf427d7a6cd5561d8eef1b5af75484125c3d4df6379f964b1c619ed4cabb",
+      "triangles": 107335,
+      "source_triangles": 107335,
+      "link_from_cad": [
+        [
+          -1.0,
+          0.0,
+          0.0,
+          -0.015810899103227943
+        ],
+        [
+          0.0,
+          -1.0,
+          0.0,
+          -0.16088924014601755
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.050377047023403385
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup001.Solid024.",
+      "part_label": "Base_Cover^Base_Milly_Assem_10P ikuhgjkl",
+      "link": "base_link",
+      "name": "base_cover",
+      "color": "base",
+      "bounds_mm": [
+        -67.71089910338401,
+        -175.28924014608214,
+        -37.37712758309773,
+        36.089100896616,
+        -56.48924014601672,
+        -34.37712758309773
+      ],
+      "mesh": "meshes/visual/covers/base_cover.stl",
+      "mesh_sha256": "168548950835b69350dfee3c76f39925fa31fb69cdf6041e2c7bd48922dd9c96",
+      "triangles": 5258,
+      "source_triangles": 5258,
+      "link_from_cad": [
+        [
+          -1.0,
+          0.0,
+          0.0,
+          -0.015810899103227943
+        ],
+        [
+          0.0,
+          -1.0,
+          0.0,
+          -0.16088924014601755
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.050377047023403385
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup002.Solid030.",
+      "part_label": "RS03_SPACER^J1_Milly_Assem_10P ikuhgjkl",
+      "link": "link_1",
+      "name": "shoulder_spacer",
+      "color": "dark",
+      "bounds_mm": [
+        -46.310899103604626,
+        -177.38915544055885,
+        32.12244697620224,
+        14.689100897099834,
+        -69.38915544016098,
+        141.62244697620224
+      ],
+      "mesh": "meshes/visual/covers/shoulder_spacer.stl",
+      "mesh_sha256": "2d2a974a739ce5970e8f3bec8747384c9b0310ba87588243521ad895a51ebe02",
+      "triangles": 19268,
+      "source_triangles": 19268,
+      "link_from_cad": [
+        [
+          -1.0,
+          -3.3306691e-16,
+          1.7736896428175e-40,
+          -0.015810899103227985
+        ],
+        [
+          -3.330669099999997e-16,
+          0.999999999999999,
+          -4.641020666628482e-08,
+          0.12338924114954312
+        ],
+        [
+          1.545770412680089e-23,
+          -4.641020666628482e-08,
+          -0.9999999999999989,
+          0.02162294725007645
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup003.Solid040.",
+      "part_label": "Case #Milly_7 DOF #J2+10P^J2_Milly_Assem_10P ikuhgjkl",
+      "link": "link_2",
+      "name": "shoulder_roll_case",
+      "color": "white",
+      "bounds_mm": [
+        -63.810899104012634,
+        -177.37868341735455,
+        33.62310517797102,
+        32.1891008970667,
+        14.211120582950743,
+        141.62312152916502
+      ],
+      "mesh": "meshes/visual/covers/shoulder_roll_case.stl",
+      "mesh_sha256": "1e0d6c5832c8de70120e827f9977d3bad913e1fc06fb7027c7cbca71ec74c81e",
+      "triangles": 77477,
+      "source_triangles": 77477,
+      "link_from_cad": [
+        [
+          -2.6794896250814618e-08,
+          -0.9999999999984294,
+          1.771969206655695e-06,
+          -0.12338900231015697
+        ],
+        [
+          -2.6794942843277247e-08,
+          -1.77196920596916e-06,
+          -0.9999999999984293,
+          0.08762289428853239
+        ],
+        [
+          0.9999999999999989,
+          -2.6794943753767586e-08,
+          -2.6794895340322657e-08,
+          0.1137034091448829
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup004.Compound003.",
+      "part_label": "Copy of Case #Milly_7 DOF #J3 LR^J3_Milly_Assem_10P ikuhgjkl",
+      "link": "link_3",
+      "name": "upper_arm_case",
+      "color": "white",
+      "bounds_mm": [
+        -60.81092230563444,
+        15.21112058253463,
+        55.1232071154012,
+        29.18907769488741,
+        212.46837494283517,
+        206.08307279051888
+      ],
+      "mesh": "meshes/visual/covers/upper_arm_case.stl",
+      "mesh_sha256": "1ef6c86043a37238d00fa32d1ade0980fe49aeb3e8f12d97d12868b71be7ff6f",
+      "triangles": 143829,
+      "source_triangles": 143829,
+      "link_from_cad": [
+        [
+          -2.6794896250814618e-08,
+          -0.9999999999984294,
+          1.771969206655695e-06,
+          -0.12338900231015697
+        ],
+        [
+          -2.6794942843277247e-08,
+          -1.77196920596916e-06,
+          -0.9999999999984293,
+          0.08762289428853236
+        ],
+        [
+          0.9999999999999989,
+          -2.6794943753767586e-08,
+          -2.6794895340322657e-08,
+          0.0158108981448829
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup005.Solid066.",
+      "part_label": "Copy of Part2.1_Milly_Assem_0914(2)_Milly_Assem_10P^J4_Milly_Assem_10P ikuhgjkl",
+      "link": "link_4",
+      "name": "forearm_cover_a",
+      "color": "white",
+      "bounds_mm": [
+        -44.31092230446808,
+        4.3403959377962735,
+        159.3029126164452,
+        -15.810919903822972,
+        133.47051383678212,
+        216.3029126164452
+      ],
+      "mesh": "meshes/visual/covers/forearm_cover_a.stl",
+      "mesh_sha256": "c5d1dc15f1543dfefa1c120df19483e1f39566359275924466790e8577307dd8",
+      "triangles": 24332,
+      "source_triangles": 24332,
+      "link_from_cad": [
+        [
+          3.660253107955281e-08,
+          0.5000000602545909,
+          0.8660253689964302,
+          -0.22327040226007874
+        ],
+        [
+          5.621785840153669e-08,
+          0.8660253689964283,
+          -0.5000000602545922,
+          -0.06446978472061492
+        ],
+        [
+          -0.9999999999999973,
+          6.698735933480832e-08,
+          3.5897878730390766e-09,
+          0.012189097863061434
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup005.Solid067.",
+      "part_label": "Copy of Part2_Milly_Assem_0914(2)_Milly_Assem_10P^J4_Milly_Assem_10P ikuhgjkl",
+      "link": "link_4",
+      "name": "forearm_cover_b",
+      "color": "white",
+      "bounds_mm": [
+        -15.810922897611485,
+        4.34039593798218,
+        159.3029126164452,
+        12.689077695731925,
+        133.4705138367822,
+        216.3029126164452
+      ],
+      "mesh": "meshes/visual/covers/forearm_cover_b.stl",
+      "mesh_sha256": "2ff30603a4a35ff21ac87a964545f2c0dad7d24496427aa4f853d8b55fb5b959",
+      "triangles": 29104,
+      "source_triangles": 29104,
+      "link_from_cad": [
+        [
+          3.660253107955281e-08,
+          0.5000000602545909,
+          0.8660253689964302,
+          -0.22327040226007874
+        ],
+        [
+          5.621785840153669e-08,
+          0.8660253689964283,
+          -0.5000000602545922,
+          -0.06446978472061492
+        ],
+        [
+          -0.9999999999999973,
+          6.698735933480832e-08,
+          3.5897878730390766e-09,
+          0.012189097863061434
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup005.Solid070.",
+      "part_label": "Copy of RS06_SPACER_BLACK^J4_Milly_Assem_10P ikuhgjkl",
+      "link": "link_4",
+      "name": "elbow_spacer",
+      "color": "dark",
+      "bounds_mm": [
+        -43.81092230566986,
+        122.46793644949966,
+        116.12342069140888,
+        12.189077771335057,
+        212.46793644986676,
+        206.12342069141
+      ],
+      "mesh": "meshes/visual/covers/elbow_spacer.stl",
+      "mesh_sha256": "1b4015122fc916a93e0a6ef8727ef30fdc44afe749070e31d626695d8b2f9338",
+      "triangles": 21182,
+      "source_triangles": 21182,
+      "link_from_cad": [
+        [
+          3.660253107955281e-08,
+          0.5000000602545909,
+          0.8660253689964302,
+          -0.22327040226007874
+        ],
+        [
+          5.621785840153669e-08,
+          0.8660253689964283,
+          -0.5000000602545922,
+          -0.06446978472061492
+        ],
+        [
+          -0.9999999999999973,
+          6.698735933480832e-08,
+          3.5897878730390766e-09,
+          0.012189097863061434
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup006.Solid077.",
+      "part_label": "Copy of Copy of PLA3_RS00_SPACER_ASM_RS00_JOINT_ASM_J5_ASM_J456_BODY_ASM_TOTAL_ASSY_V8_Milly_Assem_0914(2)_Milly_Assem_10P^J5_Milly_Assem_10P ikuhgjkl",
+      "link": "link_5",
+      "name": "wrist_spacer",
+      "color": "dark",
+      "bounds_mm": [
+        6.689077696142751,
+        -118.49909015697109,
+        159.318769712244,
+        12.689077696508665,
+        -62.65960406083194,
+        216.28705551922704
+      ],
+      "mesh": "meshes/visual/covers/wrist_spacer.stl",
+      "mesh_sha256": "5a7eb37ac80a31dfd4cfb6137da07ca6f26bc744af35d8d36c4d32313b96cf7c",
+      "triangles": 4084,
+      "source_triangles": 4084,
+      "link_from_cad": [
+        [
+          -0.9990242344392742,
+          6.980044188043586e-08,
+          0.04416535976323993,
+          -0.024089836107890686
+        ],
+        [
+          0.04416535976324605,
+          8.894709154553074e-08,
+          0.9990242344392724,
+          -0.1869208947383273
+        ],
+        [
+          6.580395278170152e-08,
+          0.9999999999999931,
+          -9.194306159149978e-08,
+          0.0416598731207063
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup006.Solid079.",
+      "part_label": "Axis5_Side_Cover_BLACK^J5_Milly_Assem_10P ikuhgjkl",
+      "link": "link_5",
+      "name": "wrist_side_cover",
+      "color": "dark",
+      "bounds_mm": [
+        -47.31117520392992,
+        -64.21521688982008,
+        166.3027059577022,
+        15.689077696222224,
+        -51.15935117146568,
+        178.30291261576377
+      ],
+      "mesh": "meshes/visual/covers/wrist_side_cover.stl",
+      "mesh_sha256": "abb831da820f97ebf31ec215486d21c2a8858c939c4dfbb1e6adac53cde48325",
+      "triangles": 2374,
+      "source_triangles": 2374,
+      "link_from_cad": [
+        [
+          -0.9990242344392742,
+          6.980044188043586e-08,
+          0.04416535976323993,
+          -0.024089836107890686
+        ],
+        [
+          0.04416535976324605,
+          8.894709154553074e-08,
+          0.9990242344392724,
+          -0.1869208947383273
+        ],
+        [
+          6.580395278170152e-08,
+          0.9999999999999931,
+          -9.194306159149978e-08,
+          0.0416598731207063
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup006.Solid080.",
+      "part_label": "Axis5_Side_Cover_Under_BLACK^J5_Milly_Assem_10P ikuhgjkl",
+      "link": "link_5",
+      "name": "wrist_under_cover",
+      "color": "dark",
+      "bounds_mm": [
+        -47.31092230395645,
+        -64.21521688982007,
+        197.30291261572404,
+        15.689330596136639,
+        -51.15935117110029,
+        209.30311927378563
+      ],
+      "mesh": "meshes/visual/covers/wrist_under_cover.stl",
+      "mesh_sha256": "d166e6f9e0b2d923b223394c193353a96a883dc24c9976e81d828e53e943c651",
+      "triangles": 2178,
+      "source_triangles": 2178,
+      "link_from_cad": [
+        [
+          -0.9990242344392742,
+          6.980044188043586e-08,
+          0.04416535976323993,
+          -0.024089836107890686
+        ],
+        [
+          0.04416535976324605,
+          8.894709154553074e-08,
+          0.9990242344392724,
+          -0.1869208947383273
+        ],
+        [
+          6.580395278170152e-08,
+          0.9999999999999931,
+          -9.194306159149978e-08,
+          0.0416598731207063
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup007.Solid081.",
+      "part_label": "Copy of Part3_Milly_Assem_0914(2)_Milly_Assem_10P^J6_Milly_Assem_10P ikuhgjkl",
+      "link": "link_6",
+      "name": "wrist_case",
+      "color": "white",
+      "bounds_mm": [
+        -61.31092230385909,
+        -191.15964141208877,
+        157.80278663291477,
+        29.689077696738256,
+        -62.66629761503512,
+        217.80286576763595
+      ],
+      "mesh": "meshes/visual/covers/wrist_case.stl",
+      "mesh_sha256": "a060cd224781bdfd4d55a2791bbc284fee8329bf679ca3f1e16508a44769a89b",
+      "triangles": 30828,
+      "source_triangles": 30828,
+      "link_from_cad": [
+        [
+          3.90352017313701e-08,
+          0.9999999999999944,
+          -9.075965534388847e-08,
+          0.09115987310490167
+        ],
+        [
+          -0.044165406128167176,
+          -8.894708954963437e-08,
+          -0.9990242323895473,
+          0.18692089471095258
+        ],
+        [
+          -0.9990242323895508,
+          4.300554932647647e-08,
+          0.044165406128163505,
+          -0.0005898472255474185
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup007.Solid085.",
+      "part_label": "Copy of Axis5_End_Cover_Milly_Assem_0914(2)_Milly_Assem_10P^J6_Milly_Assem_10P ikuhgjkl",
+      "link": "link_6",
+      "name": "wrist_end_cover",
+      "color": "dark",
+      "bounds_mm": [
+        16.688877196142723,
+        -91.15970205620069,
+        159.3029126150388,
+        25.688877196227477,
+        -62.659665970716546,
+        216.3029126149941
+      ],
+      "mesh": "meshes/visual/covers/wrist_end_cover.stl",
+      "mesh_sha256": "99c9a4e078cd506bf114d163cb93dd208a119ff6e5a73c642c90609ae1f7afde",
+      "triangles": 3496,
+      "source_triangles": 3496,
+      "link_from_cad": [
+        [
+          3.90352017313701e-08,
+          0.9999999999999944,
+          -9.075965534388847e-08,
+          0.09115987310490167
+        ],
+        [
+          -0.044165406128167176,
+          -8.894708954963437e-08,
+          -0.9990242323895473,
+          0.18692089471095258
+        ],
+        [
+          -0.9990242323895508,
+          4.300554932647647e-08,
+          0.044165406128163505,
+          -0.0005898472255474185
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup007.Solid086.",
+      "part_label": "Copy of Axis5_End_Cover_Button_Milly_Assem_0914(2)_Milly_Assem_10P^J6_Milly_Assem_10P ikuhgjkl",
+      "link": "link_6",
+      "name": "wrist_button_cover",
+      "color": "dark",
+      "bounds_mm": [
+        -57.31092230380759,
+        -91.15970205666113,
+        159.30291560982454,
+        -48.31092230366551,
+        -62.65966597119656,
+        216.30291560977986
+      ],
+      "mesh": "meshes/visual/covers/wrist_button.stl",
+      "mesh_sha256": "9243e81d4a2484e81c0fb38d81e8e0f6f785188078734215fa7fe9f9345167fb",
+      "triangles": 3070,
+      "source_triangles": 3070,
+      "link_from_cad": [
+        [
+          3.90352017313701e-08,
+          0.9999999999999944,
+          -9.075965534388847e-08,
+          0.09115987310490167
+        ],
+        [
+          -0.044165406128167176,
+          -8.894708954963437e-08,
+          -0.9990242323895473,
+          0.18692089471095258
+        ],
+        [
+          -0.9990242323895508,
+          4.300554932647647e-08,
+          0.044165406128163505,
+          -0.0005898472255474185
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup004.Solid050.",
+      "part_label": "\ud30c\ud2b84^J3_Milly_Assem_10P ikuhgjkl",
+      "link": "link_3",
+      "bounds_mm": [
+        -36.310899104156576,
+        -4.038879417393588,
+        67.12311335358741,
+        4.689100895913175,
+        22.21112058283503,
+        108.12311335352997
+      ],
+      "name": "roll_output_connector",
+      "color": "metal",
+      "mesh": "meshes/visual/exterior/roll_output_connector.stl",
+      "mesh_sha256": "c40f568106ab192051549406d78db4793377ccc5a3c8e40a86c81b1b5dc70014",
+      "triangles": 15764,
+      "source_triangles": 15764,
+      "link_from_cad": [
+        [
+          -2.6794896250814618e-08,
+          -0.9999999999984294,
+          1.771969206655695e-06,
+          -0.12338900231015697
+        ],
+        [
+          -2.6794942843277247e-08,
+          -1.77196920596916e-06,
+          -0.9999999999984293,
+          0.08762289428853236
+        ],
+        [
+          0.9999999999999989,
+          -2.6794943753767586e-08,
+          -2.6794895340322657e-08,
+          0.0158108981448829
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup005.Solid062.",
+      "part_label": "Copy of AL9_J2_INNER_FRAME_R_ASM_J3_BODY_ASM_TOTAL_ASSY_V8_Milly_Assem_0914(2)_Milly_Assem_10P^J4_Milly_Assem_10P ikuhgjkl",
+      "link": "link_4",
+      "bounds_mm": [
+        -46.810922305667006,
+        4.340395938851714,
+        116.12342069141528,
+        -15.810922304332202,
+        212.46793644949952,
+        206.09396927692688
+      ],
+      "name": "elbow_frame_right",
+      "color": "metal",
+      "mesh": "meshes/visual/exterior/elbow_frame_right.stl",
+      "mesh_sha256": "c250140c06e60586916ad1253ff776ea5723a3c83c629617b5dfa088173628ef",
+      "triangles": 12220,
+      "source_triangles": 12220,
+      "link_from_cad": [
+        [
+          3.660253107955281e-08,
+          0.5000000602545909,
+          0.8660253689964302,
+          -0.22327040226007874
+        ],
+        [
+          5.621785840153669e-08,
+          0.8660253689964283,
+          -0.5000000602545922,
+          -0.06446978472061492
+        ],
+        [
+          -0.9999999999999973,
+          6.698735933480832e-08,
+          3.5897878730390766e-09,
+          0.012189097863061434
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup005.Solid063.",
+      "part_label": "Copy of AL10_J2_INNER_FRAME_L_ASM_J3_BODY_ASM_TOTAL_ASSY_V8_Milly_Assem_0914(2)_Milly_Assem_10P^J4_Milly_Assem_10P ikuhgjkl",
+      "link": "link_4",
+      "bounds_mm": [
+        -15.810922305147766,
+        4.340395939004964,
+        116.12342069141528,
+        15.189077694960098,
+        212.46793644988438,
+        206.09396927692688
+      ],
+      "name": "elbow_frame_left",
+      "color": "metal",
+      "mesh": "meshes/visual/exterior/elbow_frame_left.stl",
+      "mesh_sha256": "f8d6c4450a49f68808ebb50949f52455fb2a457317518e84429352b4a89ea4a2",
+      "triangles": 12488,
+      "source_triangles": 12488,
+      "link_from_cad": [
+        [
+          3.660253107955281e-08,
+          0.5000000602545909,
+          0.8660253689964302,
+          -0.22327040226007874
+        ],
+        [
+          5.621785840153669e-08,
+          0.8660253689964283,
+          -0.5000000602545922,
+          -0.06446978472061492
+        ],
+        [
+          -0.9999999999999973,
+          6.698735933480832e-08,
+          3.5897878730390766e-09,
+          0.012189097863061434
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup005.Solid064.",
+      "part_label": "Copy of RS06_ASM_RS6_JOINT_ASM_J3_BODY_ASM_TOTAL_ASSY_V8_Milly_Assem_0914(2)_Milly_Assem_10P^J4_Milly_Assem_10P ikuhgjkl",
+      "link": "link_4",
+      "bounds_mm": [
+        -36.810922305595305,
+        123.81869740324493,
+        117.47418164479731,
+        13.689077695233257,
+        211.11717549611387,
+        204.77265973766606
+      ],
+      "name": "elbow_motor_housing",
+      "color": "dark",
+      "mesh": "meshes/visual/exterior/elbow_motor_housing.stl",
+      "mesh_sha256": "7fe5c00a18db310558aa4663810eaf7da4bd7cbfda3982ac7fcf044cfc48e006",
+      "triangles": 126252,
+      "source_triangles": 126342,
+      "link_from_cad": [
+        [
+          3.660253107955281e-08,
+          0.5000000602545909,
+          0.8660253689964302,
+          -0.22327040226007874
+        ],
+        [
+          5.621785840153669e-08,
+          0.8660253689964283,
+          -0.5000000602545922,
+          -0.06446978472061492
+        ],
+        [
+          -0.9999999999999973,
+          6.698735933480832e-08,
+          3.5897878730390766e-09,
+          0.012189097863061434
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup005.Solid068.",
+      "part_label": "Copy of RS00_ASM_J4_ASM_J456_BODY_ASM_TOTAL_ASSY_V8_Milly_Assem_0914(2)_Milly_Assem_10P^J4_Milly_Assem_10P ikuhgjkl",
+      "link": "link_4",
+      "bounds_mm": [
+        -44.30703919671214,
+        -47.05960406113088,
+        159.30291261573026,
+        12.685152889879841,
+        4.340395939166591,
+        216.30291261573024
+      ],
+      "name": "forearm_roll_motor_housing",
+      "color": "dark",
+      "mesh": "meshes/visual/exterior/forearm_roll_motor_housing.stl",
+      "mesh_sha256": "ee752f0407475fa080150a96d70c6b256ab8c2b4226837bd41f18c929b4eeefc",
+      "triangles": 87390,
+      "source_triangles": 87440,
+      "link_from_cad": [
+        [
+          3.660253107955281e-08,
+          0.5000000602545909,
+          0.8660253689964302,
+          -0.22327040226007874
+        ],
+        [
+          5.621785840153669e-08,
+          0.8660253689964283,
+          -0.5000000602545922,
+          -0.06446978472061492
+        ],
+        [
+          -0.9999999999999973,
+          6.698735933480832e-08,
+          3.5897878730390766e-09,
+          0.012189097863061434
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup005.Solid069.",
+      "part_label": "Copy of AL12_J4_BTM_OUTER_LIMITER_ASM_J4_ASM_J456_BODY_ASM_TOTAL_ASSY_V8_Milly_Assem_0914(2)_Milly_Assem_10P^J4_Milly_Assem_10P ikuhgjkl",
+      "link": "link_4",
+      "bounds_mm": [
+        -44.31092230396163,
+        -50.65960406120055,
+        159.30291261573024,
+        12.689077696061197,
+        -46.659604060831995,
+        216.30291261573024
+      ],
+      "name": "forearm_end_limiter",
+      "color": "metal",
+      "mesh": "meshes/visual/exterior/forearm_end_limiter.stl",
+      "mesh_sha256": "309a7d5608673eacb3252b3fd7b3e67fff40cd0bf08450938831f720646ee453",
+      "triangles": 5632,
+      "source_triangles": 5632,
+      "link_from_cad": [
+        [
+          3.660253107955281e-08,
+          0.5000000602545909,
+          0.8660253689964302,
+          -0.22327040226007874
+        ],
+        [
+          5.621785840153669e-08,
+          0.8660253689964283,
+          -0.5000000602545922,
+          -0.06446978472061492
+        ],
+        [
+          -0.9999999999999973,
+          6.698735933480832e-08,
+          3.5897878730390766e-09,
+          0.012189097863061434
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup006.Solid073.",
+      "part_label": "Copy of AL13_J4_TOP_BRKT_ASM_J4_ASM_J456_BODY_ASM_TOTAL_ASSY_V8_Milly_Assem_0914(2)_Milly_Assem_10P^J5_Milly_Assem_10P ikuhgjkl",
+      "link": "link_5",
+      "bounds_mm": [
+        -33.310922303959025,
+        -51.15960406113202,
+        170.3029126157303,
+        1.68907769606772,
+        -47.05960406090371,
+        208.79999358288967
+      ],
+      "name": "wrist_roll_top_bracket",
+      "color": "metal",
+      "mesh": "meshes/visual/exterior/wrist_roll_top_bracket.stl",
+      "mesh_sha256": "d1f1e4743ba7b52c2d719715a0680afddbb596dcac6280eb967ddaa66940960d",
+      "triangles": 3036,
+      "source_triangles": 3036,
+      "link_from_cad": [
+        [
+          -0.9990242344392742,
+          6.980044188043586e-08,
+          0.04416535976323993,
+          -0.024089836107890686
+        ],
+        [
+          0.04416535976324605,
+          8.894709154553074e-08,
+          0.9990242344392724,
+          -0.1869208947383273
+        ],
+        [
+          6.580395278170152e-08,
+          0.9999999999999931,
+          -9.194306159149978e-08,
+          0.0416598731207063
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup006.Solid074.",
+      "part_label": "Copy of AL14_J5_INNER_FRAME_ASM_J4_ASM_J456_BODY_ASM_TOTAL_ASSY_V8_Milly_Assem_0914(2)_Milly_Assem_10P^J5_Milly_Assem_10P ikuhgjkl",
+      "link": "link_5",
+      "bounds_mm": [
+        -47.31092230391303,
+        -119.63984638874327,
+        159.3161109914105,
+        15.68907769651463,
+        -51.15960406083522,
+        216.28971424005007
+      ],
+      "name": "wrist_inner_frame",
+      "color": "metal",
+      "mesh": "meshes/visual/exterior/wrist_inner_frame.stl",
+      "mesh_sha256": "41a3af9ed41bc8018d4f5e29c67a90a9ab5258ef8768935969ace6e58512047a",
+      "triangles": 20104,
+      "source_triangles": 20104,
+      "link_from_cad": [
+        [
+          -0.9990242344392742,
+          6.980044188043586e-08,
+          0.04416535976323993,
+          -0.024089836107890686
+        ],
+        [
+          0.04416535976324605,
+          8.894709154553074e-08,
+          0.9990242344392724,
+          -0.1869208947383273
+        ],
+        [
+          6.580395278170152e-08,
+          0.9999999999999931,
+          -9.194306159149978e-08,
+          0.0416598731207063
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup006.Solid075.",
+      "part_label": "Copy of RS00_ASM_RS00_JOINT_ASM_J5_ASM_J456_BODY_ASM_TOTAL_ASSY_V8_Milly_Assem_0914(2)_Milly_Assem_10P^J5_Milly_Assem_10P ikuhgjkl",
+      "link": "link_5",
+      "bounds_mm": [
+        -44.71092230378431,
+        -119.65960406037024,
+        159.30679572324595,
+        6.689077696513351,
+        -62.659604060370235,
+        216.2989878099072
+      ],
+      "name": "wrist_pitch_motor_housing",
+      "color": "dark",
+      "mesh": "meshes/visual/exterior/wrist_pitch_motor_housing.stl",
+      "mesh_sha256": "c4702e65732774c3134620ec10e0ae826406943dfc74f72386a39d896e32bfa6",
+      "triangles": 87395,
+      "source_triangles": 87438,
+      "link_from_cad": [
+        [
+          -0.9990242344392742,
+          6.980044188043586e-08,
+          0.04416535976323993,
+          -0.024089836107890686
+        ],
+        [
+          0.04416535976324605,
+          8.894709154553074e-08,
+          0.9990242344392724,
+          -0.1869208947383273
+        ],
+        [
+          6.580395278170152e-08,
+          0.9999999999999931,
+          -9.194306159149978e-08,
+          0.0416598731207063
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup007.Solid082.",
+      "part_label": "Copy of AL15_J5_OUTER_FRAME_ASM_J6_V8.6_ASM_J456_BODY_ASM_TOTAL_ASSY_V8_Milly_Assem_0914(2)_Milly_Assem_10P^J6_Milly_Assem_10P ikuhgjkl",
+      "link": "link_6",
+      "bounds_mm": [
+        -51.31092230384095,
+        -131.15963885687142,
+        160.3209950880966,
+        19.689077696569818,
+        -65.15960406034714,
+        215.2847326488431
+      ],
+      "name": "wrist_outer_frame",
+      "color": "metal",
+      "mesh": "meshes/visual/exterior/wrist_outer_frame.stl",
+      "mesh_sha256": "20878223e9f88313ff46477950982327008e006349b47c44c3269f13d3c7b0b3",
+      "triangles": 19412,
+      "source_triangles": 19412,
+      "link_from_cad": [
+        [
+          3.90352017313701e-08,
+          0.9999999999999944,
+          -9.075965534388847e-08,
+          0.09115987310490167
+        ],
+        [
+          -0.044165406128167176,
+          -8.894708954963437e-08,
+          -0.9990242323895473,
+          0.18692089471095258
+        ],
+        [
+          -0.9990242323895508,
+          4.300554932647647e-08,
+          0.044165406128163505,
+          -0.0005898472255474185
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup007.Solid083.",
+      "part_label": "Copy of AL18_J5_BTM_BRKT_ASM_J5_ASM_J456_BODY_ASM_TOTAL_ASSY_V8_Milly_Assem_0914(2)_Milly_Assem_10P^J6_Milly_Assem_10P ikuhgjkl",
+      "link": "link_6",
+      "bounds_mm": [
+        11.689077696263556,
+        -109.32806411700437,
+        168.80291262271018,
+        22.68907769644496,
+        -72.15960405674002,
+        206.80291262268028
+      ],
+      "name": "wrist_bottom_bracket",
+      "color": "metal",
+      "mesh": "meshes/visual/exterior/wrist_bottom_bracket.stl",
+      "mesh_sha256": "7834345ed20183ba8f887cbda96614ba9d60e11ac8f67abad7911575e93d5071",
+      "triangles": 6696,
+      "source_triangles": 6696,
+      "link_from_cad": [
+        [
+          3.90352017313701e-08,
+          0.9999999999999944,
+          -9.075965534388847e-08,
+          0.09115987310490167
+        ],
+        [
+          -0.044165406128167176,
+          -8.894708954963437e-08,
+          -0.9990242323895473,
+          0.18692089471095258
+        ],
+        [
+          -0.9990242323895508,
+          4.300554932647647e-08,
+          0.044165406128163505,
+          -0.0005898472255474185
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "object_path": "LinkGroup007.Solid084.",
+      "part_label": "Copy of AL19_J5_TOP_BRKT.1_ASM_J5_ASM_J456_BODY_ASM_TOTAL_ASSY_V8_Milly_Assem_0914(2)_Milly_Assem_10P^J6_Milly_Assem_10P ikuhgjkl",
+      "link": "link_6",
+      "bounds_mm": [
+        -48.31092230378551,
+        -112.14607017485045,
+        170.30782547147845,
+        -44.710922303534296,
+        -73.65960406062041,
+        205.2980008099397
+      ],
+      "name": "wrist_top_bracket",
+      "color": "metal",
+      "mesh": "meshes/visual/exterior/wrist_top_bracket.stl",
+      "mesh_sha256": "763ddeadf7bfb31bff980a1506defe42dce71e13909297049a84ee91b583fd98",
+      "triangles": 2932,
+      "source_triangles": 2932,
+      "link_from_cad": [
+        [
+          3.90352017313701e-08,
+          0.9999999999999944,
+          -9.075965534388847e-08,
+          0.09115987310490167
+        ],
+        [
+          -0.044165406128167176,
+          -8.894708954963437e-08,
+          -0.9990242323895473,
+          0.18692089471095258
+        ],
+        [
+          -0.9990242323895508,
+          4.300554932647647e-08,
+          0.044165406128163505,
+          -0.0005898472255474185
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "name": "elbow_cover_holder_positive",
+      "link": "link_3",
+      "color": "dark",
+      "mesh": "meshes/visual/exterior/elbow_cover_holder_positive.stl",
+      "mesh_sha256": "6288ff4c8f9bf1a3f50ddd51e306d4d51d1210eb4189daa952af7e864fd7489e",
+      "triangles": 113034,
+      "link_from_cad": [
+        [
+          -2.6794896250814618e-08,
+          -0.9999999999984294,
+          1.771969206655695e-06,
+          -0.12338900231015697
+        ],
+        [
+          -2.6794942843277247e-08,
+          -1.77196920596916e-06,
+          -0.9999999999984293,
+          0.08762289428853236
+        ],
+        [
+          0.9999999999999989,
+          -2.6794943753767586e-08,
+          -2.6794895340322657e-08,
+          0.0158108981448829
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "source_parts": [
+        {
+          "object_path": "LinkGroup004.Solid053.",
+          "part_label": "Copy of Bracket #Milly_7 DOF #J3 Case^J3_Milly_Assem_10P ikuhgjkl"
+        }
+      ]
+    },
+    {
+      "name": "elbow_cover_holder_negative",
+      "link": "link_3",
+      "color": "dark",
+      "mesh": "meshes/visual/exterior/elbow_cover_holder_negative.stl",
+      "mesh_sha256": "c7dd92e33a105ec0c4d3a6cd33e44f87fc73a7483cb9b388fb21481f2c18264f",
+      "triangles": 113132,
+      "link_from_cad": [
+        [
+          -2.6794896250814618e-08,
+          -0.9999999999984294,
+          1.771969206655695e-06,
+          -0.12338900231015697
+        ],
+        [
+          -2.6794942843277247e-08,
+          -1.77196920596916e-06,
+          -0.9999999999984293,
+          0.08762289428853236
+        ],
+        [
+          0.9999999999999989,
+          -2.6794943753767586e-08,
+          -2.6794895340322657e-08,
+          0.0158108981448829
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "source_parts": [
+        {
+          "object_path": "LinkGroup004.Solid054.",
+          "part_label": "\uc0ac\ubcf8 (2) Bracket #Milly_7 DOF #J3 Case^J3_Milly_Assem_10P ikuhgjkl"
+        }
+      ]
+    },
+    {
+      "name": "finger_1_carriage",
+      "link": "finger_1",
+      "color": "metal",
+      "mesh": "meshes/visual/gripper/finger_1_carriage.stl",
+      "mesh_sha256": "41355e62ed2b9dd0053c27e9fba482c6fb3d642984c05f22ef05d3636080376b",
+      "triangles": 45342,
+      "link_from_cad": [
+        [
+          0.9999999999999991,
+          8.325792670010624e-16,
+          -3.6082252164736803e-16,
+          -0.056204797864072176
+        ],
+        [
+          3.1918908832065174e-16,
+          4.6415031134820205e-08,
+          0.9999999999999977,
+          -0.18780244724879636
+        ],
+        [
+          6.734689099203602e-16,
+          -0.9999999999999976,
+          4.641503107118928e-08,
+          -0.26440984115092936
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "source_parts": [
+        {
+          "object_path": "LinkGroup015.Solid125.",
+          "part_label": "Copy of E-SMLGB7S_Product6_Milly_Assem_0914(2)_Milly_Assem_10P^Gripper_L_Milly_Assem_10P ikuhgjkl"
+        }
+      ]
+    },
+    {
+      "name": "finger_1_mount",
+      "link": "finger_1",
+      "color": "dark",
+      "mesh": "meshes/visual/gripper/finger_1_mount.stl",
+      "mesh_sha256": "5b6e5ca17033c1ac245ed349e77550f6a882f204f1d436d832397d3f3542571f",
+      "triangles": 9156,
+      "link_from_cad": [
+        [
+          0.9999999999999991,
+          8.325792670010624e-16,
+          -3.6082252164736803e-16,
+          -0.056204797864072176
+        ],
+        [
+          3.1918908832065174e-16,
+          4.6415031134820205e-08,
+          0.9999999999999977,
+          -0.18780244724879636
+        ],
+        [
+          6.734689099203602e-16,
+          -0.9999999999999976,
+          4.641503107118928e-08,
+          -0.26440984115092936
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "source_parts": [
+        {
+          "object_path": "LinkGroup015.Solid122.",
+          "part_label": "Copy of Gripper_Finger_Product6_Milly_Assem_0914(2)_Milly_Assem_10P^Gripper_L_Milly_Assem_10P ikuhgjkl"
+        },
+        {
+          "object_path": "LinkGroup015.LinkGroup014.Solid123.",
+          "part_label": "Part1_1_Product24_Product6_Milly_Assem_0914(2)_Milly_Assem_10P^Copy of Product24_Product6_Milly_Assem_0914(2)_Milly_Assem_10P_Gripper_L_Milly_Assem_10P ikuhgjkl"
+        },
+        {
+          "object_path": "LinkGroup015.Solid126.",
+          "part_label": "Copy of Part2_1_Product6_Milly_Assem_0914(2)_Milly_Assem_10P^Gripper_L_Milly_Assem_10P ikuhgjkl"
+        },
+        {
+          "object_path": "LinkGroup015.Solid127.",
+          "part_label": "Copy of Part2_2_Product6_Milly_Assem_0914(2)_Milly_Assem_10P^Gripper_L_Milly_Assem_10P ikuhgjkl"
+        }
+      ]
+    },
+    {
+      "name": "finger_1_soft_pad",
+      "link": "finger_1",
+      "color": "blue",
+      "mesh": "meshes/visual/gripper/finger_1_soft_pad.stl",
+      "mesh_sha256": "51a655d06b4d59c14e9283f45d9bd2018a51beb65dbf3f8613104e370c5c6864",
+      "triangles": 4616,
+      "link_from_cad": [
+        [
+          0.9999999999999991,
+          8.325792670010624e-16,
+          -3.6082252164736803e-16,
+          -0.056204797864072176
+        ],
+        [
+          3.1918908832065174e-16,
+          4.6415031134820205e-08,
+          0.9999999999999977,
+          -0.18780244724879636
+        ],
+        [
+          6.734689099203602e-16,
+          -0.9999999999999976,
+          4.641503107118928e-08,
+          -0.26440984115092936
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "source_parts": [
+        {
+          "object_path": "LinkGroup015.LinkGroup014.Solid124.",
+          "part_label": "3998967 DHAS-GF-60-U-BU_Product24_Product6_Milly_Assem_0914(2)_Milly_Assem_10P^Copy of Product24_Product6_Milly_Assem_0914(2)_Milly_Assem_10P_Gripper_L_Milly_Assem_10P ikuhgjkl"
+        }
+      ]
+    },
+    {
+      "name": "finger_2_carriage",
+      "link": "finger_2",
+      "color": "metal",
+      "mesh": "meshes/visual/gripper/finger_2_carriage.stl",
+      "mesh_sha256": "e81711a284dfca76c1be140e199058d2bfad09490db491de663d6025f2d1399b",
+      "triangles": 45344,
+      "link_from_cad": [
+        [
+          0.9999999999999991,
+          8.325792670010624e-16,
+          -3.6082252164736803e-16,
+          0.08782659607052781
+        ],
+        [
+          3.1918908832065174e-16,
+          4.6415031134820205e-08,
+          0.9999999999999977,
+          -0.18780244724879636
+        ],
+        [
+          6.734689099203602e-16,
+          -0.9999999999999976,
+          4.641503107118928e-08,
+          -0.26440984115092936
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "source_parts": [
+        {
+          "object_path": "LinkGroup013.Solid121.",
+          "part_label": "Copy of E-SMLGB7S_Product6_Milly_Assem_0914(2)_Milly_Assem_10P^Gripper_R_Milly_Assem_10P ikuhgjkl"
+        }
+      ]
+    },
+    {
+      "name": "finger_2_mount",
+      "link": "finger_2",
+      "color": "dark",
+      "mesh": "meshes/visual/gripper/finger_2_mount.stl",
+      "mesh_sha256": "11fc2e59bd1378d0bd92100b7298db9b4c434d98f3a8338c0328b350ca6cbe5c",
+      "triangles": 9156,
+      "link_from_cad": [
+        [
+          0.9999999999999991,
+          8.325792670010624e-16,
+          -3.6082252164736803e-16,
+          0.08782659607052781
+        ],
+        [
+          3.1918908832065174e-16,
+          4.6415031134820205e-08,
+          0.9999999999999977,
+          -0.18780244724879636
+        ],
+        [
+          6.734689099203602e-16,
+          -0.9999999999999976,
+          4.641503107118928e-08,
+          -0.26440984115092936
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "source_parts": [
+        {
+          "object_path": "LinkGroup013.Solid120.",
+          "part_label": "Copy of Gripper_Finger_Product6_Milly_Assem_0914(2)_Milly_Assem_10P^Gripper_R_Milly_Assem_10P ikuhgjkl"
+        },
+        {
+          "object_path": "LinkGroup013.LinkGroup012.Solid116.",
+          "part_label": "Part1_1_Product24_Product6_Milly_Assem_0914(2)_Milly_Assem_10P^Copy of Product24_Product6_Milly_Assem_0914(2)_Milly_Assem_10P_Gripper_R_Milly_Assem_10P ikuhgjkl"
+        },
+        {
+          "object_path": "LinkGroup013.Solid118.",
+          "part_label": "Copy of Part2_4_Product6_Milly_Assem_0914(2)_Milly_Assem_10P^Gripper_R_Milly_Assem_10P ikuhgjkl"
+        },
+        {
+          "object_path": "LinkGroup013.Solid119.",
+          "part_label": "Copy of Part2_3_Product6_Milly_Assem_0914(2)_Milly_Assem_10P^Gripper_R_Milly_Assem_10P ikuhgjkl"
+        }
+      ]
+    },
+    {
+      "name": "finger_2_soft_pad",
+      "link": "finger_2",
+      "color": "blue",
+      "mesh": "meshes/visual/gripper/finger_2_soft_pad.stl",
+      "mesh_sha256": "8c96e5d331c5d742bb44859b80e0d0590f7990cb942d3be318ba9fe0e2d2ac11",
+      "triangles": 4616,
+      "link_from_cad": [
+        [
+          0.9999999999999991,
+          8.325792670010624e-16,
+          -3.6082252164736803e-16,
+          0.08782659607052781
+        ],
+        [
+          3.1918908832065174e-16,
+          4.6415031134820205e-08,
+          0.9999999999999977,
+          -0.18780244724879636
+        ],
+        [
+          6.734689099203602e-16,
+          -0.9999999999999976,
+          4.641503107118928e-08,
+          -0.26440984115092936
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "source_parts": [
+        {
+          "object_path": "LinkGroup013.LinkGroup012.Solid117.",
+          "part_label": "3998967 DHAS-GF-60-U-BU_Product24_Product6_Milly_Assem_0914(2)_Milly_Assem_10P^Copy of Product24_Product6_Milly_Assem_0914(2)_Milly_Assem_10P_Gripper_R_Milly_Assem_10P ikuhgjkl"
+        }
+      ]
+    },
+    {
+      "name": "shoulder_top_plate",
+      "link": "link_1",
+      "color": "metal",
+      "mesh": "meshes/visual/exterior/shoulder_top_plate.stl",
+      "mesh_sha256": "b720d7cbd9788958a45541eb085da197ab056281a708a1ad9aeb02a454aca104",
+      "triangles": 3620,
+      "bounds_link_m": [
+        [
+          -0.018500000083986612,
+          -0.03448362387876612,
+          -0.005999921165061692
+        ],
+        [
+          0.018499998723920497,
+          0.018500003626210598,
+          -0.0004999187292892456
+        ]
+      ],
+      "object_path": "LinkGroup002.Solid028.",
+      "part_label": "AL1_J1_TOP_BRKT^J1_Milly_Assem_10P ikuhgjkl",
+      "link_from_cad": [
+        [
+          -1.0,
+          -3.3306691e-16,
+          1.7736896428175e-40,
+          -0.015810899103227985
+        ],
+        [
+          -3.330669099999997e-16,
+          0.999999999999999,
+          -4.641020666628482e-08,
+          0.12338924114954312
+        ],
+        [
+          1.545770412680089e-23,
+          -4.641020666628482e-08,
+          -0.9999999999999989,
+          0.02162294725007645
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "name": "shoulder_inner_frame",
+      "link": "link_1",
+      "color": "metal",
+      "mesh": "meshes/visual/exterior/shoulder_inner_frame.stl",
+      "mesh_sha256": "5dac899f3136a8c49f65efa415102005aac609c8d86661308e36f3454eb1db3a",
+      "triangles": 19300,
+      "bounds_link_m": [
+        [
+          -0.03449999936873089,
+          -0.05399999936724757,
+          -0.11999992605172376
+        ],
+        [
+          0.03449999872392052,
+          0.054000000632752315,
+          -0.005999919239038115
+        ]
+      ],
+      "object_path": "LinkGroup002.Solid029.",
+      "part_label": "AL5_J2_INNER_FRAME^J1_Milly_Assem_10P ikuhgjkl",
+      "link_from_cad": [
+        [
+          -1.0,
+          -3.3306691e-16,
+          1.7736896428175e-40,
+          -0.015810899103227985
+        ],
+        [
+          -3.330669099999997e-16,
+          0.999999999999999,
+          -4.641020666628482e-08,
+          0.12338924114954312
+        ],
+        [
+          1.545770412680089e-23,
+          -4.641020666628482e-08,
+          -0.9999999999999989,
+          0.02162294725007645
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "name": "shoulder_case_inner_bracket",
+      "link": "link_2",
+      "color": "dark",
+      "mesh": "meshes/visual/exterior/shoulder_case_inner_bracket.stl",
+      "mesh_sha256": "83abadf46582cd2832f9612429191c87fff07c59bb909cc1517876b096254929",
+      "triangles": 28992,
+      "bounds_link_m": [
+        [
+          -0.12210002038092574,
+          -0.05149988896754028,
+          0.05939250851103764
+        ],
+        [
+          0.051500039908332615,
+          0.051499888028369814,
+          0.13639251231896649
+        ]
+      ],
+      "object_path": "LinkGroup003.Solid036.",
+      "part_label": "\ud30c\ud2b82^J2_Milly_Assem_10P ikuhgjkl",
+      "link_from_cad": [
+        [
+          -2.6794896250814618e-08,
+          -0.9999999999984294,
+          1.771969206655695e-06,
+          -0.12338900231015697
+        ],
+        [
+          -2.6794942843277247e-08,
+          -1.77196920596916e-06,
+          -0.9999999999984293,
+          0.08762289428853239
+        ],
+        [
+          0.9999999999999989,
+          -2.6794943753767586e-08,
+          -2.6794895340322657e-08,
+          0.1137034091448829
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "name": "shoulder_case_holder_positive",
+      "link": "link_2",
+      "color": "dark",
+      "mesh": "meshes/visual/exterior/shoulder_case_holder_positive.stl",
+      "mesh_sha256": "4095e33c29c37499bff178f782b641648e85651ecebac4fa4fe658180439dd45",
+      "triangles": 25000,
+      "bounds_link_m": [
+        [
+          0.0004999350201140701,
+          -0.05399408906082122,
+          0.13339250895144153
+        ],
+        [
+          0.05400003791746792,
+          0.053994085490024456,
+          0.14039251240379708
+        ]
+      ],
+      "object_path": "LinkGroup003.Solid037.",
+      "part_label": "Copy of Bracket #Milly_7 DOF #J2 Case^J2_Milly_Assem_10P ikuhgjkl",
+      "link_from_cad": [
+        [
+          -2.6794896250814618e-08,
+          -0.9999999999984294,
+          1.771969206655695e-06,
+          -0.12338900231015697
+        ],
+        [
+          -2.6794942843277247e-08,
+          -1.77196920596916e-06,
+          -0.9999999999984293,
+          0.08762289428853239
+        ],
+        [
+          0.9999999999999989,
+          -2.6794943753767586e-08,
+          -2.6794895340322657e-08,
+          0.1137034091448829
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "name": "shoulder_case_holder_negative",
+      "link": "link_2",
+      "color": "dark",
+      "mesh": "meshes/visual/exterior/shoulder_case_holder_negative.stl",
+      "mesh_sha256": "859795ea19cdaa5c8417898e5425d5e47ab8b1fcbb7b06be0279141e2d3243ea",
+      "triangles": 25000,
+      "bounds_link_m": [
+        [
+          0.000499937051167243,
+          -0.053994087029764506,
+          0.05539251091965741
+        ],
+        [
+          0.05400004000760904,
+          0.053994087521081105,
+          0.06239251431008284
+        ]
+      ],
+      "object_path": "LinkGroup003.Solid038.",
+      "part_label": "Bracket #Milly_7 DOF #J2 Case^J2_Milly_Assem_10P ikuhgjkl",
+      "link_from_cad": [
+        [
+          -2.6794896250814618e-08,
+          -0.9999999999984294,
+          1.771969206655695e-06,
+          -0.12338900231015697
+        ],
+        [
+          -2.6794942843277247e-08,
+          -1.77196920596916e-06,
+          -0.9999999999984293,
+          0.08762289428853239
+        ],
+        [
+          0.9999999999999989,
+          -2.6794943753767586e-08,
+          -2.6794895340322657e-08,
+          0.1137034091448829
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "name": "roll_motor_bracket",
+      "link": "link_2",
+      "color": "dark",
+      "mesh": "meshes/visual/exterior/roll_motor_bracket.stl",
+      "mesh_sha256": "06a7fc670fe6a79803866d2fe2771c82e99d7a7b4b47e27b9e929437a94b7d96",
+      "triangles": 69724,
+      "bounds_link_m": [
+        [
+          -0.11910001949502831,
+          -0.032479943158975136,
+          0.06259250553343006
+        ],
+        [
+          -0.05699991205446099,
+          0.03247973909609921,
+          0.13319251062890658
+        ]
+      ],
+      "object_path": "LinkGroup003.Solid039.",
+      "part_label": "RS10P Bracket^J2_Milly_Assem_10P ikuhgjkl",
+      "link_from_cad": [
+        [
+          -2.6794896250814618e-08,
+          -0.9999999999984294,
+          1.771969206655695e-06,
+          -0.12338900231015697
+        ],
+        [
+          -2.6794942843277247e-08,
+          -1.77196920596916e-06,
+          -0.9999999999984293,
+          0.08762289428853239
+        ],
+        [
+          0.9999999999999989,
+          -2.6794943753767586e-08,
+          -2.6794895340322657e-08,
+          0.1137034091448829
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "name": "shoulder_bottom_plate",
+      "link": "link_2",
+      "color": "metal",
+      "mesh": "meshes/visual/exterior/shoulder_bottom_plate.stl",
+      "mesh_sha256": "4756bfd30a78a76464dfd52acc098195806c60eb9437ca4d02ca95b9c95f0447",
+      "triangles": 6668,
+      "bounds_link_m": [
+        [
+          -0.02226719192920755,
+          -0.023500001154294514,
+          0.056392511404537736
+        ],
+        [
+          0.02350003997536383,
+          0.02349418624055502,
+          0.06839251274847452
+        ]
+      ],
+      "object_path": "LinkGroup003.Solid041.",
+      "part_label": "AL3_J2_J3_BTM_BRKT^J2_Milly_Assem_10P ikuhgjkl",
+      "link_from_cad": [
+        [
+          -2.6794896250814618e-08,
+          -0.9999999999984294,
+          1.771969206655695e-06,
+          -0.12338900231015697
+        ],
+        [
+          -2.6794942843277247e-08,
+          -1.77196920596916e-06,
+          -0.9999999999984293,
+          0.08762289428853239
+        ],
+        [
+          0.9999999999999989,
+          -2.6794943753767586e-08,
+          -2.6794895340322657e-08,
+          0.1137034091448829
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "name": "shoulder_upper_plate",
+      "link": "link_2",
+      "color": "metal",
+      "mesh": "meshes/visual/exterior/shoulder_upper_plate.stl",
+      "mesh_sha256": "3c008c1f06e9175a14024f61fa39a25789db8cdea6a99d27269d6d0a43f28d73",
+      "triangles": 3976,
+      "bounds_link_m": [
+        [
+          -0.04124996970373851,
+          -0.023500003137120223,
+          0.12889251000263605
+        ],
+        [
+          0.023500037992541564,
+          0.023499996929793307,
+          0.1333925112592281
+        ]
+      ],
+      "object_path": "LinkGroup003.Solid042.",
+      "part_label": "AL4_J2_TOP_BRKT^J2_Milly_Assem_10P ikuhgjkl",
+      "link_from_cad": [
+        [
+          -2.6794896250814618e-08,
+          -0.9999999999984294,
+          1.771969206655695e-06,
+          -0.12338900231015697
+        ],
+        [
+          -2.6794942843277247e-08,
+          -1.77196920596916e-06,
+          -0.9999999999984293,
+          0.08762289428853239
+        ],
+        [
+          0.9999999999999989,
+          -2.6794943753767586e-08,
+          -2.6794895340322657e-08,
+          0.1137034091448829
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "name": "wrist_yaw_output_plate",
+      "link": "link_7",
+      "color": "metal",
+      "mesh": "meshes/visual/exterior/wrist_yaw_output_plate.stl",
+      "mesh_sha256": "1fc5d82eb5902ca12e1ade1cc006cd86cb61198da4c8386c3ee52eab967bfbdb",
+      "triangles": 6376,
+      "bounds_link_m": [
+        [
+          -0.030195159415895942,
+          -0.028074201404004434,
+          -0.037194228884315256
+        ],
+        [
+          0.029802584188874798,
+          0.03192354382708734,
+          -0.03219414679523641
+        ]
+      ],
+      "object_path": "LinkGroup011.Solid088.",
+      "part_label": "Copy of Arm_End_Plate_ASM_J6_V8.6_ASM_J456_BODY_ASM_TOTAL_ASSY_V8_Milly_Assem_0914(2)_Milly_Assem_10P^J7_Milly_Assem_10P ikuhgjkl",
+      "link_from_cad": [
+        [
+          0.9958456779308209,
+          -2.6992755909231348e-08,
+          0.09105704666033053,
+          -0.0015518214288954418
+        ],
+        [
+          0.09105704666032773,
+          -9.369193152832369e-08,
+          -0.9958456779308166,
+          0.1903869358330572
+        ],
+        [
+          3.5411930047631036e-08,
+          0.9999999999999942,
+          -9.084482437152296e-08,
+          0.1599654290638474
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "name": "wrist_yaw_limit_frame",
+      "link": "link_7",
+      "color": "metal",
+      "mesh": "meshes/visual/exterior/wrist_yaw_limit_frame.stl",
+      "mesh_sha256": "ff4b3f4568ce3756f257fb6b708deb71bead808bcc40de87b0018d66a56d913f",
+      "triangles": 10128,
+      "bounds_link_m": [
+        [
+          -0.023188359438429673,
+          -0.018384331757409444,
+          -0.0321942129405379
+        ],
+        [
+          0.01730305553757227,
+          0.02021333821084209,
+          -0.01519416326676229
+        ]
+      ],
+      "object_path": "LinkGroup011.Solid106.",
+      "part_label": "Copy of Copy of Axis7_Limit_Frame_H_ASM_J6_V8.6_ASM_J456_BODY_ASM_TOTAL_ASSY_V8_Milly_Assem_0914(2)_Milly_Assem_10P^J7_Milly_Assem_10P ikuhgjkl",
+      "link_from_cad": [
+        [
+          0.9958456779308209,
+          -2.6992755909231348e-08,
+          0.09105704666033053,
+          -0.0015518214288954418
+        ],
+        [
+          0.09105704666032773,
+          -9.369193152832369e-08,
+          -0.9958456779308166,
+          0.1903869358330572
+        ],
+        [
+          3.5411930047631036e-08,
+          0.9999999999999942,
+          -9.084482437152296e-08,
+          0.1599654290638474
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "name": "wrist_yaw_motor_housing",
+      "link": "link_6",
+      "color": "dark",
+      "mesh": "meshes/visual/exterior/wrist_yaw_motor_housing.stl",
+      "mesh_sha256": "80efe9c6f4498853a908ccd3602ba578ace19dc04ca2b220b47912c0b817bc2a",
+      "triangles": 12606,
+      "bounds_link_m": [
+        [
+          -0.08699999285996983,
+          -0.022989205215668135,
+          0.0005107683969310713
+        ],
+        [
+          -0.03999999028590537,
+          0.022989227547678792,
+          0.0464892090278656
+        ]
+      ],
+      "source_file": "Milly_Assem_0914_Case Only.step",
+      "source_sha256": "dec06437d1785fb4f75cf56fc3306d4bf5ed0d29e5a6da4ed5e61a4a62fa753f",
+      "object_path": "Solid030.",
+      "part_label": "Motor05__\ud544\ub81b2",
+      "link_from_cad": [
+        [
+          3.9035202195631315e-08,
+          0.9999999999999982,
+          -4.434944831279441e-08,
+          0.025270633572371536
+        ],
+        [
+          -0.04416540612816735,
+          -4.258216809274011e-08,
+          -0.9990242323895508,
+          0.23794708875034523
+        ],
+        [
+          -0.9990242323895516,
+          4.095582423678163e-08,
+          0.04416540612816558,
+          0.012980698421654913
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "name": "wrist_button_cap",
+      "link": "link_6",
+      "color": "white",
+      "mesh": "meshes/visual/covers/wrist_button_cap.stl",
+      "mesh_sha256": "8c7178d0aa22a1fce25f0fb92e79b598d74824a6617bd33d3868fe17b1b0b2bb",
+      "triangles": 532,
+      "bounds_link_m": [
+        [
+          -0.008999876022338867,
+          -0.00707049036026001,
+          0.06656009674072266
+        ],
+        [
+          0.009000255584716796,
+          0.010978436470031739,
+          0.06933100128173829
+        ]
+      ],
+      "source_file": "Milly_Assem_0914_Case Only.step",
+      "source_sha256": "dec06437d1785fb4f75cf56fc3306d4bf5ed0d29e5a6da4ed5e61a4a62fa753f",
+      "object_path": "Solid003",
+      "part_label": "Part3__PartBody",
+      "link_from_cad": [
+        [
+          3.9035202195631315e-08,
+          0.9999999999999982,
+          -4.434944831279441e-08,
+          0.025270633572371536
+        ],
+        [
+          -0.04416540612816735,
+          -4.258216809274011e-08,
+          -0.9990242323895508,
+          0.23794708875034523
+        ],
+        [
+          -0.9990242323895516,
+          4.095582423678163e-08,
+          0.04416540612816558,
+          0.012980698421654913
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "derivation": "Plastic closing the switch aperture: Boolean difference of aligned 6-DOF and 7-DOF Part3 bodies, selecting the component at the button opening; fuzzy tolerance 0.005 mm. Tessellated at 0.05 mm / 0.15 rad."
+    }
+  ],
+  "retained": "Existing gripper body, rail, crank, rods and wrist camera visuals. Carriages, rigid finger mounts and soft finger pads are now from the 7-DOF STEP.",
+  "omitted": "Motor internals, bearings, fasteners, PCBs and hidden electronics. Structural shoulder/elbow holders and frames, J7 motor exterior and plastic button cap are included.",
+  "source_to_metres_scale": 0.001,
+  "transform_units": "Apply link_from_cad to source CAD points after converting millimetres to metres.",
+  "joint_limit_update": {
+    "coordinate": "joint_3 (each arm)",
+    "lower_rad": -1.5707963267948966,
+    "upper_rad": 1.5707963267948966,
+    "source": "User specified +/-90 degrees."
+  },
+  "joint_and_inertial_description_sha256": {
+    "milly-7dof.urdf": "820dc8498f86a780819ffdb76e22c3661d125e59a3f7fc865d92defb25d5fda5",
+    "milly-7dof-dual.urdf": "44da03b341f64d05afddcdf2e1251c0627db96ac44a164f61de29290db6911d6"
+  },
+  "scope": "Visual asset provenance; meshes unchanged. Position bounds follow sdk-limits.json. Collisions are primitives; J4 side boxes and wrist-camera stalk/mount colliders are omitted. Corrected J7 shaft and all existing zero-pose/inertia frames are preserved.",
+  "additional_sources": [
+    {
+      "source_file": "Milly_Assem_0914_Case Only.step",
+      "source_sha256": "dec06437d1785fb4f75cf56fc3306d4bf5ed0d29e5a6da4ed5e61a4a62fa753f",
+      "source_units": "mm",
+      "used_for": [
+        "wrist_button_cap",
+        "wrist_yaw_motor_housing"
+      ]
+    }
+  ]
+}

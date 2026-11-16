@@ -381,6 +381,79 @@ mod tests {
     }
 
     #[test]
+    fn seven_axis_milly_profiles_follow_chain_order_and_resolve_rs10p() {
+        let component = Path::new(env!("CARGO_MANIFEST_DIR"));
+        // SDK motor-raw position bounds, mapped into this URDF's coordinates.
+        // J3 is the user-specified RS10P insertion and has no SDK counterpart.
+        let ranges = [
+            (1, -2.8, 2.8, -2.95, 2.95),
+            (-1, 0.0, 3.2, -0.15, 3.35),
+            (
+                1,
+                -std::f64::consts::FRAC_PI_2,
+                std::f64::consts::FRAC_PI_2,
+                -std::f64::consts::FRAC_PI_2,
+                std::f64::consts::FRAC_PI_2,
+            ),
+            (-1, 0.0, 2.75, -0.15, 2.9),
+            (1, -2.42, 2.42, -2.57, 2.57),
+            (-1, -1.7, 1.84, -1.85, 1.99),
+            (1, -1.55, 1.55, -1.7, 1.7),
+            (-1, -2.11, 0.0, -2.26, 0.15),
+        ];
+        for dual in [false, true] {
+            let profile = if dual {
+                "milly-7dof-dual"
+            } else {
+                "milly-7dof"
+            };
+            for suffix in ["", "-vcan"] {
+                let config =
+                    Config::load_raw(component.join(format!("config/{profile}{suffix}.yaml")))
+                        .unwrap();
+                let prefixes: &[&str] = if dual { &["left_", "right_"] } else { &[""] };
+                assert_eq!(config.motors.len(), 8 * prefixes.len());
+                let mut expected = Vec::new();
+                for prefix in prefixes {
+                    for index in 1..=8 {
+                        let name = if index == 8 {
+                            format!("{prefix}gripper")
+                        } else {
+                            format!("{prefix}joint_{index}")
+                        };
+                        let motor = &config.motors[expected.len()];
+                        assert_eq!(motor.name, name);
+                        assert_eq!(motor.coordinate, name);
+                        assert_eq!(motor.id, index);
+                        if index == 3 {
+                            assert_eq!(motor.model, "ROBSTRIDE_10P");
+                        }
+                        let (direction, lower, upper, safe_lower, safe_upper) =
+                            ranges[usize::from(index - 1)];
+                        assert_eq!(motor.direction, direction);
+                        assert_eq!(motor.limits.position_min, lower);
+                        assert_eq!(motor.limits.position_max, upper);
+                        assert_eq!(motor.health.safe_position_min, safe_lower);
+                        assert_eq!(motor.health.safe_position_max, safe_upper);
+                        expected.push(name);
+                    }
+                }
+                assert_eq!(config.motor_groups[0].motors, expected);
+                let topology = ResolvedTopology::resolve(config).unwrap();
+                for (index, name) in expected.iter().enumerate() {
+                    let (_, lower, upper, safe_lower, safe_upper) = ranges[index % 8];
+                    let motor = &topology.motor(&name.as_str().into()).unwrap().spec;
+                    assert_eq!(motor.limits.position_min, lower);
+                    assert_eq!(motor.limits.position_max, upper);
+                    // Guard against URDF composition silently clipping SDK margins.
+                    assert_eq!(motor.health.safe_position_min, safe_lower);
+                    assert_eq!(motor.health.safe_position_max, safe_upper);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn gsusb_transport_resolves_and_one_adapter_cannot_own_two_buses() {
         let component = Path::new(env!("CARGO_MANIFEST_DIR"));
         let mut config = Config::load_raw(component.join("config/bello-vcan.yaml")).unwrap();

@@ -1,0 +1,25 @@
+# Seven-axis Milly with STEP cover visuals and inherited inertias.
+# joint_3 is the added RS10P with +/-90 deg travel.
+# Its direction and encoder zero remain provisional.
+description: ../../../descriptions/milly-7dof/hardware.yaml
+runtime:
+  telemetry_capacity: 4096
+  motor_velocity_filter:
+    cutoff_hz: 10.0
+  imu_filter:
+    orientation_cutoff_hz: 10.0
+    gyro_cutoff_hz: 10.0
+    acceleration_cutoff_hz: 10.0
+grpc:
+  listen:
+  - type: tcp
+    address: 0.0.0.0:50051
+  default_lease_ms: 1000
+  maximum_lease_ms: 5000
+bus_transports:
+  can0:
+    type: socketcan
+    interface: can0
+serial_ports: {}
+enabled_groups:
+- arm
