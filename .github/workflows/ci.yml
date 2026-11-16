@@ -61,8 +61,6 @@ jobs:
           done
       - name: Create vcan interfaces
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes "linux-modules-extra-$(uname -r)"
           sudo modprobe vcan
           sudo ip link add dev vcan0 type vcan
           sudo ip link set dev vcan0 up

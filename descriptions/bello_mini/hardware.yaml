@@ -51,7 +51,8 @@ power_boards:
   - name: power_board
     serial_device: power_board_serial
     profile: agx
-    sync_period_ms: 1000
+    sync_period_ms: 100
+    emergency_stop: damping
     stale_timeout_ms: 3000
 
 motors:

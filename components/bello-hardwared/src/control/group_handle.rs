@@ -64,6 +64,7 @@ pub struct GroupHandle {
     pub(super) wake_tx: SyncSender<()>,
     pub(super) command_mailbox: Arc<Mutex<Option<CommandSubmission>>>,
     pub(super) lease_lost: Arc<AtomicBool>,
+    pub(super) emergency_pending: Arc<AtomicBool>,
     pub(super) lease_generation: Arc<AtomicU64>,
     pub(super) lease_loss_waiters: Arc<Mutex<Vec<oneshot::Sender<Transition>>>>,
     pub(super) shutdown: Arc<AtomicBool>,
@@ -71,6 +72,22 @@ pub struct GroupHandle {
 }
 
 impl GroupHandle {
+    #[cfg(test)]
+    pub(crate) fn lease_generation_for_test(&self) -> u64 {
+        self.lease_generation.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn request_emergency_damping(&self) {
+        // Invalidate periodic CAN targets before waking the controller.
+        self.lease_generation.store(0, Ordering::Release);
+        self.emergency_pending.store(true, Ordering::Release);
+        let _ = self.wake_tx.try_send(());
+    }
+
+    pub(crate) fn emergency_pending(&self) -> bool {
+        self.emergency_pending.load(Ordering::Acquire)
+    }
+
     pub(crate) fn activate_lease(&self, generation: u64) {
         self.lease_generation.store(generation, Ordering::Release);
     }
