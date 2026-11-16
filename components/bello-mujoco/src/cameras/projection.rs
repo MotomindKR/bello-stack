@@ -3,6 +3,9 @@ use anyhow::{Result, ensure};
 #[cfg(test)]
 use bello_camera_api::{HEIGHT, WIDTH};
 use image::RgbImage;
+use rayon::prelude::*;
+use std::sync::OnceLock;
+static REMAP_POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
 pub struct Projection {
     pub width: u32,
     pub height: u32,
@@ -13,7 +16,41 @@ pub struct Projection {
     focal: f64,
     cx: f64,
     cy: f64,
+    map: Option<Vec<Sample>>,
 }
+struct Sample {
+    index: usize,
+    dx: f32,
+    dy: f32,
+}
+
+fn fisheye_ray(u: f64, v: f64, [fx, fy, cx, cy]: [f64; 4], d: [f64; 4]) -> Result<[f64; 2]> {
+    let x = (u - cx) / fx;
+    let y = (v - cy) / fy;
+    let rd = x.hypot(y);
+    if rd < 1e-12 {
+        return Ok([0., 0.]);
+    }
+    let mut theta = rd.min(1.5);
+    for _ in 0..16 {
+        let t2 = theta * theta;
+        let p = 1. + t2 * (d[0] + t2 * (d[1] + t2 * (d[2] + t2 * d[3])));
+        let derivative =
+            1. + t2 * (3. * d[0] + t2 * (5. * d[1] + t2 * (7. * d[2] + t2 * 9. * d[3])));
+        ensure!(
+            derivative.is_finite() && derivative > 1e-8,
+            "fisheye calibration is not invertible"
+        );
+        theta -= (theta * p - rd) / derivative;
+    }
+    ensure!(
+        (0. ..std::f64::consts::FRAC_PI_2 - 0.01).contains(&theta),
+        "fisheye ray crosses pinhole horizon"
+    );
+    let scale = theta.tan() / rd;
+    Ok([x * scale, y * scale])
+}
+
 impl Projection {
     #[cfg(test)]
     pub fn new(intrinsics: [f64; 4]) -> Result<Self> {
@@ -43,6 +80,61 @@ impl Projection {
             focal,
             cx: (cx + 0.5) * sx,
             cy: (cy + 0.5) * sy,
+            map: None,
+        })
+    }
+    /// Render a perspective overscan, then map each original sensor pixel to
+    /// its calibrated fisheye ray. The stream remains in raw sensor geometry.
+    pub fn for_fisheye(
+        output_width: u32,
+        output_height: u32,
+        k: [f64; 4],
+        d: [f64; 4],
+    ) -> Result<Self> {
+        let focal = k[0].max(k[1]);
+        let mut rays = Vec::with_capacity(output_width as usize * output_height as usize);
+        let (mut low, mut high) = ([f64::INFINITY; 2], [f64::NEG_INFINITY; 2]);
+        for v in 0..output_height {
+            for u in 0..output_width {
+                let ray = fisheye_ray(f64::from(u), f64::from(v), k, d)?;
+                for a in 0..2 {
+                    low[a] = low[a].min(ray[a]);
+                    high[a] = high[a].max(ray[a]);
+                }
+                rays.push(ray);
+            }
+        }
+        let width = ((high[0] - low[0]) * focal).ceil() as u32 + 3;
+        let height = ((high[1] - low[1]) * focal).ceil() as u32 + 3;
+        ensure!(
+            width <= 3840 && height <= 2160,
+            "fisheye overscan exceeds 3840x2160"
+        );
+        let map = rays
+            .into_iter()
+            .map(|ray| {
+                let x = (ray[0] - low[0]) * focal + 1.;
+                let y = f64::from(height - 1) - ((ray[1] - low[1]) * focal + 1.);
+                let x0 = x.floor() as usize;
+                let y0 = y.floor() as usize;
+                Sample {
+                    index: (y0 * width as usize + x0) * 3,
+                    dx: (x - x0 as f64) as f32,
+                    dy: (y - y0 as f64) as f32,
+                }
+            })
+            .collect();
+        Ok(Self {
+            width,
+            height,
+            output_width,
+            output_height,
+            sx: 1.,
+            sy: 1.,
+            focal,
+            cx: 1.5 - low[0] * focal,
+            cy: 1.5 - low[1] * focal,
+            map: Some(map),
         })
     }
     pub fn apply(&self, view: &mut crate::ffi::mjvGLCamera) {
@@ -59,6 +151,37 @@ impl Projection {
     }
     pub fn image(&self, pixels: &[u8]) -> RgbImage {
         let mut output = RgbImage::new(self.output_width, self.output_height);
+        if let Some(map) = &self.map {
+            let stride = self.width as usize * 3;
+            let pool = REMAP_POOL.get_or_init(|| {
+                rayon::ThreadPoolBuilder::new()
+                    .num_threads(4)
+                    .thread_name(|n| format!("fisheye-map-{n}"))
+                    .build()
+                    .expect("create bounded fisheye remap workers")
+            });
+            let tile = self.output_width as usize * 32;
+            pool.install(|| {
+                output
+                    .as_mut()
+                    .par_chunks_mut(tile * 3)
+                    .zip(map.par_chunks(tile))
+                    .for_each(|(output, map)| {
+                        for (pixel, sample) in output.chunks_exact_mut(3).zip(map) {
+                            for (c, value) in pixel.iter_mut().enumerate() {
+                                let i = sample.index + c;
+                                let top = f32::from(pixels[i]) * (1. - sample.dx)
+                                    + f32::from(pixels[i + 3]) * sample.dx;
+                                let bottom = f32::from(pixels[i + stride]) * (1. - sample.dx)
+                                    + f32::from(pixels[i + stride + 3]) * sample.dx;
+                                *value =
+                                    (top * (1. - sample.dy) + bottom * sample.dy).round() as u8;
+                            }
+                        }
+                    })
+            });
+            return output;
+        }
         if self.sx == 1. && self.sy == 1. {
             let row = self.output_width as usize * 3;
             for y in 0..self.output_height as usize {
@@ -97,6 +220,36 @@ impl Projection {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn raw_fisheye_pixels_round_trip_through_calibrated_rays() {
+        let k = [732.978829, 733.716986, 817.852151, 629.197187];
+        let d = [0.3098908837, 0.1999563911, -0.3083850604, 0.1971900323];
+        for [u, v] in [
+            [0., 0.],
+            [1599., 1199.],
+            [817.852151, 629.197187],
+            [1200., 300.],
+        ] {
+            let [x, y] = fisheye_ray(u, v, k, d).unwrap();
+            let r = x.hypot(y);
+            let theta = r.atan();
+            let t2 = theta * theta;
+            let td = theta * (1. + t2 * (d[0] + t2 * (d[1] + t2 * (d[2] + t2 * d[3]))));
+            let scale = if r < 1e-12 { 1. } else { td / r };
+            assert!((k[0] * x * scale + k[2] - u).abs() < 1e-7);
+            assert!((k[1] * y * scale + k[3] - v).abs() < 1e-7);
+        }
+    }
+    #[test]
+    fn fisheye_remap_keeps_rgb_order_and_sensor_dimensions() {
+        let p =
+            Projection::for_fisheye(160, 120, [73.3, 73.4, 81.8, 62.9], [0.31, 0.2, -0.31, 0.2])
+                .unwrap();
+        let pixels = [12, 34, 56].repeat(p.width as usize * p.height as usize);
+        let output = p.image(&pixels);
+        assert_eq!(output.dimensions(), (160, 120));
+        assert!(output.pixels().all(|p| p.0 == [12, 34, 56]));
+    }
     #[test]
     fn asymmetric_focals_and_off_center_principal_point_preserve_pixel_rays() {
         let [fx, fy, cx, cy] = [420., 350., 300., 170.];

@@ -53,8 +53,11 @@ pub struct Camera {
     pub link: String,
     /// Optical frame: +X right, +Y down, +Z forward, expressed in the mount link.
     pub camera_to_link: [f64; 7],
-    /// fx, fy, cx, cy in pixels. Pinhole rendering; distortion is not emulated.
+    /// fx, fy, cx, cy in native sensor pixels. `fisheye` selects lens distortion.
     pub intrinsics: [f64; 4],
+    /// Optional OpenCV fisheye k1..k4. Output is the original distorted sensor image.
+    #[serde(default)]
+    pub fisheye: Option<[f64; 4]>,
 }
 impl Config {
     pub fn load(path: &Path) -> Result<Self> {
@@ -101,7 +104,14 @@ impl Config {
                     && (0. ..=f64::from(self.height)).contains(&cy),
                 "invalid camera intrinsics"
             );
-            projection::Projection::for_format(self.width, self.height, c.intrinsics)?;
+            if let Some(d) = c.fisheye {
+                ensure!(
+                    d.iter().all(|v| v.is_finite()),
+                    "invalid fisheye coefficients"
+                );
+            } else {
+                projection::Projection::for_format(self.width, self.height, c.intrinsics)?;
+            }
         }
         Ok(())
     }
@@ -296,7 +306,12 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
     let projections = config
         .cameras
         .iter()
-        .map(|c| projection::Projection::for_format(config.width, config.height, c.intrinsics))
+        .map(|c| match c.fisheye {
+            Some(d) => {
+                projection::Projection::for_fisheye(config.width, config.height, c.intrinsics, d)
+            }
+            None => projection::Projection::for_format(config.width, config.height, c.intrinsics),
+        })
         .collect::<Result<Vec<_>>>()?;
     let mut context = unsafe { MjrContext::new(&model) };
     context.resize_offscreen(
@@ -488,7 +503,7 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
                 flags: 0,
                 simulation_time_ns: Some((simtime * 1e9).round() as u64),
                 metadata_json: serde_json::json!({
-                    "image_model": "pinhole",
+                    "image_model": if c.fisheye.is_some() { "fisheye" } else { "pinhole" },
                     "render_ms": render_ms,
                     "jpeg_ms": encode_started.elapsed().as_secs_f64() * 1000., "world_from_optical": {
                         "position": optical.translation.vector.as_slice(),

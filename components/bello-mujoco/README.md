@@ -263,3 +263,13 @@ quality-90 4:2:0 JPEG and logs the selected encoder. Otherwise it retains the
 Rust JPEG fallback. No native codec is required to compile the crate. The dev
 profile optimizes both `image` and the `bello-mujoco` caller so generic JPEG
 encoding does not run as unoptimized per-pixel code.
+
+A camera can optionally specify `fisheye: [k1, k2, k3, k4]` alongside its original
+sensor intrinsics. These use OpenCV's theta-based fisheye model. The isolated
+renderer computes a perspective overscan covering every sensor pixel, then a
+precomputed four-worker bilinear remap produces the distorted sensor JPEG.
+Optical poses remain in the original camera frames, not rectified frames;
+`Frame.metadata_json.image_model` is `fisheye`. The receiver can perform lens
+correction using the same K/D. Pinhole profiles remain unchanged when this field
+is absent. Current calibration support requires forward-facing rays within the
+pinhole horizon and overscan within 3840×2160; unsupported calibration fails.
