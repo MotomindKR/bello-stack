@@ -315,8 +315,8 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
         .collect::<Result<Vec<_>>>()?;
     let mut context = unsafe { MjrContext::new(&model) };
     context.resize_offscreen(
-        projections.iter().map(|p| p.width).max().unwrap(),
-        projections.iter().map(|p| p.height).max().unwrap(),
+        projections.iter().map(|p| p.render_width).max().unwrap(),
+        projections.iter().map(|p| p.render_height).max().unwrap(),
     );
     context.offscreen();
     let mut scene = MjvScene::new(&model, model.ngeom() as usize + 1000);
@@ -380,7 +380,7 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
     let mut pixels = Vec::with_capacity(
         projections
             .iter()
-            .map(|p| p.width as usize * p.height as usize * 3)
+            .map(|p| p.render_width as usize * p.render_height as usize * 3)
             .max()
             .unwrap(),
     );
@@ -475,22 +475,26 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
             let forward = optical.rotation * Vector3::z();
             let up = optical.rotation * (-Vector3::y());
             let projection = &projections[i];
-            let viewport =
-                MjrRectangle::new(0, 0, projection.width as i32, projection.height as i32);
+            let viewport = MjrRectangle::new(
+                0,
+                0,
+                projection.render_width as i32,
+                projection.render_height as i32,
+            );
             // Only the two fixed-size camera records change; scene allocation invariants remain intact.
             for view in &mut unsafe { scene.ffi_mut() }.camera {
                 view.pos = optical.translation.vector.map(|x| x as f32).into();
                 view.forward = forward.map(|x| x as f32).into();
                 view.up = up.map(|x| x as f32).into();
-                projection.apply(view);
+                projection.apply_frustum(view);
             }
             scene.render(&viewport, &context);
             pixels.resize(
-                projection.width as usize * projection.height as usize * 3,
+                projection.render_width as usize * projection.render_height as usize * 3,
                 0,
             );
             context.read_pixels(Some(&mut pixels), None, &viewport)?;
-            let image = projection.image(&pixels);
+            let image = projection.sensor_image(&pixels);
             let render_ms = render_started.elapsed().as_secs_f64() * 1000.;
             let encode_started = Instant::now();
             let jpeg = encoder.encode(&image)?;
