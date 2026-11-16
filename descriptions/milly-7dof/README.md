@@ -19,6 +19,8 @@ The dual profile applies the same ordering on `can0` and `can1`, with `left_`
 and `right_` prefixes and one atomic `dual_arm` group. It inherits the existing
 dual fixture mounting and center D405 geometry; this change does not add the
 future stereo-camera gimbal or update the workcell's measured geometry.
+The separate [combined gimbal profile](../milly-7dof-gimbal/README.md) uses the
+user-requested 450 mm arm-base spacing and a centred gimbal mounting plate.
 
 ## Kinematics and inherited assets
 
@@ -76,7 +78,10 @@ paths, transforms and mesh hashes are recorded in `visual-assets.json`.
 All collision geometry uses primitives; meshes are used only for visuals.
 The old upper-arm collision layout has been replaced by a shoulder cylinder
 and roll housing box on `link_2`, plus one upper-arm box on the rotating
-`link_3`. The two J4 fork side boxes are omitted at the user's request; the
+`link_3`. The inherited 69 mm shoulder motor cylinder on `link_1` is
+omitted because it duplicates the coaxial, same-radius 96 mm cylinder on
+`link_2`. The remaining cylinder is symmetric about J2, so it covers that
+housing throughout J2 travel. The two J4 fork side boxes are omitted at the user's request; the
 elbow motor cylinder on `link_4` is extended to 90 mm along its axis to cover
 the full elbow width. Each wrist camera has only its
 camera housing box, with no stalk or mounting collider. Other collision

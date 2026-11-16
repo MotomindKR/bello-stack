@@ -62,12 +62,6 @@
       <mass value="1.191749063077993" />
       <inertia ixx="0.001836921085157454" ixy="-4.52255779073625e-06" ixz="-1.12260196991184e-05" iyy="0.001514459139754772" iyz="4.217015543896721e-06" izz="0.001406349633054645" />
     </inertial>
-    <collision name="link_1_shoulder_motor">
-      <origin xyz="0 0 -0.066" rpy="0 1.57079632679 0" />
-      <geometry>
-        <cylinder radius="0.054" length="0.069" />
-      </geometry>
-    </collision>
     <visual name="shoulder_spacer">
       <geometry>
         <mesh filename="../meshes/visual/covers/shoulder_spacer.stl" />

@@ -1,0 +1,52 @@
+{
+  "units": "m/rad",
+  "name": "gimbal_safety_sphere",
+  "frame": "gimbal_base_link",
+  "geometry": {
+    "type": "sphere",
+    "xyz": [
+      0.0,
+      0.0,
+      0.147
+    ],
+    "radius": 0.16
+  },
+  "proxy_urdf": "urdf/gimbal-safety-envelope.urdf",
+  "covers_links": [
+    "gimbal_base_link",
+    "gimbal_yaw_link",
+    "gimbal_pitch_link",
+    "gimbal_roll_link",
+    "stereo_camera_link"
+  ],
+  "joint_ranges": {
+    "gimbal_yaw": [
+      -1.5707963267948966,
+      1.5707963267948966
+    ],
+    "gimbal_pitch": [
+      -1.5707963267948966,
+      1.5707963267948966
+    ],
+    "gimbal_roll": [
+      -1.5707963267948966,
+      1.5707963267948966
+    ]
+  },
+  "conservative_geometry_radius_m": 0.155566706,
+  "minimum_model_clearance_m": 0.004433294,
+  "bound_method": "Centre lies on the yaw axis, so yaw preserves distance. Base and yaw-stage bounds include every visual mesh vertex and collision box corner; cylinders use enclosing box corners. For the pitch subtree, the maximum radius about the pitch pivot is invariant under roll because the roll pivot and camera mount translations are collinear with the roll axis. Add the 0.034014703 m distance from pitch pivot to sphere centre by the triangle inequality. This bounds continuous joint travel, not just sampled poses.",
+  "per_link_bound_m": {
+    "gimbal_base_link": 0.155566706,
+    "gimbal_yaw_link": 0.102596007,
+    "gimbal_pitch_link": 0.11576432,
+    "stereo_camera_link": 0.155458846
+  },
+  "usage": "Optional fixed coarse proxy for arm/environment avoidance. Replace the covered links' exterior collision primitives with this sphere for coarse solving; do not test it against those links or count both representations. Keep the support pole as a separate box. Detailed gimbal self-collision checks still require the original bodies. This data is not connected to an active collision solver or motor control.",
+  "excludes": [
+    "support pole",
+    "cables",
+    "unmodelled mounting hardware"
+  ],
+  "revalidate_on": "Any gimbal geometry, joint axis, origin, travel, camera payload or mounting changes. The combined robot rigid base transform may change without invalidating the local bound."
+}

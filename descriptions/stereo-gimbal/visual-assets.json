@@ -1,0 +1,954 @@
+{
+  "source_file": "gimbal.step",
+  "source_sha256": "aa016f58329188274fbf2032a41e9e52aa4c86037b7fc4b07e3cc19a3fc258cf",
+  "source_units": "mm",
+  "output_units": "m",
+  "base_from_source_cad": [
+    [
+      0.0,
+      1.0,
+      0.0,
+      0.081
+    ],
+    [
+      -1.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      1.0,
+      0.181
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "registration": "Base frame at yaw-axis projection onto the mounting plate underside; +X faces along the stereo camera viewing direction, +Y left, +Z up.",
+  "tessellation": {
+    "linear_deflection_mm": 0.1,
+    "angular_deflection_rad": 0.15
+  },
+  "parts": [
+    {
+      "name": "base_plate",
+      "link": "gimbal_base_link",
+      "color": "dark",
+      "mesh": "meshes/visual/base_plate.stl",
+      "mesh_sha256": "f4145b2d72cf60dcb3eeb1ba4e8c8dd7b9a901be29830aea492cf8344b7a16e6",
+      "triangles": 5168,
+      "bounds_link_m": [
+        [
+          -0.036000000000000004,
+          -0.036000000000000004,
+          0.0
+        ],
+        [
+          0.036000000000000004,
+          0.036000000000000004,
+          0.009999999999999981
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.081
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.181
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "Compound.",
+      "part_label": "COMPOUND",
+      "solid_index": 7
+    },
+    {
+      "name": "yaw_frame",
+      "link": "gimbal_yaw_link",
+      "color": "white",
+      "mesh": "meshes/visual/yaw_frame.stl",
+      "mesh_sha256": "7acef18098566a936828fc5888af56c35c203b8a79eb79a69f3f04cb8c31c28b",
+      "triangles": 18884,
+      "bounds_link_m": [
+        [
+          -0.03840000152587891,
+          -0.0285,
+          -0.0030000000000000027
+        ],
+        [
+          0.022,
+          0.0285,
+          0.151
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.081
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.128
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "Compound.",
+      "part_label": "COMPOUND",
+      "solid_index": 5
+    },
+    {
+      "name": "yaw_stop",
+      "link": "gimbal_base_link",
+      "color": "dark",
+      "mesh": "meshes/visual/yaw_stop.stl",
+      "mesh_sha256": "510e5c48805747d9453aca7196dd5468f4b077c7eb01f4207d2cdaff40031153",
+      "triangles": 2254,
+      "bounds_link_m": [
+        [
+          0.012999999999999998,
+          -0.01910409736633301,
+          0.04999999999999999
+        ],
+        [
+          0.02473306655883789,
+          0.01910409736633301,
+          0.057999999999999996
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.081
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.181
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "Compound.",
+      "part_label": "COMPOUND",
+      "solid_index": 6,
+      "attachment": "Fixed to actuator stator, confirmed by user."
+    },
+    {
+      "name": "pitch_bearing_collar",
+      "link": "gimbal_yaw_link",
+      "color": "dark",
+      "mesh": "meshes/visual/pitch_bearing_collar.stl",
+      "mesh_sha256": "5478368132fda9829bae4fa038e24cb8f3790b940a8a06512b3f9c93c2e1872f",
+      "triangles": 672,
+      "bounds_link_m": [
+        [
+          -0.017,
+          -0.0285,
+          0.112
+        ],
+        [
+          0.015,
+          -0.0245,
+          0.14400000000000002
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.081
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.128
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "Compound.",
+      "part_label": "COMPOUND",
+      "solid_index": 4
+    },
+    {
+      "name": "roll_motor_mount",
+      "link": "gimbal_pitch_link",
+      "color": "white",
+      "mesh": "meshes/visual/roll_motor_mount.stl",
+      "mesh_sha256": "744405d4cdc6b68fb454f20b853ba9c6dba86bcb32c9831de9afcf219b982db9",
+      "triangles": 4988,
+      "bounds_link_m": [
+        [
+          0.024,
+          -0.0325,
+          -0.023
+        ],
+        [
+          0.032,
+          0.0325,
+          0.023
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.082
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "Compound.",
+      "part_label": "COMPOUND",
+      "solid_index": 1
+    },
+    {
+      "name": "pitch_carrier_left",
+      "link": "gimbal_pitch_link",
+      "color": "white",
+      "mesh": "meshes/visual/pitch_carrier_left.stl",
+      "mesh_sha256": "bb24c26327e77212a58646b45e6709673a4ef592a5018b420ad07376ac9ab27b",
+      "triangles": 7366,
+      "bounds_link_m": [
+        [
+          -0.017,
+          0.0225,
+          -0.017
+        ],
+        [
+          0.032,
+          0.0365,
+          0.017
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.082
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "Compound.",
+      "part_label": "COMPOUND",
+      "solid_index": 2
+    },
+    {
+      "name": "pitch_carrier_right",
+      "link": "gimbal_pitch_link",
+      "color": "white",
+      "mesh": "meshes/visual/pitch_carrier_right.stl",
+      "mesh_sha256": "bb2a6384cdf4beb6a5faea4f6bf1a02b8a4424eb8394e4b2b33fb00e860695b7",
+      "triangles": 2596,
+      "bounds_link_m": [
+        [
+          -0.017,
+          -0.0365,
+          -0.017
+        ],
+        [
+          0.032,
+          -0.0245,
+          0.017
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.082
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "Compound.",
+      "part_label": "COMPOUND",
+      "solid_index": 3
+    },
+    {
+      "name": "roll_output_stop",
+      "link": "gimbal_pitch_link",
+      "color": "dark",
+      "mesh": "meshes/visual/roll_output_stop.stl",
+      "mesh_sha256": "74bed0cf040890326f341ab3847cbd983e6348187d57ab2941fa557e00d4c6fc",
+      "triangles": 3850,
+      "bounds_link_m": [
+        [
+          0.07200000000000001,
+          -0.023,
+          -0.022424198150634764
+        ],
+        [
+          0.076,
+          -0.004,
+          0.022424198150634764
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.082
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "Compound.",
+      "part_label": "COMPOUND",
+      "solid_index": 9,
+      "attachment": "Fixed to actuator stator, confirmed by user."
+    },
+    {
+      "name": "camera_rear_case",
+      "link": "stereo_camera_link",
+      "color": "white",
+      "mesh": "meshes/visual/camera_rear_case.stl",
+      "mesh_sha256": "dafbcff975cb6364c087ea6fc32678e956b2d5985e27bede1e4679282827bdaa",
+      "triangles": 9102,
+      "bounds_link_m": [
+        [
+          -0.041,
+          -0.041200000762939455,
+          -0.016799999237060548
+        ],
+        [
+          -0.027,
+          0.041200000762939455,
+          0.016799999237060548
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          -0.031
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "Compound.",
+      "part_label": "COMPOUND",
+      "solid_index": 0
+    },
+    {
+      "name": "camera_front_case",
+      "link": "stereo_camera_link",
+      "color": "white",
+      "mesh": "meshes/visual/camera_front_case.stl",
+      "mesh_sha256": "53f39e5f968bbe3f30d796e02c3443dcfce2a9b66489ec0de13620481f01eb58",
+      "triangles": 4788,
+      "bounds_link_m": [
+        [
+          -0.03,
+          -0.041200000762939455,
+          -0.012
+        ],
+        [
+          -0.002999999999999999,
+          0.041200000762939455,
+          0.012
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          -0.031
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "Compound.",
+      "part_label": "COMPOUND",
+      "solid_index": 8
+    },
+    {
+      "name": "yaw_motor_housing",
+      "link": "gimbal_base_link",
+      "color": "dark",
+      "mesh": "meshes/visual/yaw_motor_housing.stl",
+      "mesh_sha256": "d4b4ccf4e205b56fee3da209b491db340789c977d8934fc91fa3811dd38db9f9",
+      "triangles": 83890,
+      "bounds_link_m": [
+        [
+          -0.023000000000000007,
+          -0.023,
+          0.005999999999999978
+        ],
+        [
+          0.023,
+          0.023,
+          0.05299999999999999
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.081
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.181
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "Solid009.",
+      "part_label": "RobStride_05 (2)"
+    },
+    {
+      "name": "pitch_motor_housing",
+      "link": "gimbal_yaw_link",
+      "color": "dark",
+      "mesh": "meshes/visual/pitch_motor_housing.stl",
+      "mesh_sha256": "a9278ba14217ce22223cf8b07bec1bccd9901a193f1b22a777fb223bde0365e1",
+      "triangles": 83886,
+      "bounds_link_m": [
+        [
+          -0.024196502685546878,
+          -0.021500000000000002,
+          0.10500000190734864
+        ],
+        [
+          0.022,
+          0.025500000000000002,
+          0.15099999809265136
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.081
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.128
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "Solid008.",
+      "part_label": "RobStride_05 (1)"
+    },
+    {
+      "name": "roll_motor_housing",
+      "link": "gimbal_pitch_link",
+      "color": "dark",
+      "mesh": "meshes/visual/roll_motor_housing.stl",
+      "mesh_sha256": "1d6038bfbe470c428960cd05c3a8b098760b9126d08e97ccf12ae8d428913161",
+      "triangles": 83874,
+      "bounds_link_m": [
+        [
+          0.028000000000000004,
+          -0.023,
+          -0.023
+        ],
+        [
+          0.075,
+          0.023,
+          0.023
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.082
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "Solid007.",
+      "part_label": "RobStride_05"
+    },
+    {
+      "name": "left_lens_body",
+      "link": "stereo_camera_link",
+      "color": "dark",
+      "mesh": "meshes/visual/left_lens_body.stl",
+      "mesh_sha256": "5c977b2ef447c176bbdf8390c198352936b792d8f4a46125cdaf454dd77d8cf9",
+      "triangles": 3988,
+      "bounds_link_m": [
+        [
+          -0.02540000009536743,
+          0.020600000381469728,
+          -0.009000000000000001
+        ],
+        [
+          -0.002999999999999999,
+          0.03859999847412109,
+          0.009000000000000001
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          -0.031
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "LinkGroup.Solid.",
+      "part_label": "base"
+    },
+    {
+      "name": "right_lens_body",
+      "link": "stereo_camera_link",
+      "color": "dark",
+      "mesh": "meshes/visual/right_lens_body.stl",
+      "mesh_sha256": "108c23abc49a29bebbdecca6a29a7b5b944ed840312bfdc1deb7eebc90d231ca",
+      "triangles": 3988,
+      "bounds_link_m": [
+        [
+          -0.02540000009536743,
+          -0.03859999847412109,
+          -0.009000000000000001
+        ],
+        [
+          -0.002999999999999999,
+          -0.020600000381469728,
+          0.009000000000000001
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          -0.031
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "LinkGroup.Solid001.",
+      "part_label": "Part 6"
+    },
+    {
+      "name": "left_lens",
+      "link": "stereo_camera_link",
+      "color": "glass",
+      "mesh": "meshes/visual/left_lens.stl",
+      "mesh_sha256": "00900f10a9587f6a1011a289d8f2114aa525b59d2cde85af240a18923a7a158d",
+      "triangles": 1064,
+      "bounds_link_m": [
+        [
+          -0.005999999999999998,
+          0.02218007469177246,
+          -0.007419925212860108
+        ],
+        [
+          0.0,
+          0.03701992416381836,
+          0.007419925212860108
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          -0.031
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "LinkGroup.Solid003.",
+      "part_label": "lens"
+    },
+    {
+      "name": "right_lens",
+      "link": "stereo_camera_link",
+      "color": "glass",
+      "mesh": "meshes/visual/right_lens.stl",
+      "mesh_sha256": "b0268738f0237864842bc38dbab0468f21129baf99149ac20c2df790522323bc",
+      "triangles": 1064,
+      "bounds_link_m": [
+        [
+          -0.005999999999999998,
+          -0.03701992416381836,
+          -0.007419925212860108
+        ],
+        [
+          0.0,
+          -0.02218007469177246,
+          0.007419925212860108
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          -0.031
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "LinkGroup.Solid006.",
+      "part_label": "Part 7"
+    },
+    {
+      "name": "usb_connector",
+      "link": "stereo_camera_link",
+      "color": "metal",
+      "mesh": "meshes/visual/usb_connector.stl",
+      "mesh_sha256": "6165a4a1b5acf74c15cbf1fa8136c008e6f71af98f4e9a94270f05a992aa0326",
+      "triangles": 58376,
+      "bounds_link_m": [
+        [
+          -0.02663427209854126,
+          -0.0044508657455444335,
+          0.0002706353664398193
+        ],
+        [
+          -0.021974268913269042,
+          0.005261061191558838,
+          0.010270638465881348
+        ]
+      ],
+      "link_from_cad": [
+        [
+          0.0,
+          1.0,
+          0.0,
+          -0.031
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "object_path": "LinkGroup.Solid005.",
+      "part_label": "usb-type-c"
+    }
+  ],
+  "omitted": "Camera IC and PCB, motor internals beyond the supplied single housing solids. Motors are treated as exterior black boxes.",
+  "inertias": "Not supplied in this visual/kinematic description.",
+  "confirmed_configuration": {
+    "bus": "can0",
+    "yaw_id": 11,
+    "pitch_id": 12,
+    "roll_id": 13,
+    "travel_rad": [
+      -1.5707963267948966,
+      1.5707963267948966
+    ],
+    "source": "User confirmed yaw/pitch/roll +/-90 degrees and CAN0 IDs 11/12/13.",
+    "limiter_mounts": {
+      "yaw_stop": "gimbal_base_link (yaw stator)",
+      "roll_output_stop": "gimbal_pitch_link (roll stator)"
+    },
+    "motor_directions": {
+      "gimbal_yaw": -1,
+      "gimbal_pitch": -1,
+      "gimbal_roll": -1
+    },
+    "direction_confirmation": "User confirmed on the actuators that all three raw positive rotations oppose the current URDF axes (2026-11-16). q_joint = -q_motor_raw assumes zero alignment; encoder offsets are not yet calibrated."
+  },
+  "unconfirmed": "Encoder zeros; pitch bearing collar ownership should be checked during browser review. Yaw and roll limiters are confirmed fixed to their actuator stators.",
+  "camera_reference": {
+    "lens_front_midpoint_cad_mm": [
+      0,
+      31,
+      0
+    ],
+    "cad_lens_spacing_m": 0.0592,
+    "optical_axes": "Z forward, X image-right, Y image-down",
+    "calibration": "CAD reference frames only. Calibrated optical centers, intrinsics, distortion and stereo baseline must come from camera calibration; the CAD spacing is not a calibration.",
+    "frames": [
+      "stereo_camera_optical_frame",
+      "stereo_left_camera_optical_frame",
+      "stereo_right_camera_optical_frame"
+    ]
+  }
+}

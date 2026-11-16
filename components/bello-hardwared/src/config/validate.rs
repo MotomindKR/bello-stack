@@ -453,6 +453,119 @@ mod tests {
         }
     }
 
+    fn assert_gimbal_wire_direction(params: robstride_protocol::MotorParams) {
+        use robstride_protocol::{
+            ControlCommand, Feedback, MotorParams, control_frame, feedback_frame, parse_control,
+            parse_feedback,
+        };
+
+        assert_eq!(params.direction, -1);
+        // Decode the command as raw motor values, with no sign mapping on the
+        // receiving side. A signed round trip alone would hide a double flip.
+        let raw_params = MotorParams::for_model("ROBSTRIDE_05", 1).unwrap();
+        let velocity_quantum =
+            (raw_params.velocity_max - raw_params.velocity_min) / f64::from(u16::MAX);
+        let command = ControlCommand {
+            motor_id: 11,
+            position: 0.25,
+            velocity: 0.1,
+            torque: 0.5,
+            kp: 2.0,
+            kd: 0.2,
+        };
+        let raw = parse_control(&control_frame(params, command), raw_params).unwrap();
+        assert!((raw.position + command.position).abs() < 0.001);
+        assert!((raw.velocity + command.velocity).abs() < velocity_quantum);
+        assert!((raw.torque + command.torque).abs() < 0.001);
+        assert!((raw.kp - command.kp).abs() < 0.01);
+        assert!((raw.kd - command.kd).abs() < 0.001);
+
+        // Start with positive raw encoder/velocity/torque values; all three
+        // must appear negative in the joint-coordinate feedback.
+        let raw_feedback = Feedback {
+            motor_id: 11,
+            position: 0.25,
+            velocity: 0.1,
+            torque: 0.5,
+            ..Default::default()
+        };
+        let joint = parse_feedback(&feedback_frame(0, raw_feedback, raw_params), params).unwrap();
+        assert!((joint.position + raw_feedback.position).abs() < 0.001);
+        assert!((joint.velocity + raw_feedback.velocity).abs() < velocity_quantum);
+        assert!((joint.torque + raw_feedback.torque).abs() < 0.001);
+    }
+
+    #[test]
+    fn stereo_gimbal_profiles_resolve_confirmed_can_ids_and_travel() {
+        let component = Path::new(env!("CARGO_MANIFEST_DIR"));
+        for suffix in ["", "-vcan"] {
+            let config =
+                Config::load_raw(component.join(format!("config/stereo-gimbal{suffix}.yaml")))
+                    .unwrap();
+            assert_eq!(config.motors.len(), 3);
+            assert_eq!(config.motor_groups.len(), 1);
+            assert_eq!(config.motor_groups[0].name, "gimbal");
+            let expected = ["gimbal_yaw", "gimbal_pitch", "gimbal_roll"];
+            assert_eq!(config.motor_groups[0].motors, expected);
+            for (motor, (name, id)) in config.motors.iter().zip(expected.into_iter().zip(11..=13)) {
+                assert_eq!(motor.name, name);
+                assert_eq!(motor.coordinate, name);
+                assert_eq!(motor.bus, "can0");
+                assert_eq!(motor.id, id);
+                assert_eq!(motor.model, "ROBSTRIDE_05");
+                assert_eq!(motor.direction, -1);
+                assert_eq!(motor.limits.position_min, -std::f64::consts::FRAC_PI_2);
+                assert_eq!(motor.limits.position_max, std::f64::consts::FRAC_PI_2);
+                assert_eq!(motor.limits.velocity_abs, Some(0.2));
+                assert_eq!(motor.limits.torque_abs, Some(1.0));
+            }
+            let topology = ResolvedTopology::resolve(config).unwrap();
+            for name in expected {
+                let motor = &topology.motor(&name.into()).unwrap().spec;
+                assert_gimbal_wire_direction(motor.params);
+                assert_eq!(motor.limits.position_min, -std::f64::consts::FRAC_PI_2);
+                assert_eq!(motor.limits.position_max, std::f64::consts::FRAC_PI_2);
+                assert_eq!(motor.health.safe_position_min, -std::f64::consts::FRAC_PI_2);
+                assert_eq!(motor.health.safe_position_max, std::f64::consts::FRAC_PI_2);
+            }
+        }
+    }
+
+    #[test]
+    fn combined_milly_gimbal_profiles_share_can0_without_duplicate_ids() {
+        let component = Path::new(env!("CARGO_MANIFEST_DIR"));
+        for suffix in ["", "-vcan"] {
+            let config =
+                Config::load_raw(component.join(format!("config/milly-7dof-gimbal{suffix}.yaml")))
+                    .unwrap();
+            assert_eq!(config.motors.len(), 19);
+            assert_eq!(config.motor_groups.len(), 2);
+            assert_eq!(config.motor_groups[0].name, "dual_arm");
+            assert_eq!(config.motor_groups[0].motors.len(), 16);
+            assert_eq!(config.motor_groups[1].name, "gimbal");
+            assert_eq!(config.motor_groups[1].motors.len(), 3);
+            let mut can0_ids: Vec<_> = config
+                .motors
+                .iter()
+                .filter(|m| m.bus == "can0")
+                .map(|m| m.id)
+                .collect();
+            can0_ids.sort_unstable();
+            assert_eq!(can0_ids, [1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 13]);
+            let can1_ids: Vec<_> = config
+                .motors
+                .iter()
+                .filter(|m| m.bus == "can1")
+                .map(|m| m.id)
+                .collect();
+            assert_eq!(can1_ids, [1, 2, 3, 4, 5, 6, 7, 8]);
+            let topology = ResolvedTopology::resolve(config).unwrap();
+            for name in ["gimbal_yaw", "gimbal_pitch", "gimbal_roll"] {
+                assert_gimbal_wire_direction(topology.motor(&name.into()).unwrap().spec.params);
+            }
+        }
+    }
+
     #[test]
     fn gsusb_transport_resolves_and_one_adapter_cannot_own_two_buses() {
         let component = Path::new(env!("CARGO_MANIFEST_DIR"));

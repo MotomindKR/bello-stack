@@ -117,3 +117,17 @@ center D405 frame, keepout box and support post. The dual description was import
 services from that branch are separate from these hardware/visualizer profiles.
 CAN transports use the current schema; out-of-range commands use `reject`,
 matching the canonical single-arm policy (the older branch used `clamp`).
+
+`config/stereo-gimbal.example.yaml` displays the standalone stereo gimbal and
+exposes its atomic `gimbal` group. Pair it with hardwared's `stereo-gimbal.yaml`
+or `stereo-gimbal-vcan.yaml`. The user-confirmed configuration is CAN0 IDs
+11/12/13 with +/-90 degree travel on yaw, pitch and roll. All three gimbal
+motor directions are confirmed as `-1`; encoder zeros still require commissioning. See the
+[gimbal description](../../descriptions/stereo-gimbal/README.md).
+
+`config/milly-7dof-gimbal.example.yaml` loads the combined 450 mm arm-base
+layout with the gimbal centred 300 mm above the mounting plates and facing the
+arm workspace. It exposes the independent
+`dual_arm` and `gimbal` groups from one hardware daemon. Use the matching
+`milly-7dof-gimbal.yaml` or `milly-7dof-gimbal-vcan.yaml` deployment and review
+the [combined-model clearance notes](../../descriptions/milly-7dof-gimbal/README.md).

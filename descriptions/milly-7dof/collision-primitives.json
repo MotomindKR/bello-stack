@@ -1,6 +1,6 @@
 {
   "units": "m",
-  "description": "Primitive-only exterior contact envelopes in single-arm URDF frames. link_2 has a shoulder cylinder and roll housing box; link_3 has one rotating upper-arm box. The J4 fork side boxes are omitted by user request; the elbow motor cylinder on link_4 is 90 mm long to cover the full elbow width. Each wrist camera has only its camera housing box, with no stalk or mount collider. Each undeformed soft-finger assembly uses one box; no compliant contact model or new inertia is supplied. Both dual arms use the same shapes. Approximate contact envelopes.",
+  "description": "Primitive-only exterior contact envelopes in single-arm URDF frames. link_2 has a shoulder cylinder and roll housing box; link_3 has one rotating upper-arm box. The J4 fork side boxes are omitted by user request; the elbow motor cylinder on link_4 is 90 mm long to cover the full elbow width. Each wrist camera has only its camera housing box, with no stalk or mount collider. Each undeformed soft-finger assembly uses one box; no compliant contact model or new inertia is supplied. Both dual arms use the same shapes. Approximate contact envelopes. The inherited link_1 shoulder motor cylinder is omitted: it duplicated the coaxial, same-radius 96 mm shoulder-case cylinder on link_2, whose envelope is invariant under J2 rotation.",
   "shapes": [
     {
       "link": "base_link",
@@ -38,23 +38,6 @@
         0.0294,
         0.034
       ]
-    },
-    {
-      "link": "link_1",
-      "name": "link_1_shoulder_motor",
-      "type": "cylinder",
-      "xyz": [
-        0.0,
-        0.0,
-        -0.066
-      ],
-      "rpy": [
-        0.0,
-        1.57079632679,
-        0.0
-      ],
-      "radius": 0.054,
-      "length": 0.069
     },
     {
       "link": "link_2",

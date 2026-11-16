@@ -1,0 +1,24 @@
+# Protocol-level emulation only; no estimated physical parameters.
+interface: vcan0
+host_id: 0
+feedback_rate_hz: 500.0
+dynamics:
+  position_response_hz: 20.0
+  idle_velocity_decay_hz: 20.0
+actuators:
+- id: 11
+  model: ROBSTRIDE_05
+  direction: -1
+  initial_position: 0.0
+  initial_temperature_c: 25.0
+- id: 12
+  model: ROBSTRIDE_05
+  direction: -1
+  initial_position: 0.0
+  initial_temperature_c: 25.0
+- id: 13
+  model: ROBSTRIDE_05
+  direction: -1
+  initial_position: 0.0
+  initial_temperature_c: 25.0
+events: []

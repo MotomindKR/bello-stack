@@ -1,0 +1,238 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="bello_stereo_gimbal">
+  <!-- Maintained directly. Exterior STEP meshes, primitive collisions and user-confirmed travel. No inertias are estimated. Actuator signs are in hardware.yaml; encoder zeros require commissioning. -->
+  <material name="gimbal_white">
+    <color rgba="0.88 0.90 0.89 1" />
+  </material>
+  <material name="gimbal_dark">
+    <color rgba="0.055 0.060 0.065 1" />
+  </material>
+  <material name="gimbal_metal">
+    <color rgba="0.52 0.55 0.58 1" />
+  </material>
+  <material name="gimbal_glass">
+    <color rgba="0.035 0.085 0.12 1" />
+  </material>
+  <link name="gimbal_base_link">
+    <visual name="base_plate">
+      <geometry>
+        <mesh filename="../meshes/visual/base_plate.stl" />
+      </geometry>
+      <material name="gimbal_dark" />
+    </visual>
+    <visual name="yaw_motor_housing">
+      <geometry>
+        <mesh filename="../meshes/visual/yaw_motor_housing.stl" />
+      </geometry>
+      <material name="gimbal_dark" />
+    </visual>
+    <collision name="mount_plate">
+      <origin xyz="0 0 0.0050000000000000001" rpy="0 0 0" />
+      <geometry>
+        <box size="0.071999999999999995 0.071999999999999995 0.01" />
+      </geometry>
+    </collision>
+    <collision name="yaw_motor">
+      <origin xyz="0 0 0.029499999999999998" rpy="0 0 0" />
+      <geometry>
+        <cylinder radius="0.023" length="0.047" />
+      </geometry>
+    </collision>
+    <visual name="yaw_stop">
+      <geometry>
+        <mesh filename="../meshes/visual/yaw_stop.stl" />
+      </geometry>
+      <material name="gimbal_dark" />
+    </visual>
+  </link>
+  <link name="gimbal_yaw_link">
+    <visual name="yaw_frame">
+      <geometry>
+        <mesh filename="../meshes/visual/yaw_frame.stl" />
+      </geometry>
+      <material name="gimbal_white" />
+    </visual>
+    <visual name="pitch_bearing_collar">
+      <geometry>
+        <mesh filename="../meshes/visual/pitch_bearing_collar.stl" />
+      </geometry>
+      <material name="gimbal_dark" />
+    </visual>
+    <visual name="pitch_motor_housing">
+      <geometry>
+        <mesh filename="../meshes/visual/pitch_motor_housing.stl" />
+      </geometry>
+      <material name="gimbal_dark" />
+    </visual>
+    <collision name="yaw_output_mount">
+      <origin xyz="-0.001325 0 0.002" rpy="0 0 0" />
+      <geometry>
+        <box size="0.052200000000000003 0.038199999999999998 0.01" />
+      </geometry>
+    </collision>
+    <collision name="rear_stanchion">
+      <origin xyz="-0.03015 0 0.055" rpy="0 0 0" />
+      <geometry>
+        <box size="0.0166 0.025999999999999999 0.10000000000000001" />
+      </geometry>
+    </collision>
+    <collision name="pitch_motor">
+      <origin xyz="-0.001 0 0.128" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.0235" length="0.057" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="gimbal_pitch_link">
+    <visual name="roll_motor_mount">
+      <geometry>
+        <mesh filename="../meshes/visual/roll_motor_mount.stl" />
+      </geometry>
+      <material name="gimbal_white" />
+    </visual>
+    <visual name="pitch_carrier_left">
+      <geometry>
+        <mesh filename="../meshes/visual/pitch_carrier_left.stl" />
+      </geometry>
+      <material name="gimbal_white" />
+    </visual>
+    <visual name="pitch_carrier_right">
+      <geometry>
+        <mesh filename="../meshes/visual/pitch_carrier_right.stl" />
+      </geometry>
+      <material name="gimbal_white" />
+    </visual>
+    <visual name="roll_motor_housing">
+      <geometry>
+        <mesh filename="../meshes/visual/roll_motor_housing.stl" />
+      </geometry>
+      <material name="gimbal_dark" />
+    </visual>
+    <collision name="roll_mount">
+      <origin xyz="0.028000000000000001 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.0080000000000000002 0.065000000000000002 0.045999999999999999" />
+      </geometry>
+    </collision>
+    <collision name="left_carrier">
+      <origin xyz="0.0074999999999999997 0.029499999999999998 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.049000000000000002 0.014 0.034000000000000002" />
+      </geometry>
+    </collision>
+    <collision name="right_carrier">
+      <origin xyz="0.0074999999999999997 -0.030499999999999999 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.049000000000000002 0.012 0.034000000000000002" />
+      </geometry>
+    </collision>
+    <collision name="roll_motor">
+      <origin xyz="0.051499999999999997 0 0" rpy="0 1.5707963267948966 0" />
+      <geometry>
+        <cylinder radius="0.023" length="0.047" />
+      </geometry>
+    </collision>
+    <visual name="roll_output_stop">
+      <geometry>
+        <mesh filename="../meshes/visual/roll_output_stop.stl" />
+      </geometry>
+      <material name="gimbal_dark" />
+    </visual>
+  </link>
+  <link name="gimbal_roll_link">
+    </link>
+  <link name="stereo_camera_link">
+    <visual name="camera_rear_case">
+      <geometry>
+        <mesh filename="../meshes/visual/camera_rear_case.stl" />
+      </geometry>
+      <material name="gimbal_white" />
+    </visual>
+    <visual name="camera_front_case">
+      <geometry>
+        <mesh filename="../meshes/visual/camera_front_case.stl" />
+      </geometry>
+      <material name="gimbal_white" />
+    </visual>
+    <visual name="left_lens_body">
+      <geometry>
+        <mesh filename="../meshes/visual/left_lens_body.stl" />
+      </geometry>
+      <material name="gimbal_dark" />
+    </visual>
+    <visual name="right_lens_body">
+      <geometry>
+        <mesh filename="../meshes/visual/right_lens_body.stl" />
+      </geometry>
+      <material name="gimbal_dark" />
+    </visual>
+    <visual name="left_lens">
+      <geometry>
+        <mesh filename="../meshes/visual/left_lens.stl" />
+      </geometry>
+      <material name="gimbal_glass" />
+    </visual>
+    <visual name="right_lens">
+      <geometry>
+        <mesh filename="../meshes/visual/right_lens.stl" />
+      </geometry>
+      <material name="gimbal_glass" />
+    </visual>
+    <visual name="usb_connector">
+      <geometry>
+        <mesh filename="../meshes/visual/usb_connector.stl" />
+      </geometry>
+      <material name="gimbal_metal" />
+    </visual>
+    <collision name="camera_box">
+      <origin xyz="-0.020500000000000001 0 0" rpy="0 0 0" />
+      <geometry>
+        <box size="0.041000000000000002 0.082400000000000001 0.033599999999999998" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="stereo_camera_optical_frame" />
+  <link name="stereo_left_camera_optical_frame" />
+  <link name="stereo_right_camera_optical_frame" />
+  <joint name="gimbal_yaw" type="revolute">
+    <parent link="gimbal_base_link" />
+    <child link="gimbal_yaw_link" />
+    <origin xyz="0 0 0.052999999999999999" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="1.0" velocity="0.2" />
+  </joint>
+  <joint name="gimbal_pitch" type="revolute">
+    <parent link="gimbal_yaw_link" />
+    <child link="gimbal_pitch_link" />
+    <origin xyz="-0.001 0 0.128" rpy="0 0 0" />
+    <axis xyz="0 1 0" />
+    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="1.0" velocity="0.2" />
+  </joint>
+  <joint name="gimbal_roll" type="revolute">
+    <parent link="gimbal_pitch_link" />
+    <child link="gimbal_roll_link" />
+    <origin xyz="0.074999999999999997 0 0" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-1.5707963267948966" upper="1.5707963267948966" effort="1.0" velocity="0.2" />
+  </joint>
+  <joint name="stereo_camera_mount" type="fixed">
+    <parent link="gimbal_roll_link" />
+    <child link="stereo_camera_link" />
+    <origin xyz="0.037999999999999999 0 0" rpy="0 0 0" />
+  </joint>
+  <joint name="stereo_camera_optical_frame_mount" type="fixed">
+    <parent link="stereo_camera_link" />
+    <child link="stereo_camera_optical_frame" />
+    <origin xyz="0 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966" />
+  </joint>
+  <joint name="stereo_left_camera_optical_frame_mount" type="fixed">
+    <parent link="stereo_camera_link" />
+    <child link="stereo_left_camera_optical_frame" />
+    <origin xyz="0 0.029600000000000001 0" rpy="-1.5707963267948966 0 -1.5707963267948966" />
+  </joint>
+  <joint name="stereo_right_camera_optical_frame_mount" type="fixed">
+    <parent link="stereo_camera_link" />
+    <child link="stereo_right_camera_optical_frame" />
+    <origin xyz="0 -0.029600000000000001 0" rpy="-1.5707963267948966 0 -1.5707963267948966" />
+  </joint>
+</robot>

@@ -1,0 +1,137 @@
+{
+  "units": "m/rad",
+  "root": "dual_milly_base",
+  "arm_base_spacing_m": 0.45,
+  "left_base": {
+    "xyz": [
+      0,
+      -0.225,
+      0
+    ],
+    "rpy": [
+      0,
+      0,
+      1.5707963267948966
+    ]
+  },
+  "right_base": {
+    "xyz": [
+      0,
+      0.225,
+      0
+    ],
+    "rpy": [
+      0,
+      0,
+      1.5707963267948966
+    ]
+  },
+  "gimbal_base": {
+    "xyz": [
+      0.045,
+      0,
+      0.304
+    ],
+    "rpy": [
+      0,
+      0,
+      3.141592653589793
+    ]
+  },
+  "source": "User requested 450 mm between arm bases, the gimbal centred between them, then the gimbal base suspended 300 mm above the arms and its cameras facing the arm workspace. Existing arm poses are retained.",
+  "removed": "Legacy centre D405, keepout and support post; arm-mounted wrist cameras remain.",
+  "control": {
+    "dual_arm": "16 coordinates across can0 IDs 1..8 and can1 IDs 1..8",
+    "gimbal": "3 coordinates on can0 IDs 11/12/13"
+  },
+  "shared_assets": [
+    "../milly-7dof",
+    "../stereo-gimbal",
+    "../milly"
+  ],
+  "physical_mounting_plates": {
+    "left_centre_xyz_m": [
+      0.045,
+      -0.225,
+      0.004
+    ],
+    "right_centre_xyz_m": [
+      0.045,
+      0.225,
+      0.004
+    ],
+    "gimbal_centre_xyz_m": [
+      0.045,
+      0,
+      0.304
+    ],
+    "reference": "Centres on the underside mounting planes. Arm plates are at z=0.004 m. The gimbal plate is centred 0.300 m above them at z=0.304 m, yawed pi radians so the stereo camera faces -X at zero."
+  },
+  "gimbal_height_above_arm_mounts_m": 0.3,
+  "stereo_view_direction_at_zero": [
+    -1,
+    0,
+    0
+  ],
+  "gimbal_support": {
+    "link": "gimbal_support_link",
+    "frame": "dual_milly_base",
+    "geometry": {
+      "type": "box",
+      "size": [
+        0.06,
+        0.06,
+        0.304
+      ],
+      "xyz": [
+        0.045,
+        0,
+        0.152
+      ],
+      "rpy": [
+        0,
+        0,
+        0
+      ]
+    },
+    "ground_z_m": 0,
+    "top_z_m": 0.304,
+    "note": "Provisional 60 mm square support. Visual and matching primitive collision only; no inertial parameters."
+  },
+  "gimbal_safety_envelope": {
+    "definition": "../stereo-gimbal/safety-envelope.json",
+    "frame": "gimbal_base_link",
+    "centre_in_root_m": [
+      0.045,
+      0,
+      0.451
+    ],
+    "radius_m": 0.16,
+    "support_handling": "Separate support box remains outside the sphere proxy group."
+  },
+  "ground": {
+    "link": "ground_link",
+    "frame": "dual_milly_base",
+    "geometry": {
+      "type": "box",
+      "size": [
+        2,
+        2,
+        0.02
+      ],
+      "xyz": [
+        0,
+        0,
+        -0.01
+      ],
+      "rpy": [
+        0,
+        0,
+        0
+      ]
+    },
+    "top_z_m": 0,
+    "bottom_z_m": -0.02,
+    "note": "Fixed workcell ground with matching visual and primitive collision; no inertial parameters."
+  }
+}
