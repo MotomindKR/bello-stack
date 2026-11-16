@@ -29,10 +29,22 @@ pub struct ModelConfig {
     pub neighbor_exclusion_depth: usize,
     #[serde(default)]
     pub payloads: Vec<Payload>,
+    /// Simulation scene only; never part of the canonical robot description.
+    #[serde(default)]
+    pub environment_boxes: Vec<EnvironmentBox>,
     #[serde(default)]
     pub physics: PhysicsConfig,
     #[serde(default)]
     pub torso_guide: Option<crate::guide::Config>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EnvironmentBox {
+    pub name: String,
+    pub position: [f64; 3],
+    pub half_size: [f64; 3],
+    pub rgba: [f32; 4],
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -355,6 +367,26 @@ fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Re
             .with_type(MjtGeom::mjGEOM_PLANE)
             .with_size([5., 5., 0.1])
             .with_friction([1.0, 0.005, 0.0001]);
+    }
+    let mut scene_names = BTreeSet::new();
+    for b in &config.environment_boxes {
+        ensure!(
+            !b.name.is_empty()
+                && scene_names.insert(&b.name)
+                && b.position.iter().all(|x| x.is_finite())
+                && b.half_size.iter().all(|x| x.is_finite() && *x > 0.)
+                && b.rgba
+                    .iter()
+                    .all(|x| x.is_finite() && (0. ..=1.).contains(x)),
+            "invalid environment box"
+        );
+        spec.world_body_mut()
+            .add_geom()
+            .with_name(&format!("scene/{}", b.name))
+            .with_type(MjtGeom::mjGEOM_BOX)
+            .with_pos(b.position)
+            .with_size(b.half_size)
+            .with_rgba(b.rgba);
     }
     let mut offsets = BTreeMap::new();
     let mut covered = BTreeSet::new();
@@ -688,6 +720,7 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
                 ]),
                 neighbor_exclusion_depth: 2,
                 payloads: Vec::new(),
+                environment_boxes: Vec::new(),
                 physics: PhysicsConfig::default(),
                 torso_guide: None,
             },

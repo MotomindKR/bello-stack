@@ -53,6 +53,27 @@ impl Frames {
                 "requires three named 640x360, 30 Hz cameras",
             ));
         }
+        Self::configured(cameras)
+    }
+    /// General camera sets (e.g. a synchronized stereo pair). Legacy `new` stays strict.
+    pub fn configured(cameras: Vec<proto::Camera>) -> Result<Self, Status> {
+        let names: std::collections::BTreeSet<_> = cameras.iter().map(|c| &c.name).collect();
+        if cameras.is_empty()
+            || cameras.len() > 16
+            || names.len() != cameras.len()
+            || cameras.iter().any(|c| {
+                c.name.is_empty()
+                    || c.width == 0
+                    || c.height == 0
+                    || c.width > 4096
+                    || c.height > 2160
+                    || c.fps == 0
+                    || c.fps > 120
+                    || !matches!(c.source.as_str(), "v4l2" | "mujoco")
+            })
+        {
+            return Err(Status::invalid_argument("invalid camera set"));
+        }
         let slots = cameras
             .iter()
             .map(|_| Slot {
@@ -79,7 +100,8 @@ impl Frames {
                 "frame clock does not match its declared source",
             ));
         }
-        if frame.jpeg.len() > 2 * 1024 * 1024
+        if frame.metadata_json.len() > 64 * 1024
+            || frame.jpeg.len() > 2 * 1024 * 1024
             || !frame.jpeg.starts_with(&[0xff, 0xd8])
             || !frame.jpeg.ends_with(&[0xff, 0xd9])
             || frame.capture_ns == 0
@@ -186,6 +208,7 @@ mod tests {
             jpeg: vec![0xff, 0xd8, 0xff, 0xd9],
             flags: 0,
             simulation_time_ns: Some(sequence),
+            metadata_json: String::new(),
         }
     }
     #[tokio::test]
@@ -225,6 +248,29 @@ mod tests {
             recording.next().await.unwrap().unwrap_err().code(),
             tonic::Code::ResourceExhausted
         );
+    }
+    #[test]
+    fn stereo_formats_are_explicit_and_legacy_constructor_stays_strict() {
+        let cameras = ["left", "right"]
+            .map(|name| proto::Camera {
+                name: name.into(),
+                width: 640,
+                height: 480,
+                fps: 30,
+                source: "mujoco".into(),
+                metadata_json: "{}".into(),
+            })
+            .to_vec();
+        assert!(Frames::new(cameras.clone()).is_err());
+        let stereo = Frames::configured(cameras.clone()).unwrap();
+        assert_eq!(stereo.cameras().len(), 2);
+        let mut duplicate = cameras;
+        duplicate[1].name = "left".into();
+        assert!(Frames::configured(duplicate).is_err());
+        let mut value = frame(1);
+        value.name = "left".into();
+        value.metadata_json = "x".repeat(65537);
+        assert!(stereo.publish(value).is_err());
     }
     #[test]
     fn invalid_source_clock_and_camera_mapping_are_rejected() {

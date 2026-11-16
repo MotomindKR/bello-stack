@@ -3,7 +3,7 @@ mod context;
 mod projection;
 use crate::{Simulation, model};
 use anyhow::{Context, Result, ensure};
-use bello_camera_api::{FPS, Frames, HEIGHT, NAMES, WIDTH, monotonic_ns, proto};
+use bello_camera_api::{FPS, Frames, HEIGHT, WIDTH, monotonic_ns, proto};
 use image::codecs::jpeg::JpegEncoder;
 use mujoco_rs::prelude::*;
 use nalgebra::{Isometry3, Quaternion, Translation3, UnitQuaternion, Vector3};
@@ -27,7 +27,19 @@ use std::{
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub socket: PathBuf,
-    pub cameras: [Camera; 3],
+    #[serde(default)]
+    pub listen: Option<std::net::SocketAddr>,
+    pub cameras: Vec<Camera>,
+    #[serde(default = "default_width")]
+    pub width: u32,
+    #[serde(default = "default_height")]
+    pub height: u32,
+}
+fn default_width() -> u32 {
+    WIDTH
+}
+fn default_height() -> u32 {
+    HEIGHT
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -48,10 +60,21 @@ impl Config {
     fn validate(&self) -> Result<()> {
         ensure!(self.socket.is_absolute(), "camera socket must be absolute");
         ensure!(
-            NAMES
+            !self.cameras.is_empty() && self.cameras.len() <= 16,
+            "invalid camera count"
+        );
+        ensure!(
+            self.cameras
                 .iter()
-                .all(|n| self.cameras.iter().filter(|c| c.name == *n).count() == 1),
-            "configure exactly three named cameras"
+                .map(|c| &c.name)
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+                == self.cameras.len(),
+            "duplicate cameras"
+        );
+        ensure!(
+            self.width > 0 && self.height > 0 && self.width <= 1920 && self.height <= 1080,
+            "invalid camera dimensions"
         );
         for c in &self.cameras {
             ensure!(
@@ -65,11 +88,11 @@ impl Config {
                 [fx, fy, cx, cy].iter().all(|v| v.is_finite())
                     && fx > 0.
                     && fy > 0.
-                    && (0. ..=f64::from(WIDTH)).contains(&cx)
-                    && (0. ..=f64::from(HEIGHT)).contains(&cy),
+                    && (0. ..=f64::from(self.width)).contains(&cx)
+                    && (0. ..=f64::from(self.height)).contains(&cy),
                 "invalid camera intrinsics"
             );
-            projection::Projection::new(c.intrinsics)?;
+            projection::Projection::for_format(self.width, self.height, c.intrinsics)?;
         }
         Ok(())
     }
@@ -263,7 +286,7 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
     let projections = config
         .cameras
         .iter()
-        .map(|c| projection::Projection::new(c.intrinsics))
+        .map(|c| projection::Projection::for_format(config.width, config.height, c.intrinsics))
         .collect::<Result<Vec<_>>>()?;
     let mut context = unsafe { MjrContext::new(&model) };
     context.resize_offscreen(
@@ -283,14 +306,14 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
         .iter()
         .map(|c| proto::Camera {
             name: c.name.clone(),
-            width: WIDTH,
-            height: HEIGHT,
+            width: config.width,
+            height: config.height,
             fps: FPS,
             source: "mujoco".into(),
             metadata_json: serde_json::to_string(c).unwrap(),
         })
         .collect();
-    let frames = Frames::new(cameras)?;
+    let frames = Frames::configured(cameras)?;
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -304,6 +327,17 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
             )
             .serve_with_incoming(tokio_stream::wrappers::UnixListenerStream::new(listener)),
     );
+    let tcp_server = config.listen.map(|address| {
+        runtime.spawn(
+            tonic::transport::Server::builder()
+                .add_service(
+                    proto::camera_source_service_server::CameraSourceServiceServer::new(
+                        frames.clone(),
+                    ),
+                )
+                .serve(address),
+        )
+    });
     let stop = Arc::new(AtomicBool::new(false));
     let stopping = stop.clone();
     runtime.spawn(async move {
@@ -327,7 +361,10 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
     );
     let mut last = Instant::now();
     while !stop.load(Ordering::Acquire) {
-        ensure!(!server.is_finished(), "camera frame service stopped");
+        ensure!(
+            !server.is_finished() && tcp_server.as_ref().is_none_or(|s| !s.is_finished()),
+            "camera frame service stopped"
+        );
         let size = match input.recv(&mut latest) {
             Ok(size) => size,
             Err(e)
@@ -437,9 +474,22 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
                 jpeg,
                 flags: 0,
                 simulation_time_ns: Some((simtime * 1e9).round() as u64),
+                metadata_json: serde_json::json!({
+                    "image_model": "pinhole", "world_from_optical": {
+                        "position": optical.translation.vector.as_slice(),
+                        "quaternion_xyzw": optical.rotation.coords.as_slice()
+                    },
+                    "joint_positions": (0..data.model().njnt() as usize)
+                        .filter_map(|j| data.model().id_to_name(MjtObj::mjOBJ_JOINT, j)
+                            .map(|name| (name.to_owned(), data.qpos()[data.model().jnt_qposadr()[j] as usize])))
+                        .collect::<std::collections::BTreeMap<_, _>>()
+                }).to_string(),
             })?;
         }
     }
     server.abort();
+    if let Some(server) = tcp_server {
+        server.abort();
+    }
     Ok(())
 }

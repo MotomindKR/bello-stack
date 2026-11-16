@@ -24,3 +24,12 @@ The MuJoCo renderer implements the camera source service. The Rust GStreamer
 media daemon in `bello_webxr_teleop` implements both services and owns physical
 capture or subscribes to the HIL source. Dataset recording consumes original
 frames independently of WebRTC transport or bitrate.
+
+`Frames::new` retains the legacy three-view contract. `Frames::configured`
+explicitly supports other uniquely named camera sets and dimensions, including
+stereo. `Frame.metadata_json` is optional per-exposure metadata (empty for old
+publishers, bounded to 64 KiB). The simulator reports world optical poses and
+joint positions from the rendering snapshot. Protobuf consumers that ignore
+this field remain wire-compatible; Rust producers constructing `Frame` literals
+must set it (or use `..Default::default()`). Existing physical capture producers
+can leave it empty until they have timestamp-aligned measured state.

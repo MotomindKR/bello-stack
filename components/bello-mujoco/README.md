@@ -230,3 +230,24 @@ cargo test --locked --manifest-path deps/bello-stack/Cargo.toml -p bello-mujoco 
 The render test uses synthetic geometry; it checks actual software pixels,
 frame count, malformed recording rejection, and overwrite protection without
 CAN devices or robot-specific assertions.
+
+## Configurable stereo rendering
+
+Camera profiles may select `width`/`height` (defaults 640×360), any unique list
+of named cameras (up to 16), and an optional TCP `listen` address in addition to
+the Unix `socket`. All views use one physics qpos snapshot, sequence, host
+monotonic capture timestamp and simulation timestamp. Each frame's additive
+`metadata_json` contains `world_from_optical` (metres, XYZW quaternion) and the
+snapshot's joint positions. It is exposure state, not live or commanded state.
+Existing three-camera profiles and the strict camera API constructor retain
+640×360 defaults; stereo publishers use `Frames::configured` explicitly.
+
+Projection is pinhole with independent fx/fy and principal point. For a
+calibrated fisheye stereo rig, render rectified P1/P2 intrinsics and place the
+virtual optical frames using measured R/T and R1/R2. No lens distortion is
+implicitly introduced or removed by the renderer.
+
+Model profiles can add simulation-only `environment_boxes`, each containing
+`name`, `position`, `half_size` (all metres) and `rgba`. These world-fixed
+primitive boxes appear in physics and visual models and are suitable for
+near/far stereo validation targets. They do not alter canonical descriptions.
