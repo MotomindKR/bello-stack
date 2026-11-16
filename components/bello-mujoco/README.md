@@ -273,3 +273,15 @@ Optical poses remain in the original camera frames, not rectified frames;
 correction using the same K/D. Pinhole profiles remain unchanged when this field
 is absent. Current calibration support requires forward-facing rays within the
 pinhole horizon and overscan within 3840×2160; unsupported calibration fails.
+
+MuJoCo 3.12's `mjvGLCamera.frustum_width` is the horizontal **half-width** at
+the near plane. The camera projection sets this explicitly along with the
+principal-point offsets. A full-width value would halve the horizontal focal
+length, producing tall-looking objects and incorrect yaw/roll image geometry.
+The Linux software-Mesa regression below checks actual rendered marker pixels
+against calibrated pinhole and fisheye coordinates under pitch, yaw, roll and
+combined rotations (less than one pixel error), without CAN or robot hardware:
+
+```sh
+cargo test -p bello-mujoco --lib rendered_markers_match_calibrated_pixels_through_pitch_yaw_and_roll -- --ignored
+```
