@@ -9,8 +9,8 @@ use tokio::runtime::{Builder, Handle};
 use tracing::warn;
 
 use super::{
-    BusSpec, BusTxQueues, CanFrame, FrameWriter, ReceivedFrame, prepare_reconnect, reject_queued,
-    run_tx,
+    BusSpec, BusTxQueues, CanFrame, FrameWriter, ReceivedFrame, WriteFailure, prepare_reconnect,
+    reject_queued, run_tx,
 };
 use crate::config::BusTransportConfig;
 use crate::domain::BusName;
@@ -86,11 +86,11 @@ struct UsbWriter {
 }
 
 impl FrameWriter for UsbWriter {
-    fn write_frame(&self, frame: CanFrame) -> Result<(), String> {
-        let wire = encode_frame(frame)?;
+    fn write_frame(&self, frame: CanFrame) -> Result<(), WriteFailure> {
+        let wire = encode_frame(frame).map_err(WriteFailure::fatal)?;
         self.runtime
             .block_on(self.sender.send(wire))
-            .map_err(|error| format!("GS-USB write failed: {error}"))
+            .map_err(|error| WriteFailure::fatal(format!("GS-USB write failed: {error}")))
     }
 }
 

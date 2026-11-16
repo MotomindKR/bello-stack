@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use crossbeam_channel::{Sender, bounded};
+use nix::errno::Errno;
 use socketcan::id::CAN_EFF_FLAG;
 use socketcan::{
     CanFrame as WireFrame, CanSocket, EmbeddedFrame, ExtendedId, Frame, Socket, SocketOptions,
@@ -12,19 +13,23 @@ use socketcan::{
 use tracing::warn;
 
 use super::{
-    BusSpec, BusTxQueues, CanFrame, FrameWriter, ReceivedFrame, prepare_reconnect, reject_queued,
-    run_tx,
+    BusSpec, BusTxQueues, CanFrame, FrameWriter, ReceivedFrame, WriteFailure, prepare_reconnect,
+    reject_queued, run_tx,
 };
 use crate::config::BusTransportConfig;
 use crate::domain::BusName;
 use crate::hardware::lifecycle::DeviceLifecycle;
 
 impl FrameWriter for CanSocket {
-    fn write_frame(&self, frame: CanFrame) -> Result<(), String> {
-        let id = ExtendedId::new(frame.id).ok_or_else(|| "invalid extended CAN id".to_owned())?;
+    fn write_frame(&self, frame: CanFrame) -> Result<(), WriteFailure> {
+        let id = ExtendedId::new(frame.id)
+            .ok_or_else(|| WriteFailure::fatal("invalid extended CAN id"))?;
         let frame = WireFrame::new(id, &frame.data)
-            .ok_or_else(|| "could not construct CAN frame".to_owned())?;
-        Socket::write_frame(self, &frame).map_err(|error| format!("CAN write failed: {error}"))
+            .ok_or_else(|| WriteFailure::fatal("could not construct CAN frame"))?;
+        Socket::write_frame(self, &frame).map_err(|error| WriteFailure {
+            queue_full: error.raw_os_error() == Some(Errno::ENOBUFS as i32),
+            detail: format!("CAN write failed: {error}"),
+        })
     }
 }
 
