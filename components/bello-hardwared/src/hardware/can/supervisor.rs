@@ -154,18 +154,40 @@ fn transmit_control_batch<W: FrameWriter>(
     if !control_batch_can_finish(spec, batch.frames.len(), batch.expires_at) {
         return Ok(false);
     }
+    // How long the writes took is what tells a slow transport (a GS-USB adapter needs one USB
+    // transfer per frame) from a late handoff, so the failure reports both.
+    let started = Instant::now();
+    let total = batch.frames.len();
     for (index, frame) in batch.frames.into_iter().enumerate() {
-        if Instant::now() >= batch.expires_at {
+        let now = Instant::now();
+        if now >= batch.expires_at {
             return if index == 0 {
                 Ok(false)
             } else {
-                Err("control batch expired after partial transmission".into())
+                Err(format!(
+                    "control batch expired after partial transmission \
+                     ({index} of {total} frames written in {} us, {} us of freshness left at the first write)",
+                    now.saturating_duration_since(started).as_micros(),
+                    batch
+                        .expires_at
+                        .saturating_duration_since(started)
+                        .as_micros(),
+                ))
             };
         }
         write_frame(writer, frame)?;
     }
-    if Instant::now() > batch.expires_at {
-        Err("control batch completed after its freshness deadline".into())
+    let completed = Instant::now();
+    if completed > batch.expires_at {
+        Err(format!(
+            "control batch completed after its freshness deadline \
+             ({total} frames written in {} us, {} us of freshness left at the first write)",
+            completed.saturating_duration_since(started).as_micros(),
+            batch
+                .expires_at
+                .saturating_duration_since(started)
+                .as_micros(),
+        ))
     } else {
         Ok(true)
     }
@@ -570,6 +592,67 @@ mod tests {
         assert_eq!(control_rx.len(), 2);
         apply_priority_ordering(PriorityBatchKind::SafetyBarrier, &control_rx);
         assert!(control_rx.is_empty());
+    }
+
+    struct SlowWriter(Duration);
+
+    impl FrameWriter for SlowWriter {
+        fn write_frame(&self, _frame: CanFrame) -> Result<(), String> {
+            thread::sleep(self.0);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_late_control_batch_reports_how_long_its_writes_took() {
+        let config: crate::config::BusConfig = serde_yaml::from_str(
+            "name: can\ntransport: { type: socketcan, interface: vcan0 }\nbitrate: 1000000\nmaximum_utilization: 1.0",
+        )
+        .unwrap();
+        let spec = BusSpec::try_from(&config).unwrap();
+        let batch = |frames: u32, fresh_for: Duration| ControlBatch {
+            frames: (1..=frames)
+                .map(|id| CanFrame { id, data: [0; 8] })
+                .collect(),
+            expires_at: Instant::now() + fresh_for,
+        };
+
+        // Seven frames at 4 ms each cannot fit a 10 ms deadline: the batch stops part-way.
+        let partial = transmit_control_batch(
+            &SlowWriter(Duration::from_millis(4)),
+            &spec,
+            batch(7, Duration::from_millis(10)),
+        )
+        .unwrap_err();
+        assert!(
+            partial.starts_with("control batch expired after partial transmission ("),
+            "{partial}"
+        );
+        assert!(partial.contains(" of 7 frames written in "), "{partial}");
+
+        // Two frames at 8 ms each finish, but after the deadline.
+        let late = transmit_control_batch(
+            &SlowWriter(Duration::from_millis(8)),
+            &spec,
+            batch(2, Duration::from_millis(10)),
+        )
+        .unwrap_err();
+        assert!(
+            late.starts_with(
+                "control batch completed after its freshness deadline (2 frames written in "
+            ),
+            "{late}"
+        );
+
+        // A batch that is written in time is unaffected.
+        assert_eq!(
+            transmit_control_batch(
+                &SlowWriter(Duration::ZERO),
+                &spec,
+                batch(7, Duration::from_millis(100))
+            ),
+            Ok(true)
+        );
     }
 
     #[test]
