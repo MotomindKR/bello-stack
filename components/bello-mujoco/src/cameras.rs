@@ -30,6 +30,9 @@ pub struct Config {
     #[serde(default)]
     pub listen: Option<std::net::SocketAddr>,
     pub cameras: Vec<Camera>,
+    /// Optional body poses sampled at the exact rendered exposure.
+    #[serde(default)]
+    pub tracked_frames: Vec<String>,
     #[serde(default = "default_samples")]
     pub offscreen_samples: i32,
     #[serde(default = "default_width")]
@@ -151,6 +154,9 @@ impl Capture {
         );
         for camera in &config.cameras {
             visual.id(MjtObj::mjOBJ_BODY, &camera.link)?;
+        }
+        for frame in &config.tracked_frames {
+            visual.id(MjtObj::mjOBJ_BODY, frame)?;
         }
         let files = tempfile::tempdir()?;
         let model_path = files.path().join("model.mjb");
@@ -293,14 +299,23 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
         .collect::<Result<Vec<_>>>()?;
     model.vis_mut().headlight.ambient = [0.35; 3];
     model.vis_mut().headlight.diffuse = [0.8; 3];
-    let visual_bodies: std::collections::BTreeSet<_> = (0..model.ngeom() as usize)
-        .filter(|&i| model.geom_contype()[i] == 0 && model.geom_conaffinity()[i] == 0)
-        .map(|i| model.geom_bodyid()[i])
-        .collect();
+    let tracked_frames = config
+        .tracked_frames
+        .iter()
+        .map(|name| {
+            model
+                .name_to_id(MjtObj::mjOBJ_BODY, name)
+                .with_context(|| format!("tracked camera frame missing: {name}"))
+                .map(|id| (name.clone(), id))
+        })
+        .collect::<Result<Vec<_>>>()?;
     for i in 0..model.ngeom() as usize {
         let collision = model.geom_contype()[i] != 0 || model.geom_conaffinity()[i] != 0;
-        model.geom_group_mut()[i] =
-            i32::from(!(collision && visual_bodies.contains(&model.geom_bodyid()[i])));
+        // Robot collision proxies are never scenery. Explicit scene fixtures
+        // and the generated floor remain visible even when contact-enabled.
+        let name = model.id_to_name(MjtObj::mjOBJ_GEOM, i).unwrap_or("");
+        let scenery = name == "floor" || name.starts_with("scene/");
+        model.geom_group_mut()[i] = i32::from(!collision || scenery);
     }
     let _gl = context::Context::new()?;
     let projections = config
@@ -457,6 +472,19 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
         // Only the simulation clock scalar changes; allocation/layout remain intact.
         unsafe { data.ffi_mut() }.time = simtime;
         data.forward();
+        let frame_poses = tracked_frames
+            .iter()
+            .map(|(name, id)| {
+                let q = data.xquat()[*id];
+                (
+                    name,
+                    serde_json::json!({
+                        "position": data.xpos()[*id],
+                        "orientation": [q[1], q[2], q[3], q[0]]
+                    }),
+                )
+            })
+            .collect::<std::collections::BTreeMap<_, _>>();
         for (i, c) in config.cameras.iter().enumerate() {
             let render_started = Instant::now();
             scene.update(&mut data, &options, &perturb, &mut camera);
@@ -508,6 +536,7 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
                 simulation_time_ns: Some((simtime * 1e9).round() as u64),
                 metadata_json: serde_json::json!({
                     "image_model": if c.fisheye.is_some() { "fisheye" } else { "pinhole" },
+                    "frame_poses": frame_poses,
                     "render_ms": render_ms,
                     "jpeg_ms": encode_started.elapsed().as_secs_f64() * 1000., "world_from_optical": {
                         "position": optical.translation.vector.as_slice(),

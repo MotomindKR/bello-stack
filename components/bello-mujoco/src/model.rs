@@ -982,16 +982,6 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
         let (_dir, config) = fixture();
         let urdf = config.hardware.parent().unwrap().join("robot.urdf");
         let mut xml = xmltree::Element::parse(std::fs::File::open(&urdf).unwrap()).unwrap();
-        let mut extension = xmltree::Element::new("mujoco");
-        let mut compiler = xmltree::Element::new("compiler");
-        compiler
-            .attributes
-            .insert("discardvisual".into(), "false".into());
-        compiler
-            .attributes
-            .insert("inertiafromgeom".into(), "false".into());
-        extension.children.push(xmltree::XMLNode::Element(compiler));
-        xml.children.push(xmltree::XMLNode::Element(extension));
         let visual = xmltree::Element::parse(
             b"<visual><geometry><box size='.08 .07 .06'/></geometry></visual>".as_slice(),
         )
