@@ -103,11 +103,11 @@
     "frame": "gimbal_base_link",
     "centre_in_root_m": [
       0.045,
-      0,
-      0.451
+      0.0,
+      0.478
     ],
-    "radius_m": 0.16,
-    "support_handling": "Separate support box remains outside the sphere proxy group."
+    "radius_m": 0.132,
+    "support_handling": "Retain fixed gimbal base plate/yaw stator primitives and separate support pole box."
   },
   "ground": {
     "link": "ground_link",

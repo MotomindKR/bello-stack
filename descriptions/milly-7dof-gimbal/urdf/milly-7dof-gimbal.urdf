@@ -31,11 +31,12 @@
   <link name="dual_milly_base" />
   <link name="left_base_link">
     <inertial>
-      <origin xyz="-0.0001241321748860844 -0.04203029467324181 0.04978668837136444" rpy="0 0 0" />
-      <mass value="1.01372171051755" />
-      <inertia ixx="0.001222473948380703" ixy="5.704125615847687e-07" ixz="7.03787041079121e-07" iyy="0.001034384940334247" iyz="9.599059522533496e-06" izz="0.001703404487664201" />
+      <origin xyz="-8.46486972475361e-05 -0.0440193520884683 0.0383078206163094" rpy="0 0 0" />
+      <mass value="1.44497730195445" />
+      <inertia ixx="0.00232389193680254" ixy="9.99319412432692e-07" ixz="2.04782481881722e-06" iyy="0.00194160083109364" iyz="-3.36061524608899e-05" izz="0.00274448252031089" />
     </inertial>
-    <collision name="left_base_link_base_shell">
+
+  <collision name="left_base_link_base_shell">
       <origin xyz="0 -0.045 0.0405" rpy="0 0 0" />
       <geometry>
         <cylinder radius="0.059" length="0.073" />
@@ -74,11 +75,12 @@
   </link>
   <link name="left_link_1">
     <inertial>
-      <origin xyz="-0.004323933900359966 7.687393629520179e-05 -0.06290636269894848" rpy="0 0 0" />
-      <mass value="1.191749063077993" />
-      <inertia ixx="0.001836921085157454" ixy="-4.52255779073625e-06" ixz="-1.12260196991184e-05" iyy="0.001514459139754772" iyz="4.217015543896721e-06" izz="0.001406349633054645" />
+      <origin xyz="-0.0044546467749932 6.68451221033419e-05 -0.0629088199049493" rpy="0 0 0" />
+      <mass value="1.2699" />
+      <inertia ixx="0.00196676709702796" ixy="-4.74943600599765e-06" ixz="-1.28327313479874e-05" iyy="0.0016222405527412" iyz="4.20974338410016e-06" izz="0.00148361887393115" />
     </inertial>
-    <visual name="left_shoulder_spacer">
+
+  <visual name="left_shoulder_spacer">
       <geometry>
         <mesh filename="../../milly-7dof/meshes/visual/covers/shoulder_spacer.stl" />
       </geometry>
@@ -99,11 +101,12 @@
   </link>
   <link name="left_link_2">
     <inertial>
-      <origin xyz="-0.1483062926574494 -0.01849181910190976 0.09759427368664694" rpy="0 0 0" />
-      <mass value="0.7815897120459003" />
-      <inertia ixx="0.001633916335052286" ixy="-0.001906802222639715" ixz="-8.476845187890086e-06" iyy="0.01165741053820402" iyz="-7.893882732242727e-06" izz="0.01195159644935846" />
+      <origin xyz="-0.0673504235557105 -2.10749243764147e-06 0.0979499609091379" rpy="0 0 0" />
+      <mass value="0.936082523326077" />
+      <inertia ixx="0.00103483606942494" ixy="-3.83116418588256e-07" ixz="2.86829323828195e-06" iyy="0.00267363075459586" iyz="8.61109715137447e-08" izz="0.00231442990523903" />
     </inertial>
-    <visual name="left_shoulder_roll_case">
+
+  <visual name="left_shoulder_roll_case">
       <geometry>
         <mesh filename="../../milly-7dof/meshes/visual/covers/shoulder_roll_case.stl" />
       </geometry>
@@ -160,11 +163,12 @@
   </link>
   <link name="left_link_4">
     <inertial>
-      <origin xyz="-0.02169485986926776 -0.05923475507546579 0.02650395851248238" rpy="0 0 0" />
-      <mass value="1.271552397135363" />
-      <inertia ixx="0.008396391783958448" ixy="-0.00302179023448194" ixz="4.351419901878976e-05" iyy="0.002021206766310417" iyz="0.000109719563412022" izz="0.009768029221245702" />
+      <origin xyz="-0.0213221964311696 -0.0582252222341674 0.0266902664093803" rpy="0 0 0" />
+      <mass value="1.30215178883504" />
+      <inertia ixx="0.00862548971587684" ixy="-0.00310203784767006" ixz="4.08187908118255e-05" iyy="0.00207919033171947" iyz="9.37230991830862e-05" izz="0.0100369834200088" />
     </inertial>
-    <collision name="left_link_4_elbow_motor">
+
+  <collision name="left_link_4_elbow_motor">
       <origin xyz="0 0 0.028" rpy="0 0 0" />
       <geometry>
         <cylinder radius="0.045" length="0.09" />
@@ -227,11 +231,12 @@
   </link>
   <link name="left_link_5">
     <inertial>
-      <origin xyz="0.0009859770997829292 -2.365115034926596e-05 -0.04573273032225007" rpy="0 0 0" />
-      <mass value="0.3850435382083583" />
-      <inertia ixx="0.0001973526193856333" ixy="1.604894465729405e-06" ixz="6.186875660211891e-07" iyy="0.0002322088300336327" iyz="-1.897813568117843e-07" izz="0.0001905322394397914" />
+      <origin xyz="0.000637095996759797 2.68254464829346e-07 -0.045181354486749" rpy="0 0 0" />
+      <mass value="0.400386369722729" />
+      <inertia ixx="0.000210267428283469" ixy="1.79050477767359e-06" ixz="5.24127747281358e-07" iyy="0.000250196604869222" iyz="-3.32933363809564e-07" izz="0.000202204300953675" />
     </inertial>
-    <collision name="left_link_5_wrist_roll">
+
+  <collision name="left_link_5_wrist_roll">
       <origin xyz="0 0 -0.016" rpy="0 0 0" />
       <geometry>
         <cylinder radius="0.03275" length="0.124" />
@@ -276,11 +281,12 @@
   </link>
   <link name="left_link_6">
     <inertial>
-      <origin xyz="-0.04857371338212793 -1.079796027950489e-05 0.02327872296404614" rpy="0 0 0" />
-      <mass value="0.3370698983420428" />
-      <inertia ixx="0.0002490303626795781" ixy="2.766286885498528e-07" ixz="5.853873297790393e-06" iyy="0.0005034117581304974" iyz="-4.873377044422999e-06" izz="0.0003912896397061188" />
+      <origin xyz="-0.0451861641060419 1.06566061525635e-05 0.0240243407901811" rpy="0 0 0" />
+      <mass value="0.347671394718106" />
+      <inertia ixx="0.000243816075890989" ixy="-1.83826222039082e-07" ixz="-8.49814099043962e-06" iyy="0.000500232743556963" iyz="-5.28442336816523e-06" izz="0.000377319165043106" />
     </inertial>
-    <collision name="left_link_6_wrist_round_case">
+
+  <collision name="left_link_6_wrist_round_case">
       <origin xyz="-0.017 0 0.0235" rpy="1.57079632679 0 0" />
       <geometry>
         <cylinder radius="0.046" length="0.06" />
@@ -343,11 +349,12 @@
   </link>
   <link name="left_link_7">
     <inertial>
-      <origin xyz="0.001161593152570695 -0.004155879332003714 -0.06657769621003048" rpy="0 0 0" />
-      <mass value="0.3562467995254684" />
-      <inertia ixx="0.0004397508282694075" ixy="-3.533558893270019e-06" ixz="-7.723746609440908e-06" iyy="0.0003352527690104802" iyz="1.329613076551826e-05" izz="0.0003033202358509107" />
+      <origin xyz="-0.000147918619101362 -0.00542762549539154 -0.0701896927117337" rpy="0 0 0" />
+      <mass value="0.449188657495413" />
+      <inertia ixx="0.000631751897650475" ixy="1.74280423819779e-05" ixz="9.60084955355982e-06" iyy="0.000539626715605093" iyz="3.46877548960079e-05" izz="0.000496014951049135" />
     </inertial>
-    <visual name="left_wrist_yaw_output_plate">
+
+  <visual name="left_wrist_yaw_output_plate">
       <geometry>
         <mesh filename="../../milly-7dof/meshes/visual/exterior/wrist_yaw_output_plate.stl" />
       </geometry>
@@ -387,11 +394,6 @@
     </collision>
   </link>
   <link name="left_gripper_drive">
-    <inertial>
-      <origin xyz="0 0 -0.004" rpy="0 0 0" />
-      <mass value="0.015" />
-      <inertia ixx="2e-06" ixy="0" ixz="0" iyy="3e-06" iyz="0" izz="4e-06" />
-    </inertial>
     <visual name="left_gripper_crank">
       <geometry>
         <mesh filename="../../milly/meshes/visual/exterior/gripper_crank.stl" />
@@ -401,11 +403,12 @@
   </link>
   <link name="left_finger_1">
     <inertial>
-      <origin xyz="-0.006728274898305932 0.004570245470696096 0.02279007026125835" rpy="0 0 0" />
-      <mass value="0.0387190830608586" />
-      <inertia ixx="1.44398992694164e-05" ixy="-1.152295569106406e-07" ixz="2.146742157720557e-06" iyy="1.414825796110789e-05" iyz="7.008217625227696e-07" izz="3.637340685425366e-06" />
+      <origin xyz="-0.0074355793179041 0.00137714113225661 0.0256585910603998" rpy="0 0 0" />
+      <mass value="0.0453061653339185" />
+      <inertia ixx="1.49598379340863e-05" ixy="-1.385987217233e-07" ixz="1.92644214821273e-06" iyy="1.38219049181812e-05" iyz="9.19532255253084e-07" izz="4.66425062818694e-06" />
     </inertial>
-    <collision name="left_finger_1_jaw_envelope">
+
+  <collision name="left_finger_1_jaw_envelope">
       <origin xyz="-0.010405920148 0.00374664989338 0.0473436923167" rpy="0 0 0" />
       <geometry>
         <box size="0.0323231735229 0.0286577315598 0.0862878729542" />
@@ -431,11 +434,6 @@
     </visual>
   </link>
   <link name="left_gripper_rod_1">
-    <inertial>
-      <origin xyz="0.0225 0 0.004025" rpy="0 0 0" />
-      <mass value="0.01" />
-      <inertia ixx="1e-07" ixy="0" ixz="0" iyy="2.3e-06" iyz="0" izz="2.3e-06" />
-    </inertial>
     <visual name="left_gripper_rod_1">
       <geometry>
         <mesh filename="../../milly/meshes/visual/exterior/gripper_rod_1.stl" />
@@ -447,11 +445,12 @@
   <link name="left_finger_1_pin" />
   <link name="left_finger_2">
     <inertial>
-      <origin xyz="0.008388135513413638 -0.003852094112952488 0.02273941501024205" rpy="0 0 0" />
-      <mass value="0.0387190831442922" />
-      <inertia ixx="1.431552848630381e-05" ixy="-1.104047784268819e-07" ixz="-2.117334095381115e-06" iyy="1.401950658257112e-05" iyz="-6.766744115017851e-07" izz="3.62778234626104e-06" />
+      <origin xyz="0.00745683479119845 -0.00197747777630276 0.0257719052678534" rpy="0 0 0" />
+      <mass value="0.0447981042114525" />
+      <inertia ixx="1.48183882734501e-05" ixy="-1.0713324985955e-07" ixz="-1.92169171459381e-06" iyy="1.37617154224731e-05" iyz="-5.97779838609776e-07" izz="4.58049043896501e-06" />
     </inertial>
-    <collision name="left_finger_2_jaw_envelope">
+
+  <collision name="left_finger_2_jaw_envelope">
       <origin xyz="0.0104058712018 -0.00374623976387 0.0473436920027" rpy="0 0 0" />
       <geometry>
         <box size="0.0323231773376 0.028657668116 0.0862878724207" />
@@ -477,11 +476,6 @@
     </visual>
   </link>
   <link name="left_gripper_rod_2">
-    <inertial>
-      <origin xyz="0.0225 0 0.004025" rpy="0 0 0" />
-      <mass value="0.01" />
-      <inertia ixx="1e-07" ixy="0" ixz="0" iyy="2.3e-06" iyz="0" izz="2.3e-06" />
-    </inertial>
     <visual name="left_gripper_rod_2">
       <geometry>
         <mesh filename="../../milly/meshes/visual/exterior/gripper_rod_2.stl" />
@@ -526,6 +520,13 @@
     <limit lower="-0.15" upper="3.35" effort="100" velocity="3.1416" />
   </joint>
   <link name="left_link_3">
+    <inertial>
+      <origin xyz="-0.232638551091243 -0.0275436444258605 -0.000294308601473136" rpy="0 0 0" />
+      <mass value="0.563336943604624" />
+      <inertia ixx="0.00114708626482043" ixy="-0.000862005847004822" ixz="1.24874023536626e-06" iyy="0.00246265386735805" iyz="-1.13553857874774e-06" izz="0.00295340143286446" />
+    </inertial>
+
+
     <visual name="left_upper_arm_case">
       <geometry>
         <mesh filename="../../milly-7dof/meshes/visual/covers/upper_arm_case.stl" />
@@ -665,11 +666,12 @@
   <bello:slider_crank name="left_milly_gripper" driver="left_gripper" sliders="left_finger_1_joint left_finger_2_joint" rods="left_gripper_rod_1_joint left_gripper_rod_2_joint" crank_radius="0.03" rod_length="0.045" slider_offset="0.014" phase="2.64900977378" slider_reference="0.0720156969673" />
   <link name="right_base_link">
     <inertial>
-      <origin xyz="-0.0001241321748860844 -0.04203029467324181 0.04978668837136444" rpy="0 0 0" />
-      <mass value="1.01372171051755" />
-      <inertia ixx="0.001222473948380703" ixy="5.704125615847687e-07" ixz="7.03787041079121e-07" iyy="0.001034384940334247" iyz="9.599059522533496e-06" izz="0.001703404487664201" />
+      <origin xyz="-8.46486972475361e-05 -0.0440193520884683 0.0383078206163094" rpy="0 0 0" />
+      <mass value="1.44497730195445" />
+      <inertia ixx="0.00232389193680254" ixy="9.99319412432692e-07" ixz="2.04782481881722e-06" iyy="0.00194160083109364" iyz="-3.36061524608899e-05" izz="0.00274448252031089" />
     </inertial>
-    <collision name="right_base_link_base_shell">
+
+  <collision name="right_base_link_base_shell">
       <origin xyz="0 -0.045 0.0405" rpy="0 0 0" />
       <geometry>
         <cylinder radius="0.059" length="0.073" />
@@ -708,11 +710,12 @@
   </link>
   <link name="right_link_1">
     <inertial>
-      <origin xyz="-0.004323933900359966 7.687393629520179e-05 -0.06290636269894848" rpy="0 0 0" />
-      <mass value="1.191749063077993" />
-      <inertia ixx="0.001836921085157454" ixy="-4.52255779073625e-06" ixz="-1.12260196991184e-05" iyy="0.001514459139754772" iyz="4.217015543896721e-06" izz="0.001406349633054645" />
+      <origin xyz="-0.0044546467749932 6.68451221033419e-05 -0.0629088199049493" rpy="0 0 0" />
+      <mass value="1.2699" />
+      <inertia ixx="0.00196676709702796" ixy="-4.74943600599765e-06" ixz="-1.28327313479874e-05" iyy="0.0016222405527412" iyz="4.20974338410016e-06" izz="0.00148361887393115" />
     </inertial>
-    <visual name="right_shoulder_spacer">
+
+  <visual name="right_shoulder_spacer">
       <geometry>
         <mesh filename="../../milly-7dof/meshes/visual/covers/shoulder_spacer.stl" />
       </geometry>
@@ -733,11 +736,12 @@
   </link>
   <link name="right_link_2">
     <inertial>
-      <origin xyz="-0.1483062926574494 -0.01849181910190976 0.09759427368664694" rpy="0 0 0" />
-      <mass value="0.7815897120459003" />
-      <inertia ixx="0.001633916335052286" ixy="-0.001906802222639715" ixz="-8.476845187890086e-06" iyy="0.01165741053820402" iyz="-7.893882732242727e-06" izz="0.01195159644935846" />
+      <origin xyz="-0.0673504235557105 -2.10749243764147e-06 0.0979499609091379" rpy="0 0 0" />
+      <mass value="0.936082523326077" />
+      <inertia ixx="0.00103483606942494" ixy="-3.83116418588256e-07" ixz="2.86829323828195e-06" iyy="0.00267363075459586" iyz="8.61109715137447e-08" izz="0.00231442990523903" />
     </inertial>
-    <visual name="right_shoulder_roll_case">
+
+  <visual name="right_shoulder_roll_case">
       <geometry>
         <mesh filename="../../milly-7dof/meshes/visual/covers/shoulder_roll_case.stl" />
       </geometry>
@@ -794,11 +798,12 @@
   </link>
   <link name="right_link_4">
     <inertial>
-      <origin xyz="-0.02169485986926776 -0.05923475507546579 0.02650395851248238" rpy="0 0 0" />
-      <mass value="1.271552397135363" />
-      <inertia ixx="0.008396391783958448" ixy="-0.00302179023448194" ixz="4.351419901878976e-05" iyy="0.002021206766310417" iyz="0.000109719563412022" izz="0.009768029221245702" />
+      <origin xyz="-0.0213221964311696 -0.0582252222341674 0.0266902664093803" rpy="0 0 0" />
+      <mass value="1.30215178883504" />
+      <inertia ixx="0.00862548971587684" ixy="-0.00310203784767006" ixz="4.08187908118255e-05" iyy="0.00207919033171947" iyz="9.37230991830862e-05" izz="0.0100369834200088" />
     </inertial>
-    <collision name="right_link_4_elbow_motor">
+
+  <collision name="right_link_4_elbow_motor">
       <origin xyz="0 0 0.028" rpy="0 0 0" />
       <geometry>
         <cylinder radius="0.045" length="0.09" />
@@ -861,11 +866,12 @@
   </link>
   <link name="right_link_5">
     <inertial>
-      <origin xyz="0.0009859770997829292 -2.365115034926596e-05 -0.04573273032225007" rpy="0 0 0" />
-      <mass value="0.3850435382083583" />
-      <inertia ixx="0.0001973526193856333" ixy="1.604894465729405e-06" ixz="6.186875660211891e-07" iyy="0.0002322088300336327" iyz="-1.897813568117843e-07" izz="0.0001905322394397914" />
+      <origin xyz="0.000637095996759797 2.68254464829346e-07 -0.045181354486749" rpy="0 0 0" />
+      <mass value="0.400386369722729" />
+      <inertia ixx="0.000210267428283469" ixy="1.79050477767359e-06" ixz="5.24127747281358e-07" iyy="0.000250196604869222" iyz="-3.32933363809564e-07" izz="0.000202204300953675" />
     </inertial>
-    <collision name="right_link_5_wrist_roll">
+
+  <collision name="right_link_5_wrist_roll">
       <origin xyz="0 0 -0.016" rpy="0 0 0" />
       <geometry>
         <cylinder radius="0.03275" length="0.124" />
@@ -910,11 +916,12 @@
   </link>
   <link name="right_link_6">
     <inertial>
-      <origin xyz="-0.04857371338212793 -1.079796027950489e-05 0.02327872296404614" rpy="0 0 0" />
-      <mass value="0.3370698983420428" />
-      <inertia ixx="0.0002490303626795781" ixy="2.766286885498528e-07" ixz="5.853873297790393e-06" iyy="0.0005034117581304974" iyz="-4.873377044422999e-06" izz="0.0003912896397061188" />
+      <origin xyz="-0.0451861641060419 1.06566061525635e-05 0.0240243407901811" rpy="0 0 0" />
+      <mass value="0.347671394718106" />
+      <inertia ixx="0.000243816075890989" ixy="-1.83826222039082e-07" ixz="-8.49814099043962e-06" iyy="0.000500232743556963" iyz="-5.28442336816523e-06" izz="0.000377319165043106" />
     </inertial>
-    <collision name="right_link_6_wrist_round_case">
+
+  <collision name="right_link_6_wrist_round_case">
       <origin xyz="-0.017 0 0.0235" rpy="1.57079632679 0 0" />
       <geometry>
         <cylinder radius="0.046" length="0.06" />
@@ -977,11 +984,12 @@
   </link>
   <link name="right_link_7">
     <inertial>
-      <origin xyz="0.001161593152570695 -0.004155879332003714 -0.06657769621003048" rpy="0 0 0" />
-      <mass value="0.3562467995254684" />
-      <inertia ixx="0.0004397508282694075" ixy="-3.533558893270019e-06" ixz="-7.723746609440908e-06" iyy="0.0003352527690104802" iyz="1.329613076551826e-05" izz="0.0003033202358509107" />
+      <origin xyz="-0.000147918619101362 -0.00542762549539154 -0.0701896927117337" rpy="0 0 0" />
+      <mass value="0.449188657495413" />
+      <inertia ixx="0.000631751897650475" ixy="1.74280423819779e-05" ixz="9.60084955355982e-06" iyy="0.000539626715605093" iyz="3.46877548960079e-05" izz="0.000496014951049135" />
     </inertial>
-    <visual name="right_wrist_yaw_output_plate">
+
+  <visual name="right_wrist_yaw_output_plate">
       <geometry>
         <mesh filename="../../milly-7dof/meshes/visual/exterior/wrist_yaw_output_plate.stl" />
       </geometry>
@@ -1021,11 +1029,6 @@
     </collision>
   </link>
   <link name="right_gripper_drive">
-    <inertial>
-      <origin xyz="0 0 -0.004" rpy="0 0 0" />
-      <mass value="0.015" />
-      <inertia ixx="2e-06" ixy="0" ixz="0" iyy="3e-06" iyz="0" izz="4e-06" />
-    </inertial>
     <visual name="right_gripper_crank">
       <geometry>
         <mesh filename="../../milly/meshes/visual/exterior/gripper_crank.stl" />
@@ -1035,11 +1038,12 @@
   </link>
   <link name="right_finger_1">
     <inertial>
-      <origin xyz="-0.006728274898305932 0.004570245470696096 0.02279007026125835" rpy="0 0 0" />
-      <mass value="0.0387190830608586" />
-      <inertia ixx="1.44398992694164e-05" ixy="-1.152295569106406e-07" ixz="2.146742157720557e-06" iyy="1.414825796110789e-05" iyz="7.008217625227696e-07" izz="3.637340685425366e-06" />
+      <origin xyz="-0.0074355793179041 0.00137714113225661 0.0256585910603998" rpy="0 0 0" />
+      <mass value="0.0453061653339185" />
+      <inertia ixx="1.49598379340863e-05" ixy="-1.385987217233e-07" ixz="1.92644214821273e-06" iyy="1.38219049181812e-05" iyz="9.19532255253084e-07" izz="4.66425062818694e-06" />
     </inertial>
-    <collision name="right_finger_1_jaw_envelope">
+
+  <collision name="right_finger_1_jaw_envelope">
       <origin xyz="-0.010405920148 0.00374664989338 0.0473436923167" rpy="0 0 0" />
       <geometry>
         <box size="0.0323231735229 0.0286577315598 0.0862878729542" />
@@ -1065,11 +1069,6 @@
     </visual>
   </link>
   <link name="right_gripper_rod_1">
-    <inertial>
-      <origin xyz="0.0225 0 0.004025" rpy="0 0 0" />
-      <mass value="0.01" />
-      <inertia ixx="1e-07" ixy="0" ixz="0" iyy="2.3e-06" iyz="0" izz="2.3e-06" />
-    </inertial>
     <visual name="right_gripper_rod_1">
       <geometry>
         <mesh filename="../../milly/meshes/visual/exterior/gripper_rod_1.stl" />
@@ -1081,11 +1080,12 @@
   <link name="right_finger_1_pin" />
   <link name="right_finger_2">
     <inertial>
-      <origin xyz="0.008388135513413638 -0.003852094112952488 0.02273941501024205" rpy="0 0 0" />
-      <mass value="0.0387190831442922" />
-      <inertia ixx="1.431552848630381e-05" ixy="-1.104047784268819e-07" ixz="-2.117334095381115e-06" iyy="1.401950658257112e-05" iyz="-6.766744115017851e-07" izz="3.62778234626104e-06" />
+      <origin xyz="0.00745683479119845 -0.00197747777630276 0.0257719052678534" rpy="0 0 0" />
+      <mass value="0.0447981042114525" />
+      <inertia ixx="1.48183882734501e-05" ixy="-1.0713324985955e-07" ixz="-1.92169171459381e-06" iyy="1.37617154224731e-05" iyz="-5.97779838609776e-07" izz="4.58049043896501e-06" />
     </inertial>
-    <collision name="right_finger_2_jaw_envelope">
+
+  <collision name="right_finger_2_jaw_envelope">
       <origin xyz="0.0104058712018 -0.00374623976387 0.0473436920027" rpy="0 0 0" />
       <geometry>
         <box size="0.0323231773376 0.028657668116 0.0862878724207" />
@@ -1111,11 +1111,6 @@
     </visual>
   </link>
   <link name="right_gripper_rod_2">
-    <inertial>
-      <origin xyz="0.0225 0 0.004025" rpy="0 0 0" />
-      <mass value="0.01" />
-      <inertia ixx="1e-07" ixy="0" ixz="0" iyy="2.3e-06" iyz="0" izz="2.3e-06" />
-    </inertial>
     <visual name="right_gripper_rod_2">
       <geometry>
         <mesh filename="../../milly/meshes/visual/exterior/gripper_rod_2.stl" />
@@ -1160,6 +1155,13 @@
     <limit lower="-0.15" upper="3.35" effort="100" velocity="3.1416" />
   </joint>
   <link name="right_link_3">
+    <inertial>
+      <origin xyz="-0.232638551091243 -0.0275436444258605 -0.000294308601473136" rpy="0 0 0" />
+      <mass value="0.563336943604624" />
+      <inertia ixx="0.00114708626482043" ixy="-0.000862005847004822" ixz="1.24874023536626e-06" iyy="0.00246265386735805" iyz="-1.13553857874774e-06" izz="0.00295340143286446" />
+    </inertial>
+
+
     <visual name="right_upper_arm_case">
       <geometry>
         <mesh filename="../../milly-7dof/meshes/visual/covers/upper_arm_case.stl" />

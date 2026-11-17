@@ -27,12 +27,12 @@ cameras remain.
 
 The optional coarse gimbal safety sphere is defined in
 `../stereo-gimbal/safety-envelope.json` and its companion proxy URDF. It has a
-160 mm radius, is fixed to `gimbal_base_link` at `(0, 0, 0.147)`, and therefore
-has centre `(0.045, 0, 0.451)` in `dual_milly_base`. It covers the complete
-gimbal throughout the three confirmed joint ranges, with at least 4.4 mm
-clearance to the current model. The support pole retains its separate box
-collider. Future coarse solving should use the sphere in place of the gimbal
-exterior primitives; it is not a self-collision body or an active control guard.
+132 mm radius, is fixed to `gimbal_base_link` at `(0, 0, 0.174)`, and therefore
+has centre `(0.045, 0, 0.478)` in `dual_milly_base`. It covers the moving
+assembly throughout the three confirmed joint ranges, with at least 3.48 mm
+clearance to the current model. The fixed base plate/yaw stator and support
+pole retain their own primitives. Use the sphere in place of only its covered
+moving exterior bodies; this proxy does not check internal gimbal collisions.
 
 The browser preview can display all four stereo camera frames, or isolate the
 body, center optical, left optical or right optical frame. The markers use the
@@ -59,6 +59,12 @@ rear yaw support at pitch +90 degrees and roll +/-90 degrees. The independent
 joint bounds do not enforce a collision-free coupled workspace. Resolve that
 interference with coupled motion bounds or mechanical changes before full-range
 head tracking.
+
+Both arms use the supplied mass/COM/inertia values documented in
+`../milly-7dof/physical-parameters.json`; each arm is 6.803799249 kg including
+its fixed base. Arm-only dynamics can freeze the unmodelled gimbal without
+inventing gimbal inertials. Simulation adapters belong outside this description
+directory.
 
 Repository entry points:
 

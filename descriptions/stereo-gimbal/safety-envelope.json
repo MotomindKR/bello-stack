@@ -7,13 +7,12 @@
     "xyz": [
       0.0,
       0.0,
-      0.147
+      0.174
     ],
-    "radius": 0.16
+    "radius": 0.132
   },
   "proxy_urdf": "urdf/gimbal-safety-envelope.urdf",
   "covers_links": [
-    "gimbal_base_link",
     "gimbal_yaw_link",
     "gimbal_pitch_link",
     "gimbal_roll_link",
@@ -33,18 +32,18 @@
       1.5707963267948966
     ]
   },
-  "conservative_geometry_radius_m": 0.155566706,
-  "minimum_model_clearance_m": 0.004433294,
-  "bound_method": "Centre lies on the yaw axis, so yaw preserves distance. Base and yaw-stage bounds include every visual mesh vertex and collision box corner; cylinders use enclosing box corners. For the pitch subtree, the maximum radius about the pitch pivot is invariant under roll because the roll pivot and camera mount translations are collinear with the roll axis. Add the 0.034014703 m distance from pitch pivot to sphere centre by the triangle inequality. This bounds continuous joint travel, not just sampled poses.",
+  "conservative_geometry_radius_m": 0.128515212,
+  "minimum_model_clearance_m": 0.003484788,
+  "bound_method": "Fixed sphere centre lies on the yaw axis, so yaw preserves radius. Bound only the moving assembly; retain the base plate and yaw stator primitives separately. Transform every current visual mesh vertex and collision box corner into its stage frame. Cylinders use circumscribed 64-sided prisms. For each pitch-subtree point, maximize squared distance analytically over pitch +/-pi/2. For camera points, first take the two extrema of z after roll +/-pi/2; the roll and camera translations are collinear with the roll axis. Evaluate A*cos(pitch)+B*sin(pitch) at both endpoints and its interior minimum. This bounds the full continuous yaw/pitch/roll travel without a triangle-inequality offset or pose sampling. Centre z=0.174 is a rounded one-dimensional minimax fit to the moving swept geometry.",
   "per_link_bound_m": {
-    "gimbal_base_link": 0.155566706,
-    "gimbal_yaw_link": 0.102596007,
-    "gimbal_pitch_link": 0.11576432,
-    "stereo_camera_link": 0.155458846
+    "gimbal_yaw_link": 0.128424845,
+    "gimbal_pitch_link": 0.086461011,
+    "stereo_camera_link": 0.128515212
   },
-  "usage": "Optional fixed coarse proxy for arm/environment avoidance. Replace the covered links' exterior collision primitives with this sphere for coarse solving; do not test it against those links or count both representations. Keep the support pole as a separate box. Detailed gimbal self-collision checks still require the original bodies. This data is not connected to an active collision solver or motor control.",
+  "usage": "Coarse moving-assembly proxy for arm/environment avoidance. Replace only covers_links with this sphere. Keep the fixed gimbal_base_link mount plate and yaw stator, and the support pole, as their own primitives. Do not count covered bodies twice or use this proxy for internal gimbal self-collision.",
   "excludes": [
-    "support pole",
+    "fixed base plate and yaw stator (retain original primitives)",
+    "support pole (retain original box)",
     "cables",
     "unmodelled mounting hardware"
   ],

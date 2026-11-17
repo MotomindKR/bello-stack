@@ -92,9 +92,19 @@ not calibrated contact surfaces.
 Each new finger assembly has one box envelope; compliant pad deformation is
 not modeled.
 
-All existing inertial elements are unchanged; the new roll link still has no
-mass/inertia. The teammate's final physical parameters are still needed.
-No MuJoCo dynamics profile is provided yet.
+Arm mass, centre of mass and inertia tensors follow the teammate's
+`milly-urdf-with-meshes.zip` delivery, including the added roll link. Each arm
+has a modelled mass of 6.803799249 kg, including its fixed base. Source hashes,
+per-link values and import scope are recorded in `physical-parameters.json`.
+Superseded auxiliary gripper mass estimates have been removed; auxiliary frames
+without supplied inertia remain massless. The J7 payload inertia stays in the
+rigidly attached `link_7` frame.
+
+Only inertial elements were imported. Existing kinematics, visuals, primitive
+collisions, SDK limits and the nonlinear gripper driver convention are retained.
+The delivery's different finger coordinate convention and J7 limits are not
+part of this physical-parameter update. Native simulation adapters live outside
+`descriptions/`; this directory contains authored description data only.
 
 The URDF and hardware YAML files are maintained directly; `descriptions/`
 contains no generator scripts. Shared geometry and motor ordering must be kept

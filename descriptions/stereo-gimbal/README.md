@@ -72,17 +72,18 @@ No masses or inertia tensors are estimated in this visual/kinematic phase.
 The URDF, YAML and description data are maintained directly; this directory
 contains no generators.
 
-`safety-envelope.json` defines an optional coarse safety sphere for later
-arm/environment collision solving. Its centre is `(0, 0, 0.147)` in
-`gimbal_base_link`, with radius `0.160 m`. A continuous rotational bound over
-the current meshes and primitives gives a maximum radius of `0.155567 m`,
-leaving at least 4.4 mm model clearance throughout the confirmed travel.
-`urdf/gimbal-safety-envelope.urdf` contains the same sphere as a collision-only
-proxy. Use it instead of the covered exterior primitives for coarse checks,
-while retaining detailed bodies for gimbal self-collision. The sphere excludes
-the support pole, cables and unmodelled hardware, and is not wired to motor
-control. Revalidate it whenever geometry or kinematics change. The browser
-preview has a separate safety-sphere checkbox.
+`safety-envelope.json` defines a coarse sphere for the **moving assembly**. Its
+centre is `(0, 0, 0.174)` in `gimbal_base_link`, with radius `0.132 m`.
+The analytic continuous bound over all current visual vertices and collision
+primitives is `0.128516 m` for the confirmed ±90° yaw/pitch/roll ranges, leaving
+at least 3.48 mm of model clearance. This excludes the fixed mount plate and
+yaw stator: retain their original primitives, and keep the support pole box.
+`urdf/gimbal-safety-envelope.urdf` contains the matching collision-only proxy.
+Replace only the metadata's `covers_links`; do not duplicate those bodies.
+Detailed geometry is still required for internal gimbal self-collision checks.
+Cables and unmodelled hardware are outside this bound. Revalidate it whenever
+geometry, axes, mounting offsets or travel change. The browser has a separate
+safety-sphere checkbox.
 
 ## Entry points
 
