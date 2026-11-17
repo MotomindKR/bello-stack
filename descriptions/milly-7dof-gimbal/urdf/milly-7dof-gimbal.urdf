@@ -1574,25 +1574,25 @@
   <link name="gimbal_support_link">
     <visual name="gimbal_support">
       <geometry>
-        <box size="0.060 0.060 0.304" />
+        <box size="0.060 0.060 0.423" />
       </geometry>
       <material name="gimbal_metal" />
     </visual>
     <collision name="gimbal_support">
       <geometry>
-        <box size="0.060 0.060 0.304" />
+        <box size="0.060 0.060 0.423" />
       </geometry>
     </collision>
   </link>
   <joint name="gimbal_support_mount" type="fixed">
     <parent link="dual_milly_base" />
     <child link="gimbal_support_link" />
-    <origin xyz="0.045 0 0.152" rpy="0 0 0" />
+    <origin xyz="0.045 0 0.2115" rpy="0 0 0" />
   </joint>
   <joint name="gimbal_mount" type="fixed">
     <parent link="dual_milly_base" />
     <child link="gimbal_base_link" />
-    <origin xyz="0.045 0 0.304" rpy="0 0 3.141592653589793" />
+    <origin xyz="0.045 0 0.423" rpy="0 0 3.141592653589793" />
   </joint>
   <link name="left_gripper_tcp" />
   <joint name="left_gripper_tcp_mount" type="fixed">

@@ -30,7 +30,7 @@
     "xyz": [
       0.045,
       0,
-      0.304
+      0.423
     ],
     "rpy": [
       0,
@@ -38,7 +38,7 @@
       3.141592653589793
     ]
   },
-  "source": "User requested 450 mm between arm bases, the gimbal centred between them, then the gimbal base suspended 300 mm above the arms and its cameras facing the arm workspace. Existing arm poses are retained.",
+  "source": "User requested 450 mm between arm bases, the gimbal centred between them, and the level stereo optical centre 600 mm above the physical arm mounting planes. Existing arm poses are retained.",
   "removed": "Legacy centre D405, keepout and support post; arm-mounted wrist cameras remain.",
   "control": {
     "dual_arm": "16 coordinates across can0 IDs 1..8 and can1 IDs 1..8",
@@ -63,11 +63,11 @@
     "gimbal_centre_xyz_m": [
       0.045,
       0,
-      0.304
+      0.423
     ],
-    "reference": "Centres on the underside mounting planes. Arm plates are at z=0.004 m. The gimbal plate is centred 0.300 m above them at z=0.304 m, yawed pi radians so the stereo camera faces -X at zero."
+    "reference": "Centres on the underside mounting planes. Arm plates are at z=0.004 m. The gimbal plate is at z=0.423 m (419 mm above them), yawed pi so the stereo camera faces -X at zero. The nominal level stereo optical centre is at z=0.604 m, 600 mm above the arm mounting planes."
   },
-  "gimbal_height_above_arm_mounts_m": 0.3,
+  "gimbal_height_above_arm_mounts_m": 0.419,
   "stereo_view_direction_at_zero": [
     -1,
     0,
@@ -81,12 +81,12 @@
       "size": [
         0.06,
         0.06,
-        0.304
+        0.423
       ],
       "xyz": [
         0.045,
         0,
-        0.152
+        0.2115
       ],
       "rpy": [
         0,
@@ -95,7 +95,7 @@
       ]
     },
     "ground_z_m": 0,
-    "top_z_m": 0.304,
+    "top_z_m": 0.423,
     "note": "Provisional 60 mm square support. Visual and matching primitive collision only; no inertial parameters."
   },
   "gimbal_safety_envelope": {
@@ -104,7 +104,7 @@
     "centre_in_root_m": [
       0.045,
       0.0,
-      0.478
+      0.597
     ],
     "radius_m": 0.132,
     "support_handling": "Retain fixed gimbal base plate/yaw stator primitives and separate support pole box."
@@ -133,5 +133,6 @@
     "top_z_m": 0,
     "bottom_z_m": -0.02,
     "note": "Fixed workcell ground with matching visual and primitive collision; no inertial parameters."
-  }
+  },
+  "stereo_optical_height_above_arm_mounts_at_zero_m": 0.6
 }

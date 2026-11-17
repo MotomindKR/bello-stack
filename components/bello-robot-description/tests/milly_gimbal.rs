@@ -25,7 +25,7 @@ fn positions() -> BTreeMap<String, f64> {
 }
 
 #[test]
-fn gimbal_is_centred_300_mm_above_the_450_mm_arm_spacing_and_faces_the_workspace() {
+fn level_camera_is_600_mm_above_the_450_mm_arm_mounting_plates() {
     let robot = load();
     let q = positions();
     assert_eq!(robot.motor_coordinates().len(), 19);
@@ -43,12 +43,13 @@ fn gimbal_is_centred_300_mm_above_the_450_mm_arm_spacing_and_faces_the_workspace
     let gimbal = robot
         .link_transform("dual_milly_base", "gimbal_base_link", &q)
         .unwrap();
-    let expected_mount = (centres[0] + centres[1]) / 2.0 + Vector3::new(0.0, 0.0, 0.300);
+    let expected_mount = (centres[0] + centres[1]) / 2.0 + Vector3::new(0.0, 0.0, 0.419);
     assert!((gimbal.translation.vector - expected_mount).norm() < 1e-12);
     let camera = robot
         .link_transform("dual_milly_base", "stereo_camera_optical_frame", &q)
         .unwrap();
     assert!((camera.rotation * Vector3::z() + Vector3::x()).norm() < 1e-12);
+    assert!((camera.translation.z - centres[0].z - 0.600).abs() < 1e-12);
 }
 
 #[test]
