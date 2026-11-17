@@ -1362,4 +1362,16 @@
     <child link="right_link_7" />
     <origin xyz="0 -0.0019338746999999999 6.5267000000000797e-05" rpy="-1.5707963000000009 1.4354332000000003 -1.5707963000000009" />
   </joint>
+  <link name="left_gripper_tcp" />
+  <joint name="left_gripper_tcp_mount" type="fixed">
+    <parent link="left_gripper_base" />
+    <child link="left_gripper_tcp" />
+    <origin xyz="0 0 0.0795" rpy="3.141592653589793 0 0" />
+  </joint>
+  <link name="right_gripper_tcp" />
+  <joint name="right_gripper_tcp_mount" type="fixed">
+    <parent link="right_gripper_base" />
+    <child link="right_gripper_tcp" />
+    <origin xyz="0 0 0.0795" rpy="3.141592653589793 0 0" />
+  </joint>
 </robot>

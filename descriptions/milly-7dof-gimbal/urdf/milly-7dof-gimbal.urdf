@@ -1594,4 +1594,16 @@
     <child link="gimbal_base_link" />
     <origin xyz="0.045 0 0.304" rpy="0 0 3.141592653589793" />
   </joint>
+  <link name="left_gripper_tcp" />
+  <joint name="left_gripper_tcp_mount" type="fixed">
+    <parent link="left_gripper_base" />
+    <child link="left_gripper_tcp" />
+    <origin xyz="0 0 0.0795" rpy="3.141592653589793 0 0" />
+  </joint>
+  <link name="right_gripper_tcp" />
+  <joint name="right_gripper_tcp_mount" type="fixed">
+    <parent link="right_gripper_base" />
+    <child link="right_gripper_tcp" />
+    <origin xyz="0 0 0.0795" rpy="3.141592653589793 0 0" />
+  </joint>
 </robot>
