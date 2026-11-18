@@ -1,6 +1,6 @@
 # Seven-axis Milly; original axes use sign-mapped SDK position ranges.
 # Source and command/feedback distinction: sdk-limits.json.
-# Added joint_3 has user-specified +/-90 deg travel; direction/zero remain provisional.
+# Added joint_3 has user-specified +/-90 deg travel; J3 direction -1 follows the actuator; encoder zero is calibrated on the robot.
 robot_description: urdf/milly-7dof.urdf
 logical_buses:
 - name: can0
@@ -62,7 +62,7 @@ motors:
   bus: can0
   id: 3
   model: ROBSTRIDE_10P
-  direction: 1
+  direction: -1
   limits:
     position_min: -1.5707963267948966
     position_max: 1.5707963267948966

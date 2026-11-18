@@ -69,7 +69,7 @@ motors:
   bus: can0
   id: 3
   model: ROBSTRIDE_10P
-  direction: 1
+  direction: -1
   limits:
     position_min: -1.5707963267948966
     position_max: 1.5707963267948966
@@ -253,7 +253,7 @@ motors:
   bus: can1
   id: 3
   model: ROBSTRIDE_10P
-  direction: 1
+  direction: -1
   limits:
     position_min: -1.5707963267948966
     position_max: 1.5707963267948966

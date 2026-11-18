@@ -145,7 +145,10 @@ Joint 3 has user-specified travel of **-90 to +90 degrees** (`[-pi/2, pi/2]`
 rad). The URDF, hardware command limits and position health limits use this
 range on each arm.
 
-The new motor's `direction: 1` and encoder-zero convention remain provisional.
+The added J3 motor uses `direction: -1` in the single-arm, dual-arm and combined
+gimbal profiles, corrected from the original provisional +1 after hardware
+commissioning. Hardwared applies this sign to feedback and commands; the URDF
+axis and mechanical encoder zero do not change.
 The 0.2 rad/s command velocity, 2 N m feedforward torque cap and other initial
 control settings remain commissioning placeholders, not total closed-loop
 torque guarantees. Confirm zero, direction, gains and damping before enabling
