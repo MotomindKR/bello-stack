@@ -33,7 +33,7 @@ motors:
     maximum_position_step: 0.1
     limit: reject
     position_step: fault
-  fault_damping_kd: 0.5
+  fault_damping_kd: 0.25
 - name: gimbal_pitch
   coordinate: gimbal_pitch
   bus: can0
@@ -56,7 +56,7 @@ motors:
     maximum_position_step: 0.1
     limit: reject
     position_step: fault
-  fault_damping_kd: 0.5
+  fault_damping_kd: 0.25
 - name: gimbal_roll
   coordinate: gimbal_roll
   bus: can0
@@ -79,7 +79,7 @@ motors:
     maximum_position_step: 0.1
     limit: reject
     position_step: fault
-  fault_damping_kd: 0.5
+  fault_damping_kd: 0.25
 motor_groups:
 - name: gimbal
   motors:

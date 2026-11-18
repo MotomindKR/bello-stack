@@ -23,6 +23,8 @@ angles with zero offset assumed. Encoder zeros and cable clearances still need
 commissioning; the sign confirmation does not calibrate the zeros.
 The 0.2 rad/s velocity, 1 N m feedforward cap, 0.1 rad maximum position step
 and damping values are initial control settings, not measured physical ratings.
+Each motor's fault-stop `fault_damping_kd` is 0.25, half its earlier value;
+normal tracking gains are configured by the controller.
 No actuator commands are issued by the browser model viewer.
 
 ## Geometry and frames

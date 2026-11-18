@@ -40,7 +40,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 10.0
+  fault_damping_kd: 5.0
 - name: left_joint_2
   coordinate: left_joint_2
   bus: can0
@@ -63,7 +63,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 20.0
+  fault_damping_kd: 10.0
 - name: left_joint_3
   coordinate: left_joint_3
   bus: can0
@@ -86,7 +86,7 @@ motors:
     maximum_position_step: 0.1
     limit: reject
     position_step: fault
-  fault_damping_kd: 1.0
+  fault_damping_kd: 0.5
 - name: left_joint_4
   coordinate: left_joint_4
   bus: can0
@@ -109,7 +109,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 20.0
+  fault_damping_kd: 10.0
 - name: left_joint_5
   coordinate: left_joint_5
   bus: can0
@@ -132,7 +132,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 10.0
+  fault_damping_kd: 5.0
 - name: left_joint_6
   coordinate: left_joint_6
   bus: can0
@@ -155,7 +155,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 15.0
+  fault_damping_kd: 7.5
 - name: left_joint_7
   coordinate: left_joint_7
   bus: can0
@@ -178,7 +178,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 10.0
+  fault_damping_kd: 5.0
 - name: left_gripper
   coordinate: left_gripper
   bus: can0
@@ -201,7 +201,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 5.0
+  fault_damping_kd: 2.5
 - name: right_joint_1
   coordinate: right_joint_1
   bus: can1
@@ -224,7 +224,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 10.0
+  fault_damping_kd: 5.0
 - name: right_joint_2
   coordinate: right_joint_2
   bus: can1
@@ -247,7 +247,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 20.0
+  fault_damping_kd: 10.0
 - name: right_joint_3
   coordinate: right_joint_3
   bus: can1
@@ -270,7 +270,7 @@ motors:
     maximum_position_step: 0.1
     limit: reject
     position_step: fault
-  fault_damping_kd: 1.0
+  fault_damping_kd: 0.5
 - name: right_joint_4
   coordinate: right_joint_4
   bus: can1
@@ -293,7 +293,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 20.0
+  fault_damping_kd: 10.0
 - name: right_joint_5
   coordinate: right_joint_5
   bus: can1
@@ -316,7 +316,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 10.0
+  fault_damping_kd: 5.0
 - name: right_joint_6
   coordinate: right_joint_6
   bus: can1
@@ -339,7 +339,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 15.0
+  fault_damping_kd: 7.5
 - name: right_joint_7
   coordinate: right_joint_7
   bus: can1
@@ -362,7 +362,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 10.0
+  fault_damping_kd: 5.0
 - name: right_gripper
   coordinate: right_gripper
   bus: can1
@@ -385,7 +385,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 5.0
+  fault_damping_kd: 2.5
 - name: gimbal_yaw
   coordinate: gimbal_yaw
   bus: can0
@@ -408,7 +408,7 @@ motors:
     maximum_position_step: 0.1
     limit: reject
     position_step: fault
-  fault_damping_kd: 0.5
+  fault_damping_kd: 0.25
 - name: gimbal_pitch
   coordinate: gimbal_pitch
   bus: can0
@@ -431,7 +431,7 @@ motors:
     maximum_position_step: 0.1
     limit: reject
     position_step: fault
-  fault_damping_kd: 0.5
+  fault_damping_kd: 0.25
 - name: gimbal_roll
   coordinate: gimbal_roll
   bus: can0
@@ -454,7 +454,7 @@ motors:
     maximum_position_step: 0.1
     limit: reject
     position_step: fault
-  fault_damping_kd: 0.5
+  fault_damping_kd: 0.25
 motor_groups:
 - name: dual_arm
   motors:

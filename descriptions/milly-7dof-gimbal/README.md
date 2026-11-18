@@ -52,6 +52,11 @@ One hardware daemon owns both buses. The gimbal inherits the confirmed +/-90
 degree travel and commissioning caps from its standalone profile. Arm position
 bounds retain the SDK mapping described in `../milly-7dof/README.md`.
 
+All 19 `fault_damping_kd` values are half their previous commissioning values.
+The three gimbal motors now use 0.25, matching the standalone gimbal profile;
+the arm values are documented in `../milly-7dof/README.md`. Normal tracking
+gains are configured by each controller.
+
 All three gimbal motors use the user-confirmed `direction: -1` mapping from
 actuator raw angles to URDF joint angles. Encoder zeros remain provisional.
 No gimbal masses or inertias have been assigned. The CAD check in

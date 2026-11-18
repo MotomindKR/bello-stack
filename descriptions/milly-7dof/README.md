@@ -154,6 +154,11 @@ control settings remain commissioning placeholders, not total closed-loop
 torque guarantees. Confirm zero, direction, gains and damping before enabling
 hardware.
 
+Fault-stop damping was halved across the single-arm, dual-arm and combined
+gimbal profiles. Per arm, `fault_damping_kd` is now 5, 10, 0.5, 10, 5, 7.5,
+5 and 2.5 for J1–J7 and the gripper respectively. These are the hardwared fault
+response gains; normal tracking gains belong to the controller configuration.
+
 The shifted CAN IDs are configuration changes only. Existing physical motors
 must be assigned their new IDs separately; starting a profile does not readdress
 devices. All original motor models and directions are retained after shifting.

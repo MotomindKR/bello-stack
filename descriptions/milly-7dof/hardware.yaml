@@ -33,7 +33,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 10.0
+  fault_damping_kd: 5.0
 - name: joint_2
   coordinate: joint_2
   bus: can0
@@ -56,7 +56,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 20.0
+  fault_damping_kd: 10.0
 - name: joint_3
   coordinate: joint_3
   bus: can0
@@ -79,7 +79,7 @@ motors:
     maximum_position_step: 0.1
     limit: reject
     position_step: fault
-  fault_damping_kd: 1.0
+  fault_damping_kd: 0.5
 - name: joint_4
   coordinate: joint_4
   bus: can0
@@ -102,7 +102,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 20.0
+  fault_damping_kd: 10.0
 - name: joint_5
   coordinate: joint_5
   bus: can0
@@ -125,7 +125,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 10.0
+  fault_damping_kd: 5.0
 - name: joint_6
   coordinate: joint_6
   bus: can0
@@ -148,7 +148,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 15.0
+  fault_damping_kd: 7.5
 - name: joint_7
   coordinate: joint_7
   bus: can0
@@ -171,7 +171,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 10.0
+  fault_damping_kd: 5.0
 - name: gripper
   coordinate: gripper
   bus: can0
@@ -194,7 +194,7 @@ motors:
     maximum_position_step: 3.0
     limit: reject
     position_step: fault
-  fault_damping_kd: 5.0
+  fault_damping_kd: 2.5
 motor_groups:
 - name: arm
   motors:
