@@ -28,7 +28,7 @@
   },
   "gimbal_base": {
     "xyz": [
-      0.045,
+      0.0775,
       0,
       0.423
     ],
@@ -38,7 +38,7 @@
       3.141592653589793
     ]
   },
-  "source": "User requested 450 mm between arm bases, the gimbal centred between them, and the level stereo optical centre 600 mm above the physical arm mounting planes. Existing arm poses are retained.",
+  "source": "User requested 450 mm arm spacing, level stereo optical centre 600 mm above the arm mounting planes, and gimbal base centred laterally 40 mm behind the J1 axes (+X, with forward -X). Existing arm poses are retained.",
   "removed": "Legacy centre D405, keepout and support post; arm-mounted wrist cameras remain.",
   "control": {
     "dual_arm": "16 coordinates across can0 IDs 1..8 and can1 IDs 1..8",
@@ -61,11 +61,11 @@
       0.004
     ],
     "gimbal_centre_xyz_m": [
-      0.045,
+      0.0775,
       0,
       0.423
     ],
-    "reference": "Centres on the underside mounting planes. Arm plates are at z=0.004 m. The gimbal plate is at z=0.423 m (419 mm above them), yawed pi so the stereo camera faces -X at zero. The nominal level stereo optical centre is at z=0.604 m, 600 mm above the arm mounting planes."
+    "reference": "Centres on the underside mounting planes. Arm plates are at z=0.004 m. Gimbal plate centre is (0.0775, 0, 0.423) m, 40 mm behind the J1 axes at x=0.0375 m and 419 mm above the arm plates. Yaw pi faces the camera toward -X. Level stereo optical centre remains z=0.604 m, 600 mm above the arm mounting planes."
   },
   "gimbal_height_above_arm_mounts_m": 0.419,
   "stereo_view_direction_at_zero": [
@@ -84,7 +84,7 @@
         0.423
       ],
       "xyz": [
-        0.045,
+        0.0775,
         0,
         0.2115
       ],
@@ -102,7 +102,7 @@
     "definition": "../stereo-gimbal/safety-envelope.json",
     "frame": "gimbal_base_link",
     "centre_in_root_m": [
-      0.045,
+      0.0775,
       0.0,
       0.597
     ],
@@ -134,5 +134,23 @@
     "bottom_z_m": -0.02,
     "note": "Fixed workcell ground with matching visual and primitive collision; no inertial parameters."
   },
-  "stereo_optical_height_above_arm_mounts_at_zero_m": 0.6
+  "stereo_optical_height_above_arm_mounts_at_zero_m": 0.6,
+  "arm_joint_1_axes": {
+    "left_xyz_m": [
+      0.0375,
+      -0.225,
+      0.072
+    ],
+    "right_xyz_m": [
+      0.0375,
+      0.225,
+      0.072
+    ],
+    "gimbal_base_rear_offset_m": 0.04,
+    "rear_direction_in_root": [
+      1,
+      0,
+      0
+    ]
+  }
 }
