@@ -28,7 +28,7 @@
   },
   "gimbal_base": {
     "xyz": [
-      0.0775,
+      0.0875,
       0,
       0.43
     ],
@@ -38,7 +38,7 @@
       3.141592653589793
     ]
   },
-  "source": "User requested a 430 mm support pole, raising the gimbal and camera by 7 mm from the previous 423 mm pole. Arm spacing remains 450 mm, and the gimbal base stays centred laterally 40 mm behind the J1 axes (+X, with forward -X). Existing arm poses are retained.",
+  "source": "User corrected the rear offset to 50 mm behind the J1 axes (+X, with forward -X). The 60 x 60 x 430 mm support, gimbal base and safety envelope move together 10 mm rearward from the previous 40 mm offset. Arm spacing remains 450 mm and arm mounting poses are retained.",
   "removed": "Legacy centre D405, keepout and support post; arm-mounted wrist cameras remain.",
   "control": {
     "dual_arm": "16 coordinates across can0 IDs 1..8 and can1 IDs 1..8",
@@ -61,11 +61,11 @@
       0.004
     ],
     "gimbal_centre_xyz_m": [
-      0.0775,
+      0.0875,
       0,
       0.43
     ],
-    "reference": "Centres on the underside mounting planes. Arm plates are at z=0.004 m. Gimbal plate centre is (0.0775, 0, 0.430) m, 40 mm behind the J1 axes at x=0.0375 m and 426 mm above the arm plates. Yaw pi faces the camera toward -X. Level stereo optical centre is z=0.611 m, 607 mm above the arm mounting planes."
+    "reference": "Centres on the underside mounting planes. Arm plates are at z=0.004 m. Gimbal plate centre is (0.0875, 0, 0.430) m, 50 mm behind the J1 axes at x=0.0375 m and 426 mm above the arm plates. Yaw pi faces the camera toward -X. Level stereo optical centre is z=0.611 m, 607 mm above the arm mounting planes."
   },
   "gimbal_height_above_arm_mounts_m": 0.426,
   "stereo_view_direction_at_zero": [
@@ -84,7 +84,7 @@
         0.43
       ],
       "xyz": [
-        0.0775,
+        0.0875,
         0,
         0.215
       ],
@@ -102,7 +102,7 @@
     "definition": "../stereo-gimbal/safety-envelope.json",
     "frame": "gimbal_base_link",
     "centre_in_root_m": [
-      0.0775,
+      0.0875,
       0.0,
       0.604
     ],
@@ -146,7 +146,7 @@
       0.225,
       0.072
     ],
-    "gimbal_base_rear_offset_m": 0.04,
+    "gimbal_base_rear_offset_m": 0.05,
     "rear_direction_in_root": [
       1,
       0,

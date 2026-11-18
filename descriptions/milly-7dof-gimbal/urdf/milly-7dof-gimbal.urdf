@@ -1587,12 +1587,12 @@
   <joint name="gimbal_support_mount" type="fixed">
     <parent link="dual_milly_base" />
     <child link="gimbal_support_link" />
-    <origin xyz="0.0775 0 0.215" rpy="0 0 0" />
+    <origin xyz="0.0875 0 0.215" rpy="0 0 0" />
   </joint>
   <joint name="gimbal_mount" type="fixed">
     <parent link="dual_milly_base" />
     <child link="gimbal_base_link" />
-    <origin xyz="0.0775 0 0.430" rpy="0 0 3.141592653589793" />
+    <origin xyz="0.0875 0 0.430" rpy="0 0 3.141592653589793" />
   </joint>
   <link name="left_gripper_tcp" />
   <joint name="left_gripper_tcp_mount" type="fixed">
