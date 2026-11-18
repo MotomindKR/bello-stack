@@ -74,7 +74,7 @@ motors:
     position_min: -1.5707963267948966
     position_max: 1.5707963267948966
     velocity_abs: 3.0
-    torque_abs: 2.0
+    torque_abs: 42.0
   health:
     safe_position_min: -1.5707963267948966
     safe_position_max: 1.5707963267948966
@@ -258,7 +258,7 @@ motors:
     position_min: -1.5707963267948966
     position_max: 1.5707963267948966
     velocity_abs: 3.0
-    torque_abs: 2.0
+    torque_abs: 42.0
   health:
     safe_position_min: -1.5707963267948966
     safe_position_max: 1.5707963267948966

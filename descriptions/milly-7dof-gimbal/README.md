@@ -86,7 +86,9 @@ Repository entry points:
 - `components/robstride-emulator/config/milly-7dof-gimbal-can1-vcan.yaml`
 
 The dual-arm teleoperation profile permits J3 velocity commands up to 3 rad/s on
-both arms, matching the user-tested tracking profile. J3 torque remains capped
-at 2 Nm; its travel, step checks, temperature limits and damping are unchanged.
+both arms, matching the user-tested tracking profile. J3 effort/feed-forward commands use the
+user-approved 42 Nm RS10P envelope, matching simulation. This configured command
+envelope is not a total closed-loop torque guarantee. Travel, step checks,
+temperature limits and damping are unchanged.
 The controller supplies the separate 10 rad/s² tracking acceleration limit and
 keeps physical Wake/Park at their slower lifecycle settings.
