@@ -12,15 +12,15 @@ midpoint. The inherited arm mounting rotations are retained. In
 The physical arm mounting plates are offset from those URDF base frames:
 their underside centres are `(0.045, -0.225, 0.004)` and
 `(0.045, 0.225, 0.004)` metres. The gimbal base is mounted at
-`(0.0775, 0, 0.423)` with yaw `pi`: it is centred 419 mm above the arm mounting
-plane. The level stereo optical frame is at `z=0.604 m`, 600 mm above that
+`(0.0775, 0, 0.430)` with yaw `pi`: it is centred 426 mm above the arm mounting
+plane. The level stereo optical frame is at `z=0.611 m`, 607 mm above that
 plane, with the camera facing the arm workspace (-X at zero).
 `mounting.json` records these frames.
 Both J1 axes are at `x=0.0375 m`, `y=+/-0.225 m`, `z=0.072 m`.
 The gimbal base centre is 40 mm behind their transverse centreline, along +X
 (the camera faces -X). Its support and safety envelope follow this offset.
 The square support pole is a 60 x 60 mm box from ground `z=0` to the gimbal
-plate underside at `z=0.423 m`, with a matching box collider. Its cross-section
+plate underside at `z=0.430 m`, with a matching box collider. Its cross-section
 is provisional; no mass or inertia is assigned.
 The combined workcell also includes `ground_link`, a fixed 2 x 2 m ground
 surface represented by a 20 mm thick visual and collision box. Its top is
@@ -32,7 +32,7 @@ cameras remain.
 The optional coarse gimbal safety sphere is defined in
 `../stereo-gimbal/safety-envelope.json` and its companion proxy URDF. It has a
 132 mm radius, is fixed to `gimbal_base_link` at `(0, 0, 0.174)`, and therefore
-has centre `(0.0775, 0, 0.597)` in `dual_milly_base`. It covers the moving
+has centre `(0.0775, 0, 0.604)` in `dual_milly_base`. It covers the moving
 assembly throughout the three confirmed joint ranges, with at least 3.48 mm
 clearance to the current model. The fixed base plate/yaw stator and support
 pole retain their own primitives. Use the sphere in place of only its covered
