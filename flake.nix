@@ -5,19 +5,20 @@
 
   outputs = { self, nixpkgs }:
     let
-      systems = [ "x86_64-linux" "aarch64-linux" ];
+      systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
     in {
       devShells = forAllSystems (system:
         let
           pkgs = import nixpkgs { inherit system; };
+          inherit (pkgs.stdenv.hostPlatform) isLinux;
           runtimeLibraries = with pkgs; [
             stdenv.cc.cc.lib
             libglvnd
             mujoco
           ];
         in {
-          default = pkgs.mkShell {
+          default = pkgs.mkShell ({
             packages = with pkgs; [
               cargo
               rustc
@@ -27,10 +28,7 @@
               pkg-config
               openssl
               grpcurl
-              can-utils
-              iproute2
               buf
-              mujoco
               (python3.withPackages (python: with python; [
                 grpcio
                 grpcio-tools
@@ -39,17 +37,23 @@
                 pytest
               ]))
               ruff
-            ];
+            ] ++ pkgs.lib.optionals isLinux (with pkgs; [
+              can-utils
+              iproute2
+              mujoco
+            ]);
             RUST_BACKTRACE = "1";
-            MUJOCO_DYNAMIC_LINK_DIR = assert pkgs.mujoco.version == "3.12.0";
-              "${pkgs.lib.getLib pkgs.mujoco}/lib";
             # Keep Cargo artifacts outside this non-Git path flake. Otherwise Nix
             # copies target/ into every source snapshot before entering the shell.
             shellHook = ''
               export CARGO_TARGET_DIR="''${XDG_CACHE_HOME:-''${HOME}/.cache}/bello-stack/cargo-target"
+            '' + pkgs.lib.optionalString isLinux ''
               export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibraries}:''${LD_LIBRARY_PATH:-}"
             '';
-          };
+          } // pkgs.lib.optionalAttrs isLinux {
+            MUJOCO_DYNAMIC_LINK_DIR = assert pkgs.mujoco.version == "3.12.0";
+              "${pkgs.lib.getLib pkgs.mujoco}/lib";
+          });
         });
     };
 }
