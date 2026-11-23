@@ -273,4 +273,4 @@ python components/bello-hardware-python/scripts/generate_proto.py
 ```
 
 For daemon configuration, safety semantics, and operations, see the main
-[Bello stack documentation](../../docs/README.md).
+[Bello stack documentation](../../README.md#documentation).

@@ -4,8 +4,6 @@ For COG serial telemetry, `power_boards[].emergency_stop` (`hardware` or
 `damping`), and emulated power UARTs, see
 [Power-board telemetry](power_board.md).
 
-[Documentation index](README.md)
-
 `bello-hardwared` reads a deployment YAML and the hardware description it
 references, validates both without opening hardware, and resolves them into the
 topology used for the lifetime of the process. The description owns stable

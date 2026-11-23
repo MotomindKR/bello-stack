@@ -1,7 +1,5 @@
 # Architecture
 
-[Documentation index](README.md)
-
 `bello-hardwared` is one production process with explicit internal ownership
 boundaries. It owns the physical transports, protocol devices, sensor drivers,
 motor-group controllers, leases, telemetry fan-out, and gRPC server. The

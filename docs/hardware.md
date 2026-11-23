@@ -1,7 +1,5 @@
 # Hardware transports and devices
 
-[Documentation index](README.md)
-
 `bello-hardwared` separates transport ownership from device protocols:
 
 ```text

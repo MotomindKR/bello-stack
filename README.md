@@ -13,7 +13,7 @@ in hardware command safety.
 
 - [Hardware daemon](components/bello-hardwared) and its [Rust](components/bello-hardware-client) and [Python](components/bello-hardware-python) clients
 - [Robot descriptions](descriptions), [MuJoCo simulator](components/bello-mujoco), and [pose estimator](components/bello-state-estimatord)
-- gRPC contracts for [hardware](components/bello-hardware-api), [cameras](components/bello-camera-api), and [pose](components/bello-pose-api)
+- gRPC contracts for [hardware](components/bello-hardware-api/proto/bello/hardware/v1/hardware.proto), [cameras](components/bello-camera-api/proto/bello/camera/v1/camera.proto), and [pose](components/bello-pose-api/proto/bello/pose/v1/pose.proto)
 
 GS-USB adapters work on all three desktop platforms; SocketCAN is Linux-only.
 The default Cargo build produces `bello-hardwared`.
@@ -48,7 +48,9 @@ Bello emulator integration described in the [operations guide](docs/operations.m
 
 ## Documentation
 
-[Guides and troubleshooting](docs/README.md) · [Development checks](docs/development.md#normal-checks) · [Hardware protobuf](components/bello-hardware-api/proto/bello/hardware/v1/hardware.proto)
+- [Architecture](docs/architecture.md), [hardware transports](docs/hardware.md), and [configuration](docs/configuration.md)
+- [Operation and troubleshooting](docs/operations.md), [control and safety](docs/control-and-safety.md), and [power-board telemetry](docs/power_board.md)
+- [Hardware API](docs/api.md) and [development checks](docs/development.md)
 
 Cartesian teleoperation lives in the separate
 [`MotomindKR/bello_torso_control`](https://github.com/MotomindKR/bello_torso_control) repository,

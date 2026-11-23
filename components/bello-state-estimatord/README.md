@@ -1,7 +1,7 @@
 # bello-state-estimatord
 
 `bello-state-estimatord` combines motor encoders and EBIMU readings to estimate
-local odometry. It streams the result through [WatchPose](../bello-pose-api/).
+local odometry. It streams the result through [WatchPose](../bello-pose-api/proto/bello/pose/v1/pose.proto).
 Position can drift during foot slip, flight, or non-foot support.
 
 Set `imu_frame` to hardwared's IMU output frame. It must be the tracked frame

@@ -1,7 +1,5 @@
 # Operations guide
 
-[Documentation index](README.md)
-
 This guide covers deployment and diagnostics. The complete configuration and
 safety behavior are described in [`configuration.md`](configuration.md) and
 [`control-and-safety.md`](control-and-safety.md); the checked examples are
@@ -172,7 +170,9 @@ cargo run -p bello-state-estimatord -- \
 ```
 
 The Mini description remains provisional until encoder-zero and ankle-reduction
-calibration is complete.
+calibration is complete. On the physical Mini Torso, verify motor addresses,
+directions, zeros, travel stops, and load sharing before enabling the hips.
+Both motors drive one joint and must be commanded together through `torso_pitch`.
 
 Inspect the estimator's `PoseService` on port 50053:
 

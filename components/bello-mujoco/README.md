@@ -15,8 +15,8 @@ Before `run`, create the virtual CAN interfaces and paired UARTs specified by th
 [emulator profile](config/). See [operations](../../docs/operations.md) and the
 [power-board guide](../../docs/power_board.md). Use `check --export-physics PATH`
 to inspect the compiled MJCF. Loading a URDF directly with `Simulation::load`
-skips actuator transmissions. See the [Mini Torso guide](../../descriptions/bello_mini_torso/README.md)
-for fixed-base bring-up.
+skips actuator transmissions. For the fixed-base Mini Torso, pair the [emulator](config/emulator_mini_torso.yaml)
+with the [hardwared vCAN profile](../bello-hardwared/config/bello-mini-torso-vcan.yaml).
 
 To model a carried mass, add a `payloads` entry with `frame`, `mass_kg`, and
 `radius_m` to the model profile. The frame must have no existing inertia. Its
@@ -59,7 +59,8 @@ and run `python scripts/milly_collisions.py`.
 Set `cameras` in the emulator profile to the path to a [camera configuration](config/cameras_mini_torso.yaml).
 Measure the mounting transforms and intrinsics before using the images for calibrated work.
 The cameras capture the same physics snapshot and publish JPEGs through
-[bello-camera-api](../bello-camera-api/). Lens distortion is not simulated.
+[the camera gRPC service](../bello-camera-api/proto/bello/camera/v1/camera.proto).
+[bello-camerad](https://github.com/MotomindKR/bello_webxr_teleop/tree/main/crates/cameras) streams these frames or physical camera feeds over WebRTC. Lens distortion is not simulated.
 A camera failure interrupts the stream while physics continues.
 
 Preview the cameras without CAN devices:

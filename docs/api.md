@@ -1,7 +1,5 @@
 # Hardware gRPC API
 
-[Documentation index](README.md)
-
 See [hardware.proto](../components/bello-hardware-api/proto/bello/hardware/v1/hardware.proto)
 for the wire contract. The [Rust](../components/bello-hardware-client/README.md)
 and [Python](../components/bello-hardware-python/README.md) client guides show how to open

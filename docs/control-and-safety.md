@@ -6,8 +6,6 @@ all leases and damps enabled groups. Release requires new leases and an explicit
 start; it never resumes retained commands. See [power-board handoff and shutdown
 behavior](power_board.md#physical-emergency-button-and-damping).
 
-[Documentation index](README.md)
-
 Motor groups are the unit of control ownership, synchronous command admission,
 state transition, and fault reaction. A group is generic and may contain any
 non-empty set of motors across one or more CAN buses. Device health is tracked

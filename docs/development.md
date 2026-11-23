@@ -1,7 +1,5 @@
 # Development guide
 
-[Documentation index](README.md)
-
 ## Nix and direnv
 
 The full workspace and vCAN tests run on Linux. For native executable builds on
@@ -93,4 +91,14 @@ cargo test -p bello-hardware-e2e --test vcan -- \
 required because the scenarios exclusively own their shared interfaces. Set
 `BELLO_E2E_CAN_INTERFACE=vcan2` to select the interface used by the single-bus
 scenarios. Set `BELLO_E2E_CAN_INTERFACES=vcan2,vcan3` to select the ordered pair
-used by the canonical multi-bus scenario. See the [E2E guide](../components/bello-hardware-e2e/README.md) for individual scenarios.
+used by the multi-bus scenario.
+
+To measure command-to-CAN and feedback-to-telemetry latency:
+
+```sh
+cargo test --release -p bello-hardware-e2e --test vcan \
+  grpc_can_latency_distribution -- --ignored --nocapture
+```
+
+Set `BELLO_LATENCY_SAMPLES` and `BELLO_LATENCY_CONTROL_RATE_HZ` to change the
+sample count and control frequency.
