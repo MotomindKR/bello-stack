@@ -13,11 +13,11 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
-use bello_hardware_api::hardware_service_client::HardwareServiceClient;
 use bello_hardware_api::watch_telemetry_response::Payload;
 use bello_hardware_api::{
-    AcquireLeaseRequest, EnableGroupRequest, ListHardwareRequest, MotorCommand, RenewLeaseRequest,
-    StartControlRequest, StopControlRequest, StreamCommandsRequest, WatchTelemetryRequest,
+    AcquireLeaseRequest, EnableGroupRequest, GetStateFrameRequest, GroupState, MotorCommand,
+    RenewLeaseRequest, StartControlRequest, StopControlRequest, StreamCommandsRequest,
+    WatchTelemetryRequest,
 };
 use robstride_protocol::{
     ControlCommand, Feedback, Frame, MotorParams, control_frame, feedback_frame, parse_feedback,
@@ -107,21 +107,13 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
         &mut emulator,
     )
     .await?;
-    timeout(Duration::from_secs(5), async {
-        loop {
-            let inventory = client.inventory().await?;
-            if inventory.motors.iter().all(|m| {
-                m.status
-                    .as_ref()
-                    .is_some_and(|s| s.state == DeviceState::Online as i32)
-            }) {
-                break;
-            }
-            sleep(Duration::from_millis(10)).await;
-        }
-        Ok::<(), anyhow::Error>(())
-    })
-    .await??;
+    support::scenario::wait_for_motors_online(
+        &client,
+        Duration::from_secs(5),
+        &mut daemon,
+        &mut emulator,
+    )
+    .await?;
     let commands = || {
         ["e2e_motor_1", "e2e_motor_2"]
             .into_iter()
@@ -360,6 +352,13 @@ async fn grpc_can_latency_distribution() -> Result<()> {
         &mut emulator,
     )
     .await?;
+    support::scenario::wait_for_motors_online(
+        &hardware,
+        Duration::from_secs(3),
+        &mut hardwared,
+        &mut emulator,
+    )
+    .await?;
     let mut client = hardware.grpc_client();
 
     let lease = client
@@ -370,23 +369,50 @@ async fn grpc_can_latency_distribution() -> Result<()> {
         })
         .await?
         .into_inner();
-    client
-        .enable_group(EnableGroupRequest {
-            group: GROUP.into(),
-            lease_token: lease.token.clone(),
-        })
-        .await?;
-    wait_for_online(&mut client, Duration::from_secs(3)).await?;
-
-    let initial = latency_command(&lease.token, 1, 0.0);
-    client
-        .start_control(StartControlRequest {
-            group: GROUP.into(),
-            lease_token: lease.token.clone(),
-            valid_for_ms: initial.valid_for_ms,
-            commands: initial.commands,
-        })
-        .await?;
+    let startup: Result<()> = async {
+        let enabled = client
+            .enable_group(EnableGroupRequest {
+                group: GROUP.into(),
+                lease_token: lease.token.clone(),
+            })
+            .await?
+            .into_inner();
+        if enabled.state() != GroupState::Damped {
+            bail!("enable returned {:?}", enabled.state());
+        }
+        let initial = latency_command(&lease.token, 1, 0.0);
+        client
+            .start_control(StartControlRequest {
+                group: GROUP.into(),
+                lease_token: lease.token.clone(),
+                valid_for_ms: initial.valid_for_ms,
+                commands: initial.commands,
+            })
+            .await?;
+        Ok(())
+    }
+    .await;
+    if let Err(error) = startup {
+        let frame = client
+            .get_state_frame(GetStateFrameRequest {
+                groups: vec![GROUP.into()],
+                ..Default::default()
+            })
+            .await;
+        if let Ok(frame) = frame
+            && let Some(group) = frame.get_ref().groups.first()
+        {
+            return Err(error).with_context(|| {
+                format!(
+                    "{GROUP} startup: {:?} ({:?}): {}",
+                    group.state(),
+                    group.cause(),
+                    group.detail
+                )
+            });
+        }
+        return Err(error);
+    }
     let (command_tx, command_rx) = mpsc::channel(1);
     let mut responses = client
         .stream_commands(ReceiverStream::new(command_rx))
@@ -579,30 +605,6 @@ async fn wait_for_motor_position(
         if motor.motor_name == motor_name && (motor.position - expected_position).abs() < 1e-9 {
             return Ok(());
         }
-    }
-}
-
-async fn wait_for_online(
-    client: &mut HardwareServiceClient<tonic::transport::Channel>,
-    duration: Duration,
-) -> Result<()> {
-    let deadline = Instant::now() + duration;
-    loop {
-        let inventory = client
-            .list_hardware(ListHardwareRequest {})
-            .await?
-            .into_inner();
-        if inventory.motors.iter().all(|motor| {
-            motor.status.as_ref().is_some_and(|status| {
-                status.state == bello_hardware_api::DeviceState::Online as i32
-            })
-        }) {
-            return Ok(());
-        }
-        if Instant::now() >= deadline {
-            bail!("motors did not become online before latency measurement");
-        }
-        sleep(Duration::from_millis(10)).await;
     }
 }
 
