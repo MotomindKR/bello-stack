@@ -16,7 +16,6 @@ from bello_hardware._generated import hardware_pb2_grpc
 
 
 def valid_inventory_response() -> proto.ListHardwareResponse:
-    """Return one internally consistent daemon inventory for client tests."""
 
     return proto.ListHardwareResponse(
         buses=[proto.BusInfo(name="main", transport="socketcan:vcan0", host_id=0xFD)],

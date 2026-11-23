@@ -1,5 +1,3 @@
-"""Inventory conversion and the public motor-group view."""
-
 from __future__ import annotations
 
 import math

@@ -18,14 +18,4 @@ actuators:
     initial_position: 0.0
     initial_temperature_c: 25.0
 
-# Events are optional. This example remains healthy by default. Uncomment or add
-# events to exercise hardwared fault handling deterministically.
 events: []
-
-# Example fault scenario:
-# events:
-#   - { at_ms: 5000, actuator_id: 1, action: { type: set_temperature, celsius: 85.0 } }
-#   - { at_ms: 7000, actuator_id: 1, action: { type: set_temperature, celsius: 70.0 } }
-#   - { at_ms: 10000, actuator_id: 2, action: { type: drop_feedback, enabled: true } }
-#   - { at_ms: 12000, actuator_id: 2, action: { type: drop_feedback, enabled: false } }
-#   - { at_ms: 14000, actuator_id: 2, action: { type: set_fault_bits, value: 1 } }

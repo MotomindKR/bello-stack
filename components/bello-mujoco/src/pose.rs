@@ -1,4 +1,3 @@
-//! Latest-sample pose streaming with bounded storage and cancellation.
 use crate::BodyState;
 use bello_pose_api::{
     pose_service_server::{PoseService, PoseServiceServer},

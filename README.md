@@ -11,22 +11,9 @@ in hardware command safety.
 
 ## Workspace
 
-| Component | Role | Artifact |
-| --- | --- | --- |
-| [`bello-hardwared`](components/bello-hardwared) | Production hardware ownership, control, safety, gRPC, and telemetry | `bello-hardwared` binary and narrow Rust library entrypoint |
-| [`bello-hardware-api`](components/bello-hardware-api) | Shared protobuf contract and generated tonic types | Rust library |
-| [`bello-hardware-client`](components/bello-hardware-client) | Robot/group/coordinate control and aggregated state; raw gRPC access is an explicit escape hatch | Rust library |
-| [`bello-hardware-python`](components/bello-hardware-python) | Thin blocking robot/group/coordinate client with background lease and telemetry I/O | Pure-Python package |
-| [`bello-pose-api`](components/bello-pose-api) | Neutral streaming contract for external root-pose providers | Rust library and protobuf descriptor |
-| [`bello-camera-api`](components/bello-camera-api) | Shared timestamped camera frames, bounded subscriptions and WebRTC signaling | Rust library and protobuf descriptor |
-| [`bello-state-estimatord`](components/bello-state-estimatord) | URDF/IMU/encoder contact-aided local pose provider | `bello-state-estimatord` binary |
-| [`bello-robot-description`](components/bello-robot-description) | Shared URDF hierarchy, visuals, joint limits, differential transmissions, and kinematics | Rust library |
-| [`robstride-protocol`](components/robstride-protocol) | Robstride extended-CAN frames, codecs, and model limits | Rust library |
-| [`robstride-emulator`](components/robstride-emulator) | Thin SocketCAN actuator emulator with deterministic faults | `robstride-emulator` binary |
-| [`bello-hardware-e2e`](components/bello-hardware-e2e) | Process-level gRPC and vCAN scenarios | Cargo integration tests |
-
-Shared Cargo, Nix, Buf, and CI configuration remains at the repository root.
-Component-specific source and examples stay under `components/`.
+- [Hardware daemon](components/bello-hardwared) and its [Rust](components/bello-hardware-client) and [Python](components/bello-hardware-python) clients
+- [Robot descriptions](descriptions), [MuJoCo simulator](components/bello-mujoco), and [pose estimator](components/bello-state-estimatord)
+- gRPC contracts for [hardware](components/bello-hardware-api/proto/bello/hardware/v1/hardware.proto), [cameras](components/bello-camera-api/proto/bello/camera/v1/camera.proto), and [pose](components/bello-pose-api/proto/bello/pose/v1/pose.proto)
 
 GS-USB adapters work on all three desktop platforms; SocketCAN is Linux-only.
 The default Cargo build produces `bello-hardwared`.
@@ -61,49 +48,10 @@ Bello emulator integration described in the [operations guide](docs/operations.m
 
 ## Documentation
 
-Start with the [documentation index](docs/README.md), or go directly to:
-
-- [Architecture and runtime ownership](docs/architecture.md)
-- [Configuration and validation](docs/configuration.md)
-- [CAN, Robstride, serial, and EBIMU behavior](docs/hardware.md)
-- [Motor-group control and safety](docs/control-and-safety.md)
-- [gRPC API and telemetry](docs/api.md)
-- [Deployment, emulation, and troubleshooting](docs/operations.md)
-- [Development and testing](docs/development.md)
-
-The hardware protobuf contract is
-[`hardware.proto`](components/bello-hardware-api/proto/bello/hardware/v1/hardware.proto).
-Rust applications should normally start with the
-[`bello-hardware-client` guide](components/bello-hardware-client/README.md).
-Python applications should start with the
-[`bello-hardware` package guide](components/bello-hardware-python/README.md).
-
-## Repository checks
-
-```sh
-cargo fmt --all --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --all-features
-buf format --diff --exit-code
-buf lint
-cd components/bello-hardware-python
-ruff format --check .
-ruff check .
-mypy src/bello_hardware tests
-pytest
-```
+- [Architecture](docs/architecture.md), [hardware transports](docs/hardware.md), and [configuration](docs/configuration.md)
+- [Operation and troubleshooting](docs/operations.md), [control and safety](docs/control-and-safety.md), and [power-board telemetry](docs/power_board.md)
+- [Hardware API](docs/api.md) and [development checks](docs/development.md)
 
 Cartesian teleoperation lives in the separate
 [`MotomindKR/bello_torso_control`](https://github.com/MotomindKR/bello_torso_control) repository,
 which pins this stack as a submodule and uses its leased hardware client.
-
-The host-vCAN end-to-end scenario is explicit because it requires a Linux CAN
-interface:
-
-```sh
-cargo e2e
-```
-
-The hardware API and configuration are greenfield. Backward compatibility is
-not required; obsolete fields are removed rather than retained as aliases or
-migration scaffolding.

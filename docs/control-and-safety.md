@@ -6,8 +6,6 @@ all leases and damps enabled groups. Release requires new leases and an explicit
 start; it never resumes retained commands. See [power-board handoff and shutdown
 behavior](power_board.md#physical-emergency-button-and-damping).
 
-[Documentation index](README.md)
-
 Motor groups are the unit of control ownership, synchronous command admission,
 state transition, and fault reaction. A group is generic and may contain any
 non-empty set of motors across one or more CAN buses. Device health is tracked
@@ -353,17 +351,7 @@ typed motor fault observed by the group maps to its matching cause; otherwise
 the cause is `communication`. Direct control-transmission errors fault the group
 without waiting for a later device-status poll.
 Group telemetry records a cause for every state transition, not only faults.
-The major cause families are:
-
-| Family | Causes |
-| --- | --- |
-| Normal lifecycle | `enable`, `start`, `stop`, `command_timeout`, `disable`, `recover` |
-| Command fault | `command_limit`, `command_position_step` |
-| Motor/device | `safe_position`, `stale_feedback`, `temperature`, `reported_motor_fault`, `mode_status`, `communication` |
-| Delivery/ownership | `transmission`, `lease_loss` |
-| Process integrity | `exit`, `internal` |
-
-The public `GroupCause` enum covers all of these transitions. Fault-response
+Fault-response
 configuration accepts only causes that can produce a hard fault; it does not
 accept `start`, `stop`, `command_timeout`, or `lease_loss`. Detection and
 mapping live in

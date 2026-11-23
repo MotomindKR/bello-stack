@@ -1,68 +1,13 @@
 # Bello hardware for Python
 
-`bello-hardware` is the supported Python interface to `bello-hardwared`. Use it
-to discover the configured robot, read motor and IMU telemetry, and control
-motor groups from a normal synchronous Python program.
-
-The package is a small pure-Python layer over gRPC. Applications work with
-Python objects such as `Robot`, `MotorGroup`, `CoordinateTarget`, and
-`HardwareStateFrame`; they do not need to construct protobuf messages or manage
-lease tokens.
-
-## Before you start
-
-You need:
-
-- Python 3.10 or newer;
-- a running `bello-hardwared` reachable over the network; and
-- the daemon's configured motor-group and coordinate names.
-
-The Python package does not open CAN or serial devices itself. The process
-boundary is:
-
-```text
-Python application -> gRPC -> bello-hardwared -> CAN and serial devices
-```
+Synchronous Python client for reading hardwared telemetry and controlling motor groups.
 
 ## Install
 
-Create a virtual environment for your application and install the package from
-this repository:
+With Python 3.10 or newer, install the package from the repository root:
 
 ```sh
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install -e /path/to/bello_stack/components/bello-hardware-python
-```
-
-The `-e` editable installation is convenient while developing both projects:
-client source changes take effect without reinstalling it. For an ordinary
-non-editable installation, omit `-e`:
-
-```sh
-python -m pip install /path/to/bello_stack/components/bello-hardware-python
-```
-
-`grpcio` and `protobuf` are installed automatically. Install application
-dependencies such as NumPy into the same virtual environment:
-
-```sh
-python -m pip install numpy pyyaml
-```
-
-A local application's `requirements.txt` can record the editable dependency:
-
-```text
--e /path/to/bello_stack/components/bello-hardware-python
-numpy
-pyyaml
-```
-
-The distribution name uses a hyphen (`bello-hardware`), while Python imports
-use an underscore:
-
-```python
-import bello_hardware
+python -m pip install ./components/bello-hardware-python
 ```
 
 ## Connect and inspect the robot
@@ -90,33 +35,15 @@ with Robot.connect("http://127.0.0.1:50051") as robot:
         )
 ```
 
-The inventory is fetched and validated when `Robot.connect` returns. This
-makes the daemon configuration the source of truth instead of duplicating the
-robot topology in the Python application. Inconsistent bus or serial
-references, unused transports, duplicate physical addresses, invalid CAN IDs,
-unsupported Robstride models, and invalid device metadata fail the connection
-instead of producing a partially usable client.
-
-Each IMU inventory entry declares its raw sensor frame and the output frame in
-which the daemon publishes orientation, angular velocity, and linear
-acceleration. Consumers should reject an output frame they do not expect.
-
-The default endpoint is `http://127.0.0.1:50051`, so this is also valid:
-
-```python
-robot = Robot.connect()
-robot.close()
-```
-
-Prefer the context-manager form whenever possible.
+`Robot.connect()` defaults to `http://127.0.0.1:50051` and validates the inventory
+before returning. Check each IMU's `output_frame` before using its readings.
 
 ## Read state
 
 `Robot.states()` creates a synchronous reader. Each `read()` returns one
 immutable frame built from the latest samples for every selected motor, IMU,
 and group. If daemon state is still initializing, the reader waits for a
-complete frame within the caller's timeout. There is no Python telemetry
-aggregator, background receiver, or frame queue.
+complete frame within the caller's timeout.
 
 ```python
 with Robot.connect("http://127.0.0.1:50051") as robot:
@@ -217,8 +144,7 @@ from bello_hardware import CommandPipeline
 
 pipeline = CommandPipeline(control, max_pending=4)
 pipeline.send(target)
-pipeline.poll()  # surfaces completed acknowledgement errors without waiting
-# ...
+pipeline.poll()
 pipeline.drain()
 ```
 
@@ -248,13 +174,9 @@ CoordinateTarget.hybrid(
 )
 ```
 
-The Python application sends new targets when it chooses; it does not need to
-reproduce the group's fixed-rate loop. While the group is running, each accepted
-command triggers an immediate checked control tick. The daemon keeps its fixed
-periodic safety schedule independently. Immediate commands defer periodic CAN
-refresh; if the command stream goes quiet, the daemon reapplies the latest
-accepted command at `command_refresh_rate_hz`. Command-validity and safety
-policies remain enforced at `control_rate_hz`.
+The daemon applies accepted commands immediately and refreshes them at
+`command_refresh_rate_hz` while valid. Lease expiry or command timeout damps
+an enabled group if the client disconnects.
 
 ## Handle failures
 
@@ -291,28 +213,6 @@ resumed with a fresh frame. If a command might have reached the daemon but its
 acknowledgement was lost, the session becomes `UNCERTAIN`. Resolve the
 authoritative daemon state before choosing recovery or closing the session.
 
-## Safety and lifecycle behavior
-
-The daemon remains authoritative for command timing, configured limits, device
-health, group state, fault reactions, and lease-loss behavior. The Python
-client adds application-side validation and reliable resource ownership, but it
-is not the safety controller.
-
-Keep these rules in mind:
-
-- use context managers or call `close()` explicitly;
-- send complete group targets rather than individual-coordinate updates;
-- treat rejected, timed-out, or ambiguous commands as real failures;
-- monitor complete group state while commanding motion and use protocol-level
-  diagnostics when component-health events are required; and
-- rely on daemon-side lease expiry and command timeout to transition an enabled
-  group to `DAMPED` if the Python process or network disappears.
-
-Read-only inventory and state reads do not acquire a lease or start a client
-worker. Active control uses a lease renewal thread and an acknowledgement
-receiver; CAN, serial, device FSMs, and fixed-rate motor control stay in
-`bello-hardwared`.
-
 ## Connection endpoints
 
 `Robot.connect` accepts these endpoint forms:
@@ -332,15 +232,15 @@ from bello_hardware import Robot, TlsCredentials
 
 tls = TlsCredentials.from_files(
     ca_certificate="/etc/bello/tls/ca.crt",
-    client_certificate="/etc/bello/tls/client.crt",  # omit both for TLS
-    client_private_key="/etc/bello/tls/client.key",  # without mTLS
+    client_certificate="/etc/bello/tls/client.crt",
+    client_private_key="/etc/bello/tls/client.key",
 )
 
 with Robot.connect("https://robot.example:50051", tls=tls) as robot:
     print(robot.group_names)
 ```
 
-Client certificates and keys must be configured together. TLS credentials are
+For server-only TLS, omit both client identity fields. TLS credentials are
 rejected for plaintext and Unix endpoints.
 
 Use the `timeout` argument to bound the initial connection and inventory call:
@@ -373,4 +273,4 @@ python components/bello-hardware-python/scripts/generate_proto.py
 ```
 
 For daemon configuration, safety semantics, and operations, see the main
-[Bello stack documentation](../../docs/README.md).
+[Bello stack documentation](../../README.md#documentation).

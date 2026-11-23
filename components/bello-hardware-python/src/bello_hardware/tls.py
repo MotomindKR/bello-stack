@@ -1,5 +1,3 @@
-"""TLS credentials for private CAs and mutual authentication."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass

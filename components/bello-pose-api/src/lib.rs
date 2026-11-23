@@ -1,5 +1,3 @@
-//! Neutral streaming pose contract shared by producers and display clients.
-
 // tonic-generated async_trait methods carry a redundant must_use attribute.
 #![allow(clippy::double_must_use)]
 

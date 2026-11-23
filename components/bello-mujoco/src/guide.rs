@@ -1,4 +1,3 @@
-//! Operator-controlled vertical torso guide, independent of policy control.
 use crate::Simulation;
 use anyhow::{Context, Result, ensure};
 use mujoco_rs::prelude::*;

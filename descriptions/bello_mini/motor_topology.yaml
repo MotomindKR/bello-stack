@@ -7,8 +7,7 @@ deployment_blockers:
 - ankle differential reduction magnitudes are unvalidated
 - corrected ankle differential signs/order require supported feedback and low-amplitude
   command validation
-- joint-limit signs reflect user review; physical stops and encoder-zero correspondence
-  require validation
+- physical joint stops and encoder-zero correspondence require validation
 can_topology:
   logical_buses:
     can0: waist roll and left leg
@@ -16,12 +15,9 @@ can_topology:
     can2: left arm
     can3: right arm
   bitrate_bps: 1000000
-  id_policy: original Bello body ranges with IDs increasing along each kinematic chain;
-    waist yaw/roll use 51/52
 direction_inference_policy:
   cad_positive_axis: motor occurrence local +Z transformed into the URDF frame
-  axis_alignment_sign: sign(dot(CAD positive motor axis, reviewed logical joint positive
-    axis))
+  axis_alignment_sign: sign(dot(CAD positive motor axis, logical joint positive axis))
   candidate_command_direction: direct-drive geometric placeholder only, conditional
     on RobStride raw positive matching CAD local +Z
   protocol_limitation: RobStride documentation does not bind raw-positive rotation
@@ -1004,8 +1000,7 @@ motors:
     command_direction: null
     encoder_zero_offset_rad: null
     status: can_assigned_direction_calibration_required
-# Matrices use the listed motor rows and logical-joint columns. They encode a
-# normalized sign/order candidate, not measured reduction magnitudes.
+# Rows follow motor order and columns follow logical joint order.
 differential_groups:
 - name: left_ankle_differential
   motors:

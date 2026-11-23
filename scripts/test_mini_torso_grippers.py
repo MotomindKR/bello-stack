@@ -1,8 +1,3 @@
-"""Geometry regression: camera bracket seats flush beyond the wrist exterior.
-
-uv run --with numpy --with scipy --with trimesh python -m unittest discover -s scripts -p test_mini_torso_grippers.py
-"""
-
 import unittest
 import xml.etree.ElementTree as ET
 
@@ -38,13 +33,11 @@ class GripperMountTests(unittest.TestCase):
                     transform(root.find(f"joint[@name='{side}_camera_mount']/origin"))
                 )
                 camera.apply_transform(transform(mount.find("origin")))
-                # The complete bracket stays beyond the wrist support plane.
                 gap = wrist.bounds[0, 2] - camera.bounds[1, 2]
                 self.assertAlmostEqual(gap, 0.0, delta=1e-9)
                 self.assertAlmostEqual(
                     wrist.bounds[0, 2] - housing.bounds[1, 2], 0.012, delta=1e-6
                 )
-                # The hand stays centred and points out from the wrist.
                 np.testing.assert_allclose(transform(mount.find("origin"))[:2, 3], 0.0)
                 self.assertLess(transform(mount.find("origin"))[2, 2], -0.999999)
 

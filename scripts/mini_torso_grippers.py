@@ -2,7 +2,6 @@
 """Mount articulated Milly grippers and wrist cameras on Mini Torso.
 
 uv run --with numpy --with scipy --with trimesh scripts/mini_torso_grippers.py
-The direct mounts and SDK wrist aggregate used for mass are provisional.
 """
 
 import math
@@ -50,7 +49,6 @@ def main():
     linkage = source.find(f"{{{BELLO_NAMESPACE}}}slider_crank")
     if linkage is None:
         raise ValueError("Milly description is missing its slider-crank linkage")
-    # Copy the gripper tree and the wrist-fixed camera, preserving their registration.
     links = {"gripper_base"}
     joints = []
     for joint in source.findall("joint"):
@@ -79,7 +77,6 @@ def main():
                 for token in ("gripper", "finger_", "camera_", "end_effector_sphere")
             ):
                 root.remove(node)
-        # Original wrist GLBs include entire hands. Retain named wrist components only.
         scene = trimesh.load(
             ROOT / f"descriptions/bello_mini/meshes/{side}_wrist_roll_link.glb"
         )
@@ -93,8 +90,7 @@ def main():
             [name for name in scene.geometry if not any(k in name for k in keep)]
         )
         assert len(scene.geometry) >= 3, "missing wrist exterior components"
-        # The old hand origin lies inside the retained wrist casing. Seat the
-        # camera bracket rear face against its distal exterior (GLBs use mm).
+        # The mount uses the wrist mesh (millimeters) pending physical measurements.
         attachment_z = float(scene.bounds[0, 2]) * 0.001
         scene.export(meshes / f"{side}_wrist_roll.glb")
         scene.to_mesh().export(meshes / f"{side}_wrist_roll.stl")
@@ -115,8 +111,7 @@ def main():
                 if node.tag == "mesh":
                     node.set("filename", "../../milly/" + node.get("filename")[3:])
             if name == "gripper_base":
-                # Milly has no isolated body inertia: explicitly use its residual SDK
-                # wrist/camera aggregate in the gripper frame as a mass proxy.
+                # The SDK combines the gripper body, wrist and camera in one inertia.
                 inertia = deepcopy(source.find("link[@name='link_6']/inertial"))
                 mount = transform(
                     source.find("joint[@name='gripper_base_mount']/origin")
@@ -131,7 +126,6 @@ def main():
             name = joint.get("name")
             frame = transform(joint.find("origin"))
             if name == "camera_mount" and side == "left":
-                # Rotate the complete left camera/bracket to the outer wrist side.
                 flip = np.eye(4)
                 flip[:3, :3] = Rotation.from_euler("z", math.pi).as_matrix()
                 frame = flip @ frame

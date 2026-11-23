@@ -55,7 +55,6 @@ pub async fn run(
         )
         .await?;
 
-    // Monitoring must make motors available before any lease, enable, or command.
     wait_for_motors_online(&client, timeout_duration, hardwared, emulator).await?;
     run_ergonomic_smoke(&client).await?;
     run_python_smoke(endpoint).await?;

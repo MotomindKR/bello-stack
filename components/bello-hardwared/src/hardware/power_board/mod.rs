@@ -311,7 +311,6 @@ fn run(
 
 // This fixture reopens a pseudo-terminal through the physical serial-port
 // API. macOS PTYs reject the baud-rate ioctl required by this fixture.
-// Protocol and configuration tests run on every platform.
 #[cfg(all(test, target_os = "linux"))]
 mod tests;
 

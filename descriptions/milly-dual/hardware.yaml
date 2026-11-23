@@ -1,4 +1,3 @@
-# Two independent Milly arms on separate CAN buses, exposed as one atomic group.
 robot_description: urdf/milly-dual.urdf
 
 logical_buses:

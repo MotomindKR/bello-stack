@@ -42,7 +42,6 @@ pub async fn run(config_path: impl AsRef<Path>) -> Result<()> {
             }
             _ => {}
         }
-        // Bind every endpoint before starting hardware; a partial bind is fatal.
         listeners.push((GrpcIncoming::bind(spec)?, topology.grpc().server(spec)?));
     }
     let mut signals = ShutdownSignals::install()?;

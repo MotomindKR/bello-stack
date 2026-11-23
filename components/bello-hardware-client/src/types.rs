@@ -2,7 +2,6 @@ use bello_hardware_api as proto;
 
 use crate::EnumValue;
 
-/// Motor-group lifecycle state without exposing protobuf representation details.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum GroupState {
@@ -36,7 +35,6 @@ impl GroupState {
     }
 }
 
-/// Transport or device lifecycle state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DeviceState {
@@ -67,7 +65,6 @@ impl DeviceState {
     }
 }
 
-/// Cause attached to the latest motor-group state telemetry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum GroupCause {
@@ -120,7 +117,6 @@ impl GroupCause {
     }
 }
 
-/// Safety check that produced a command-policy telemetry event.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CommandPolicyCheck {
@@ -141,7 +137,6 @@ impl CommandPolicyCheck {
     }
 }
 
-/// Configured reaction associated with a command-policy event.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CommandBehavior {
@@ -166,7 +161,6 @@ impl CommandBehavior {
     }
 }
 
-/// Motor reaction requested when command policy transitions a group to fault.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum FaultResponse {
@@ -187,7 +181,6 @@ impl FaultResponse {
     }
 }
 
-/// Result of a submitted command snapshot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CommandResult {

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Assign an angle to a RobStride motor's current physical position."""
 
 from __future__ import annotations
 
@@ -38,7 +37,7 @@ VERIFY_TOLERANCE_RADIANS = 0.02
 
 
 class ProtocolError(RuntimeError):
-    """A motor did not complete a requested protocol operation."""
+    pass
 
 
 def build_can_id(comm_type: int, data_field: int, target_id: int) -> int:
@@ -371,8 +370,7 @@ def calibrate(
                 f"read {verified_position:+.6f} rad"
             )
 
-        # Once save is attempted its result can be ambiguous if the acknowledgement
-        # is lost, so rollback is intentionally limited to failures before this point.
+        # A lost acknowledgement can hide a successful save.
         saved = True
         connection.save()
     except Exception:

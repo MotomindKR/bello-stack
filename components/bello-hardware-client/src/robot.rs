@@ -27,7 +27,6 @@ impl Robot {
         Self::from_hardware_client(hardware).await
     }
 
-    /// Constructs the ergonomic API over an already connected low-level client.
     pub async fn from_hardware_client(hardware: HardwareClient) -> Result<Self, Error> {
         let inventory = Inventory::from_proto(hardware.inventory().await?)?;
         Ok(Self {
@@ -89,7 +88,6 @@ impl Robot {
         RobotStates::open(self.clone(), options).await
     }
 
-    /// Explicit escape hatch for generated gRPC/protobuf-oriented workflows.
     pub fn raw_client(&self) -> HardwareClient {
         self.inner.hardware.clone()
     }
@@ -108,7 +106,6 @@ impl fmt::Debug for Robot {
     }
 }
 
-/// Validated view of one configured motor group.
 #[derive(Clone)]
 pub struct MotorGroup {
     pub(crate) robot: Robot,

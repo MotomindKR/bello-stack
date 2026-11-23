@@ -1,13 +1,7 @@
 # Bello hardware Rust client
 
-`bello-hardware-client` is the application-facing Rust interface to
-`bello-hardwared`. Normal applications work with a discovered `Robot`, named
-motor groups and coordinates, complete command frames, automatically renewed control
-sessions, and aggregated robot state. Lease tokens, command sequences,
-acknowledgements, and protobuf conversion stay inside the crate.
-
-The exact protobuf and lease-oriented primitives remain available under
-`bello_hardware_client::raw` for diagnostics and specialized tooling.
+Use `Robot` to discover motor groups, read telemetry, and command a group
+through an automatically renewed control session.
 
 ## Connections
 
@@ -46,18 +40,9 @@ let robot = Robot::connect_with(options).await?;
 
 ## Motor-group control
 
-`ControlSession::release()` releases ownership with the daemon's damping
-reaction and never calls disable. Running groups become Damped; Fault remains
-latched. Use `shutdown()` only when motor disable is intended. Failed starts
-roll back to damping. Bello Mini configures damping for every fault cause;
-stale host feedback does not prevent zero-Kp damping commands, and failed
-transmission is reported without substituting disable. Drive protections and
-power/transport availability still determine whether damping can be applied.
-
-Session shutdown preserves an already latched daemon Fault. If stop or disable
-is rejected because the group has faulted, the client confirms that state with
-fresh inventory and releases the lease without automatic recovery. An explicit
-`recover()` is required before another control session can enable the group.
+Use `release()` to give up ownership and leave enabled motors damped. Use
+`shutdown()` to stop and disable them. A latched fault requires explicit
+`recover()` before another session can enable the group.
 
 ```rust,no_run
 use std::time::Duration;
@@ -105,10 +90,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?
         .build()?;
 
-    // Returns only after the daemon accepts the complete snapshot.
     control.send(next).await?;
 
-    // Stops into Damped, disables, ends automatic renewal, and releases ownership.
     control.shutdown().await?;
     Ok(())
 }
@@ -125,8 +108,7 @@ contract.
 
 ## Hardware inventory
 
-The connected `Robot` retains the complete validated daemon inventory. Stable,
-name-ordered iterators expose CAN bus, serial transport, motor, and IMU metadata:
+Inspect the inventory returned at connection:
 
 ```rust,no_run
 # use bello_hardware_client::Robot;
@@ -201,12 +183,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 `RobotState` is a latest-value aggregate, not a time-synchronized sensor frame.
 Each call to `changed` applies one incoming motor, group, IMU, health, or
 command-policy event. `last_change()` identifies that exact entry without
-assuming source timestamps are unique. Health is retained latest-by-component,
-while command policy is retained latest-by-motor-and-check (with one bounded
-slot for future unknown checks); neither collection grows with repeated events.
-Read-only telemetry retries transient gRPC unavailability on the existing tonic
-channel and clears dynamic state after reconnect; `generation()` distinguishes
-the new stream. Normal server EOF remains visible as `None`.
+assuming source timestamps are unique. Read-only telemetry retries transient
+gRPC unavailability and clears dynamic state after reconnect. Use `generation()`
+to identify the new stream. Normal server EOF remains visible as `None`.
 
 ## Control semantics
 
@@ -256,24 +235,7 @@ let telemetry = hardware.watch(TelemetryFilter::all()).await?;
 # }
 ```
 
-The generated contract is `bello_hardware_client::raw::proto`. Raw lease and
-command types retain their explicit, conservative semantics; the ergonomic API
-uses those same implementations rather than duplicating them.
-
-## Source layout
-
-```text
-src/robot.rs      connection, validated inventory, groups, and raw escape hatch
-src/inventory.rs  daemon inventory validation and resolved motor metadata
-src/frame.rs      coordinate targets and complete command-frame validation
-src/control.rs    automatic renewal and ergonomic control lifecycle
-src/state.rs      typed latest-value telemetry aggregation
-src/client.rs     raw tonic client
-src/lease.rs      raw lease ownership and renewal
-src/command.rs    raw command sequencing and acknowledgements
-src/telemetry.rs  raw event telemetry
-src/endpoint.rs   TCP/HTTPS/Unix, TLS identity, timeout, and keepalive policy
-```
+Generated protobuf types are available at `bello_hardware_client::raw::proto`.
 
 See the repository [API guide](../../docs/api.md) and
 [control and safety](../../docs/control-and-safety.md) for server behavior.

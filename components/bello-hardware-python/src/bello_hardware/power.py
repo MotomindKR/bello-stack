@@ -179,10 +179,9 @@ def _decode_sample(sample: proto.PowerBoardSample) -> PowerSample:
 
 
 class PowerBoardReader:
-    """Fetch one fresh board snapshot per selected board, then close the stream.
+    """Fetch one snapshot per selected board. Each read opens a new stream.
 
-    No background queue or serial access. Each read reconnects independently.
-    Missing measurement types remain absent; a board may return no samples yet.
+    A board may have no samples yet.
     """
 
     def __init__(self, robot: Robot, boards: tuple[str, ...]) -> None:

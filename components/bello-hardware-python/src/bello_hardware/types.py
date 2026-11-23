@@ -1,5 +1,3 @@
-"""Small immutable values used by the public client API."""
-
 from __future__ import annotations
 
 import math

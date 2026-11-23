@@ -1,6 +1,6 @@
 {
   "units": "m",
-  "description": "Simplified exterior contact envelopes in URDF link frames. Link 2 uses five shapes; the gripper housing uses two and each moving jaw uses three (base, flat contact face, rounded tip). Crank and connecting rods have no collision geometry. Fine surface details, transition fillets and jaw cutouts are omitted. These are approximate envelopes, not calibrated contact surfaces.",
+  "description": "Approximate contact envelopes in URDF link frames.",
   "shapes": [
     {
       "link": "base_link",
@@ -449,6 +449,5 @@
       "radius": 0.0145,
       "length": 0.0108
     }
-  ],
-  "link_2_fit": "Five shapes: shoulder cylinder, one shoulder neck box, straight 30-mm-thick central beam, one angled elbow bridge box and elbow cylinder. The central beam follows mesh cross-sections at x=-0.09 to -0.21 m: y=[-0.028,0.025], z=[0.08289,0.11289] m. Small transition fillets are omitted."
+  ]
 }

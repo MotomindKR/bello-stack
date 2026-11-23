@@ -45,7 +45,6 @@ impl CoordinateTarget {
         }
     }
 
-    /// Creates a complete hybrid impedance target.
     pub fn hybrid(
         position_radians: f64,
         velocity_radians_per_second: f64,
@@ -195,7 +194,6 @@ impl CommandFrameBuilder {
     }
 }
 
-/// Complete command snapshot for one motor group.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CommandFrame {
     group: String,

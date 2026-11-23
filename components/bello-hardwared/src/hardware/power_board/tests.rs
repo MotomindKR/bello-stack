@@ -147,7 +147,6 @@ fn fresh_other_packets_cannot_hide_stale_emergency_status() {
     for _ in 0..8 {
         let tick = protocol::encode(Profile::Agx, 8, 0, &1u32.to_le_bytes()).unwrap();
         if master.write_all(&tick).is_err() {
-            // Stale IWC deliberately reconnects the PTY despite fresh ticks.
             break;
         }
         thread::sleep(Duration::from_millis(100));
@@ -244,7 +243,6 @@ fn serial_transport_delivers_heartbeat_samples_corruption_and_reconnect() {
     master.write_all(&[2, 42, 0]).unwrap();
     let broken = await_snapshot(&mut rx, |b| b.invalid_frames > 0);
     assert_eq!(broken.samples.len(), 1);
-    // Fresh ticks do not refresh the battery timestamp.
     for _ in 0..8 {
         master
             .write_all(&protocol::encode(Profile::Agx, 8, 7, &123u32.to_le_bytes()).unwrap())
@@ -268,5 +266,4 @@ fn serial_transport_delivers_heartbeat_samples_corruption_and_reconnect() {
     });
     assert!(reset.samples.is_empty());
     drop(worker);
-    // Worker shutdown is bounded even with no further incoming data.
 }

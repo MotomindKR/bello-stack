@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""Apply Milly's reviewed primitive colliders; optionally create an offline viewer.
+"""Apply Milly's collision primitives or preview them offline.
 
 python scripts/milly_collisions.py
 uv run --with numpy --with scipy --with trimesh --with fast-simplification \
     --with plotly scripts/milly_collisions.py --preview /tmp/milly-collisions.html
-
-Collision dimensions live in descriptions/milly/collision-primitives.json.
-Preview poses are illustrative and do not command the emulator or hardware.
 """
 
 from __future__ import annotations
@@ -26,7 +23,6 @@ def numbers(values):
 
 
 def apply_collisions(root, description):
-    """Replace all collision elements without changing visuals, joints or inertia."""
     spec = json.loads((description / "collision-primitives.json").read_text())
     if spec["units"] != "m":
         raise ValueError("Collision dimensions must be in metres")
@@ -73,7 +69,6 @@ def apply_collisions(root, description):
 
 
 def preview(root, description, output):
-    """Render the actual URDF collision elements with an optional exterior overlay."""
     import numpy as np
     import plotly.graph_objects as go
     import trimesh
@@ -264,7 +259,6 @@ def preview(root, description, output):
             )
         )
     figure.frames = frames
-    # The camera is fixed to the wrist, so its frame does not move with the jaws.
     home = poses(-2.2)
     for q in (-1.1, 0.0):
         assert np.allclose(poses(q)["camera_link"], home["camera_link"])

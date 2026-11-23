@@ -196,7 +196,6 @@ impl Config {
             })
             .collect();
 
-        // Validate all declared board ownership, including disabled boards.
         let mut board_names = HashSet::new();
         let mut claimed_serial: HashSet<_> = description
             .imus

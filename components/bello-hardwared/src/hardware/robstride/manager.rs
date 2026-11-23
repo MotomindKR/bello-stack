@@ -15,7 +15,6 @@ use crate::hardware::can::{BusManager, ReceivedFrame};
 use crate::hardware::lifecycle::DeviceLifecycle;
 use crate::telemetry::Telemetry;
 
-/// Owns the feedback dispatcher and the set of configured motor devices.
 pub(crate) struct MotorManager {
     controllers: HashMap<MotorName, MotorController>,
     shutdown: Arc<AtomicBool>,

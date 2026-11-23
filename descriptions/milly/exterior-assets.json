@@ -552,7 +552,6 @@
     "01_Milly_Assem_0914_Case Only/10_ASM_Gripper/07_Griper Finger/01_Finger",
     "01_Milly_Assem_0914_Case Only/10_ASM_Gripper/08_Gripper Finger Bracket"
   ],
-  "omission_reason": "Internal mounting plates, spacers and limit hardware are covered by the exterior cases. STEP fingers and finger brackets are replaced by the rounded legacy jaw assemblies matching the robot photo.",
   "retained_legacy_meshes": [
     {
       "mesh": "base_connector.stl",
@@ -657,7 +656,7 @@
     "slider_offset_m": 0.014,
     "cad_crank_angle_rad": 0.4490097737830423,
     "motor_at_cad_pose_rad": -2.2,
-    "encoder_phase_status": "Legacy open endpoint assumption; requires physical calibration."
+    "encoder_phase_status": "Requires physical calibration at the open position."
   },
   "camera": {
     "lens_centre_cad_m": [

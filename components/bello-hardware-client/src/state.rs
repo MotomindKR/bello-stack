@@ -25,7 +25,6 @@ pub struct Vector3 {
     pub z: f64,
 }
 
-/// Latest feedback received for one configured motor.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MotorSnapshot {
     pub monotonic_ns: u64,
@@ -41,7 +40,6 @@ pub struct MotorSnapshot {
     pub feedback_age: Duration,
 }
 
-/// Latest feedback received for one configured IMU.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ImuSnapshot {
     pub monotonic_ns: u64,
@@ -53,7 +51,6 @@ pub struct ImuSnapshot {
     pub sample_age: Duration,
 }
 
-/// Latest lifecycle and timing event received for one motor group.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GroupSnapshot {
     pub monotonic_ns: u64,
@@ -66,7 +63,6 @@ pub struct GroupSnapshot {
     pub jitter_us: i64,
 }
 
-/// Latest health event for one daemon component.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HealthSnapshot {
     pub monotonic_ns: u64,
@@ -75,7 +71,6 @@ pub struct HealthSnapshot {
     pub dropped_events: u64,
 }
 
-/// Latest command-policy event for one motor and policy check.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommandPolicySnapshot {
     pub monotonic_ns: u64,

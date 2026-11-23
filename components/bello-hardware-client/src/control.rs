@@ -9,7 +9,6 @@ use crate::{
     GroupLease, GroupState, LeaseDuration, MotorGroup,
 };
 
-/// Policy owned by one ergonomic motor-group control session.
 #[derive(Clone, Debug)]
 pub struct ControlOptions {
     owner: String,

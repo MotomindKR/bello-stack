@@ -1,4 +1,3 @@
-//! Real-time offscreen cameras. Physics sends bounded snapshots to an isolated child.
 mod context;
 mod projection;
 use crate::{Simulation, model};
@@ -89,7 +88,6 @@ impl Capture {
     pub fn start(config: Config, model: &model::ModelConfig, source: &Simulation) -> Result<Self> {
         Self::start_data(config, model, &source.data)
     }
-    /// Attach the same isolated renderer to an independently owned native plant.
     pub fn start_data(
         config: Config,
         model: &model::ModelConfig,

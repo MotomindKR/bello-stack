@@ -1,5 +1,3 @@
-//! COG wire format, ported from motomind_platform at 5d2ea60634c1.
-//! No serial I/O, ROS dependencies, or power-control commands.
 use anyhow::{Result, bail, ensure};
 use serde::Deserialize;
 

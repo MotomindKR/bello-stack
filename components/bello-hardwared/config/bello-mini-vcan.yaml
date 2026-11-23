@@ -1,5 +1,3 @@
-# Provisional profile: see descriptions/bello_mini/ASSET_PROVENANCE.md.
-# Directions, encoder zeros, and ankle coupling require physical calibration.
 description: ../../../descriptions/bello_mini/hardware.yaml
 
 grpc:

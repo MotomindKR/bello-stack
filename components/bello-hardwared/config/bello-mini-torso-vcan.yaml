@@ -1,4 +1,3 @@
-# Motor zeros and inherited sensor/serial bindings require confirmation on the installed torso.
 description: ../../../descriptions/bello_mini_torso/hardware.yaml
 
 bus_transports:

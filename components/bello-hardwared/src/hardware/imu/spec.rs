@@ -11,7 +11,6 @@ use super::ImuSample;
 
 pub(super) const POLL_PERIOD: Duration = Duration::from_millis(20);
 
-/// Validated EBIMU configuration. Construction performs no device I/O.
 #[derive(Clone, Debug)]
 pub(crate) struct ImuSpec {
     pub(crate) name: ImuName,

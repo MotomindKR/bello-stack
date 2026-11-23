@@ -1,4 +1,3 @@
-# Fixed-base torso emulator; no releasable torso guide is needed.
 model: bello_mini_torso.yaml
 bus_interfaces: {can0: vcan0, can1: vcan1, can2: vcan2, can3: vcan3}
 feedback_rate_hz: 100
@@ -37,5 +36,4 @@ pose:
 torso_guide: null
 fault_events: {}
 video: null
-# Set to cameras_mini_torso.yaml to enable the separate 30 Hz renderer.
 cameras: null

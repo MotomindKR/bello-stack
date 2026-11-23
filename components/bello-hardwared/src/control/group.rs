@@ -71,7 +71,6 @@ impl EnableFailure {
 }
 
 pub(super) struct GroupMotor {
-    // The group owns motion policy; protocol and transport remain behind this handle.
     controller: MotorController,
     command: Option<ImpedanceCommand>,
 }

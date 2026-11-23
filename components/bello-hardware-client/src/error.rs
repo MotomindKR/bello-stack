@@ -3,7 +3,6 @@ use thiserror::Error;
 use crate::lease::LeaseStatus;
 use crate::{CommandResult, GroupState};
 
-/// Failures from connection setup, gRPC, or high-level client invariants.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum Error {

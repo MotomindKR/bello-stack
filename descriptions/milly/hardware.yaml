@@ -1,8 +1,4 @@
-# Stable Milly single-arm hardware identity and protocol settings. This profile
-# is adapted from motomind_platform's milly_teleop.yaml; deployment files bind
-# the logical CAN bus to a host interface. The source's unused can1 declaration
-# is intentionally omitted, and generic torque caps are narrowed to each
-# Robstride model's canonical protocol envelope.
+# Calibration source: MotomindKR/motomind_platform@61292d0, configs/robots/motomind_milly/milly_teleop.yaml
 robot_description: urdf/milly.urdf
 
 logical_buses:

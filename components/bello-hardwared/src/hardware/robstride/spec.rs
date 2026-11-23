@@ -21,7 +21,6 @@ pub(crate) struct MotorCommandLimits {
     pub(crate) kd_max: f64,
 }
 
-/// Validated static definition of one Robstride motor.
 #[derive(Clone, Debug)]
 pub(crate) struct MotorSpec {
     pub(crate) name: MotorName,

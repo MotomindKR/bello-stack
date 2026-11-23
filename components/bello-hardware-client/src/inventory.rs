@@ -129,7 +129,6 @@ impl MotorLimits {
     }
 }
 
-/// Configured actuator metadata resolved from daemon inventory.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Motor {
     pub(crate) name: String,

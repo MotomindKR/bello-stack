@@ -11,7 +11,6 @@ const TRANSMISSION_MARGIN: u32 = 2;
 const TRANSPORT_SCHEDULING_MARGIN: Duration = Duration::from_millis(20);
 const PRIORITY_QUEUE_MARGIN: Duration = Duration::from_millis(50);
 
-/// Side-effect-free, validated definition of one CAN bus.
 #[derive(Clone, Debug)]
 pub(crate) struct BusSpec {
     pub(crate) name: BusName,

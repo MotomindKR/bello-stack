@@ -52,10 +52,6 @@ Unix socket listeners are available on Linux and macOS.
   intended adapter.
 
 See the [nusb platform notes](https://docs.rs/nusb/latest/nusb/#platform-support).
-Native CI validates compilation, software tests, and the packaged executables;
-physical USB timing, driver setup, and reconnect behavior still need validation
-on each target host. The Milly GS-USB path has been exercised on Linux with live
-feedback from seven motors.
 
 ## Build from source
 

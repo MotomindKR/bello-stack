@@ -26,7 +26,6 @@
     <color rgba="0.88 0.90 0.89 1" />
   </material>
   <link name="dual_milly_base" />
-  <!-- Collision-only D405 keepout and support post, fixed in the table/base frame. -->
   <link name="center_d405_keepout_link">
     <collision name="center_d405_keepout_collision">
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -53,7 +52,6 @@
     <child link="center_d405_support_post_link" />
     <origin xyz="0.04 -0.009 0.154688655" rpy="0 0 0" />
   </joint>
-  <!-- Center D405: table-plane calibrated height/pitch, zero roll, yaw pi into -X work area. -->
   <link name="center_d405_link">
     <visual>
       <origin xyz="-0.0115 0 0" rpy="0 0 0" />
@@ -76,7 +74,6 @@
     <child link="center_d405_color_optical_frame" />
     <origin xyz="0 0 0" rpy="-1.5707963267948966 0 -1.5707963267948966" />
   </joint>
-  <!-- Left Milly arm. -->
   <link name="left_base_link">
     <inertial>
       <origin xyz="-0.0001241321748860844 -0.04203029467324181 0.04978668837136444" rpy="0 0 0" />
@@ -555,7 +552,6 @@
     <origin xyz="0 0 0" rpy="-1.57079632679 0 -1.57079632679" />
   </joint>
   <bello:slider_crank name="left_milly_gripper" driver="left_gripper" sliders="left_finger_1_joint left_finger_2_joint" rods="left_gripper_rod_1_joint left_gripper_rod_2_joint" crank_radius="0.03" rod_length="0.045" slider_offset="0.014" phase="2.64900977378" slider_reference="0.0720156969673" />
-  <!-- Right Milly arm. -->
   <link name="right_base_link">
     <inertial>
       <origin xyz="-0.0001241321748860844 -0.04203029467324181 0.04978668837136444" rpy="0 0 0" />

@@ -5,8 +5,6 @@ use tonic::Streaming;
 use crate::client::require_nonempty;
 use crate::{Error, HardwareClient};
 
-/// Selection applied to the event-based telemetry stream.
-///
 /// `Default` selects group events for every group and no optional event class.
 /// Use [`Self::all`] when a complete diagnostic subscription is intended.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

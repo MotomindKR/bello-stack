@@ -1,4 +1,3 @@
-//! Synthetic AGX COG telemetry. No battery physics or power-switching model.
 use crate::transport::Uart;
 use anyhow::{Result, ensure};
 use cog_protocol::{Profile, encode};
@@ -77,7 +76,6 @@ impl Encoder {
         })
     }
 
-    /// Internal heartbeat state; not an invented GPIO/IWC flag or motor interlock.
     pub fn host_valid(&self, now: Duration) -> bool {
         self.last_sync
             .is_some_and(|at| now.saturating_sub(at) < Duration::from_secs(5))
@@ -216,7 +214,6 @@ mod tests {
         );
         assert!(encoder.host_valid(Duration::from_secs(4)));
         assert!(!encoder.host_valid(Duration::from_secs(6)));
-        // Missed output periods never cause a catch-up flood.
         assert_eq!(
             decode(encoder.update(Duration::from_secs(100), b"").unwrap()).len(),
             7

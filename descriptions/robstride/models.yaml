@@ -1,5 +1,3 @@
-# Canonical RobStride protocol limits. robstride-protocol generates its model
-# lookup table from this file at build time.
 models:
   ROBSTRIDE_00:
     position: [-12.57, 12.57]

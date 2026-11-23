@@ -1,5 +1,3 @@
-"""Synchronous complete hardware state reads."""
-
 from __future__ import annotations
 
 import time

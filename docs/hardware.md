@@ -1,7 +1,5 @@
 # Hardware transports and devices
 
-[Documentation index](README.md)
-
 `bello-hardwared` separates transport ownership from device protocols:
 
 ```text
@@ -391,25 +389,3 @@ Unlike a motor, an IMU does not belong to a motor group and therefore does not
 directly invoke a group safety reaction. Its serial and IMU lifecycle events
 are published for supervision, while valid samples continue into the public
 gRPC telemetry stream.
-
-## Rates and timing at a glance
-
-| Activity | Timing source | Behavior |
-| --- | --- | --- |
-| Motor-group safety | `control_rate_hz`, 1–2000 Hz | Fixed checks; does not necessarily transmit CAN commands |
-| CAN transmission | `command_refresh_rate_hz`, 1–`control_rate_hz` Hz | `on_update`: fallback refresh; `periodic`: independent latest-target clock |
-| CAN TX | Priority/command arrivals and periodic slot deadlines | Safety and configuration preempt normal control; periodic clocks run in TX |
-| CAN RX | SocketCAN or GS-USB input | SocketCAN blocks with a 100 ms OS timeout; GS-USB awaits device events |
-| Motor health scan | `feedback_timeout_ms / 4`, clamped to 1–20 ms | Checks bus state and armed feedback watchdogs |
-| Serial TX | Sensor configuration requests | Event-driven; bounded by `timeout_ms` |
-| gRPC state frames | Client request cadence | Returns one complete latest-cache frame per request |
-| Serial RX | Port input | Blocking/event-driven with configured OS timeout |
-| Serial supervisor | Fixed 20 ms monitor poll | Detects worker failures and reconnect requests |
-| EBIMU output | `output_rate_hz` | Device-generated samples at an exact integer-ms interval |
-| EBIMU worker | Fixed 20 ms receive poll | Frames/parses input and evaluates stale timeout |
-
-These are requested or supervisory timings, not real-time guarantees. OS
-scheduling, driver buffering, CAN arbitration, bus load, serial latency, and
-device firmware all contribute to observed latency and jitter. Group telemetry
-reports control-tick jitter; raw transport deadlines keep stale queued work from
-being mistaken for current control.

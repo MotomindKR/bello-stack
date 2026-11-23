@@ -1,4 +1,3 @@
-//! Explicit simulation-only approximations and native closed-linkage constraints.
 use anyhow::{Context, Result, ensure};
 use bello_robot_description::RobotDescription;
 use mujoco_rs::prelude::*;
@@ -123,7 +122,6 @@ pub(crate) fn add_slider_cranks(
             let root_from_rod = description.link_transform(base, rod, initial)?;
             let root_from_slider = description.link_transform(base, slider, initial)?;
             let slider_pin = root_from_slider.inverse() * root_from_rod * rod_pin;
-            // Reject an inconsistent URDF instead of silently creating a different mechanism.
             let limits = description
                 .joint(&linkage.driver)
                 .unwrap()

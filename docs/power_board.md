@@ -21,8 +21,8 @@ are rejected. Unknown flag bits retain explicit names and their raw mask.
 Bello and Mini descriptions declare `power_board` on `power_board_serial`.
 The Mini physical deployment enables it on the verified AGX Orin UART
 `/dev/ttyTHS1` at 921600 baud. Stop any existing COG monitor on that port
-before starting hardwared; hardwared now owns telemetry and the sync heartbeat.
-The original Bello physical deployment still leaves it disabled. To enable
+before starting hardwared; hardwared owns telemetry and the sync heartbeat.
+The Bello physical deployment leaves it disabled. To enable
 it on another deployment, verify the board/profile/port and add both entries:
 
 ```yaml
@@ -33,9 +33,7 @@ serial_ports:
 ```
 
 Validate with `bello-hardwared --check --config PATH` before opening hardware.
-The canonical declaration selects AGX at 921600 baud, a 100 ms sync period,
-and a 3000 ms stale timeout. Confirm these against the installed board.
-AGX defaults to a 100 ms sync period (10 Hz), the minimum accepted period.
+Confirm the serial speed, sync period and stale timeout against the installed board.
 In hardware mode it sends only `sync\r\n`, immediately after connection and
 then periodically;
 the reference host-valid timeout is five seconds. Set `sync_period_ms: 0`
@@ -51,9 +49,6 @@ the same serial reconnect infrastructure as the IMU, not a second port opener.
 selectors. Each snapshot contains at most one sample per packet type, its own
 age/stale flag, connection generation and error counts. Fresh tick packets do
 not refresh old battery data. Reconnection clears prior samples.
-Motor/IMU `GetStateFrame` is unchanged. Emergency damping inhibits command
-ownership as described below.
-
 Each decoded known COG packet publishes a snapshot immediately, including
 unchanged readings with a new receive time. Packets received together are
 published individually so intermediate GPIO and IWC transitions are preserved.
@@ -119,27 +114,14 @@ required when using host-controlled damping as an operational stop.
 
 ## Native emulation
 
-The emulator is **Rust `components/bello-mujoco`**, not the retired Python
-emulator. Maintained runtime profiles enable a synthetic AGX fixture at
-`/dev/ttyPOWER-mujoco`; hardwared's vCAN profiles read `/dev/ttyPOWER`.
-The paired UARTs are created by `bello_mujoco/scripts/setup_emulator.sh start`.
-They are separate from the existing IMU pair and require no TCP port forwarding.
+[bello-mujoco](../components/bello-mujoco/) publishes synthetic AGX readings on
+the power UART. See the [operations guide](operations.md) for virtual-device setup.
 
-The runtime's `power_board` block explicitly sets battery voltage/current/SOC,
-motor rail, environment, six local-rail values (voltage/current pairs), raw GPIO,
-and IWC masks. Defaults are a synthetic 48 V battery at 75% charge, not an
-electrical model or measured robot consumption. Use masks to test warning
+Use masks to test warning
 telemetry. `mute_telemetry: true` tests stale or disconnected telemetry. A
 `null` block disables the emulator endpoint. To use it, disable the board
 and remove its binding in the matching hardwared deployment.
 
 Packets are emitted once per wall-clock second, independently of simulation
 pose resets. Fragmented sync commands update the five-second internal
-host-valid state. No undocumented flags, relay behavior, or simulated motor
-interlocks are invented. UART input work and output queues are bounded; an
-unconsumed output queue fails explicitly rather than growing indefinitely.
-
-Validation covers reference CRC vectors, profile mismatch, corruption,
-fragmentation, real PTY I/O, heartbeat, stale individual samples, reconnect,
-and client validation. Physical board testing is still required before
-commissioning.
+host-valid state.

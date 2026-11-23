@@ -1,19 +1,10 @@
 # Architecture
 
-[Documentation index](README.md)
-
 `bello-hardwared` is one production process with explicit internal ownership
 boundaries. It owns the physical transports, protocol devices, sensor drivers,
 motor-group controllers, leases, telemetry fan-out, and gRPC server. The
 public read-only gRPC stream supports external monitoring; higher-level motion
 generation, kinematics, and robot behavior remain outside the daemon.
-
-The process is monolithic in deployment, not in implementation: each layer has
-one kind of policy and communicates through narrow handles and bounded queues.
-The adjacent API and Robstride protocol libraries contain shared wire-format
-knowledge. The high-level Rust and Python clients bind application-side leases
-and command streams without entering the daemon, while the emulator and
-end-to-end test components remain outside the hardware process.
 
 ## Boundaries
 
@@ -287,46 +278,5 @@ worker modules linked above.
 
 ## Source layout
 
-```text
-components/bello-hardwared/
-  src/main.rs              CLI and Tokio runtime entry
-  src/lib.rs               narrow run/check library surface
-  src/app/                 assembly, ownership, signals, shutdown
-  src/api/grpc/            tonic service, streams, conversion, inventory
-  src/config/              raw YAML model and resolved topology
-  src/control/             group FSM, worker, command policy, safety
-  src/domain/              typed identifiers, commands, states, telemetry
-  src/hardware/lifecycle.rs shared device lifecycle
-  src/hardware/can/        CAN queues, SocketCAN and GS-USB sessions, reconnect
-  src/hardware/serial/     serial queues, sessions, reconnect
-  src/hardware/robstride/  motor protocol boundary and feedback health
-  src/hardware/imu/        EBIMU configuration, framing, parsing
-  src/lease.rs             exclusive group lease store
-  src/telemetry.rs         in-process event broadcaster
-
-components/bello-hardware-client/
-  src/client.rs            connection, inventory, and lease acquisition
-  src/lease.rs             group-bound lifecycle and restricted renewal
-  src/command.rs           command sequencing and acknowledgements
-  src/telemetry.rs         filters and event stream
-
-components/bello-hardware-python/
-  src/bello_hardware/      blocking robot, control, and complete-state API
-  tests/                   gRPC behavior and vCAN smoke driver
-
-components/bello-robot-description/
-  src/lib.rs               shared URDF model, visuals, transmissions, kinematics
-
-components/bello-pose-api/
-  proto/                   neutral external-pose streaming contract
-```
-
-Workspace-level supporting components are
-[`bello-hardware-api`](../components/bello-hardware-api),
-[`bello-hardware-client`](../components/bello-hardware-client),
-[`bello-hardware-python`](../components/bello-hardware-python),
-[`robstride-protocol`](../components/robstride-protocol),
-[`robstride-emulator`](../components/robstride-emulator), and
-[`bello-hardware-e2e`](../components/bello-hardware-e2e). Configuration fields
-and validation limits are documented in [Configuration](configuration.md); the
-wire API is documented in [API](api.md).
+The daemon lives in [bello-hardwared/src](../components/bello-hardwared/src). Its entry point
+assembles the transport, device, and control workers in [app](../components/bello-hardwared/src/app).
