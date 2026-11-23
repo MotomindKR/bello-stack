@@ -94,6 +94,17 @@ expires before its first frame is discarded. Expiry after any frame was written,
 a write error, or completion after the deadline makes the outcome indeterminate
 and forces reconnection.
 
+The wire-time budget excludes host transport time. The GS-USB writer waits for
+each USB bulk OUT transfer to complete before it submits the next frame. On
+macOS, a seven-frame batch on a GS-USB bus has exceeded a 100 Hz group's 10 ms
+`on_update` deadline even with a regular command stream. For partial or late
+completion, the fault detail reports the number of frames written, elapsed time
+in the write loop, and freshness remaining at the start of the loop.
+
+For GS-USB groups that miss isolated refresh slots, consider
+`command_transmission: periodic`. It skips missed slots, but four refresh
+periods without a completed burst still latch a fault (40 ms at 100 Hz).
+
 Periodic groups instead publish one immutable target batch into a latest-value
 slot per group per bus. Publication replaces pending targets without waiting
 for a free queue slot. The TX worker owns each refresh clock, keeps its phase

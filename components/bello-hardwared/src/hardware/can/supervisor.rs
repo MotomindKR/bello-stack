@@ -182,25 +182,57 @@ fn transmit_control_batch<W: FrameWriter>(
     if !control_batch_can_finish(spec, batch.frames.len(), batch.expires_at) {
         return Ok(false);
     }
+    let expires_at = batch.expires_at;
     let mut retry_until = None;
-    for (index, frame) in batch.frames.into_iter().enumerate() {
-        if Instant::now() >= batch.expires_at {
-            return if index == 0 {
-                Ok(false)
-            } else {
-                Err("control batch expired after partial transmission".into())
-            };
-        }
+    write_control_batch(batch, Instant::now, |frame| {
         write_with_backpressure(
             frame,
-            batch.expires_at,
+            expires_at,
             &mut retry_until,
             |_| true,
             |frame| writer.write_frame(frame),
-        )?;
+        )
+        .map(|_| ())
+    })
+}
+
+fn write_control_batch(
+    batch: ControlBatch,
+    clock: impl Fn() -> Instant,
+    mut write: impl FnMut(CanFrame) -> Result<(), String>,
+) -> Result<bool, String> {
+    let started = clock();
+    let total = batch.frames.len();
+    for (index, frame) in batch.frames.into_iter().enumerate() {
+        let now = clock();
+        if now >= batch.expires_at {
+            return if index == 0 {
+                Ok(false)
+            } else {
+                Err(format!(
+                    "control batch expired after partial transmission \
+                     ({index} of {total} frames written in {} us, {} us of freshness left at the first write)",
+                    now.saturating_duration_since(started).as_micros(),
+                    batch
+                        .expires_at
+                        .saturating_duration_since(started)
+                        .as_micros(),
+                ))
+            };
+        }
+        write(frame)?;
     }
-    if Instant::now() > batch.expires_at {
-        Err("control batch completed after its freshness deadline".into())
+    let completed = clock();
+    if completed > batch.expires_at {
+        Err(format!(
+            "control batch completed after its freshness deadline \
+             ({total} frames written in {} us, {} us of freshness left at the first write)",
+            completed.saturating_duration_since(started).as_micros(),
+            batch
+                .expires_at
+                .saturating_duration_since(started)
+                .as_micros(),
+        ))
     } else {
         Ok(true)
     }
@@ -752,6 +784,50 @@ mod tests {
         assert_eq!(control_rx.len(), 2);
         apply_priority_ordering(PriorityBatchKind::SafetyBarrier, &control_rx);
         assert!(control_rx.is_empty());
+    }
+
+    #[test]
+    fn a_late_control_batch_reports_how_long_its_writes_took() {
+        let transmit = |frame_count: u32, write_time: Duration| {
+            let now = std::cell::Cell::new(Instant::now());
+            let batch = ControlBatch {
+                frames: (1..=frame_count)
+                    .map(|id| CanFrame { id, data: [0; 8] })
+                    .collect(),
+                expires_at: now.get() + Duration::from_millis(10),
+            };
+            let mut written = Vec::new();
+            let result = write_control_batch(
+                batch,
+                || now.get(),
+                |frame| {
+                    written.push(frame.id);
+                    now.set(now.get() + write_time);
+                    Ok(())
+                },
+            );
+            (result, written)
+        };
+
+        let (partial, written) = transmit(7, Duration::from_millis(4));
+        assert_eq!(written, [1, 2, 3]);
+        assert_eq!(
+            partial.unwrap_err(),
+            "control batch expired after partial transmission \
+             (3 of 7 frames written in 12000 us, 10000 us of freshness left at the first write)"
+        );
+
+        let (late, written) = transmit(2, Duration::from_millis(8));
+        assert_eq!(written, [1, 2]);
+        assert_eq!(
+            late.unwrap_err(),
+            "control batch completed after its freshness deadline \
+             (2 frames written in 16000 us, 10000 us of freshness left at the first write)"
+        );
+
+        let (on_time, written) = transmit(2, Duration::from_millis(5));
+        assert_eq!(on_time, Ok(true));
+        assert_eq!(written, [1, 2]);
     }
 
     #[test]
