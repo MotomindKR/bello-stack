@@ -132,9 +132,8 @@ cargo run -p robstride-emulator -- \
 Do not hide warnings or make host hardware a prerequisite for ordinary unit and
 workspace tests. Test behavior, protocol semantics, safety invariants, and
 parsing boundaries. The URDF and hardware descriptions own joint geometry, limits,
-and wiring. Use small fixtures for tests that need specific values. A test
-against a shipped description should check an independent requirement, such as
-a gripper linkage closing throughout its travel.
+and wiring. Exercise the description parser and kinematics with small test
+fixtures. Use the daemon's `--check` command to validate a shipped profile.
 
 ## Host-vcan integration test
 

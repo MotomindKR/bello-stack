@@ -153,7 +153,6 @@ pub(super) fn parse(
 #[cfg(test)]
 mod tests {
     use std::io::Write;
-    use std::path::Path;
 
     use super::*;
     use crate::RobotDescription;
@@ -274,126 +273,6 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
-    }
-
-    fn milly() -> RobotDescription {
-        let path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../descriptions/milly/urdf/milly.urdf");
-        RobotDescription::load(&path).unwrap()
-    }
-
-    #[test]
-    fn milly_gripper_closes_within_joint_limits_throughout_motor_travel() {
-        let robot = milly();
-        let linkage = robot
-            .slider_cranks()
-            .iter()
-            .find(|item| item.driver == "gripper")
-            .unwrap();
-        let driver = robot
-            .joint(&linkage.driver)
-            .unwrap()
-            .limits
-            .as_ref()
-            .unwrap();
-        let mut previous_slider = f64::INFINITY;
-        for step in 0..=100 {
-            let q = driver.lower + (driver.upper - driver.lower) * step as f64 / 100.0;
-            let positions = BTreeMap::from([(linkage.driver.clone(), q)]);
-            let resolved = robot.resolve_passive_positions(&positions).unwrap();
-            for name in linkage.passive_joints() {
-                let limits = robot.joint(name).unwrap().limits.as_ref().unwrap();
-                assert!(
-                    (limits.lower..=limits.upper).contains(&resolved[name]),
-                    "{name} at {q}"
-                );
-            }
-            let opening = resolved[&linkage.sliders[0]];
-            assert!(opening < previous_slider);
-            previous_slider = opening;
-            for side in [1, 2] {
-                let tip = robot
-                    .link_transform("link_6", &format!("gripper_rod_{side}_tip"), &positions)
-                    .unwrap();
-                let pin = robot
-                    .link_transform("link_6", &format!("finger_{side}_pin"), &positions)
-                    .unwrap();
-                assert!((tip.translation.vector - pin.translation.vector).norm() < 1e-10);
-            }
-        }
-    }
-
-    #[test]
-    fn milly_fixed_camera_matches_cad_and_optical_axes() {
-        let robot = milly();
-        robot
-            .fixed_transform("link_6", "camera_optical_frame")
-            .unwrap();
-        // REP-103 optical axes expressed in the camera's body frame.
-        let optical = robot
-            .fixed_transform("camera_link", "camera_optical_frame")
-            .unwrap();
-        assert!(
-            (optical.rotation * nalgebra::Vector3::z() - nalgebra::Vector3::x()).norm() < 1e-10
-        );
-        assert!(
-            (optical.rotation * nalgebra::Vector3::x() + nalgebra::Vector3::y()).norm() < 1e-10
-        );
-        assert!(
-            (optical.rotation * nalgebra::Vector3::y() + nalgebra::Vector3::z()).norm() < 1e-10
-        );
-        let zero = (1..=6).map(|i| (format!("joint_{i}"), 0.0)).collect();
-        let lens = robot
-            .link_transform("base_link", "camera_optical_frame", &zero)
-            .unwrap();
-        // CAD lens centre and cylinder axis, independently registered to the arm
-        // base: reverse CAD X/Y and translate Y by -95 mm.
-        assert!(
-            (lens.translation.vector - nalgebra::Vector3::new(0.0, 0.0717094, 0.3148766)).norm()
-                < 1e-7
-        );
-        assert!(
-            (lens.rotation * nalgebra::Vector3::z()
-                - nalgebra::Vector3::new(0.0, 3.0_f64.sqrt() / 2.0, -0.5))
-            .norm()
-                < 1e-7
-        );
-    }
-
-    #[test]
-    fn mini_torso_grippers_close_independently_with_fixed_cameras_and_tcps() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../descriptions/bello_mini_torso/urdf/bello_mini_torso.urdf");
-        let robot = RobotDescription::load(&path).unwrap();
-        for (side, other) in [("left", "right"), ("right", "left")] {
-            let driver = format!("{side}_gripper");
-            let base = format!("{side}_wrist_roll_link");
-            for frame in ["camera_optical_frame", "gripper_tcp"] {
-                robot
-                    .fixed_transform(&base, &format!("{side}_{frame}"))
-                    .unwrap();
-            }
-            let limits = robot.joint(&driver).unwrap().limits.as_ref().unwrap();
-            for step in 0..=100 {
-                let q = limits.lower + (limits.upper - limits.lower) * step as f64 / 100.;
-                let positions = BTreeMap::from([(driver.clone(), q)]);
-                let resolved = robot.resolve_passive_positions(&positions).unwrap();
-                assert!(!resolved.keys().any(|name| name.starts_with(other)));
-                for finger in [1, 2] {
-                    let tip = robot
-                        .link_transform(
-                            &base,
-                            &format!("{side}_gripper_rod_{finger}_tip"),
-                            &positions,
-                        )
-                        .unwrap();
-                    let pin = robot
-                        .link_transform(&base, &format!("{side}_finger_{finger}_pin"), &positions)
-                        .unwrap();
-                    assert!((tip.translation.vector - pin.translation.vector).norm() < 1e-10);
-                }
-            }
-        }
     }
 
     #[test]

@@ -1,10 +1,6 @@
 # Fixed-base torso emulator; no releasable torso guide is needed.
 model: bello_mini_torso.yaml
-bus_interfaces:
-  can0: vcan0
-  can1: vcan1
-  can2: vcan2
-  can3: vcan3
+bus_interfaces: {can0: vcan0, can1: vcan1, can2: vcan2, can3: vcan3}
 feedback_rate_hz: 100
 temperature_c: 25
 command_latency_seconds: 0.0
@@ -27,13 +23,7 @@ power_board:
   motor_current_a: 1.0
   temperature_c: 30.0
   pressure_pa: 101325.0
-  local_rails:
-  - 20.0
-  - 0.5
-  - 5.0
-  - 0.2
-  - 3.3
-  - 0.1
+  local_rails: [20.0, 0.5, 5.0, 0.2, 3.3, 0.1]
   gpi_bits: 64
   info_bits: 0
   warning_bits: 0

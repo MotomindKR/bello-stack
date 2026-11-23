@@ -1,14 +1,7 @@
 hardware: ../../../descriptions/bello_mini/hardware.yaml
 timestep_seconds: 0.0025
-initial_root_position:
-- 0.0
-- 0.0
-- 0.859
-initial_root_quaternion:
-- 1.0
-- 0.0
-- 0.0
-- 0.0
+initial_root_position: [0.0, 0.0, 0.859]
+initial_root_quaternion: [1.0, 0.0, 0.0, 0.0]
 initial_joint_positions:
   left_hip_pitch_joint: -0.15
   right_hip_pitch_joint: -0.15

@@ -3,10 +3,19 @@
 description: ../../../descriptions/bello_mini/hardware.yaml
 
 grpc:
-  listen: [{ type: tcp, address: 0.0.0.0:50051 }]
+  listen:
+    - { type: tcp, address: 0.0.0.0:50051 }
 
-bus_transports: { can0: { type: socketcan, interface: vcan0 }, can1: { type: socketcan, interface: vcan1 }, can2: { type: socketcan, interface: vcan2 }, can3: { type: socketcan, interface: vcan3 } }
-serial_ports: { imu_serial: /dev/ttyIMU, power_board_serial: /dev/ttyPOWER }
+bus_transports:
+  can0: { type: socketcan, interface: vcan0 }
+  can1: { type: socketcan, interface: vcan1 }
+  can2: { type: socketcan, interface: vcan2 }
+  can3: { type: socketcan, interface: vcan3 }
+
+serial_ports:
+  imu_serial: /dev/ttyIMU
+  power_board_serial: /dev/ttyPOWER
+
 enabled_power_boards: [power_board]
 
 enabled_groups: [lower_body, upper_body]

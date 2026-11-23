@@ -153,8 +153,8 @@ rod hinge angle = beta - theta
 
 The second side uses the same scalar joint values with mirrored joint frames.
 The `gripper_rod_*_tip` and `finger_*_pin` frames coincide when the loop closes.
-The solver is tested through the entire `[-2.4, 0.1]` rad envelope, including
-finite-difference velocity checks and end-to-end FK closure.
+Earlier checks verified kinematic closure throughout the `[-2.4, 0.1]` rad
+travel range. Fixture tests compare computed velocities with finite differences.
 
 The CAD pose has crank angle 0.449009773783 rad. Assigning the legacy bridge's
 open motor position `-2.2` rad to that pose gives phase 2.649009773783 rad.
@@ -200,8 +200,8 @@ gripper motor. Its origin is the nominal lens centre measured from the STEP:
 `(0, -sqrt(3)/2, -1/2)` in those coordinates.
 
 `camera_link` uses X forward, Y left, Z up. Its fixed child
-`camera_optical_frame` uses Z forward, X right, Y down. Tests verify the nominal
-lens position/direction and that opening the gripper does not move the camera.
+`camera_optical_frame` uses Z forward, X right, Y down. An earlier check
+compared the nominal lens position and direction with the CAD geometry.
 The mesh includes the bracket and housing, so no additional visual copy is
 attached to the optical frame. Optical centre, extrinsics and intrinsics are
 nominal until calibrated; the MJCF camera's 60-degree field of view is only a

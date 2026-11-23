@@ -2,372 +2,224 @@
 # Motor identity and protocol directions inherit Mini; validate physical zeros and torque sharing.
 # Each hip uses half the source damping gain; both belong to torso_pitch.
 robot_description: urdf/bello_mini_torso.urdf
+
 logical_buses:
-- name: can0
-  host_id: 0
-  bitrate: 1000000
-  maximum_utilization: 0.75
-  reconnect:
-    initial_delay_ms: 100
-    maximum_delay_ms: 5000
-- name: can1
-  host_id: 0
-  bitrate: 1000000
-  maximum_utilization: 0.75
-  reconnect:
-    initial_delay_ms: 100
-    maximum_delay_ms: 5000
-- name: can2
-  host_id: 0
-  bitrate: 1000000
-  maximum_utilization: 0.75
-  reconnect:
-    initial_delay_ms: 100
-    maximum_delay_ms: 5000
-- name: can3
-  host_id: 0
-  bitrate: 1000000
-  maximum_utilization: 0.75
-  reconnect:
-    initial_delay_ms: 100
-    maximum_delay_ms: 5000
+  - name: can0
+    host_id: 0
+    bitrate: 1000000
+    maximum_utilization: 0.75
+    reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
+  - name: can1
+    host_id: 0
+    bitrate: 1000000
+    maximum_utilization: 0.75
+    reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
+  - name: can2
+    host_id: 0
+    bitrate: 1000000
+    maximum_utilization: 0.75
+    reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
+  - name: can3
+    host_id: 0
+    bitrate: 1000000
+    maximum_utilization: 0.75
+    reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
+
 serial_devices:
-- name: power_board_serial
-  baud_rate: 921600
-  timeout_ms: 100
-  reconnect:
-    initial_delay_ms: 100
-    maximum_delay_ms: 5000
-- name: imu_serial
-  baud_rate: 115200
-  timeout_ms: 100
-  reconnect:
-    initial_delay_ms: 100
-    maximum_delay_ms: 5000
+  - name: power_board_serial
+    baud_rate: 921600
+    timeout_ms: 100
+    reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
+  - name: imu_serial
+    baud_rate: 115200
+    timeout_ms: 100
+    reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
+
 imus:
-- name: imu
-  serial_device: imu_serial
-  source_frame: imu_sensor_link
-  output_frame: imu_link
-  stale_timeout_ms: 1000
-  output_rate_hz: 100
+  - name: imu
+    serial_device: imu_serial
+    source_frame: imu_sensor_link
+    output_frame: imu_link
+    stale_timeout_ms: 1000
+    output_rate_hz: 100
+
 power_boards:
-- name: power_board
-  serial_device: power_board_serial
-  profile: agx
-  sync_period_ms: 1000
-  stale_timeout_ms: 3000
+  - name: power_board
+    serial_device: power_board_serial
+    profile: agx
+    sync_period_ms: 1000
+    stale_timeout_ms: 3000
+
 motors:
-- name: waist_yaw_motor
-  coordinate: waist_yaw_motor
-  bus: can1
-  id: 51
-  model: ROBSTRIDE_03
-  direction: -1
-  health: &id001
-    safe_position_min: -12.57
-    safe_position_max: 12.57
-    feedback_position_tolerance: 0.4
-    temperature_warning_c: 60.0
-    maximum_temperature_c: 95.0
-    temperature_recovery_c: 75.0
-    temperature_recovery_duration_ms: 2000
-  command_policy: &id002
-    maximum_position_step: 2.0
-    limit: reject
-    position_step: reject
-  fault_damping_kd: 15.0
-- name: waist_roll_motor
-  coordinate: waist_roll_motor
-  bus: can0
-  id: 52
-  model: ROBSTRIDE_03
-  direction: 1
-  health: *id001
-  command_policy: *id002
-  fault_damping_kd: 15.0
-- name: left_hip_pitch_motor
-  coordinate: left_hip_pitch_motor
-  bus: can0
-  id: 61
-  model: ROBSTRIDE_04
-  direction: -1
-  health:
-    safe_position_min: -12.57
-    safe_position_max: 12.57
-    feedback_position_tolerance: 0.02
-    temperature_warning_c: 60.0
-    maximum_temperature_c: 95.0
-    temperature_recovery_c: 75.0
-    temperature_recovery_duration_ms: 2000
-  command_policy:
-    maximum_position_step: 0.1
-    limit: reject
-    position_step: reject
-  fault_damping_kd: 20.0
-  limits:
-    velocity_abs: 1.0
-- name: right_hip_pitch_motor
-  coordinate: right_hip_pitch_motor
-  bus: can1
-  id: 71
-  model: ROBSTRIDE_04
-  direction: 1
-  health:
-    safe_position_min: -12.57
-    safe_position_max: 12.57
-    feedback_position_tolerance: 0.02
-    temperature_warning_c: 60.0
-    maximum_temperature_c: 95.0
-    temperature_recovery_c: 75.0
-    temperature_recovery_duration_ms: 2000
-  command_policy:
-    maximum_position_step: 0.1
-    limit: reject
-    position_step: reject
-  fault_damping_kd: 20.0
-  limits:
-    velocity_abs: 1.0
-- name: left_shoulder_pitch_motor
-  coordinate: left_shoulder_pitch_motor
-  bus: can2
-  id: 31
-  model: ROBSTRIDE_03
-  direction: -1
-  health: *id001
-  command_policy: *id002
-  fault_damping_kd: 15.0
-- name: left_shoulder_roll_motor
-  coordinate: left_shoulder_roll_motor
-  bus: can2
-  id: 32
-  model: ROBSTRIDE_03
-  direction: 1
-  health: *id001
-  command_policy: *id002
-  fault_damping_kd: 15.0
-- name: left_shoulder_yaw_motor
-  coordinate: left_shoulder_yaw_motor
-  bus: can2
-  id: 33
-  model: ROBSTRIDE_06
-  direction: 1
-  health: *id001
-  command_policy: *id002
-  fault_damping_kd: 3.6
-- name: left_elbow_pitch_motor
-  coordinate: left_elbow_pitch_motor
-  bus: can2
-  id: 34
-  model: ROBSTRIDE_06
-  direction: -1
-  health: *id001
-  command_policy: *id002
-  fault_damping_kd: 3.6
-- name: left_wrist_yaw_motor
-  coordinate: left_wrist_yaw_motor
-  bus: can2
-  id: 35
-  model: ROBSTRIDE_00
-  direction: 1
-  health: *id001
-  command_policy: *id002
-  fault_damping_kd: 2.1
-- name: left_wrist_pitch_motor
-  coordinate: left_wrist_pitch_motor
-  bus: can2
-  id: 36
-  model: ROBSTRIDE_00
-  direction: -1
-  health: *id001
-  command_policy: *id002
-  fault_damping_kd: 2.1
-- name: left_wrist_roll_motor
-  coordinate: left_wrist_roll_motor
-  bus: can2
-  id: 37
-  model: ROBSTRIDE_00
-  direction: -1
-  health: *id001
-  command_policy: *id002
-  fault_damping_kd: 2.1
-- name: right_shoulder_pitch_motor
-  coordinate: right_shoulder_pitch_motor
-  bus: can3
-  id: 41
-  model: ROBSTRIDE_03
-  direction: 1
-  health: *id001
-  command_policy: *id002
-  fault_damping_kd: 15.0
-- name: right_shoulder_roll_motor
-  coordinate: right_shoulder_roll_motor
-  bus: can3
-  id: 42
-  model: ROBSTRIDE_03
-  direction: -1
-  health: *id001
-  command_policy: *id002
-  fault_damping_kd: 15.0
-- name: right_shoulder_yaw_motor
-  coordinate: right_shoulder_yaw_motor
-  bus: can3
-  id: 43
-  model: ROBSTRIDE_06
-  direction: 1
-  health: *id001
-  command_policy: *id002
-  fault_damping_kd: 3.6
-- name: right_elbow_pitch_motor
-  coordinate: right_elbow_pitch_motor
-  bus: can3
-  id: 44
-  model: ROBSTRIDE_06
-  direction: -1
-  health: *id001
-  command_policy: *id002
-  fault_damping_kd: 3.6
-- name: right_wrist_yaw_motor
-  coordinate: right_wrist_yaw_motor
-  bus: can3
-  id: 45
-  model: ROBSTRIDE_00
-  direction: 1
-  health: *id001
-  command_policy: *id002
-  fault_damping_kd: 2.1
-- name: right_wrist_pitch_motor
-  coordinate: right_wrist_pitch_motor
-  bus: can3
-  id: 46
-  model: ROBSTRIDE_00
-  direction: 1
-  health: *id001
-  command_policy: *id002
-  fault_damping_kd: 2.1
-- name: right_wrist_roll_motor
-  coordinate: right_wrist_roll_motor
-  bus: can3
-  id: 47
-  model: ROBSTRIDE_00
-  direction: 1
-  health: *id001
-  command_policy: *id002
-  fault_damping_kd: 2.1
-- name: left_gripper
-  coordinate: left_gripper
-  bus: can2
-  id: 38
-  model: ROBSTRIDE_05
-  direction: -1
-  limits: { position_min: -2.3, position_max: 0.0, velocity_abs: 20.0, torque_abs: 5.5 }
-  health:
-    safe_position_min: -2.4
-    safe_position_max: 0.1
-    temperature_warning_c: 60.0
-    maximum_temperature_c: 75.0
-    temperature_recovery_c: 70.0
-    temperature_recovery_duration_ms: 2000
-  command_policy:
-    maximum_position_step: 3.0
-    limit: reject
-    position_step: fault
-  fault_damping_kd: 5.0
-- name: right_gripper
-  coordinate: right_gripper
-  bus: can3
-  id: 48
-  model: ROBSTRIDE_05
-  direction: -1
-  limits: { position_min: -2.3, position_max: 0.0, velocity_abs: 20.0, torque_abs: 5.5 }
-  health:
-    safe_position_min: -2.4
-    safe_position_max: 0.1
-    temperature_warning_c: 60.0
-    maximum_temperature_c: 75.0
-    temperature_recovery_c: 70.0
-    temperature_recovery_duration_ms: 2000
-  command_policy:
-    maximum_position_step: 3.0
-    limit: reject
-    position_step: fault
-  fault_damping_kd: 5.0
+  - name: waist_yaw_motor
+    coordinate: waist_yaw_motor
+    bus: can1
+    id: 51
+    model: ROBSTRIDE_03
+    direction: -1
+    health: &motor_health
+      safe_position_min: -12.57
+      safe_position_max: 12.57
+      feedback_position_tolerance: 0.4
+      temperature_warning_c: 60.0
+      maximum_temperature_c: 95.0
+      temperature_recovery_c: 75.0
+      temperature_recovery_duration_ms: 2000
+    command_policy: &command_policy
+      maximum_position_step: 2.0
+      limit: reject
+      position_step: reject
+    fault_damping_kd: 15.0
+  - { name: waist_roll_motor, coordinate: waist_roll_motor, bus: can0, id: 52, model: ROBSTRIDE_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
+  - name: left_hip_pitch_motor
+    coordinate: left_hip_pitch_motor
+    bus: can0
+    id: 61
+    model: ROBSTRIDE_04
+    direction: -1
+    health:
+      safe_position_min: -12.57
+      safe_position_max: 12.57
+      feedback_position_tolerance: 0.02
+      temperature_warning_c: 60.0
+      maximum_temperature_c: 95.0
+      temperature_recovery_c: 75.0
+      temperature_recovery_duration_ms: 2000
+    command_policy:
+      maximum_position_step: 0.1
+      limit: reject
+      position_step: reject
+    fault_damping_kd: 20.0
+    limits: { velocity_abs: 1.0 }
+  - name: right_hip_pitch_motor
+    coordinate: right_hip_pitch_motor
+    bus: can1
+    id: 71
+    model: ROBSTRIDE_04
+    direction: 1
+    health:
+      safe_position_min: -12.57
+      safe_position_max: 12.57
+      feedback_position_tolerance: 0.02
+      temperature_warning_c: 60.0
+      maximum_temperature_c: 95.0
+      temperature_recovery_c: 75.0
+      temperature_recovery_duration_ms: 2000
+    command_policy:
+      maximum_position_step: 0.1
+      limit: reject
+      position_step: reject
+    fault_damping_kd: 20.0
+    limits: { velocity_abs: 1.0 }
+  - { name: left_shoulder_pitch_motor, coordinate: left_shoulder_pitch_motor, bus: can2, id: 31, model: ROBSTRIDE_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
+  - { name: left_shoulder_roll_motor, coordinate: left_shoulder_roll_motor, bus: can2, id: 32, model: ROBSTRIDE_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
+  - { name: left_shoulder_yaw_motor, coordinate: left_shoulder_yaw_motor, bus: can2, id: 33, model: ROBSTRIDE_06, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 3.6 }
+  - { name: left_elbow_pitch_motor, coordinate: left_elbow_pitch_motor, bus: can2, id: 34, model: ROBSTRIDE_06, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 3.6 }
+  - { name: left_wrist_yaw_motor, coordinate: left_wrist_yaw_motor, bus: can2, id: 35, model: ROBSTRIDE_00, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
+  - { name: left_wrist_pitch_motor, coordinate: left_wrist_pitch_motor, bus: can2, id: 36, model: ROBSTRIDE_00, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
+  - { name: left_wrist_roll_motor, coordinate: left_wrist_roll_motor, bus: can2, id: 37, model: ROBSTRIDE_00, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
+  - { name: right_shoulder_pitch_motor, coordinate: right_shoulder_pitch_motor, bus: can3, id: 41, model: ROBSTRIDE_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
+  - { name: right_shoulder_roll_motor, coordinate: right_shoulder_roll_motor, bus: can3, id: 42, model: ROBSTRIDE_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
+  - { name: right_shoulder_yaw_motor, coordinate: right_shoulder_yaw_motor, bus: can3, id: 43, model: ROBSTRIDE_06, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 3.6 }
+  - { name: right_elbow_pitch_motor, coordinate: right_elbow_pitch_motor, bus: can3, id: 44, model: ROBSTRIDE_06, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 3.6 }
+  - { name: right_wrist_yaw_motor, coordinate: right_wrist_yaw_motor, bus: can3, id: 45, model: ROBSTRIDE_00, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
+  - { name: right_wrist_pitch_motor, coordinate: right_wrist_pitch_motor, bus: can3, id: 46, model: ROBSTRIDE_00, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
+  - { name: right_wrist_roll_motor, coordinate: right_wrist_roll_motor, bus: can3, id: 47, model: ROBSTRIDE_00, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
+  - name: left_gripper
+    coordinate: left_gripper
+    bus: can2
+    id: 38
+    model: ROBSTRIDE_05
+    direction: -1
+    limits: { position_min: -2.3, position_max: 0.0, velocity_abs: 20.0, torque_abs: 5.5 }
+    health:
+      safe_position_min: -2.4
+      safe_position_max: 0.1
+      temperature_warning_c: 60.0
+      maximum_temperature_c: 75.0
+      temperature_recovery_c: 70.0
+      temperature_recovery_duration_ms: 2000
+    command_policy:
+      maximum_position_step: 3.0
+      limit: reject
+      position_step: fault
+    fault_damping_kd: 5.0
+  - name: right_gripper
+    coordinate: right_gripper
+    bus: can3
+    id: 48
+    model: ROBSTRIDE_05
+    direction: -1
+    limits: { position_min: -2.3, position_max: 0.0, velocity_abs: 20.0, torque_abs: 5.5 }
+    health:
+      safe_position_min: -2.4
+      safe_position_max: 0.1
+      temperature_warning_c: 60.0
+      maximum_temperature_c: 75.0
+      temperature_recovery_c: 70.0
+      temperature_recovery_duration_ms: 2000
+    command_policy:
+      maximum_position_step: 3.0
+      limit: reject
+      position_step: fault
+    fault_damping_kd: 5.0
+
 motor_groups:
-- name: torso_pitch
-  motors:
-  - left_hip_pitch_motor
-  - right_hip_pitch_motor
-  control_rate_hz: 300.0
-  command_transmission: periodic
-  periodic_feedback_during_control: false
-  command_timeout_ms: 500
-  feedback_timeout_ms: 100
-  enable_timeout_ms: 500
-  enable_retries: 3
-  fault_policy:
-    default: damping
-    overrides:
-      safe_position: disable
-  parallel_feedback_position_tolerance: 0.02
-- name: waist
-  motors:
-  - waist_yaw_motor
-  - waist_roll_motor
-  control_rate_hz: 300.0
-  command_transmission: periodic
-  periodic_feedback_during_control: false
-  command_timeout_ms: 500
-  feedback_timeout_ms: 100
-  enable_timeout_ms: 500
-  enable_retries: 3
-  fault_policy:
-    default: damping
-    overrides: {}
-- name: left_gripper
-  motors:
-  - left_gripper
-  control_rate_hz: 100.0
-  command_refresh_rate_hz: 100.0
-  command_timeout_ms: 100
-  feedback_timeout_ms: 250
-  enable_timeout_ms: 500
-  enable_retries: 3
-  fault_policy:
-    default: damping
-- name: right_gripper
-  motors:
-  - right_gripper
-  control_rate_hz: 100.0
-  command_refresh_rate_hz: 100.0
-  command_timeout_ms: 100
-  feedback_timeout_ms: 250
-  enable_timeout_ms: 500
-  enable_retries: 3
-  fault_policy:
-    default: damping
-- name: upper_body
-  motors:
-  - left_shoulder_pitch_motor
-  - left_shoulder_roll_motor
-  - left_shoulder_yaw_motor
-  - left_elbow_pitch_motor
-  - left_wrist_yaw_motor
-  - left_wrist_pitch_motor
-  - left_wrist_roll_motor
-  - right_shoulder_pitch_motor
-  - right_shoulder_roll_motor
-  - right_shoulder_yaw_motor
-  - right_elbow_pitch_motor
-  - right_wrist_yaw_motor
-  - right_wrist_pitch_motor
-  - right_wrist_roll_motor
-  control_rate_hz: 300.0
-  command_transmission: periodic
-  periodic_feedback_during_control: false
-  command_timeout_ms: 500
-  feedback_timeout_ms: 100
-  enable_timeout_ms: 500
-  enable_retries: 3
-  fault_policy:
-    default: damping
-    overrides: {}
+  - name: torso_pitch
+    motors: [left_hip_pitch_motor, right_hip_pitch_motor]
+    control_rate_hz: 300.0
+    command_transmission: periodic
+    periodic_feedback_during_control: false
+    command_timeout_ms: 500
+    feedback_timeout_ms: 100
+    enable_timeout_ms: 500
+    enable_retries: 3
+    fault_policy:
+      default: damping
+      overrides:
+        safe_position: disable
+    parallel_feedback_position_tolerance: 0.02
+  - name: waist
+    motors: [waist_yaw_motor, waist_roll_motor]
+    control_rate_hz: 300.0
+    command_transmission: periodic
+    periodic_feedback_during_control: false
+    command_timeout_ms: 500
+    feedback_timeout_ms: 100
+    enable_timeout_ms: 500
+    enable_retries: 3
+    fault_policy:
+      default: damping
+      overrides: {}
+  - name: left_gripper
+    motors: [left_gripper]
+    control_rate_hz: 100.0
+    command_refresh_rate_hz: 100.0
+    command_timeout_ms: 100
+    feedback_timeout_ms: 250
+    enable_timeout_ms: 500
+    enable_retries: 3
+    fault_policy:
+      default: damping
+  - name: right_gripper
+    motors: [right_gripper]
+    control_rate_hz: 100.0
+    command_refresh_rate_hz: 100.0
+    command_timeout_ms: 100
+    feedback_timeout_ms: 250
+    enable_timeout_ms: 500
+    enable_retries: 3
+    fault_policy:
+      default: damping
+  - name: upper_body
+    motors: [left_shoulder_pitch_motor, left_shoulder_roll_motor, left_shoulder_yaw_motor, left_elbow_pitch_motor, left_wrist_yaw_motor, left_wrist_pitch_motor, left_wrist_roll_motor, right_shoulder_pitch_motor, right_shoulder_roll_motor, right_shoulder_yaw_motor, right_elbow_pitch_motor, right_wrist_yaw_motor, right_wrist_pitch_motor, right_wrist_roll_motor]
+    control_rate_hz: 300.0
+    command_transmission: periodic
+    periodic_feedback_during_control: false
+    command_timeout_ms: 500
+    feedback_timeout_ms: 100
+    enable_timeout_ms: 500
+    enable_retries: 3
+    fault_policy:
+      default: damping
+      overrides: {}

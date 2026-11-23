@@ -236,8 +236,7 @@ def render() -> str:
             robot.append(_clone(linkage, side))
 
     ET.indent(robot, space="  ")
-    xml = ET.tostring(robot, encoding="unicode", short_empty_elements=True)
-    return f'<?xml version="1.0"?>\n{xml}\n'
+    return ET.tostring(robot, encoding="utf-8", xml_declaration=True).decode("utf-8") + "\n"
 
 
 def main() -> int:

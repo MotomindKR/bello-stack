@@ -1,18 +1,16 @@
 # Motor zeros and inherited sensor/serial bindings require confirmation on the installed torso.
 description: ../../../descriptions/bello_mini_torso/hardware.yaml
+
 bus_transports:
   can0: { type: socketcan, interface: vcan0 }
   can1: { type: socketcan, interface: vcan1 }
   can2: { type: socketcan, interface: vcan2 }
   can3: { type: socketcan, interface: vcan3 }
+
 serial_ports:
   imu_serial: /dev/ttyIMU
   power_board_serial: /dev/ttyPOWER
-enabled_power_boards:
-- power_board
-enabled_groups:
-- torso_pitch
-- waist
-- upper_body
-- left_gripper
-- right_gripper
+
+enabled_power_boards: [power_board]
+
+enabled_groups: [torso_pitch, waist, upper_body, left_gripper, right_gripper]
