@@ -387,18 +387,9 @@ mod tests {
 
     #[test]
     fn malformed_linkage_metadata_is_rejected() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../descriptions/milly/urdf/milly.urdf");
-        let xml = std::fs::read_to_string(&path).unwrap();
-        // Keep relative mesh paths valid when using a temporary description.
-        let mesh_dir = path
-            .parent()
-            .unwrap()
-            .join("../meshes")
-            .canonicalize()
-            .unwrap();
-        let xml = xml.replace("../meshes", mesh_dir.to_str().unwrap());
-        let document = roxmltree::Document::parse(&xml).unwrap();
+        let xml = include_str!("../../../descriptions/milly/urdf/milly.urdf");
+        let document = roxmltree::Document::parse(xml).unwrap();
+        let joints = super::super::parse_joints(document.root_element()).unwrap();
         let linkage = document
             .root_element()
             .children()
@@ -424,13 +415,11 @@ mod tests {
             ),
         ] {
             let range = linkage.attribute_node(attribute).unwrap().range_value();
-            let mut invalid_xml = xml.clone();
+            let mut invalid_xml = xml.to_owned();
             invalid_xml.replace_range(range, value);
-            let file = tempfile::NamedTempFile::new().unwrap();
-            std::fs::write(file.path(), invalid_xml).unwrap();
-            let error = super::super::RobotDescription::load(file.path())
-                .err()
-                .unwrap()
+            let invalid = roxmltree::Document::parse(&invalid_xml).unwrap();
+            let error = parse(invalid.root_element(), &joints, &BTreeSet::new())
+                .unwrap_err()
                 .to_string();
             assert!(
                 error.contains(expected_error),
