@@ -1,9 +1,6 @@
 [workspace]
 resolver = "3"
-default-members = [
-  "components/bello-hardwared",
-  "components/bello-visualizer",
-]
+default-members = ["components/bello-hardwared"]
 members = [
   "components/bello-camera-api",
   "components/cog-protocol",
@@ -15,7 +12,6 @@ members = [
   "components/bello-mujoco",
   "components/bello-robot-description",
   "components/bello-state-estimatord",
-  "components/bello-visualizer",
   "components/robstride-emulator",
   "components/robstride-protocol",
 ]
@@ -39,7 +35,6 @@ bello-robot-description = { path = "components/bello-robot-description" }
 clap = "4"
 crossbeam-channel = "0.5"
 futures-core = "0.3"
-gilrs = "0.11"
 gsusbio = { version = "0.1.0", default-features = false, features = ["tokio"] }
 nix = "0.29"
 parking_lot = "0.12"

@@ -10,5 +10,3 @@ dist/
 /outputs/
 hardware-*.jsonl
 hardware-*.jsonl.html
-/components/bello-visualizer/config/bello.yaml
-/components/bello-visualizer/config/bello-mini.yaml

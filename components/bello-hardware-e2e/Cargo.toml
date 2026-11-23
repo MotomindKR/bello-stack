@@ -17,7 +17,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "sy
 [dev-dependencies]
 bello-hardware-api.workspace = true
 bello-hardware-client.workspace = true
-bello-visualizer = { path = "../bello-visualizer" }
+bello-robot-description.workspace = true
 nix = { workspace = true, features = ["feature", "signal"] }
 rcgen.workspace = true
 robstride-protocol.workspace = true

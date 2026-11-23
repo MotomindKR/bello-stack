@@ -15,18 +15,6 @@ knowledge. The high-level Rust and Python clients bind application-side leases
 and command streams without entering the daemon, while the emulator and
 end-to-end test components remain outside the hardware process.
 
-`bello-visualizer` is also a separate client process. Kiss3d, egui, scene nodes,
-and the camera stay on its main thread. A background Tokio runtime continuously
-drains hardware and optional pose streams, publishes latest-wins snapshots at
-60 Hz, and owns lease/command sessions. Rendering therefore cannot backpressure
-telemetry or set the command cadence. External root tracking modifies display
-transforms only; command conversion and safety use actuator/model coordinates.
-The visualizer uses the maintained `bello-hardware-client` for validated
-inventory, aggregated telemetry, reconnect boundaries, and control sessions.
-It does not implement a parallel gRPC client. Its diagnostic publisher retains
-latest motor/IMU/group/device values and a bounded low-rate event history;
-ordinary sample traffic never enters the history.
-
 ## Boundaries
 
 | Boundary | Owns | Does not own |
@@ -325,11 +313,6 @@ components/bello-hardware-client/
 components/bello-hardware-python/
   src/bello_hardware/      blocking robot, control, and complete-state API
   tests/                   gRPC behavior and vCAN smoke driver
-
-components/bello-visualizer/
-  src/transmission.rs      URDF-derived forward/inverse mappings
-  src/runtime.rs           telemetry, pose, leases, and command sessions
-  src/scene.rs             main-thread URDF Kiss3d hierarchy
 
 components/bello-robot-description/
   src/lib.rs               shared URDF model, visuals, transmissions, kinematics

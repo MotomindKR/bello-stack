@@ -18,8 +18,7 @@ use bello_hardware_api::{
     RenewLeaseRequest, StartControlRequest, StopControlRequest, StreamCommandsRequest,
     WatchTelemetryRequest,
 };
-use bello_visualizer::runtime::{ControlStatus, DisplaySnapshot, RuntimeHandle};
-use bello_visualizer::{RobotDescription, Transmission, VisualizerConfig};
+use bello_robot_description::RobotDescription;
 use robstride_protocol::{
     ControlCommand, Feedback, Frame, MotorParams, control_frame, feedback_frame, parse_feedback,
 };
@@ -335,8 +334,14 @@ fn generated_runtime_configs_are_valid() -> Result<()> {
     let description = RobotDescription::load(
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vcan.urdf"),
     )?;
-    let mapping = Transmission::from_description(&description, ["e2e_joint_1", "e2e_joint_2"])?;
-    assert_eq!(mapping.joint_to_coordinate(&[0.1, -0.2])?, [0.1, -0.2]);
+    for coordinate in ["e2e_joint_1", "e2e_joint_2"] {
+        let mapping = description
+            .coordinate_mapping(coordinate)
+            .with_context(|| format!("missing motor coordinate {coordinate}"))?;
+        assert_eq!(mapping.coefficients.len(), 1);
+        assert_eq!(mapping.coefficients.get(coordinate), Some(&1.0));
+        assert_eq!(mapping.offset, 0.0);
+    }
 
     let canonical_hardwared = directory.path().join("canonical-hardwared.yaml");
     let canonical_can0 = directory.path().join("canonical-can0.yaml");
@@ -559,204 +564,6 @@ async fn canonical_lower_body_enforces_coupled_ankle_limits_over_two_buses() -> 
     emulator_can0.ensure_running()?;
     emulator_can1.ensure_running()?;
     Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires a host vcan interface"]
-async fn visualizer_runtime_commands_at_profile_rate_without_rendering() -> Result<()> {
-    const GROUP: &str = "e2e_group";
-    const COMMAND_RATE_HZ: f64 = 40.0;
-    const MEASUREMENT: Duration = Duration::from_millis(1_500);
-
-    let interface = selected_interface()?;
-    require_vcan(&interface)?;
-    let listen = available_loopback_address()?;
-    let directory = tempfile::tempdir().context("creating visualizer e2e directory")?;
-    let hardwared_config = directory.path().join("hardwared.yaml");
-    let emulator_config = directory.path().join("emulator.yaml");
-    let visualizer_config = directory.path().join("visualizer.yaml");
-    let urdf = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/vcan.urdf");
-    support::config::write_hardwared(&hardwared_config, &interface, listen)?;
-    fs::write(&emulator_config, support::config::emulator(&interface))?;
-    fs::write(
-        &visualizer_config,
-        visualizer_yaml(&urdf, &format!("http://{listen}"), COMMAND_RATE_HZ),
-    )?;
-
-    let config = VisualizerConfig::load(&visualizer_config)?;
-    let description = RobotDescription::load(&config.urdf)?;
-    let mapping = Transmission::from_description(&description, ["e2e_joint_1", "e2e_joint_2"])?;
-    assert_eq!(mapping.coordinate_names(), ["e2e_joint_1", "e2e_joint_2"]);
-
-    let mut emulator = ManagedProcess::spawn(
-        "robstride-emulator",
-        env!("CARGO_BIN_EXE_robstride-emulator-e2e-fixture"),
-        [&emulator_config],
-    )?;
-    let mut hardwared = ManagedProcess::spawn(
-        "bello-hardwared",
-        env!("CARGO_BIN_EXE_hardwared-e2e-fixture"),
-        [&hardwared_config],
-    )?;
-    let endpoint = format!("http://{listen}");
-    let readiness_client = support::scenario::connect(
-        &endpoint,
-        Duration::from_secs(3),
-        &mut hardwared,
-        &mut emulator,
-    )
-    .await?;
-
-    // RuntimeHandle is the complete headless I/O/control half of the visualizer. No
-    // Kiss3d window, egui context, render callback, or calls to `latest` are needed
-    // while its command loop runs on the background Tokio runtime.
-    let runtime = RuntimeHandle::spawn(config, description)?;
-    // Hardwared requests active reports at monitor-only startup; no lease,
-    // enable, or command is needed to make feedback available to the visualizer.
-    drop(readiness_client);
-    wait_for_visualizer(
-        &runtime,
-        Duration::from_secs(5),
-        &mut hardwared,
-        &mut emulator,
-        |snapshot| {
-            snapshot.hardware_connected
-                && ["e2e_joint_1", "e2e_joint_2"]
-                    .into_iter()
-                    .all(|coordinate| {
-                        snapshot.motors.get(coordinate).is_some_and(|motor| {
-                            motor.feedback_available
-                                && motor.feedback_current_connection
-                                && motor.age <= Duration::from_millis(500)
-                        })
-                    })
-        },
-    )
-    .await?;
-    runtime
-        .start_groups(vec![GROUP.into()])
-        .map_err(anyhow::Error::msg)?;
-    let before = wait_for_visualizer(
-        &runtime,
-        Duration::from_secs(5),
-        &mut hardwared,
-        &mut emulator,
-        |snapshot| {
-            matches!(snapshot.control.get(GROUP), Some(ControlStatus::Running))
-                && snapshot.groups.get(GROUP).is_some_and(|group| {
-                    group.state == bello_hardware_client::GroupState::Running
-                        && group.command_count > 0
-                })
-        },
-    )
-    .await?;
-    let before_count = before.groups[GROUP].command_count;
-
-    let started = Instant::now();
-    sleep(MEASUREMENT).await;
-    let elapsed = started.elapsed();
-    hardwared.ensure_running()?;
-    emulator.ensure_running()?;
-    let after = runtime.latest();
-    let group = after
-        .groups
-        .get(GROUP)
-        .ok_or_else(|| anyhow!("visualizer snapshot lost group {GROUP:?}"))?;
-    if !matches!(after.control.get(GROUP), Some(ControlStatus::Running))
-        || group.state != bello_hardware_client::GroupState::Running
-    {
-        bail!(
-            "visualizer control did not remain running: control={:?}, daemon={:?}, fault={}",
-            after.control.get(GROUP),
-            group.state,
-            group.detail
-        );
-    }
-
-    let commands = group.command_count.saturating_sub(before_count);
-    let expected = COMMAND_RATE_HZ * elapsed.as_secs_f64();
-    let minimum = (expected * 0.75).floor() as u64;
-    let maximum = (expected * 1.25).ceil() as u64 + 2;
-    if !(minimum..=maximum).contains(&commands) {
-        bail!(
-            "visualizer accepted {commands} complete frames in {elapsed:?}; expected about {expected:.1} at {COMMAND_RATE_HZ:.1} Hz (allowed {minimum}..={maximum})"
-        );
-    }
-    if group.control_tick <= before.groups[GROUP].control_tick {
-        bail!("daemon motor-control ticks did not advance while visualizer commanded");
-    }
-
-    runtime.stop_all().map_err(anyhow::Error::msg)?;
-    let stopped = wait_for_visualizer(
-        &runtime,
-        Duration::from_secs(3),
-        &mut hardwared,
-        &mut emulator,
-        |snapshot| matches!(snapshot.control.get(GROUP), Some(ControlStatus::Monitoring)),
-    )
-    .await?;
-    assert_ne!(
-        stopped.groups[GROUP].state,
-        bello_hardware_client::GroupState::Running
-    );
-    if !runtime.shutdown(Duration::from_secs(3)) {
-        bail!("visualizer runtime did not complete bounded shutdown");
-    }
-    println!(
-        "headless visualizer accepted {commands} frames in {:.3} s ({:.1} Hz, configured {:.1} Hz)",
-        elapsed.as_secs_f64(),
-        commands as f64 / elapsed.as_secs_f64(),
-        COMMAND_RATE_HZ
-    );
-    Ok(())
-}
-
-fn visualizer_yaml(urdf: &Path, endpoint: &str, command_rate_hz: f64) -> String {
-    format!(
-        r#"urdf: {urdf:?}
-hardware:
-  endpoint: {endpoint}
-root:
-  source: fixed
-refresh_hz: 100
-control_profiles:
-  e2e_group:
-    command_rate_hz: {command_rate_hz}
-    validity_ms: 200
-    telemetry_staleness_ms: 500
-"#,
-        urdf = urdf.display(),
-    )
-}
-
-async fn wait_for_visualizer(
-    runtime: &RuntimeHandle,
-    duration: Duration,
-    hardwared: &mut ManagedProcess,
-    emulator: &mut ManagedProcess,
-    predicate: impl Fn(&DisplaySnapshot) -> bool,
-) -> Result<DisplaySnapshot> {
-    let deadline = Instant::now() + duration;
-    loop {
-        hardwared.ensure_running()?;
-        emulator.ensure_running()?;
-        let snapshot = runtime.latest();
-        if predicate(&snapshot) {
-            return Ok(snapshot);
-        }
-        if Instant::now() >= deadline {
-            bail!(
-                "visualizer state did not satisfy condition in {duration:?}: connected={}, hardware_warning={:?}, motors={:?}, groups={:?}, events={:?}, control={:?}",
-                snapshot.hardware_connected,
-                snapshot.hardware_warning,
-                snapshot.motors,
-                snapshot.groups,
-                snapshot.events,
-                snapshot.control
-            );
-        }
-        sleep(Duration::from_millis(20)).await;
-    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

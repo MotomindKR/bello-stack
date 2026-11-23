@@ -561,41 +561,10 @@ enables all groups and maps `can0`/`can1` to physical interfaces. The
 preserves those logical assignments while mapping `can0`/`can1` to
 `vcan0`/`vcan1`.
 
-## Visualizer YAML
-
-The visualizer accepts one independent YAML file containing a local URDF path,
-hardware endpoint/TLS settings, fixed or externally tracked root configuration,
-refresh rate, and optional group control profiles. Relative URDF and certificate
-paths resolve from the YAML directory. The maintained full-Bello example is
-[`config/bello.example.yaml`](../components/bello-visualizer/config/bello.example.yaml).
-The provisional Mini vCAN example is
-[`config/bello-mini.example.yaml`](../components/bello-visualizer/config/bello-mini.example.yaml);
-it uses the reviewed motor directions while encoder zeros and ankle reductions
-remain calibration-gated.
-Copy the full-size example to the ignored local `config/bello.yaml`, or the
-Mini example to the ignored local `config/bello-mini.yaml`. Their hardware
-endpoints default to localhost. Both use the matching estimator PoseService on
-port 50053; MuJoCo ground truth remains available separately on port 50052.
-Use `--hardware-endpoint` and `--pose-endpoint` to redirect those services
-without editing the YAML. The latter is valid only with
-`root.source: external_pose`.
-The adjacent [`config/vcan.yaml`](../components/bello-visualizer/config/vcan.yaml)
-and `vcan.urdf` are a minimal two-joint UI fixture.
-
-Control is unavailable unless a selected group has an explicit profile.
-Hardwared inventory supplies group membership, coordinate names, and hard
-position, velocity, torque, `kp`, and `kd` bounds. Profiles may narrow the
-non-position bounds and configure their defaults, plus group command rate,
-validity, slew, and feedback-staleness limits. Defaults are 50 Hz, 100 ms, and
-200 ms respectively. The URDF supplies rendering, hierarchy, joint limits, and
-direct or differential coordinate mappings; it never supplies hardware gains.
-See the
-[`bello-visualizer` guide](../components/bello-visualizer/README.md).
-
-The Bello Mini profile uses 300 Hz safety ticks and TX-owned periodic CAN transmission,
-with `periodic_feedback_during_control: false`. Its policy still supplies new
-50 Hz targets; each target is retained between updates without extending its
-original validity deadline. Idle/enabling/damped monitoring retains periodic
-feedback. At seven motors per bus, 300 command/reply exchanges per motor per
-second use approximately 63--67% of a 1 Mbps bus. Measure the active hardware
-before treating that estimate as an observed rate.
+The [Bello Mini hardware description](../descriptions/bello_mini/hardware.yaml)
+sets 300 Hz safety ticks and periodic CAN transmission, with
+`periodic_feedback_during_control: false`. Each target retains its original
+validity deadline between updates. Periodic feedback is disabled only while
+the group is Running. At seven motors per bus, 300 command and reply
+exchanges per motor per second are estimated to use 63 to 67 percent of a
+1 Mbps bus.

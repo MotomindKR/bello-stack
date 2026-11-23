@@ -44,7 +44,7 @@ Heartbeat-loss effects on physical power are firmware-dependent and are not
 assumed safe. One configured sensor owns each `SerialHandle`; power boards use
 the same serial reconnect infrastructure as the IMU, not a second port opener.
 
-## API and visualization
+## API and telemetry
 
 `ListHardware` includes board identity, transport, profile and status.
 `WatchTelemetry` uses `include_power_boards` and optional `power_boards`
@@ -71,9 +71,7 @@ hardware before relying on a particular update frequency.
 
 Rust `Robot::power_boards()` returns metadata; `Robot::states()` includes latest
 board snapshots. Python `robot.power().read(timeout=1)` returns bounded
-snapshots without acquiring control. The native visualizer's **Power** tab
-shows battery SOC, signed current, rails, GPIO, named status masks and sample
-age. It keeps latest values, not an ever-growing measurement history.
+snapshots without acquiring control.
 
 ## Physical emergency button and damping
 
@@ -126,15 +124,14 @@ emulator. Maintained runtime profiles enable a synthetic AGX fixture at
 `/dev/ttyPOWER-mujoco`; hardwared's vCAN profiles read `/dev/ttyPOWER`.
 The paired UARTs are created by `bello_mujoco/scripts/setup_emulator.sh start`.
 They are separate from the existing IMU pair and require no TCP port forwarding.
-The native Mac visualizer receives power data over its existing hardwared RPC.
 
 The runtime's `power_board` block explicitly sets battery voltage/current/SOC,
 motor rail, environment, six local-rail values (voltage/current pairs), raw GPIO,
 and IWC masks. Defaults are a synthetic 48 V battery at 75% charge, not an
-electrical model or measured robot consumption. Use masks to test warning UI;
-`mute_telemetry: true` tests stale/disconnected telemetry. A `null` block disables
-the emulator endpoint; also disable the board/remove its binding in the
-matching hardwared deployment.
+electrical model or measured robot consumption. Use masks to test warning
+telemetry. `mute_telemetry: true` tests stale or disconnected telemetry. A
+`null` block disables the emulator endpoint. To use it, disable the board
+and remove its binding in the matching hardwared deployment.
 
 Packets are emitted once per wall-clock second, independently of simulation
 pose resets. Fragmented sync commands update the five-second internal
@@ -144,5 +141,5 @@ unconsumed output queue fails explicitly rather than growing indefinitely.
 
 Validation covers reference CRC vectors, profile mismatch, corruption,
 fragmentation, real PTY I/O, heartbeat, stale individual samples, reconnect,
-client validation and visualizer disconnect/reconnect. Physical board testing
-is still required before commissioning.
+and client validation. Physical board testing is still required before
+commissioning.

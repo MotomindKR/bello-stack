@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package native desktop executables and their configuration/model assets."""
+"""Package the native hardware daemon and its configuration/model assets."""
 
 import argparse
 import os
@@ -28,8 +28,7 @@ def main() -> None:
     suffix = ".exe" if os.name == "nt" else ""
     bundle = root / "dist" / f"bello-desktop-{args.platform}"
     bundle.mkdir(parents=True, exist_ok=False)
-    for name in ["bello-hardwared", "bello-visualizer"]:
-        shutil.copy2(binary_dir / f"{name}{suffix}", bundle)
+    shutil.copy2(binary_dir / f"bello-hardwared{suffix}", bundle)
     tracked = subprocess.check_output(
         [
             "git",
@@ -38,7 +37,6 @@ def main() -> None:
             "--",
             "descriptions",
             "components/bello-hardwared/config",
-            "components/bello-visualizer/config",
         ],
         cwd=root,
     )
@@ -56,8 +54,6 @@ def main() -> None:
         "Edit `components/bello-hardwared/config/milly-gsusb.yaml` to select your USB serial number.\n\n"
         "Start the daemon:\n\n"
         f"```\n./bello-hardwared{suffix} --config components/bello-hardwared/config/milly-gsusb.yaml\n```\n\n"
-        "Start the visualizer in a second terminal:\n\n"
-        f"```\n./bello-visualizer{suffix} --config components/bello-visualizer/config/milly.example.yaml\n```\n\n"
         "See [desktop setup](docs/desktop.md) for platform requirements and other robot profiles.\n",
         encoding="utf-8",
     )
@@ -69,11 +65,6 @@ def main() -> None:
             str(bundle / "components/bello-hardwared/config/milly-gsusb.yaml"),
         ],
         check=True,
-    )
-    subprocess.run(
-        [str(bundle / f"bello-visualizer{suffix}"), "--help"],
-        check=True,
-        stdout=subprocess.DEVNULL,
     )
     archive = bundle.with_suffix(".zip")
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as output:

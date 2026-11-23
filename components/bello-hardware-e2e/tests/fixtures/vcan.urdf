@@ -1,14 +1,6 @@
 <robot name="bello_vcan_fixture">
-  <link name="base">
-    <visual>
-      <geometry><box size="0.1 0.1 0.4"/></geometry>
-    </visual>
-  </link>
-  <link name="second">
-    <visual>
-      <geometry><box size="0.08 0.08 0.36"/></geometry>
-    </visual>
-  </link>
+  <link name="base"/>
+  <link name="second"/>
   <link name="tip"/>
   <joint name="e2e_joint_1" type="revolute">
     <parent link="base"/>

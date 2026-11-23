@@ -11,23 +11,11 @@
       devShells = forAllSystems (system:
         let
           pkgs = import nixpkgs { inherit system; };
-          visualizerRuntimeLibraries = with pkgs; [
-            wayland
-            libxkbcommon
-            libx11
-            libxcursor
-            libxi
-            libxrandr
-            udev
+          runtimeLibraries = with pkgs; [
+            stdenv.cc.cc.lib
             libglvnd
-            vulkan-loader
+            mujoco
           ];
-          pythonWheelRuntimeLibraries = [
-            pkgs.stdenv.cc.cc.lib
-          ];
-          runtimeLibraries =
-            visualizerRuntimeLibraries ++ pythonWheelRuntimeLibraries
-            ++ [ pkgs.mujoco ];
         in {
           default = pkgs.mkShell {
             packages = with pkgs; [
@@ -51,7 +39,7 @@
                 pytest
               ]))
               ruff
-            ] ++ visualizerRuntimeLibraries;
+            ];
             RUST_BACKTRACE = "1";
             MUJOCO_DYNAMIC_LINK_DIR = assert pkgs.mujoco.version == "3.12.0";
               "${pkgs.lib.getLib pkgs.mujoco}/lib";

@@ -1,6 +1,6 @@
 # Desktop builds
 
-`bello-hardwared`, `bello-visualizer`, and their protocol/client libraries support
+`bello-hardwared` and its protocol and client libraries support
 Linux, macOS, and Windows. GS-USB is available on all three; SocketCAN is compiled
 only on Linux. A SocketCAN deployment is rejected by `--check` and startup on
 other operating systems before any hardware is opened.
@@ -9,18 +9,14 @@ other operating systems before any hardware is opened.
 
 The Desktop GitHub Actions workflow builds and tests the portable components on
 Linux x86-64, macOS Apple Silicon, and Windows x86-64. Each successful job uploads
-a `bello-desktop-<platform>` artifact containing a ZIP with two release
-executables, the robot descriptions and meshes, deployment examples, and license.
+a `bello-desktop-<platform>` artifact containing the release daemon, robot
+descriptions and meshes, deployment examples, and the license.
 Extract the entire archive and keep its directory layout. Rust and `protoc` are
 needed only to build from source.
 
-The visualizer uses the host's graphics drivers. Linux also needs its desktop
-graphics libraries (Wayland/X11, xkbcommon, EGL/Vulkan, and udev). These are
-native desktop builds with an Ubuntu 24.04 baseline, not statically linked Linux
-distributions. Binaries built inside Nix can also reference the Nix store;
-use the native CI artifacts when distributing to hosts without Nix. macOS artifacts
-are unsigned; signed/notarized application bundles are not produced by this
-workflow.
+Linux artifacts are dynamically linked and built on Ubuntu 24.04. Binaries
+built inside Nix can reference the Nix store. Use the native CI artifacts when
+distributing to hosts without Nix. macOS artifacts are unsigned.
 
 For Milly, edit `components/bello-hardwared/config/milly-gsusb.yaml` and replace
 `REPLACE_WITH_ADAPTER_SERIAL` with the adapter's USB serial number. Select its
@@ -35,16 +31,8 @@ From the extracted archive directory, run:
 ./bello-hardwared --config components/bello-hardwared/config/milly-gsusb.yaml
 ```
 
-In another terminal:
-
-```sh
-./bello-visualizer --config components/bello-visualizer/config/milly.example.yaml
-```
-
-On Windows PowerShell, use `./bello-hardwared.exe` and
-`./bello-visualizer.exe`. Both examples use TCP on `127.0.0.1:50051`.
-The visualizer starts in monitoring mode; **Commanding** acquires a lease and
-enables the selected motors. Stop the daemon with Ctrl-C for orderly shutdown.
+In Windows PowerShell, use `./bello-hardwared.exe`. The Milly profile listens on
+TCP at `127.0.0.1:50051`. Stop the daemon with Ctrl-C for orderly shutdown.
 
 Other robot profiles use the same transport mapping. Serial device names are
 host specific: use `COM3` on Windows, `/dev/cu.*` on macOS, or stable
@@ -73,19 +61,18 @@ feedback from seven motors.
 
 Install Rust 1.95 or newer, a native C/C++ toolchain, and `protoc` on `PATH`.
 On Windows use the MSVC Rust toolchain and Visual Studio C++ Build Tools. On
-macOS install the Xcode command line tools. The Linux Nix shell supplies the
-Linux toolchain and graphics libraries; it is not required on macOS or Windows.
+macOS install the Xcode command line tools. On Linux install `pkg-config` and
+the libudev development headers, or use the Nix development shell.
 
 ```sh
 cargo build --locked --release
-cargo test --locked -p bello-hardwared -p bello-hardware-client -p bello-visualizer
+cargo test --locked -p bello-hardwared -p bello-hardware-client
 python scripts/package-desktop.py --platform linux-x86_64
 ```
 
-The package script reads release executables from `CARGO_TARGET_DIR/release`
+The package script reads the release daemon from `CARGO_TARGET_DIR/release`
 or `target/release`. Pass `--binary-dir` when using a different output directory.
-Use a lowercase platform label such as `windows-x86_64`. The workspace defaults
-to the two desktop applications; select other programs explicitly with `-p`.
-Run the full workspace
-and vCAN checks on Linux: the MuJoCo host integration and vCAN process tests
-remain Linux-specific.
+Use a lowercase platform label such as `windows-x86_64`. The workspace builds
+`bello-hardwared` by default. Select other programs with `-p`.
+Run the full workspace and vCAN checks on Linux for the MuJoCo host integration
+and vCAN process tests.

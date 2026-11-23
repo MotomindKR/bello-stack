@@ -110,13 +110,12 @@ cargo test --manifest-path deps/bello-stack/Cargo.toml -p bello-mujoco \
 ## Milly physics over virtual CAN
 
 Use `config/milly.yaml` for `check` and `config/emulator_milly.yaml` for `run`.
-Pair this with hardwared's `config/milly-vcan.yaml` and the visualizer's
-`config/milly-physics.example.yaml`. The model has a fixed base, gravity, floor and
-24 box/cylinder colliders, seven native motor actuators, and two native site-to-site
-`connect` equalities for the gripper. Passive positions are initialized from the
-URDF slider-crank definition; MuJoCo solves them dynamically after startup.
-The physics viewer profile uses kp=100 and kd=3 to reduce gravity sag. The
-native motor joint stops activate 0.02 rad before the URDF limit with a 4 ms
+Pair this with hardwared's `config/milly-vcan.yaml`. The model has a fixed base,
+gravity, a floor, 24 box/cylinder colliders, and seven native motor actuators.
+Two native site-to-site `connect` equalities constrain the gripper.
+MuJoCo initializes passive positions from the URDF slider-crank definition
+and solves them dynamically after startup.
+The native motor joint stops activate 0.02 rad before the URDF limit with a 4 ms
 response time. This leaves room for solver compliance before hardwared's
 unchanged safety envelope; using the default soft stop directly at that boundary
 previously caused joint 2 to cross -0.1 rad during ordinary arm motion.
@@ -149,8 +148,6 @@ contact surfaces remain approximations, not calibrated payload/contact models.
 
 Physics advances continuously, including gravity when motors are disabled.
 The initial joint angles are zero; an unpowered arm can move from that pose.
-The visualizer reconstructs passive geometry from measured crank feedback;
-it does not display the small constraint compliance of the native simulation.
 
 ## Live camera streams
 

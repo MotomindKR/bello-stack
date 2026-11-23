@@ -36,8 +36,8 @@ Confirm the installed motor model, CAN address, direction, and zero before use.
 
 Each URDF `bello:slider_crank` declaration preserves Milly's crank radius,
 rod length, slider offset, phase and reference. Only the crank is a motor
-coordinate; both fingers and rods are passive. The viewer and native emulator
-resolve these linkages independently for each hand. Arm IK consumers can hold
+coordinate; both fingers and rods are passive. The native emulator resolves
+these linkages independently for each hand. Arm IK consumers can hold
 the gripper coordinates at the measured or desired opening.
 
 ## Mount geometry
@@ -87,21 +87,12 @@ cargo run -p bello-hardwared -- \
   --config components/bello-hardwared/config/bello-mini-torso-vcan.yaml
 ```
 
-Open the viewer on the same host, or edit the hardware endpoint in a local
-copy of the example when using a remote/VM daemon:
-
-```sh
-cargo run -p bello-visualizer -- \
-  --config components/bello-visualizer/config/bello-mini-torso.example.yaml
-```
-
-The `torso_pitch` editor exposes one logical pitch angle and distributes joint
-torque to both hip motors. Gains remain per-motor values; its defaults are
-50/2 per hip. Both motors must enable and move together. A contradictory
-position or velocity command is rejected. Encoder disagreement above 0.02 rad
-faults the group and disables both hips. Missing/stale feedback follows the
-existing group health and watchdog behavior. The waist and arms have separate
-leases and editors.
+Follow the [hardware API control workflow](../../docs/api.md#normal-control-workflow)
+to command the `torso_pitch` group. Both hip motors must enable and move
+together. Hardwared rejects contradictory position or velocity commands.
+Encoder disagreement above 0.02 rad faults the group and disables both hips.
+Missing or stale feedback follows the group health and watchdog behavior.
+The waist and arms have separate leases.
 
 ## Physical commissioning and visual review
 

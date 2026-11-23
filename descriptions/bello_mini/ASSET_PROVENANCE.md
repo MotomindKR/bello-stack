@@ -210,8 +210,8 @@ transmissions, collisions, inertials, limits and sensor frames are unchanged.
 
 The companion STL meshes are retained for MuJoCo import. Both the stack native
 emulator and bello_mujoco's Python asset pipeline create a temporary URDF with
-explicit STL references; neither rewrites the canonical GLB URDF. Kiss3d and
-the Electron console use the GLBs and their embedded materials directly. The
+explicit STL references; neither rewrites the canonical GLB URDF. The
+Electron console uses the GLBs and their embedded materials directly. The
 companion STLs retain their earlier geometry, so MuJoCo diagnostics do not show
 the newly detailed head and hands. Physical mass and collision geometry match
 across import paths.

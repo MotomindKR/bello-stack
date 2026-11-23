@@ -13,9 +13,9 @@ documented in [`operations.md`](operations.md), the external contract in
 For native Windows/macOS builds and downloadable desktop artifacts, see
 [desktop builds](desktop.md). The full workspace, MuJoCo host integration,
 and vCAN tests are checked on Linux. The Desktop CI workflow builds, lints,
-and tests the daemon, visualizer, protocol libraries, and Rust client natively
-on all three operating systems and packages the two release executables with
-their robot assets.
+and tests the daemon, protocol libraries, shared robot description library, and
+Rust client on all three operating systems. It packages the release daemon with
+its robot assets.
 
 The checked-in Nix flake supplies Rust/Cargo, rustfmt, Clippy, Python, gRPC
 Python tooling, pytest, Ruff, mypy, system `protoc`, Buf, `grpcurl`, can-utils,
@@ -159,16 +159,6 @@ ports, controls fault phases by suspending/resuming the emulator, and verifies
 child-process liveness. Details are in the
 [E2E README](../components/bello-hardware-e2e/README.md) and
 [`tests/vcan.rs`](../components/bello-hardware-e2e/tests/vcan.rs).
-
-Visualizer model, transform, transmission, stale-input, and strict-rejection
-tests run without a GPU as part of the normal workspace suite. A fake hardware
-server additionally checks complete diagnostic telemetry, disconnect freezing,
-fresh immutable control seeding, complete command frames, configured cadence,
-and lease cleanup. The vCAN fixture verifies both its matching URDF transmission
-and that the headless visualizer controller keeps its configured send rate
-without renderer calls. Native window interaction remains a documented manual
-smoke test in the
-[`bello-visualizer` README](../components/bello-visualizer/README.md).
 
 ## CI
 
