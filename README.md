@@ -1,6 +1,10 @@
 # Bello stack
 
-This repository contains the robot models, hardware control software, and MuJoCo simulator for Bello and Milly. The [robot descriptions](descriptions) cover Bello, Bello Mini, Mini Torso, and the single- and dual-arm Milly setups. The URDFs define geometry, joint limits, and transmissions. The hardware configurations name the motors, assign their CAN addresses, and group them for control.
+Bello stack is software for controlling and simulating robots. Each robot has a
+URDF that defines its geometry, joints, and transmissions, and a hardware
+description that assigns motors to buses and control groups. A deployment
+profile selects the groups to run and the interfaces to use. See the
+[included robot descriptions](descriptions) for examples.
 
 On a physical robot, `bello-hardwared` talks to the motors over CAN and reads sensors over serial. A [Rust](components/bello-hardware-client) or [Python](components/bello-hardware-python) application can read telemetry and take control of a motor group over gRPC. The daemon enforces joint limits and handles faults.
 
