@@ -8,7 +8,7 @@ use tracing_subscriber::EnvFilter;
 #[derive(Debug, Parser)]
 #[command(name = "robstride-emulator")]
 struct Args {
-    /// Emulator configuration. Defaults to this component's vcan example.
+    /// Emulator configuration. Defaults to the bundled Milly UDP profile.
     #[arg(short, long)]
     config: Option<PathBuf>,
     #[arg(long)]
@@ -22,12 +22,12 @@ fn main() -> Result<()> {
         )
         .init();
     let args = Args::parse();
-    let config_path = args
-        .config
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config/vcan.yaml"));
-    let config = Config::load(&config_path)?;
+    let config = match args.config {
+        Some(path) => Config::load(path)?,
+        None => Config::parse(include_str!("../config/milly.yaml"))?,
+    };
     if args.check {
-        println!("{}: configuration is valid", config_path.display());
+        println!("configuration is valid");
         return Ok(());
     }
     robstride_emulator::runtime::run(config)

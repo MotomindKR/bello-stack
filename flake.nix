@@ -15,6 +15,7 @@
           runtimeLibraries = with pkgs; [
             stdenv.cc.cc.lib
             libglvnd
+            mesa
             mujoco
           ];
         in {
@@ -39,6 +40,7 @@
               ruff
             ] ++ pkgs.lib.optionals isLinux (with pkgs; [
               can-utils
+              ffmpeg
               iproute2
               mujoco
             ]);
@@ -47,6 +49,7 @@
             shellHook = ''
               export CARGO_TARGET_DIR="''${XDG_CACHE_HOME:-''${HOME}/.cache}/bello-stack/cargo-target"
             '' + pkgs.lib.optionalString isLinux ''
+              export __EGL_VENDOR_LIBRARY_DIRS="''${__EGL_VENDOR_LIBRARY_DIRS:-${pkgs.mesa}/share/glvnd/egl_vendor.d}"
               export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibraries}:''${LD_LIBRARY_PATH:-}"
             '';
           } // pkgs.lib.optionalAttrs isLinux {

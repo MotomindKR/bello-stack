@@ -120,7 +120,9 @@ pub fn run(config: Config) -> Result<()> {
             Err(error)
                 if matches!(
                     error.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    io::ErrorKind::WouldBlock
+                        | io::ErrorKind::TimedOut
+                        | io::ErrorKind::Interrupted
                 ) => {}
             Err(error) => return Err(error).context("reading CAN frame"),
         }

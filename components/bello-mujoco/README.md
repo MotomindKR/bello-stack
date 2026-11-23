@@ -11,13 +11,13 @@ cargo run -p bello-mujoco -- check --config components/bello-mujoco/config/bello
 cargo run -p bello-mujoco -- run --config components/bello-mujoco/config/emulator_mini.yaml
 ```
 
-For a run without SocketCAN, see [simulated CAN](../../docs/operations.md#simulate-can-without-socketcan).
-For a vCAN profile, create the virtual CAN interfaces and paired UARTs specified by the
-[emulator profile](config/). See [operations](../../docs/operations.md) and the
-[power-board guide](../../docs/power_board.md). Use `check --export-physics PATH`
+The shipped profiles use [loopback UDP for CAN](../../docs/operations.md#simulate-can-without-socketcan).
+For models with IMU or power-board serial devices, supply the paired UARTs in the
+[emulator profile](config/). To use Linux SocketCAN instead, set each logical bus
+in a local runtime profile to its vCAN interface (for example, `bus_interfaces: {can0: vcan0}`). Use `check --export-physics PATH`
 to inspect the compiled MJCF. Loading a URDF directly with `Simulation::load`
 skips actuator transmissions. For the fixed-base Mini Torso, pair the [emulator](config/emulator_mini_torso.yaml)
-with the [hardwared vCAN profile](../bello-hardwared/config/bello-mini-torso-vcan.yaml).
+with the [hardwared simulation profile](../bello-hardwared/config/bello-mini-torso-sim.yaml).
 
 To model a carried mass, add a `payloads` entry with `frame`, `mass_kg`, and
 `radius_m` to the model profile. The frame must have no existing inertia. Its
@@ -33,19 +33,17 @@ controller connects. Physics resumes once every mapped motor is in impedance
 mode, enabled, and has received a command. A missing command leaves the
 fixture held. Stopping or disabling motors after release does not reapply it.
 
-The transport and video test requires isolated vCAN interfaces, software Mesa, and ffmpeg:
+The process integration test uses UDP and pseudo-terminals. On Linux it also checks video output with software Mesa and ffmpeg.
 
 ```sh
-BELLO_TEST_CAN_INTERFACES=vcan_test0,vcan_test1,vcan_test2,vcan_test3 \
-BELLO_TEST_EMULATOR_PROFILE="$PWD/components/bello-mujoco/config/emulator_mini.yaml" \
-cargo test -p bello-mujoco --test vcan -- --ignored
+cargo test -p bello-mujoco --test simulation
 ```
 
-## Milly physics over virtual CAN
+## Milly physics
 
-Pair the [Milly emulator](config/emulator_milly.yaml) with
-[hardwared's vCAN profile](../bello-hardwared/config/milly-vcan.yaml).
-This setup runs without serial devices. Gravity acts on the arm while motors are disabled.
+The [Milly emulator](config/emulator_milly.yaml) runs without serial devices.
+Pair it with [hardwared's simulation profile](../bello-hardwared/config/milly-sim.yaml).
+Gravity acts on the arm while motors are disabled.
 
 ```sh
 cargo run -p bello-mujoco -- check --config components/bello-mujoco/config/milly.yaml

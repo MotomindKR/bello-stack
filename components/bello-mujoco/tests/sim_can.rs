@@ -1,28 +1,20 @@
 use anyhow::{Result, ensure};
 use bello_mujoco::runtime::{Config, run};
-use bello_sim_can::SimBus;
+mod support;
 use robstride_emulator::config::CanInterface;
 use robstride_protocol::{
     ControlCommand, MotorParams, active_report_frame, control_frame, enable_frame,
     param_write_u8_frame, parse_feedback,
 };
 use std::io::ErrorKind;
-use std::net::{Ipv4Addr, UdpSocket};
 use std::path::Path;
 use std::time::Duration;
 
 #[test]
 fn motor_follows_position_commands_over_sim_can() -> Result<()> {
-    let profile = Path::new(env!("CARGO_MANIFEST_DIR")).join("config/emulator_milly_sim.yaml");
+    let profile = Path::new(env!("CARGO_MANIFEST_DIR")).join("config/emulator_milly.yaml");
     let mut config = Config::load(&profile)?;
-    let daemon_port = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))?;
-    let simulator_port = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))?;
-    let bus = SimBus {
-        daemon_port: daemon_port.local_addr()?.port(),
-        simulator_port: simulator_port.local_addr()?.port(),
-    };
-    drop(daemon_port);
-    let client = bus.open_daemon()?;
+    let (bus, client, simulator_port) = support::reserve_bus()?;
     client.set_read_timeout(Some(Duration::from_millis(10)))?;
     config
         .bus_interfaces

@@ -262,7 +262,6 @@ dependencies = [
  "bello-hardware-api",
  "bello-hardware-client",
  "bello-hardwared",
- "bello-robot-description",
  "nix 0.29.0",
  "rcgen",
  "robstride-emulator",

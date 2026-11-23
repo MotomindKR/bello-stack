@@ -59,12 +59,10 @@ jobs:
             "${metadata_command[@]}" "$artifact" "$metadata_pattern" |
               grep -Fx 'Classifier: Private :: Do Not Upload'
           done
-      - name: Create vcan interfaces
+      - name: Create SocketCAN test interface
         run: |
           sudo modprobe vcan
           sudo ip link add dev vcan0 type vcan
           sudo ip link set dev vcan0 up
-          sudo ip link add dev vcan1 type vcan
-          sudo ip link set dev vcan1 up
-      - name: Run ignored vcan integration test
-        run: nix develop --command cargo e2e
+      - name: Test the SocketCAN backend
+        run: nix develop --command cargo e2e-vcan

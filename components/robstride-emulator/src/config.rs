@@ -119,8 +119,11 @@ impl Config {
         let path = path.as_ref();
         let text = fs::read_to_string(path)
             .with_context(|| format!("failed to read {}", path.display()))?;
-        let config: Self = serde_yaml::from_str(&text)
-            .with_context(|| format!("invalid YAML in {}", path.display()))?;
+        Self::parse(&text).with_context(|| format!("invalid configuration in {}", path.display()))
+    }
+
+    pub fn parse(yaml: &str) -> Result<Self> {
+        let config: Self = serde_yaml::from_str(yaml)?;
         config.validate()?;
         Ok(config)
     }

@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license-file.workspace = true
 publish.workspace = true
-description = "Process-level vcan and gRPC integration scenarios for Bello hardware"
+description = "Process-level CAN and gRPC integration scenarios for Bello hardware"
 autobins = false
 
 [dependencies]
@@ -17,7 +17,6 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "sy
 [dev-dependencies]
 bello-hardware-api.workspace = true
 bello-hardware-client.workspace = true
-bello-robot-description.workspace = true
 nix = { workspace = true, features = ["feature", "signal"] }
 rcgen.workspace = true
 robstride-protocol.workspace = true

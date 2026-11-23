@@ -8,7 +8,7 @@ profile selects the groups to run and the interfaces to use. See the
 
 On a physical robot, `bello-hardwared` talks to the motors over CAN and reads sensors over serial. A [Rust](components/bello-hardware-client) or [Python](components/bello-hardware-python) application can read telemetry and take control of a motor group over gRPC. The daemon enforces joint limits and handles faults.
 
-The [MuJoCo simulator](components/bello-mujoco) emulates motors and sensors so the same daemon and application can run against simulated physics. The [simulated CAN backend](docs/operations.md#simulate-can-without-socketcan) runs on loopback without a CAN adapter or a Linux vCAN interface.
+The [MuJoCo simulator](components/bello-mujoco) emulates motors and sensors so the same daemon and application can run against simulated physics. By default, the simulator exchanges motor frames with the daemon over [loopback UDP](docs/operations.md#simulate-can-without-socketcan).
 
 The [pose estimator](components/bello-state-estimatord) combines encoder and IMU readings to estimate the robot’s motion. MuJoCo can also publish ground-truth pose and rendered images through the [pose](components/bello-pose-api/proto/bello/pose/v1/pose.proto) and [camera](components/bello-camera-api/proto/bello/camera/v1/camera.proto) APIs.
 

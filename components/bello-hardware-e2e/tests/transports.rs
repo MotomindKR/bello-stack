@@ -238,7 +238,7 @@ async fn failed_second_listener_cleans_up_first_socket() -> Result<()> {
 }
 
 fn write_test_deployment(path: &Path, grpc: &str) -> Result<()> {
-    let ports = sim::available_ports()?;
+    let [ports] = sim::available_ports()?;
     config::write_hardwared_with_grpc(path, &format!("{{ type: sim, {ports} }}"), grpc, 250.0)?;
     Ok(())
 }

@@ -6,6 +6,9 @@ mod support;
 #[path = "support/sim.rs"]
 mod sim;
 
+#[path = "sim_can/lower_body.rs"]
+mod lower_body;
+
 use std::fs;
 use std::net::TcpListener;
 use std::time::Duration;
@@ -18,39 +21,10 @@ use tokio::time::{sleep, timeout};
 
 #[tokio::test]
 async fn simulated_can_delivers_motion_and_faults_when_emulator_stops() -> Result<()> {
-    let directory = tempfile::tempdir()?;
-    let deployment = directory.path().join("hardwared.yaml");
-    let emulator_config = directory.path().join("emulator.yaml");
-    let grpc = TcpListener::bind(("127.0.0.1", 0))?.local_addr()?;
-    let ports = sim::available_ports()?;
-    support::config::write_hardwared_with_grpc(
-        &deployment,
-        &format!("{{ type: sim, {ports} }}"),
-        &format!("  listen: [{{ type: tcp, address: {grpc} }}]\n  maximum_lease_ms: 30000"),
-        250.0,
-    )?;
-    fs::write(
-        &emulator_config,
-        support::config::emulator(&format!("{{ {ports} }}")),
-    )?;
-    let mut daemon = ManagedProcess::spawn(
-        "hardwared",
-        env!("CARGO_BIN_EXE_hardwared-e2e-fixture"),
-        [&deployment],
-    )?;
-    let mut emulator = ManagedProcess::spawn(
-        "emulator",
-        env!("CARGO_BIN_EXE_robstride-emulator-e2e-fixture"),
-        [&emulator_config],
-    )?;
+    let (_directory, endpoint, mut daemon, mut emulator) = spawn_pair()?;
     let deadline = Duration::from_secs(5);
-    let client = support::scenario::connect(
-        &format!("http://{grpc}"),
-        deadline,
-        &mut daemon,
-        &mut emulator,
-    )
-    .await?;
+    let client =
+        support::scenario::connect(&endpoint, deadline, &mut daemon, &mut emulator).await?;
     support::scenario::wait_for_motors_online(&client, deadline, &mut daemon, &mut emulator)
         .await?;
     let group = "e2e_group";
@@ -140,4 +114,42 @@ async fn wait_for_frame(
         }
     })
     .await?
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn control_fault_and_recovery() -> Result<()> {
+    let (_directory, endpoint, mut daemon, mut emulator) = spawn_pair()?;
+    let deadline = Duration::from_secs(8);
+    let client =
+        support::scenario::connect(&endpoint, deadline, &mut daemon, &mut emulator).await?;
+    support::scenario::run(client, &endpoint, deadline, &mut daemon, &mut emulator).await
+}
+
+fn spawn_pair() -> Result<(tempfile::TempDir, String, ManagedProcess, ManagedProcess)> {
+    let directory = tempfile::tempdir()?;
+    let deployment = directory.path().join("hardwared.yaml");
+    let emulator_config = directory.path().join("emulator.yaml");
+    let grpc = TcpListener::bind(("127.0.0.1", 0))?.local_addr()?;
+    let [ports] = sim::available_ports()?;
+    support::config::write_hardwared_with_grpc(
+        &deployment,
+        &format!("{{ type: sim, {ports} }}"),
+        &format!("  listen: [{{ type: tcp, address: {grpc} }}]\n  maximum_lease_ms: 30000"),
+        250.0,
+    )?;
+    fs::write(
+        &emulator_config,
+        support::config::emulator(&format!("{{ {ports} }}")),
+    )?;
+    let daemon = ManagedProcess::spawn(
+        "hardwared",
+        env!("CARGO_BIN_EXE_hardwared-e2e-fixture"),
+        [&deployment],
+    )?;
+    let emulator = ManagedProcess::spawn(
+        "emulator",
+        env!("CARGO_BIN_EXE_robstride-emulator-e2e-fixture"),
+        [&emulator_config],
+    )?;
+    Ok((directory, format!("http://{grpc}"), daemon, emulator))
 }
