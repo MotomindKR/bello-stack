@@ -37,6 +37,7 @@ impl GroupWorker {
         let (wake_tx, wake_rx) = mpsc::sync_channel(WAKE_QUEUE_CAPACITY);
         let command_mailbox = Arc::new(Mutex::new(None));
         let lease_lost = Arc::new(AtomicBool::new(false));
+        let emergency_pending = Arc::new(AtomicBool::new(false));
         let lease_generation = Arc::new(AtomicU64::new(0));
         let lease_loss_waiters = Arc::new(Mutex::new(Vec::new()));
         let shutdown = Arc::new(AtomicBool::new(false));
@@ -49,6 +50,7 @@ impl GroupWorker {
                 wake_rx,
                 command_mailbox: command_mailbox.clone(),
                 lease_lost: lease_lost.clone(),
+                emergency_pending: emergency_pending.clone(),
                 lease_generation: lease_generation.clone(),
                 lease_loss_waiters: lease_loss_waiters.clone(),
                 shutdown: shutdown.clone(),
@@ -97,6 +99,7 @@ impl GroupWorker {
                 wake_tx,
                 command_mailbox,
                 lease_lost,
+                emergency_pending,
                 lease_generation,
                 lease_loss_waiters,
                 shutdown,

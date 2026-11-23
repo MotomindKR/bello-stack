@@ -94,15 +94,16 @@ expires before its first frame is discarded. Expiry after any frame was written,
 a write error, or completion after the deadline makes the outcome indeterminate
 and forces reconnection.
 
-The wire-time budget does not include the transport's own cost. SocketCAN takes a
-frame into the kernel queue in microseconds. A GS-USB transport sends each frame
-as one USB bulk transfer and waits for it to complete before submitting the next,
-so a seven-frame batch costs seven USB round trips. On macOS, where GS-USB is the
-only transport, a 100 Hz `on_update` group (10 ms freshness) has been seen to miss
-this deadline every few tens of seconds to minutes and latch a transmission fault
-with a regular command stream. The failure detail reports how many frames were
-written and how long the writes took. Prefer `command_transmission: periodic` for
-groups on a GS-USB bus: a late burst then skips slots instead of faulting.
+The wire-time budget excludes host transport time. The GS-USB writer waits for
+each USB bulk OUT transfer to complete before it submits the next frame. On
+macOS, a seven-frame batch on a GS-USB bus has exceeded a 100 Hz group's 10 ms
+`on_update` deadline even with a regular command stream. For partial or late
+completion, the fault detail reports the number of frames written, elapsed time
+in the write loop, and freshness remaining at the start of the loop.
+
+For GS-USB groups that miss isolated refresh slots, consider
+`command_transmission: periodic`. It skips missed slots, but four refresh
+periods without a completed burst still latch a fault (40 ms at 100 Hz).
 
 Periodic groups instead publish one immutable target batch into a latest-value
 slot per group per bus. Publication replaces pending targets without waiting

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender, select_biased};
@@ -25,8 +26,26 @@ mod socketcan;
 mod usb;
 
 trait FrameWriter {
-    fn write_frame(&self, frame: CanFrame) -> Result<(), String>;
+    fn write_frame(&self, frame: CanFrame) -> Result<(), WriteFailure>;
 }
+
+#[derive(Debug)]
+struct WriteFailure {
+    queue_full: bool,
+    detail: String,
+}
+
+impl WriteFailure {
+    fn fatal(detail: impl Into<String>) -> Self {
+        Self {
+            queue_full: false,
+            detail: detail.into(),
+        }
+    }
+}
+
+const BACKPRESSURE_LIMIT: Duration = Duration::from_millis(2);
+const BACKPRESSURE_POLL: Duration = Duration::from_micros(100);
 
 pub(super) fn run(
     spec: BusSpec,
@@ -61,7 +80,7 @@ fn run_tx<W: FrameWriter>(
         match outbound {
             Outbound::Periodic(control, batch) => {
                 match transmit_periodic_batch(spec, &control, &batch, |frame| {
-                    write_frame(&writer, frame)
+                    writer.write_frame(frame)
                 }) {
                     Ok(true) => control.sent(Instant::now()),
                     Ok(false) => {}
@@ -111,7 +130,7 @@ fn transmit_periodic_batch(
     spec: &BusSpec,
     control: &PeriodicControl,
     batch: &PeriodicBatch,
-    mut write: impl FnMut(CanFrame) -> Result<(), String>,
+    mut write: impl FnMut(CanFrame) -> Result<(), WriteFailure>,
 ) -> Result<bool, String> {
     let Some(stall_deadline) = control.stall_deadline() else {
         return Ok(false);
@@ -119,6 +138,7 @@ fn transmit_periodic_batch(
     if !control_batch_can_finish(spec, batch.frames.len(), batch.expires_at) {
         return Ok(false);
     }
+    let mut retry_until = None;
     for (index, frame) in batch.frames.iter().enumerate() {
         // Intentional revocation may interrupt a burst: its ordered safety
         // barrier follows on this same TX worker. It must never resume.
@@ -133,7 +153,15 @@ fn transmit_periodic_batch(
                 Err("periodic control batch expired after partial transmission".into())
             };
         }
-        write(*frame)?;
+        if !write_with_backpressure(
+            *frame,
+            batch.expires_at,
+            &mut retry_until,
+            |now| control.permits_transmission(batch, now, stall_deadline),
+            &mut write,
+        )? {
+            return Ok(false);
+        }
     }
     let completed = Instant::now();
     if !control.permits_transmission(batch, completed, stall_deadline) {
@@ -154,12 +182,29 @@ fn transmit_control_batch<W: FrameWriter>(
     if !control_batch_can_finish(spec, batch.frames.len(), batch.expires_at) {
         return Ok(false);
     }
-    // How long the writes took is what tells a slow transport (a GS-USB adapter needs one USB
-    // transfer per frame) from a late handoff, so the failure reports both.
-    let started = Instant::now();
+    let expires_at = batch.expires_at;
+    let mut retry_until = None;
+    write_control_batch(batch, Instant::now, |frame| {
+        write_with_backpressure(
+            frame,
+            expires_at,
+            &mut retry_until,
+            |_| true,
+            |frame| writer.write_frame(frame),
+        )
+        .map(|_| ())
+    })
+}
+
+fn write_control_batch(
+    batch: ControlBatch,
+    clock: impl Fn() -> Instant,
+    mut write: impl FnMut(CanFrame) -> Result<(), String>,
+) -> Result<bool, String> {
+    let started = clock();
     let total = batch.frames.len();
     for (index, frame) in batch.frames.into_iter().enumerate() {
-        let now = Instant::now();
+        let now = clock();
         if now >= batch.expires_at {
             return if index == 0 {
                 Ok(false)
@@ -175,9 +220,9 @@ fn transmit_control_batch<W: FrameWriter>(
                 ))
             };
         }
-        write_frame(writer, frame)?;
+        write(frame)?;
     }
-    let completed = Instant::now();
+    let completed = clock();
     if completed > batch.expires_at {
         Err(format!(
             "control batch completed after its freshness deadline \
@@ -198,6 +243,7 @@ fn transmit_priority_batch<W: FrameWriter>(
     frames: Vec<CanFrame>,
     expires_at: Instant,
 ) -> Result<(), BatchFailure> {
+    let mut retry_until = None;
     for (index, frame) in frames.into_iter().enumerate() {
         if Instant::now() >= expires_at {
             return if index == 0 {
@@ -208,7 +254,14 @@ fn transmit_priority_batch<W: FrameWriter>(
                 ))
             };
         }
-        write_frame(writer, frame).map_err(BatchFailure::Transmit)?;
+        write_with_backpressure(
+            frame,
+            expires_at,
+            &mut retry_until,
+            |_| true,
+            |frame| writer.write_frame(frame),
+        )
+        .map_err(BatchFailure::Transmit)?;
     }
     if Instant::now() > expires_at {
         Err(BatchFailure::Transmit(
@@ -231,8 +284,40 @@ fn priority_batch_can_finish(spec: &BusSpec, frame_count: usize, expires_at: Ins
         .is_some_and(|completion| completion <= expires_at)
 }
 
-fn write_frame<W: FrameWriter>(writer: &W, frame: CanFrame) -> Result<(), String> {
-    writer.write_frame(frame)
+fn write_with_backpressure(
+    frame: CanFrame,
+    expires_at: Instant,
+    retry_until: &mut Option<Instant>,
+    mut permitted: impl FnMut(Instant) -> bool,
+    mut write: impl FnMut(CanFrame) -> Result<(), WriteFailure>,
+) -> Result<bool, String> {
+    let mut retrying = false;
+    loop {
+        let now = Instant::now();
+        if !permitted(now) {
+            return Ok(false);
+        }
+        if now >= expires_at {
+            return Err("CAN batch expired while waiting for transmit capacity".into());
+        }
+        if retrying && retry_until.is_some_and(|deadline| now >= deadline) {
+            return Err("CAN transmit queue stayed full beyond its retry budget".into());
+        }
+        match write(frame) {
+            Ok(()) => return Ok(true),
+            Err(error) if error.queue_full => {
+                let now = Instant::now();
+                let deadline =
+                    (*retry_until.get_or_insert(now + BACKPRESSURE_LIMIT)).min(expires_at);
+                if now >= deadline {
+                    return Err(format!("CAN transmit queue stayed full: {}", error.detail));
+                }
+                retrying = true;
+                thread::sleep(BACKPRESSURE_POLL.min(deadline - now));
+            }
+            Err(error) => return Err(error.detail),
+        }
+    }
 }
 
 fn purge_control(control: &Receiver<ControlBatch>) {
@@ -402,12 +487,119 @@ mod tests {
         let (spec, control, batch) = periodic_fixture(Duration::from_secs(1));
         let result = transmit_periodic_batch(&spec, &control, &batch, |frame| {
             if frame.id == 2 {
-                Err("injected CAN write failure".into())
+                Err(WriteFailure::fatal("injected CAN write failure"))
             } else {
                 Ok(())
             }
         });
         assert_eq!(result, Err("injected CAN write failure".into()));
+    }
+
+    #[test]
+    fn transient_queue_pressure_retries_only_the_rejected_frame() {
+        let (spec, control, batch) = periodic_fixture(Duration::from_secs(1));
+        let mut attempted = Vec::new();
+        assert!(
+            transmit_periodic_batch(&spec, &control, &batch, |frame| {
+                attempted.push(frame.id);
+                if attempted.len() == 2 {
+                    Err(WriteFailure {
+                        queue_full: true,
+                        detail: "injected queue pressure".into(),
+                    })
+                } else {
+                    Ok(())
+                }
+            })
+            .unwrap()
+        );
+        assert_eq!(attempted, vec![1, 2, 2]);
+    }
+
+    #[test]
+    fn revocation_during_queue_pressure_prevents_retry() {
+        let (spec, control, batch) = periodic_fixture(Duration::from_secs(1));
+        let mut attempted = Vec::new();
+        assert!(
+            !transmit_periodic_batch(&spec, &control, &batch, |frame| {
+                attempted.push(frame.id);
+                control.revoke();
+                Err(WriteFailure {
+                    queue_full: true,
+                    detail: "injected queue pressure".into(),
+                })
+            })
+            .unwrap()
+        );
+        assert_eq!(attempted, vec![1]);
+    }
+
+    #[test]
+    fn persistent_queue_pressure_has_a_bounded_shared_budget() {
+        let mut retry_until = None;
+        let frame = CanFrame {
+            id: 1,
+            data: [0; 8],
+        };
+        let expires = Instant::now() + Duration::from_secs(1);
+        let result = write_with_backpressure(
+            frame,
+            expires,
+            &mut retry_until,
+            |_| true,
+            |_| {
+                Err(WriteFailure {
+                    queue_full: true,
+                    detail: "injected queue pressure".into(),
+                })
+            },
+        );
+        assert!(result.unwrap_err().contains("queue stayed full"));
+        let original_deadline = retry_until;
+        let mut attempts = 0;
+        let result = write_with_backpressure(
+            frame,
+            expires,
+            &mut retry_until,
+            |_| true,
+            |_| {
+                attempts += 1;
+                Err(WriteFailure {
+                    queue_full: true,
+                    detail: "injected queue pressure".into(),
+                })
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(attempts, 1);
+        assert_eq!(retry_until, original_deadline);
+    }
+
+    #[test]
+    fn expiry_during_queue_pressure_prevents_retry() {
+        let mut retry_until = None;
+        let frame = CanFrame {
+            id: 1,
+            data: [0; 8],
+        };
+        let expires = Instant::now() + Duration::from_millis(1);
+        let mut attempts = 0;
+        let result = write_with_backpressure(
+            frame,
+            expires,
+            &mut retry_until,
+            |_| true,
+            |_| {
+                attempts += 1;
+                thread::sleep(Duration::from_millis(2));
+                Err(WriteFailure {
+                    queue_full: true,
+                    detail: "injected queue pressure".into(),
+                })
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(attempts, 1);
     }
 
     #[test]
@@ -594,65 +786,48 @@ mod tests {
         assert!(control_rx.is_empty());
     }
 
-    struct SlowWriter(Duration);
-
-    impl FrameWriter for SlowWriter {
-        fn write_frame(&self, _frame: CanFrame) -> Result<(), String> {
-            thread::sleep(self.0);
-            Ok(())
-        }
-    }
-
     #[test]
     fn a_late_control_batch_reports_how_long_its_writes_took() {
-        let config: crate::config::BusConfig = serde_yaml::from_str(
-            "name: can\ntransport: { type: socketcan, interface: vcan0 }\nbitrate: 1000000\nmaximum_utilization: 1.0",
-        )
-        .unwrap();
-        let spec = BusSpec::try_from(&config).unwrap();
-        let batch = |frames: u32, fresh_for: Duration| ControlBatch {
-            frames: (1..=frames)
-                .map(|id| CanFrame { id, data: [0; 8] })
-                .collect(),
-            expires_at: Instant::now() + fresh_for,
+        let transmit = |frame_count: u32, write_time: Duration| {
+            let now = std::cell::Cell::new(Instant::now());
+            let batch = ControlBatch {
+                frames: (1..=frame_count)
+                    .map(|id| CanFrame { id, data: [0; 8] })
+                    .collect(),
+                expires_at: now.get() + Duration::from_millis(10),
+            };
+            let mut written = Vec::new();
+            let result = write_control_batch(
+                batch,
+                || now.get(),
+                |frame| {
+                    written.push(frame.id);
+                    now.set(now.get() + write_time);
+                    Ok(())
+                },
+            );
+            (result, written)
         };
 
-        // Seven frames at 4 ms each cannot fit a 10 ms deadline: the batch stops part-way.
-        let partial = transmit_control_batch(
-            &SlowWriter(Duration::from_millis(4)),
-            &spec,
-            batch(7, Duration::from_millis(10)),
-        )
-        .unwrap_err();
-        assert!(
-            partial.starts_with("control batch expired after partial transmission ("),
-            "{partial}"
-        );
-        assert!(partial.contains(" of 7 frames written in "), "{partial}");
-
-        // Two frames at 8 ms each finish, but after the deadline.
-        let late = transmit_control_batch(
-            &SlowWriter(Duration::from_millis(8)),
-            &spec,
-            batch(2, Duration::from_millis(10)),
-        )
-        .unwrap_err();
-        assert!(
-            late.starts_with(
-                "control batch completed after its freshness deadline (2 frames written in "
-            ),
-            "{late}"
-        );
-
-        // A batch that is written in time is unaffected.
+        let (partial, written) = transmit(7, Duration::from_millis(4));
+        assert_eq!(written, [1, 2, 3]);
         assert_eq!(
-            transmit_control_batch(
-                &SlowWriter(Duration::ZERO),
-                &spec,
-                batch(7, Duration::from_millis(100))
-            ),
-            Ok(true)
+            partial.unwrap_err(),
+            "control batch expired after partial transmission \
+             (3 of 7 frames written in 12000 us, 10000 us of freshness left at the first write)"
         );
+
+        let (late, written) = transmit(2, Duration::from_millis(8));
+        assert_eq!(written, [1, 2]);
+        assert_eq!(
+            late.unwrap_err(),
+            "control batch completed after its freshness deadline \
+             (2 frames written in 16000 us, 10000 us of freshness left at the first write)"
+        );
+
+        let (on_time, written) = transmit(2, Duration::from_millis(5));
+        assert_eq!(on_time, Ok(true));
+        assert_eq!(written, [1, 2]);
     }
 
     #[test]

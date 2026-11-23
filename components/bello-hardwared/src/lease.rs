@@ -30,7 +30,7 @@ pub enum LeaseError {
     WrongOwner,
     #[error("lease has expired")]
     Expired,
-    #[error("hardware daemon is shutting down")]
+    #[error("hardware daemon is shutting down or emergency control is inhibited")]
     Unavailable,
 }
 
@@ -42,6 +42,10 @@ pub struct LeaseManager {
 }
 
 impl LeaseManager {
+    pub(crate) fn revoke_all(&self) {
+        self.leases.lock().clear();
+    }
+
     pub fn new(default_ms: u64, maximum_ms: u64) -> Self {
         Self {
             leases: Mutex::new(HashMap::new()),

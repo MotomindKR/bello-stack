@@ -672,6 +672,7 @@ dependencies = [
  "futures-core",
  "gsusbio",
  "nalgebra",
+ "nix 0.29.0",
  "parking_lot",
  "robstride-protocol",
  "serde",

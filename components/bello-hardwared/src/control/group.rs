@@ -89,6 +89,7 @@ pub(super) struct ControllerInputs {
     pub wake_rx: Receiver<()>,
     pub command_mailbox: Arc<Mutex<Option<CommandSubmission>>>,
     pub lease_lost: Arc<AtomicBool>,
+    pub emergency_pending: Arc<AtomicBool>,
     pub lease_generation: Arc<AtomicU64>,
     pub lease_loss_waiters: Arc<Mutex<Vec<tokio::sync::oneshot::Sender<super::Transition>>>>,
     pub shutdown: Arc<AtomicBool>,
@@ -103,6 +104,7 @@ pub(super) struct GroupController {
     wake_rx: Receiver<()>,
     command_mailbox: Arc<Mutex<Option<CommandSubmission>>>,
     lease_lost: Arc<AtomicBool>,
+    emergency_pending: Arc<AtomicBool>,
     lease_generation: Arc<AtomicU64>,
     lease_loss_waiters: Arc<Mutex<Vec<tokio::sync::oneshot::Sender<super::Transition>>>>,
     shutdown: Arc<AtomicBool>,
@@ -153,6 +155,7 @@ impl GroupController {
             wake_rx: inputs.wake_rx,
             command_mailbox: inputs.command_mailbox,
             lease_lost: inputs.lease_lost,
+            emergency_pending: inputs.emergency_pending,
             lease_generation: inputs.lease_generation,
             lease_loss_waiters: inputs.lease_loss_waiters,
             shutdown: inputs.shutdown,
@@ -183,6 +186,9 @@ impl GroupController {
                 self.perform_shutdown();
                 break;
             }
+            if self.handle_emergency() {
+                continue;
+            }
             if self.lease_lost.swap(false, Ordering::AcqRel) {
                 self.handle_lease_loss();
                 continue;
@@ -201,6 +207,9 @@ impl GroupController {
             if self.shutdown.load(Ordering::Acquire) {
                 self.perform_shutdown();
                 break;
+            }
+            if self.handle_emergency() {
+                continue;
             }
             if self.lease_lost.swap(false, Ordering::AcqRel) {
                 self.handle_lease_loss();
@@ -259,6 +268,30 @@ impl GroupController {
                 }
             }
         }
+    }
+
+    fn handle_emergency(&mut self) -> bool {
+        if !self.emergency_pending.load(Ordering::Acquire) {
+            return false;
+        }
+        self.clear_command_state();
+        match self.fsm.state() {
+            GroupState::Running | GroupState::Damped => {
+                self.establish_damping(
+                    GroupCause::Stop,
+                    "power-board emergency or unavailable status; damping applied; leases revoked",
+                );
+            }
+            GroupState::Fault => {
+                if let Err(error) = self.send_damping() {
+                    tracing::error!(group=%self.spec.name, %error, "emergency damping failed in fault state");
+                }
+            }
+            GroupState::Idle | GroupState::Shutdown => {}
+        }
+        self.update_snapshot(0);
+        self.emergency_pending.store(false, Ordering::Release);
+        true
     }
 
     fn perform_shutdown(&mut self) {
@@ -518,6 +551,8 @@ impl GroupController {
     fn check_enable_interrupted(&self) -> Result<(), EnableFailure> {
         let interrupted = if self.shutdown.load(Ordering::Acquire) {
             Some((true, "shutdown requested during enable"))
+        } else if self.emergency_pending.load(Ordering::Acquire) {
+            Some((false, "power-board emergency interrupted enable"))
         } else if self.lease_lost.load(Ordering::Acquire) {
             Some((false, "control lease lost during enable"))
         } else {
@@ -670,6 +705,9 @@ impl GroupController {
 
     fn control_tick(&mut self, jitter_us: i64, transmit_command: bool) {
         self.tick += 1;
+        if self.handle_emergency() {
+            return;
+        }
         let state = self.fsm.state();
         if matches!(state, GroupState::Damped | GroupState::Running)
             && let Some((name, status, fault)) = self.motors.iter().find_map(|motor| {
@@ -964,6 +1002,55 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::CommandRefreshSchedule;
+
+    #[test]
+    fn emergency_clears_control_without_enabling_idle_motors_or_clearing_faults() {
+        use super::*;
+        let config = serde_yaml::from_str("name: test\nmotors: [motor]\n").unwrap();
+        let spec = GroupSpec::try_from(&config).unwrap();
+        let (_lifecycle_tx, lifecycle_rx) = mpsc::sync_channel(1);
+        let (_wake_tx, wake_rx) = mpsc::sync_channel(1);
+        let emergency_pending = Arc::new(AtomicBool::new(false));
+        let mut controller = GroupController::new(
+            spec,
+            Vec::new(),
+            ControllerInputs {
+                lifecycle_rx,
+                wake_rx,
+                command_mailbox: Arc::new(Mutex::new(None)),
+                lease_lost: Arc::new(AtomicBool::new(false)),
+                emergency_pending: emergency_pending.clone(),
+                lease_generation: Arc::new(AtomicU64::new(0)),
+                lease_loss_waiters: Arc::new(Mutex::new(Vec::new())),
+                shutdown: Arc::new(AtomicBool::new(false)),
+                snapshot: Arc::new(RwLock::new(GroupSnapshot::default())),
+            },
+            Telemetry::new(16),
+        );
+        emergency_pending.store(true, Ordering::Release);
+        assert!(controller.handle_emergency());
+        assert_eq!(controller.fsm.state(), GroupState::Idle);
+        controller.fsm.enable();
+        controller.fsm.start();
+        controller.command_deadline = Some(Instant::now() + Duration::from_secs(1));
+        controller.command_generation = Some(1);
+        controller.last_sequence = Some(42);
+        emergency_pending.store(true, Ordering::Release);
+        assert!(controller.handle_emergency());
+        assert_eq!(controller.fsm.state(), GroupState::Damped);
+        assert!(controller.command_deadline.is_none());
+        assert!(controller.command_generation.is_none());
+        assert!(controller.last_sequence.is_none());
+        assert!(!controller.handle_emergency());
+        assert_eq!(controller.fsm.state(), GroupState::Damped);
+        controller
+            .fsm
+            .fault(GroupCause::Temperature, "overtemperature");
+        emergency_pending.store(true, Ordering::Release);
+        assert!(controller.handle_emergency());
+        assert_eq!(controller.fsm.state(), GroupState::Fault);
+        assert_eq!(controller.fsm.cause(), GroupCause::Temperature);
+    }
 
     #[test]
     fn healthy_policy_commands_defer_periodic_refresh() {
