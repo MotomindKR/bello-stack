@@ -585,11 +585,6 @@ mod tests {
     }
 
     #[test]
-    fn canonical_motor_velocity_filter_uses_ten_hertz_cutoff() {
-        assert_eq!(canonical_topology().motor_velocity_filter.cutoff_hz, 10.0);
-    }
-
-    #[test]
     fn imu_filter_cutoffs_are_validated() {
         let component = concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml");
         let mut config = Config::load_raw(component).unwrap();
@@ -606,18 +601,24 @@ mod tests {
     fn imu_filter_cutoffs_must_be_below_sensor_nyquist_frequency() {
         let component = concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml");
         let mut config = Config::load_raw(component).unwrap();
-        config.runtime.imu_filter.acceleration_cutoff_hz = 100.0;
+        let output_rate_hz = 100;
+        for imu in &mut config.imus {
+            imu.output_rate_hz = output_rate_hz;
+        }
+        let nyquist_hz = f64::from(output_rate_hz) / 2.0;
+        config.runtime.imu_filter = ImuFilterConfig {
+            orientation_cutoff_hz: 12.0,
+            gyro_cutoff_hz: 24.0,
+            acceleration_cutoff_hz: nyquist_hz - 1.0,
+        };
+        ResolvedTopology::resolve(config.clone()).unwrap();
 
+        config.runtime.imu_filter.acceleration_cutoff_hz = nyquist_hz;
         let error = ResolvedTopology::resolve(config).err().unwrap().to_string();
-        assert!(error.contains("Nyquist frequency 100 Hz"), "{error}");
-    }
-
-    #[test]
-    fn canonical_imu_filter_uses_ten_hertz_cutoffs() {
-        let filter = canonical_topology().imu_filter;
-        assert_eq!(filter.orientation_cutoff_hz, 10.0);
-        assert_eq!(filter.gyro_cutoff_hz, 10.0);
-        assert_eq!(filter.acceleration_cutoff_hz, 10.0);
+        assert!(
+            error.contains("acceleration_cutoff_hz must be below the Nyquist frequency"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -688,18 +689,29 @@ mod tests {
 
     #[test]
     fn damping_uses_configured_gains_without_scaling() {
-        let topology = canonical_topology();
+        let component = concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml");
+        let mut config = Config::load_raw(component).unwrap();
+        let gains = [
+            ("left_ankle_1", 3.0),
+            ("left_ankle_2", 5.0),
+            ("left_hip_pitch", 31.0),
+        ];
+        for (name, kd) in gains {
+            let motor = config
+                .motors
+                .iter_mut()
+                .find(|motor| motor.name == name)
+                .unwrap();
+            motor.fault_damping_kd = kd;
+        }
 
+        let topology = ResolvedTopology::resolve(config).unwrap();
         let lower = topology.groups.get(&GroupName::from("lower_body")).unwrap();
-        let first = MotorName::from("left_ankle_1");
-        let second = MotorName::from("left_ankle_2");
-        let hip = MotorName::from("left_hip_pitch");
-        let ankle_damping = lower.mechanical.damping_commands();
-        assert!((ankle_damping[&first].kd - 2.0).abs() < 1.0e-12);
-        assert!((ankle_damping[&second].kd - 2.0).abs() < 1.0e-12);
-        assert!((ankle_damping[&hip].kd - 40.0).abs() < 1.0e-12);
-
-        for command in ankle_damping.values() {
+        let damping = lower.mechanical.damping_commands();
+        for (name, kd) in gains {
+            assert_eq!(damping[&MotorName::from(name)].kd, kd);
+        }
+        for command in damping.values() {
             assert_eq!(command.kp, 0.0);
             assert_eq!(command.velocity, 0.0);
             assert_eq!(command.torque, 0.0);

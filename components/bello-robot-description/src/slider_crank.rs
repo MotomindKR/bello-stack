@@ -398,25 +398,43 @@ mod tests {
             .canonicalize()
             .unwrap();
         let xml = xml.replace("../meshes", mesh_dir.to_str().unwrap());
-        for (from, to) in [
-            ("rod_length=\"0.045\"", "rod_length=\"0.03\""),
-            ("crank_radius=\"0.03\"", "crank_radius=\"NaN\""),
-            ("driver=\"gripper\"", "driver=\"missing\""),
+        let document = roxmltree::Document::parse(&xml).unwrap();
+        let linkage = document
+            .root_element()
+            .children()
+            .find(|node| node.has_tag_name((XML_NAMESPACE, "slider_crank")))
+            .unwrap();
+        for (attribute, value, expected_error) in [
             (
-                "sliders=\"finger_1_joint finger_2_joint\"",
-                "sliders=\"finger_1_joint finger_1_joint\"",
+                "rod_length",
+                linkage.attribute("crank_radius").unwrap(),
+                "invalid or singular dimensions",
+            ),
+            ("crank_radius", "NaN", "crank_radius"),
+            ("driver", "missing", "unknown slider-crank driver"),
+            (
+                "sliders",
+                "finger_1_joint finger_1_joint",
+                "invalid or multiply driven slider-crank passive joint",
             ),
             (
-                "rods=\"gripper_rod_1_joint gripper_rod_2_joint\"",
-                "rods=\"finger_1_joint finger_2_joint\"",
+                "rods",
+                "finger_1_joint finger_2_joint",
+                "invalid or multiply driven slider-crank passive joint",
             ),
         ] {
-            assert!(xml.contains(from));
+            let range = linkage.attribute_node(attribute).unwrap().range_value();
+            let mut invalid_xml = xml.clone();
+            invalid_xml.replace_range(range, value);
             let file = tempfile::NamedTempFile::new().unwrap();
-            std::fs::write(file.path(), xml.replace(from, to)).unwrap();
+            std::fs::write(file.path(), invalid_xml).unwrap();
+            let error = super::super::RobotDescription::load(file.path())
+                .err()
+                .unwrap()
+                .to_string();
             assert!(
-                super::super::RobotDescription::load(file.path()).is_err(),
-                "accepted {to}"
+                error.contains(expected_error),
+                "{attribute}={value}: {error}"
             );
         }
     }
