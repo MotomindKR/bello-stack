@@ -298,96 +298,10 @@ mod tests {
 
     fn parse(yaml: &str) -> Result<Config> {
         let mut config: Config = serde_yaml::from_str(yaml)?;
-        config.robot_description =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../descriptions/bello/urdf/bello.urdf");
+        config.robot_description = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../bello-hardware-e2e/tests/fixtures/vcan.urdf");
         ResolvedTopology::resolve(config.clone())?;
         Ok(config)
-    }
-
-    #[test]
-    fn bundled_deployments_compose_their_canonical_descriptions() {
-        let component = Path::new(env!("CARGO_MANIFEST_DIR"));
-        for robot in ["bello", "milly"] {
-            let source = component.join(format!("../../descriptions/{robot}/hardware.yaml"));
-            let description: HardwareDescription = load_yaml(&source).unwrap();
-            let [physical, simulated] = ["", "-vcan"].map(|suffix| {
-                let path = component.join(format!("config/{robot}{suffix}.yaml"));
-                let deployment: DeploymentConfig = load_yaml(&path).unwrap();
-                let config = Config::load_raw(&path).unwrap();
-
-                let selected_motors: HashSet<_> = description
-                    .motor_groups
-                    .iter()
-                    .filter(|group| deployment.enabled_groups.contains(&group.name))
-                    .flat_map(|group| &group.motors)
-                    .collect();
-                let authored_wiring = description
-                    .motors
-                    .iter()
-                    .filter(|motor| selected_motors.contains(&motor.name))
-                    .map(|motor| (&motor.name, &motor.bus, motor.id))
-                    .collect::<HashSet<_>>();
-                let wiring = config
-                    .motors
-                    .iter()
-                    .map(|motor| (&motor.name, &motor.bus, motor.id))
-                    .collect();
-                assert_eq!(authored_wiring, wiring, "{path:?}");
-                for bus in &config.buses {
-                    let logical = description
-                        .logical_buses
-                        .iter()
-                        .find(|logical| logical.name == bus.name)
-                        .unwrap();
-                    assert_eq!(
-                        (bus.host_id, bus.bitrate, bus.maximum_utilization),
-                        (
-                            logical.host_id,
-                            logical.bitrate,
-                            logical.maximum_utilization
-                        ),
-                        "{path:?}"
-                    );
-                    assert_eq!(
-                        bus.transport, deployment.bus_transports[&bus.name],
-                        "{path:?}"
-                    );
-                }
-                for device in &config.serial_devices {
-                    let logical = description
-                        .serial_devices
-                        .iter()
-                        .find(|logical| logical.name == device.name)
-                        .unwrap();
-                    assert_eq!(device.baud_rate, logical.baud_rate, "{path:?}");
-                    assert_eq!(
-                        device.port, deployment.serial_ports[&device.name],
-                        "{path:?}"
-                    );
-                }
-                config
-            });
-            assert_eq!(
-                physical.robot_description.canonicalize().unwrap(),
-                simulated.robot_description.canonicalize().unwrap()
-            );
-            let [physical_groups, simulated_groups] = [&physical, &simulated].map(|config| {
-                config
-                    .motor_groups
-                    .iter()
-                    .map(|group| (&group.name, &group.motors))
-                    .collect::<HashSet<_>>()
-            });
-            assert_eq!(physical_groups, simulated_groups, "{robot}");
-            for bus in &physical.buses {
-                let peer = simulated
-                    .buses
-                    .iter()
-                    .find(|peer| peer.name == bus.name)
-                    .unwrap();
-                assert_ne!(bus.transport, peer.transport, "{robot}/{}", bus.name);
-            }
-        }
     }
 
     #[test]
@@ -438,7 +352,8 @@ bus_transports:
         let mut deployment: DeploymentConfig =
             load_yaml(&component.join("config/bello-vcan.yaml")).unwrap();
 
-        deployment.enabled_groups.push("upper_body".into());
+        let existing_group = deployment.enabled_groups[0].clone();
+        deployment.enabled_groups.push(existing_group);
         assert!(
             Config::compose(description.clone(), deployment, &description_path)
                 .unwrap_err()
@@ -462,17 +377,21 @@ bus_transports:
         let component = Path::new(env!("CARGO_MANIFEST_DIR"));
         let description_path = component.join("../../descriptions/bello/hardware.yaml");
         let mut description: HardwareDescription = load_yaml(&description_path).unwrap();
+        let mut deployment: DeploymentConfig =
+            load_yaml(&component.join("config/bello-vcan.yaml")).unwrap();
+        let disabled = deployment.enabled_groups.pop().unwrap();
+        let motor = &description
+            .motor_groups
+            .iter()
+            .find(|group| group.name == disabled)
+            .unwrap()
+            .motors[0];
         description
             .motors
             .iter_mut()
-            .find(|motor| motor.name == "left_arm_1")
+            .find(|spec| spec.name == *motor)
             .unwrap()
             .model = "UNKNOWN".into();
-        let mut deployment: DeploymentConfig =
-            load_yaml(&component.join("config/bello-vcan.yaml")).unwrap();
-        deployment
-            .enabled_groups
-            .retain(|group| group != "upper_body");
 
         assert!(
             Config::compose(description, deployment, &description_path)
@@ -489,7 +408,8 @@ bus_transports:
         let description: HardwareDescription = load_yaml(&description_path).unwrap();
         let mut missing_bus: DeploymentConfig =
             load_yaml(&component.join("config/bello-vcan.yaml")).unwrap();
-        missing_bus.bus_transports.remove("can1");
+        let bus = missing_bus.bus_transports.keys().next().unwrap().clone();
+        missing_bus.bus_transports.remove(&bus);
         assert!(
             Config::compose(description.clone(), missing_bus, &description_path)
                 .unwrap_err()
@@ -514,8 +434,8 @@ bus_transports:
 buses:
   - { name: shared, transport: { type: socketcan, interface: vcan0 }, maximum_utilization: 1.0 }
 motors:
-  - { name: motor_a, coordinate: left_hip_pitch_joint, bus: shared, id: 1, model: ROBSTRIDE_03 }
-  - { name: motor_b, coordinate: right_hip_pitch_joint, bus: shared, id: 2, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: e2e_joint_1, bus: shared, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_b, coordinate: e2e_joint_2, bus: shared, id: 2, model: ROBSTRIDE_03 }
 "#;
 
     fn one_group(prefix: &str) -> String {
@@ -571,8 +491,8 @@ motors:
 buses:
   - { name: slow, transport: { type: socketcan, interface: vcan0 }, bitrate: 10000, maximum_utilization: 1.0 }
 motors:
-  - { name: motor_a, coordinate: left_hip_pitch_joint, bus: slow, id: 1, model: ROBSTRIDE_03 }
-  - { name: motor_b, coordinate: right_hip_pitch_joint, bus: slow, id: 2, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: e2e_joint_1, bus: slow, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_b, coordinate: e2e_joint_2, bus: slow, id: 2, model: ROBSTRIDE_03 }
 motor_groups:
   - { name: group_a, motors: [motor_a], control_rate_hz: 20.0 }
   - { name: group_b, motors: [motor_b], control_rate_hz: 20.0 }
@@ -587,7 +507,7 @@ motor_groups:
 buses:
   - { name: saturated, transport: { type: socketcan, interface: vcan0 }, bitrate: 10000, maximum_utilization: 1.0 }
 motors:
-  - { name: motor_a, coordinate: left_hip_pitch_joint, bus: saturated, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: e2e_joint_1, bus: saturated, id: 1, model: ROBSTRIDE_03 }
 motor_groups:
   - { name: group, motors: [motor_a], control_rate_hz: 33.333333333333336 }
 "#;
@@ -601,7 +521,7 @@ motor_groups:
 buses:
   - { name: slow, transport: { type: socketcan, interface: vcan0 }, bitrate: 10000, maximum_utilization: 1.0 }
 motors:
-  - { name: motor_a, coordinate: left_hip_pitch_joint, bus: slow, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: e2e_joint_1, bus: slow, id: 1, model: ROBSTRIDE_03 }
 motor_groups:
   - { name: group, motors: [motor_a], control_rate_hz: 1000.0, command_refresh_rate_hz: 20.0, command_transmission: periodic }
 "#;
@@ -620,8 +540,8 @@ motor_groups:
 buses:
   - { name: slow, transport: { type: socketcan, interface: vcan0 }, bitrate: 10000, maximum_utilization: 1.0 }
 motors:
-  - { name: motor_a, coordinate: left_hip_pitch_joint, bus: slow, id: 1, model: ROBSTRIDE_03 }
-  - { name: motor_b, coordinate: right_hip_pitch_joint, bus: slow, id: 2, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: e2e_joint_1, bus: slow, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_b, coordinate: e2e_joint_2, bus: slow, id: 2, model: ROBSTRIDE_03 }
 motor_groups:
   - { name: group_a, motors: [motor_a], control_rate_hz: 1000.0, command_refresh_rate_hz: 20.0, command_transmission: periodic }
   - { name: group_b, motors: [motor_b], control_rate_hz: 1000.0, command_refresh_rate_hz: 20.0, command_transmission: periodic }
@@ -646,7 +566,7 @@ motor_groups:
     #[test]
     fn imu_must_reference_a_known_serial_device() {
         let text = format!(
-            "{PREFIX}\nimus:\n  - {{ name: imu_a, serial_device: missing, source_frame: pelvis_link, output_frame: pelvis_link }}\nmotor_groups:\n  - {{ name: group, motors: [motor_a, motor_b] }}\n"
+            "{PREFIX}\nimus:\n  - {{ name: imu_a, serial_device: missing, source_frame: base, output_frame: base }}\nmotor_groups:\n  - {{ name: group, motors: [motor_a, motor_b] }}\n"
         );
         assert!(
             parse(&text)
@@ -659,7 +579,7 @@ motor_groups:
     #[test]
     fn sensors_cannot_share_an_exclusive_serial_device() {
         let text = format!(
-            "serial_devices:\n  - {{ name: serial_a, port: /dev/null, baud_rate: 115200 }}\n{PREFIX}\nimus:\n  - {{ name: imu_a, serial_device: serial_a, source_frame: pelvis_link, output_frame: pelvis_link }}\n  - {{ name: imu_b, serial_device: serial_a, source_frame: pelvis_link, output_frame: pelvis_link }}\nmotor_groups:\n  - {{ name: group, motors: [motor_a, motor_b] }}\n"
+            "serial_devices:\n  - {{ name: serial_a, port: /dev/null, baud_rate: 115200 }}\n{PREFIX}\nimus:\n  - {{ name: imu_a, serial_device: serial_a, source_frame: base, output_frame: base }}\n  - {{ name: imu_b, serial_device: serial_a, source_frame: base, output_frame: base }}\nmotor_groups:\n  - {{ name: group, motors: [motor_a, motor_b] }}\n"
         );
         assert!(
             parse(&text)
@@ -691,7 +611,7 @@ motor_groups:
     #[test]
     fn physical_serial_port_cannot_be_declared_twice() {
         let text = format!(
-            "serial_devices:\n  - {{ name: first, port: /dev/ttyUSB0, baud_rate: 115200 }}\n  - {{ name: second, port: /dev/ttyUSB0, baud_rate: 115200 }}\n{PREFIX}\nimus:\n  - {{ name: imu_a, serial_device: first, source_frame: pelvis_link, output_frame: pelvis_link }}\n  - {{ name: imu_b, serial_device: second, source_frame: pelvis_link, output_frame: pelvis_link }}\nmotor_groups:\n  - {{ name: group, motors: [motor_a, motor_b] }}\n"
+            "serial_devices:\n  - {{ name: first, port: /dev/ttyUSB0, baud_rate: 115200 }}\n  - {{ name: second, port: /dev/ttyUSB0, baud_rate: 115200 }}\n{PREFIX}\nimus:\n  - {{ name: imu_a, serial_device: first, source_frame: base, output_frame: base }}\n  - {{ name: imu_b, serial_device: second, source_frame: base, output_frame: base }}\nmotor_groups:\n  - {{ name: group, motors: [motor_a, motor_b] }}\n"
         );
         let error = parse(&text).unwrap_err().to_string();
         assert!(
@@ -707,7 +627,7 @@ buses:
   - { name: used, transport: { type: socketcan, interface: can0 } }
   - { name: unused, transport: { type: socketcan, interface: can1 } }
 motors:
-  - { name: motor_a, coordinate: left_hip_pitch_joint, bus: used, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: e2e_joint_1, bus: used, id: 1, model: ROBSTRIDE_03 }
 motor_groups:
   - { name: group, motors: [motor_a] }
 "#;
@@ -718,7 +638,7 @@ motor_groups:
     #[test]
     fn every_serial_device_must_own_a_sensor() {
         let text = format!(
-            "serial_devices:\n  - {{ name: used, port: /dev/ttyUSB0, baud_rate: 115200 }}\n  - {{ name: unused, port: /dev/ttyUSB1, baud_rate: 115200 }}\n{PREFIX}\nimus:\n  - {{ name: imu, serial_device: used, source_frame: pelvis_link, output_frame: pelvis_link }}\nmotor_groups:\n  - {{ name: group, motors: [motor_a, motor_b] }}\n"
+            "serial_devices:\n  - {{ name: used, port: /dev/ttyUSB0, baud_rate: 115200 }}\n  - {{ name: unused, port: /dev/ttyUSB1, baud_rate: 115200 }}\n{PREFIX}\nimus:\n  - {{ name: imu, serial_device: used, source_frame: base, output_frame: base }}\nmotor_groups:\n  - {{ name: group, motors: [motor_a, motor_b] }}\n"
         );
         let error = parse(&text).unwrap_err().to_string();
         assert!(

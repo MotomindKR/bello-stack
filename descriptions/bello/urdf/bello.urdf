@@ -856,31 +856,31 @@
   <transmission name="left_ankle_differential">
     <type>transmission_interface/DifferentialTransmission</type>
     <actuator name="left_ankle_motor_1" role="actuator1">
-      <mechanical_reduction>1</mechanical_reduction>
+      <mechanicalReduction>1</mechanicalReduction>
     </actuator>
     <actuator name="left_ankle_motor_2" role="actuator2">
-      <mechanical_reduction>1</mechanical_reduction>
+      <mechanicalReduction>1</mechanicalReduction>
     </actuator>
     <joint name="left_ankle_roll_joint" role="joint1">
-      <mechanical_reduction>1</mechanical_reduction>
+      <mechanicalReduction>1</mechanicalReduction>
     </joint>
     <joint name="left_ankle_pitch_joint" role="joint2">
-      <mechanical_reduction>-1</mechanical_reduction>
+      <mechanicalReduction>-1</mechanicalReduction>
     </joint>
   </transmission>
   <transmission name="right_ankle_differential">
     <type>transmission_interface/DifferentialTransmission</type>
     <actuator name="right_ankle_motor_1" role="actuator1">
-      <mechanical_reduction>1</mechanical_reduction>
+      <mechanicalReduction>1</mechanicalReduction>
     </actuator>
     <actuator name="right_ankle_motor_2" role="actuator2">
-      <mechanical_reduction>1</mechanical_reduction>
+      <mechanicalReduction>1</mechanicalReduction>
     </actuator>
     <joint name="right_ankle_roll_joint" role="joint1">
-      <mechanical_reduction>1</mechanical_reduction>
+      <mechanicalReduction>1</mechanicalReduction>
     </joint>
     <joint name="right_ankle_pitch_joint" role="joint2">
-      <mechanical_reduction>-1</mechanical_reduction>
+      <mechanicalReduction>-1</mechanicalReduction>
     </joint>
   </transmission>
   <mujoco>

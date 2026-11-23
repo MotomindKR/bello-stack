@@ -81,7 +81,10 @@ misspelled keys instead of silently applying a default. Relative description
 paths resolve from the deployment file. Unknown or duplicate groups, missing or
 unused bus mappings, and incomplete description ownership are rejected.
 
-The hardware description must name its robot description:
+Each shipped robot has a `descriptions/<model>/hardware.yaml` and a
+`urdf/<model>.urdf` in the same model directory. The deployment's
+`description` field points to the hardware YAML, which names the URDF.
+For Bello the reference is
 
 ```yaml
 robot_description: urdf/bello.urdf
@@ -93,7 +96,8 @@ coordinate of a complete differential or simple transmission. Several simple
 transmissions may drive one shared joint, with distinct actuator coordinates.
 Every actuator of that joint must belong to the same motor group. Their scalar
 effort envelopes divide the joint envelope into equal joint-torque shares,
-accounting for each signed reduction.
+accounting for each signed reduction. Shipped URDFs use
+`<mechanicalReduction>` for both simple and differential transmissions.
 Transmitted joints must be controlled through their declared actuator
 coordinates; their joint names cannot serve as implicit direct-drive aliases.
 

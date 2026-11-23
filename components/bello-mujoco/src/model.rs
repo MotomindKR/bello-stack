@@ -381,15 +381,7 @@ fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Re
                 mapping.offset,
             )
         } else {
-            ensure!(
-                moving.contains(motor.coordinate.as_str()),
-                "unknown motor coordinate {}",
-                motor.coordinate
-            );
-            ensure!(
-                covered.insert(motor.coordinate.clone()),
-                "duplicate joint actuation"
-            );
+            covered.insert(motor.coordinate.clone());
             (motor.coordinate.as_str(), MjtTrn::mjTRN_JOINT, 0.)
         };
         offsets.insert(motor.coordinate.clone(), offset);
@@ -413,14 +405,6 @@ fn build_model(config: &ModelConfig, export: Option<&Path>, visuals: bool) -> Re
         covered.iter().map(String::as_str).collect::<BTreeSet<_>>() == moving,
         "motors do not cover every movable URDF joint"
     );
-    for t in description.transmissions() {
-        ensure!(
-            t.coordinates
-                .iter()
-                .all(|c| coordinate_names.contains(c.as_str())),
-            "incomplete differential transmission"
-        );
-    }
     let mut imu_names = BTreeSet::new();
     for imu in &hardware.imus {
         ensure!(imu_names.insert(&imu.name), "duplicate IMU name");
@@ -885,7 +869,7 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
         config.initial_joint_positions.insert("joint_3".into(), 1.);
         let hardware: serde_yaml::Value =
             serde_yaml::from_str(&std::fs::read_to_string(&config.hardware).unwrap()).unwrap();
-        let limits: BTreeMap<String, (f64, f64)> = hardware["motors"]
+        let limits: BTreeMap<_, _> = hardware["motors"]
             .as_sequence()
             .unwrap()
             .iter()
@@ -895,6 +879,7 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
                     (
                         m["health"]["safe_position_min"].as_f64().unwrap(),
                         m["health"]["safe_position_max"].as_f64().unwrap(),
+                        m["limits"]["torque_abs"].as_f64().unwrap(),
                     ),
                 )
             })
@@ -907,6 +892,7 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
                 } else {
                     config.initial_joint_positions[name]
                 };
+                let (_, _, torque_limit) = limits[name];
                 robot
                     .simulation
                     .set_impedance(
@@ -917,13 +903,7 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
                             kd: 0.5,
                             ..Default::default()
                         },
-                        if name == "gripper" || name == "joint_6" {
-                            5.5
-                        } else if name == "joint_4" || name == "joint_5" {
-                            14.
-                        } else {
-                            30.
-                        },
+                        torque_limit,
                     )
                     .unwrap();
             }
@@ -935,7 +915,7 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
                     .actuator_state(coordinate.actuator)
                     .unwrap()
                     .0;
-                let (lower, upper) = limits[name];
+                let (lower, upper, _) = limits[name];
                 assert!(
                     q >= lower && q <= upper,
                     "{name} outside hardware safety limits at step {step}: {q} not in [{lower}, {upper}]"

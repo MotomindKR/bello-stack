@@ -165,17 +165,21 @@ pub(crate) fn check_command(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::ResolvedTopology;
+    use crate::config::MotorConfig;
 
     fn motor() -> MotorSpec {
-        ResolvedTopology::load(concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml"))
-            .unwrap()
-            .motors()
-            .find(|(_, motor)| motor.spec.name.as_str() == "left_hip_pitch")
-            .unwrap()
-            .1
-            .spec
-            .clone()
+        let config: MotorConfig = serde_yaml::from_str(
+            r#"
+name: motor
+coordinate: joint
+bus: can
+id: 1
+model: ROBSTRIDE_03
+command_policy: { limit: reject }
+"#,
+        )
+        .unwrap();
+        MotorSpec::try_from(&config).unwrap()
     }
 
     #[test]

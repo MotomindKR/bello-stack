@@ -1,0 +1,46 @@
+<robot name="transmissions">
+  <link name="base"/>
+  <link name="direct_link"/>
+  <link name="roll_link"/>
+  <link name="pitch_link"/>
+  <link name="shared_link"/>
+
+  <joint name="direct_joint" type="revolute">
+    <parent link="base"/>
+    <child link="direct_link"/>
+    <limit lower="-1.25" upper="1.5" effort="5" velocity="4"/>
+  </joint>
+  <joint name="roll_joint" type="revolute">
+    <parent link="base"/>
+    <child link="roll_link"/>
+    <limit lower="-0.25" upper="0.25" effort="8" velocity="2"/>
+  </joint>
+  <joint name="pitch_joint" type="revolute">
+    <parent link="roll_link"/>
+    <child link="pitch_link"/>
+    <limit lower="-0.5" upper="0.5" effort="8" velocity="6"/>
+  </joint>
+  <joint name="shared_joint" type="revolute">
+    <parent link="base"/>
+    <child link="shared_link"/>
+    <limit lower="-0.75" upper="1" effort="12" velocity="3"/>
+  </joint>
+
+  <transmission name="differential">
+    <type>transmission_interface/DifferentialTransmission</type>
+    <joint name="roll_joint"/>
+    <joint name="pitch_joint"/>
+    <actuator name="diff_a"/>
+    <actuator name="diff_b"/>
+  </transmission>
+  <transmission name="drive_a">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="shared_joint"/>
+    <actuator name="parallel_a"><mechanicalReduction>-1</mechanicalReduction></actuator>
+  </transmission>
+  <transmission name="drive_b">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="shared_joint"/>
+    <actuator name="parallel_b"><mechanicalReduction>2</mechanicalReduction></actuator>
+  </transmission>
+</robot>

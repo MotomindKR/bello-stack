@@ -393,57 +393,28 @@ mod tests {
     use crate::domain::{ImpedanceCommand, SafetyViolation};
     use crate::hardware::robstride::Feedback;
 
-    fn canonical_topology() -> ResolvedTopology {
-        ResolvedTopology::load(concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml")).unwrap()
-    }
-
-    #[test]
-    fn mini_profiles_resolve_all_motors_and_enforce_ankle_joint_limits() {
-        for filename in ["bello-mini.yaml", "bello-mini-vcan.yaml"] {
-            let mut config = Config::load_raw(
-                Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("config")
-                    .join(filename),
-            )
-            .unwrap();
-            // Exercise the robot topology with a portable TCP listener rather
-            // than the deployment's host-specific Unix socket path.
-            config.grpc = Default::default();
-            let topology = ResolvedTopology::resolve(config).unwrap();
-            assert_eq!(topology.motors.len(), 28);
-            assert_eq!(topology.groups.len(), 2);
-            let lower = &topology.groups[&GroupName::from("lower_body")];
-            let upper = &topology.groups[&GroupName::from("upper_body")];
-            assert_eq!(lower.motors.len(), 14);
-            assert_eq!(upper.motors.len(), 14);
-            assert_eq!(lower.mechanical.differential_count(), 2);
-            assert_eq!(upper.mechanical.differential_count(), 0);
-
-            for side in ["left", "right"] {
-                let first = MotorName::from(format!("{side}_ankle_motor_1"));
-                let second = MotorName::from(format!("{side}_ankle_motor_2"));
-                let mut commands = neutral_commands(lower);
-                assert!(lower.mechanical.validate_targets(&commands).is_ok());
-                // Equal motor coordinates produce pure roll and can exceed its limit.
-                let target = 1.0;
-                assert!(topology.motors[&first].spec.limits.position_max > target);
-                assert!(topology.motors[&second].spec.limits.position_max > target);
-                commands.get_mut(&first).unwrap().position = target;
-                commands.get_mut(&second).unwrap().position = target;
-                let error = lower.mechanical.validate_targets(&commands).unwrap_err();
-                assert_eq!(error.violation, SafetyViolation::PositionLimit);
-                assert!(error.detail.contains(&format!("{side}_ankle_roll_joint")));
-
-                // Opposite coordinates produce positive pitch with motor 2 leading.
-                let mut commands = neutral_commands(lower);
-                assert!(topology.motors[&first].spec.limits.position_min < -target);
-                commands.get_mut(&first).unwrap().position = -target;
-                commands.get_mut(&second).unwrap().position = target;
-                let error = lower.mechanical.validate_targets(&commands).unwrap_err();
-                assert_eq!(error.violation, SafetyViolation::PositionLimit);
-                assert!(error.detail.contains(&format!("{side}_ankle_pitch_joint")));
-            }
-        }
+    fn transmission_config() -> Config {
+        let mut config: Config = serde_yaml::from_str(
+            r#"
+buses:
+  - { name: first, transport: { type: socketcan, interface: vcan0 } }
+  - { name: second, transport: { type: socketcan, interface: vcan1 } }
+motors:
+  - { name: direct, coordinate: direct_joint, bus: first, id: 1, model: ROBSTRIDE_03 }
+  - { name: diff_a, coordinate: diff_a, bus: first, id: 2, model: ROBSTRIDE_03, health: { feedback_position_tolerance: 0.125 } }
+  - { name: diff_b, coordinate: diff_b, bus: second, id: 2, model: ROBSTRIDE_03, health: { feedback_position_tolerance: 0.125 } }
+  - { name: drive_a, coordinate: parallel_a, bus: first, id: 3, model: ROBSTRIDE_03 }
+  - { name: drive_b, coordinate: parallel_b, bus: first, id: 4, model: ROBSTRIDE_03 }
+motor_groups:
+  - { name: direct, motors: [direct] }
+  - { name: differential, motors: [diff_a, diff_b] }
+  - { name: parallel, motors: [drive_a, drive_b], parallel_feedback_position_tolerance: 0.02 }
+"#,
+        )
+        .unwrap();
+        config.robot_description =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/transmissions.urdf");
+        config
     }
 
     fn neutral_commands(group: &GroupSpec) -> HashMap<MotorName, ImpedanceCommand> {
@@ -452,93 +423,6 @@ mod tests {
             .iter()
             .map(|name| (name.clone(), ImpedanceCommand::default()))
             .collect()
-    }
-
-    #[test]
-    fn torso_profiles_require_synchronized_pitch_and_detect_encoder_disagreement() {
-        for file in ["bello-mini-torso.yaml", "bello-mini-torso-vcan.yaml"] {
-            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("config")
-                .join(file);
-            let topology = ResolvedTopology::load(&path).unwrap();
-            let pitch = &topology.groups[&GroupName::from("torso_pitch")];
-            let left = MotorName::from("left_hip_pitch_motor");
-            let right = MotorName::from("right_hip_pitch_motor");
-            let mut commands = neutral_commands(pitch);
-            for angle in [
-                -std::f64::consts::FRAC_PI_6,
-                0.0,
-                std::f64::consts::FRAC_PI_3,
-            ] {
-                commands.get_mut(&left).unwrap().position = -angle;
-                commands.get_mut(&right).unwrap().position = -angle;
-                pitch.mechanical.validate_targets(&commands).unwrap();
-            }
-            commands.get_mut(&right).unwrap().position = -0.1;
-            let error = pitch.mechanical.validate_targets(&commands).unwrap_err();
-            assert!(error.detail.contains("targets disagree"));
-            assert_eq!(error.affected_motors.len(), 2);
-            let mut feedback = neutral_feedback(pitch);
-            feedback.get_mut(&right).unwrap().position = 0.01;
-            pitch
-                .mechanical
-                .validate_feedback_positions(&feedback)
-                .unwrap();
-            feedback.get_mut(&right).unwrap().position = 0.03;
-            assert!(
-                pitch
-                    .mechanical
-                    .validate_feedback_positions(&feedback)
-                    .unwrap_err()
-                    .detail
-                    .contains("encoder disagreement")
-            );
-            let mut config = Config::load_raw(&path).unwrap();
-            config
-                .motor_groups
-                .iter_mut()
-                .find(|g| g.name == "torso_pitch")
-                .unwrap()
-                .motors
-                .retain(|m| m != "right_hip_pitch_motor");
-            config.motor_groups.push(
-                serde_yaml::from_str(
-                    "name: isolated\nmotors: [right_hip_pitch_motor]\ncontrol_rate_hz: 300",
-                )
-                .unwrap(),
-            );
-            assert!(
-                ResolvedTopology::resolve(config)
-                    .err()
-                    .unwrap()
-                    .to_string()
-                    .contains("one motor group")
-            );
-        }
-    }
-
-    #[test]
-    fn torso_joint_name_cannot_bypass_the_second_motor_ownership_requirement() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("config/bello-mini-torso-vcan.yaml");
-        let mut config = Config::load_raw(path).unwrap();
-        config
-            .motors
-            .retain(|motor| motor.name != "right_hip_pitch_motor");
-        config
-            .motors
-            .iter_mut()
-            .find(|motor| motor.name == "left_hip_pitch_motor")
-            .unwrap()
-            .coordinate = "torso_pitch_joint".into();
-        config
-            .motor_groups
-            .iter_mut()
-            .find(|group| group.name == "torso_pitch")
-            .unwrap()
-            .motors
-            .retain(|motor| motor != "right_hip_pitch_motor");
-        let error = ResolvedTopology::resolve(config).err().unwrap().to_string();
-        assert!(error.contains("no URDF position limits"), "{error}");
     }
 
     fn neutral_feedback(group: &GroupSpec) -> HashMap<MotorName, Feedback> {
@@ -550,28 +434,70 @@ mod tests {
     }
 
     #[test]
-    fn canonical_multibus_group_uses_urdf_limits_and_differentials() {
-        let topology = canonical_topology();
-        let lower = topology.groups.get(&GroupName::from("lower_body")).unwrap();
-        let group_buses = lower
+    fn parallel_drives_must_agree_on_target_and_measured_joint_positions() {
+        let topology = ResolvedTopology::resolve(transmission_config()).unwrap();
+        let group = &topology.groups[&GroupName::from("parallel")];
+        let first = MotorName::from("drive_a");
+        let second = MotorName::from("drive_b");
+        let mut commands = neutral_commands(group);
+
+        commands.get_mut(&first).unwrap().position = -0.25;
+        commands.get_mut(&second).unwrap().position = 0.5;
+        group.mechanical.validate_targets(&commands).unwrap();
+        commands.get_mut(&second).unwrap().position = 0.6;
+        let error = group.mechanical.validate_targets(&commands).unwrap_err();
+        assert!(error.detail.contains("targets disagree"));
+        assert_eq!(error.affected_motors, vec![first, second.clone()]);
+
+        let mut feedback = neutral_feedback(group);
+        feedback.get_mut(&second).unwrap().position = 0.02;
+        group
+            .mechanical
+            .validate_feedback_positions(&feedback)
+            .unwrap();
+        feedback.get_mut(&second).unwrap().position = 0.06;
+        let error = group
+            .mechanical
+            .validate_feedback_positions(&feedback)
+            .unwrap_err();
+        assert!(error.detail.contains("encoder disagreement"));
+    }
+
+    #[test]
+    fn parallel_drives_must_be_owned_by_one_group() {
+        let mut config = transmission_config();
+        let parallel = config
+            .motor_groups
+            .iter_mut()
+            .find(|group| group.name == "parallel")
+            .unwrap();
+        parallel.motors.retain(|motor| motor != "drive_b");
+        config
+            .motor_groups
+            .push(serde_yaml::from_str("name: isolated\nmotors: [drive_b]").unwrap());
+        let error = ResolvedTopology::resolve(config).err().unwrap().to_string();
+        assert!(error.contains("one motor group"), "{error}");
+    }
+
+    #[test]
+    fn shared_joint_name_cannot_bypass_parallel_drive_ownership() {
+        let mut config = transmission_config();
+        config.motors.retain(|motor| motor.name != "drive_b");
+        config
             .motors
-            .iter()
-            .map(|name| topology.motors[name].spec.address.bus.clone())
-            .collect::<HashSet<_>>();
-        assert_eq!(group_buses.len(), 2);
-        assert_eq!(lower.mechanical.differential_count(), 2);
-
-        let waist = &topology.motors[&MotorName::from("waist_yaw")].spec;
-        assert_eq!(waist.limits.position_min, -0.5);
-        assert_eq!(waist.limits.position_max, 0.5);
-        assert_eq!(waist.health.safe_position_min, -0.5);
-        assert_eq!(waist.health.safe_position_max, 0.5);
-
-        let ankle = &topology.motors[&MotorName::from("left_ankle_1")].spec;
-        assert!((ankle.limits.position_min + 1.2217).abs() < 1.0e-9);
-        assert!((ankle.limits.position_max - 0.6981).abs() < 1.0e-9);
-        assert_eq!(ankle.limits.torque_min, -36.0);
-        assert_eq!(ankle.limits.torque_max, 36.0);
+            .iter_mut()
+            .find(|motor| motor.name == "drive_a")
+            .unwrap()
+            .coordinate = "shared_joint".into();
+        config
+            .motor_groups
+            .iter_mut()
+            .find(|group| group.name == "parallel")
+            .unwrap()
+            .motors
+            .retain(|motor| motor != "drive_b");
+        let error = ResolvedTopology::resolve(config).err().unwrap().to_string();
+        assert!(error.contains("no URDF position limits"), "{error}");
     }
 
     #[test]
@@ -623,98 +549,118 @@ mod tests {
 
     #[test]
     fn direct_envelope_checks_position_and_velocity() {
-        let topology = canonical_topology();
-        let lower = topology.groups.get(&GroupName::from("lower_body")).unwrap();
-        let motor = MotorName::from("left_hip_pitch");
-        let mut commands = neutral_commands(lower);
+        let topology = ResolvedTopology::resolve(transmission_config()).unwrap();
+        let group = &topology.groups[&GroupName::from("direct")];
+        let motor = MotorName::from("direct");
+        let spec = &topology.motors[&motor].spec;
+        assert_eq!(
+            (spec.limits.torque_min, spec.limits.torque_max),
+            (-5.0, 5.0)
+        );
+        assert_eq!(
+            (spec.health.safe_position_min, spec.health.safe_position_max),
+            (-1.25, 1.5)
+        );
+        let mut commands = neutral_commands(group);
 
-        commands.get_mut(&motor).unwrap().position = 2.0;
-        let position = lower.mechanical.validate_targets(&commands).unwrap_err();
+        commands.get_mut(&motor).unwrap().position = 1.5;
+        group.mechanical.validate_targets(&commands).unwrap();
+        commands.get_mut(&motor).unwrap().position = 1.6;
+        let position = group.mechanical.validate_targets(&commands).unwrap_err();
         assert_eq!(position.violation, SafetyViolation::PositionLimit);
-        assert!(position.detail.contains("left_hip_pitch_joint"));
 
         commands.get_mut(&motor).unwrap().position = 0.0;
-        commands.get_mut(&motor).unwrap().velocity = 31.0;
-        let velocity = lower.mechanical.validate_targets(&commands).unwrap_err();
+        commands.get_mut(&motor).unwrap().velocity = 4.1;
+        let velocity = group.mechanical.validate_targets(&commands).unwrap_err();
         assert_eq!(velocity.violation, SafetyViolation::VelocityLimit);
-        assert!(velocity.detail.contains("left_hip_pitch_joint"));
 
         commands.remove(&motor);
-        let incomplete = lower.mechanical.validate_targets(&commands).unwrap_err();
+        let incomplete = group.mechanical.validate_targets(&commands).unwrap_err();
         assert!(incomplete.detail.contains("incomplete mechanical command"));
     }
 
     #[test]
-    fn differential_envelope_checks_position_and_velocity() {
-        let topology = canonical_topology();
-        let lower = topology.groups.get(&GroupName::from("lower_body")).unwrap();
-        let mut feedback = neutral_feedback(lower);
-        let mut commands = neutral_commands(lower);
-        let first = MotorName::from("left_ankle_1");
-        let second = MotorName::from("left_ankle_2");
+    fn differential_envelope_checks_resolved_joint_positions_and_velocity() {
+        let topology = ResolvedTopology::resolve(transmission_config()).unwrap();
+        let group = &topology.groups[&GroupName::from("differential")];
+        let mut commands = neutral_commands(group);
+        let first = MotorName::from("diff_a");
+        let second = MotorName::from("diff_b");
+        group.mechanical.validate_targets(&commands).unwrap();
 
-        feedback.get_mut(&first).unwrap().position = 0.57;
-        feedback.get_mut(&second).unwrap().position = 0.57;
-        lower
+        for (a, b, joint) in [(0.5, 0.5, "roll_joint"), (0.625, -0.625, "pitch_joint")] {
+            commands.get_mut(&first).unwrap().position = a;
+            commands.get_mut(&second).unwrap().position = b;
+            let error = group.mechanical.validate_targets(&commands).unwrap_err();
+            assert_eq!(error.violation, SafetyViolation::PositionLimit);
+            assert!(error.detail.contains(joint));
+        }
+
+        for command in commands.values_mut() {
+            command.position = 0.0;
+            command.velocity = 3.0;
+        }
+        let velocity = group.mechanical.validate_targets(&commands).unwrap_err();
+        assert_eq!(velocity.violation, SafetyViolation::VelocityLimit);
+        assert!(velocity.detail.contains("roll_joint"));
+    }
+
+    #[test]
+    fn differential_feedback_uses_motor_position_tolerances() {
+        let topology = ResolvedTopology::resolve(transmission_config()).unwrap();
+        let group = &topology.groups[&GroupName::from("differential")];
+        let mut feedback = neutral_feedback(group);
+
+        for sample in feedback.values_mut() {
+            sample.position = 0.375;
+        }
+        group
             .mechanical
             .validate_feedback_positions(&feedback)
             .unwrap();
-        feedback.get_mut(&first).unwrap().position = 0.58;
-        feedback.get_mut(&second).unwrap().position = 0.58;
-        let feedback_position = lower
+        for sample in feedback.values_mut() {
+            sample.position = 0.4;
+        }
+        let error = group
             .mechanical
             .validate_feedback_positions(&feedback)
             .unwrap_err();
-        assert_eq!(feedback_position.violation, SafetyViolation::PositionLimit);
-        assert!(
-            feedback_position
-                .detail
-                .contains("feedback tolerance 0.400000")
-        );
-
-        commands.get_mut(&first).unwrap().position = 0.2;
-        commands.get_mut(&second).unwrap().position = 0.2;
-        let position = lower.mechanical.validate_targets(&commands).unwrap_err();
-        assert_eq!(position.violation, SafetyViolation::PositionLimit);
-        assert!(position.detail.contains("left_ankle_roll_joint"));
-
-        commands.get_mut(&first).unwrap().position = 0.0;
-        commands.get_mut(&second).unwrap().position = 0.0;
-        commands.get_mut(&first).unwrap().velocity = 31.0;
-        commands.get_mut(&second).unwrap().velocity = 31.0;
-        let velocity = lower.mechanical.validate_targets(&commands).unwrap_err();
-        assert_eq!(velocity.violation, SafetyViolation::VelocityLimit);
-        assert!(velocity.detail.contains("left_ankle_roll_joint"));
+        assert_eq!(error.violation, SafetyViolation::PositionLimit);
+        assert!(error.detail.contains("roll_joint"));
     }
 
     #[test]
     fn damping_uses_configured_gains_without_scaling() {
-        let component = concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml");
-        let mut config = Config::load_raw(component).unwrap();
+        let mut config = transmission_config();
         let gains = [
-            ("left_ankle_1", 3.0),
-            ("left_ankle_2", 5.0),
-            ("left_hip_pitch", 31.0),
+            ("direct", 1.5),
+            ("diff_a", 3.0),
+            ("diff_b", 5.0),
+            ("drive_b", 2.5),
         ];
         for (name, kd) in gains {
-            let motor = config
+            config
                 .motors
                 .iter_mut()
                 .find(|motor| motor.name == name)
-                .unwrap();
-            motor.fault_damping_kd = kd;
+                .unwrap()
+                .fault_damping_kd = kd;
         }
 
         let topology = ResolvedTopology::resolve(config).unwrap();
-        let lower = topology.groups.get(&GroupName::from("lower_body")).unwrap();
-        let damping = lower.mechanical.damping_commands();
+        let damping: HashMap<_, _> = topology
+            .groups
+            .values()
+            .flat_map(|group| group.mechanical.damping_commands())
+            .collect();
         for (name, kd) in gains {
-            assert_eq!(damping[&MotorName::from(name)].kd, kd);
-        }
-        for command in damping.values() {
-            assert_eq!(command.kp, 0.0);
-            assert_eq!(command.velocity, 0.0);
-            assert_eq!(command.torque, 0.0);
+            assert_eq!(
+                damping[&MotorName::from(name)],
+                ImpedanceCommand {
+                    kd,
+                    ..Default::default()
+                }
+            );
         }
     }
 }

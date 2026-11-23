@@ -97,21 +97,14 @@ pub(super) fn classify_feedback(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::ResolvedTopology;
+    use crate::config::MotorConfig;
 
     fn motor_spec() -> MotorSpec {
-        motor_spec_named("left_hip_pitch")
-    }
-
-    fn motor_spec_named(name: &str) -> MotorSpec {
-        ResolvedTopology::load(concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml"))
-            .unwrap()
-            .motors()
-            .find(|(_, motor)| motor.spec.name.as_str() == name)
-            .unwrap()
-            .1
-            .spec
-            .clone()
+        let config: MotorConfig = serde_yaml::from_str(
+            "name: motor\ncoordinate: joint\nbus: can\nid: 1\nmodel: ROBSTRIDE_03",
+        )
+        .unwrap();
+        MotorSpec::try_from(&config).unwrap()
     }
 
     #[test]
@@ -201,16 +194,18 @@ mod tests {
     }
 
     #[test]
-    fn feedback_at_a_urdf_boundary_allows_protocol_quantization() {
-        let spec = motor_spec_named("left_knee_mix_1");
+    fn feedback_at_a_position_boundary_allows_protocol_quantization() {
+        let mut spec = motor_spec();
+        let boundary = 0.0;
+        spec.health.safe_position_min = boundary;
         let within_quantization = Feedback {
-            position: -0.5 * spec.feedback_position_tolerance,
+            position: boundary - 0.5 * spec.feedback_position_tolerance,
             ..Default::default()
         };
         assert!(classify_feedback(within_quantization, &spec, false, None).is_none());
 
         let outside_quantization = Feedback {
-            position: -2.0 * spec.feedback_position_tolerance,
+            position: boundary - 2.0 * spec.feedback_position_tolerance,
             ..Default::default()
         };
         assert!(matches!(

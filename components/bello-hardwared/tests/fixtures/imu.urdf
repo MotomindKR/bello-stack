@@ -1,0 +1,22 @@
+<robot name="imu">
+  <link name="base"/>
+  <link name="output"/>
+  <link name="sensor"/>
+  <link name="movable"/>
+
+  <joint name="output_mount" type="fixed">
+    <parent link="base"/>
+    <child link="output"/>
+    <origin xyz="0 0 0.1"/>
+  </joint>
+  <joint name="sensor_mount" type="fixed">
+    <parent link="output"/>
+    <child link="sensor"/>
+    <origin rpy="0.31 -0.42 0.73"/>
+  </joint>
+  <joint name="movable_joint" type="revolute">
+    <parent link="base"/>
+    <child link="movable"/>
+    <limit lower="-1" upper="1" effort="1" velocity="1"/>
+  </joint>
+</robot>

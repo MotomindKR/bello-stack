@@ -130,9 +130,10 @@ cargo run -p robstride-emulator -- \
 ```
 
 Do not hide warnings or make host hardware a prerequisite for ordinary unit and
-workspace tests. Tests should assert behavior, protocol semantics, safety
-invariants, or parsing boundaries—not merely prove that a refactor preserved a
-type name or call path.
+workspace tests. Test behavior, protocol semantics, safety invariants, and
+parsing boundaries. The URDF and hardware descriptions own joint geometry, limits,
+and wiring. Exercise the description parser and kinematics with small test
+fixtures. Use the daemon's `--check` command to validate a shipped profile.
 
 ## Host-vcan integration test
 

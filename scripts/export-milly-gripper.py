@@ -256,7 +256,7 @@ def export(description, output):
         actuators,
         "position",
         name="gripper_motor",
-        joint="gripper",
+        joint=linkage.attrib["driver"],
         kp="2",
         kv=".03",
         ctrlrange="-2.3 0",
@@ -300,7 +300,10 @@ def check(path, linkage):
         )
 
     maximum = 0.0
-    for q in np.linspace(-2.4, 0.1, 101):
+    driver = model.joint(linkage.attrib["driver"])
+    lower, upper = driver.range
+    assert driver.limited[0] and lower < upper, "expected a bounded gripper joint"
+    for q in np.linspace(lower, upper, 101):
         for name, position in resolved(linkage, q).items():
             data.qpos[joint_addresses[name]] = position
         mujoco.mj_forward(model, data)
