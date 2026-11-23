@@ -1,18 +1,16 @@
 # Bello stack
 
-`bello-hardwared` controls motors and reads sensors on Bello and Milly robots.
-Use the [Rust](components/bello-hardware-client) or [Python](components/bello-hardware-python) client to command a motor group and read telemetry.
-On Linux, the [MuJoCo simulator](components/bello-mujoco) lets you use the same clients without a physical robot.
+This repository contains the robot models, hardware control software, and MuJoCo simulator for Bello and Milly. The [robot descriptions](descriptions) cover Bello, Bello Mini, Mini Torso, and the single- and dual-arm Milly setups. The URDFs define geometry, joint limits, and transmissions. The hardware configurations name the motors, assign their CAN addresses, and group them for control.
 
-From the repository root, check the Milly arm configuration without connecting hardware:
+On a physical robot, `bello-hardwared` talks to the motors over CAN and reads sensors over serial. A [Rust](components/bello-hardware-client) or [Python](components/bello-hardware-python) application can read telemetry and take control of a motor group over gRPC. The daemon enforces joint limits and handles faults.
 
-```sh
-cargo run -p bello-hardwared -- --check --config components/bello-hardwared/config/milly-gsusb.yaml
-```
+On Linux, the [MuJoCo simulator](components/bello-mujoco) emulates the devices on virtual CAN and serial ports, so the same daemon and application can run against simulated physics.
+
+The [pose estimator](components/bello-state-estimatord) combines encoder and IMU readings to estimate the robot’s motion. MuJoCo can also publish ground-truth pose and rendered images through the [pose](components/bello-pose-api/proto/bello/pose/v1/pose.proto) and [camera](components/bello-camera-api/proto/bello/camera/v1/camera.proto) APIs.
 
 ## Documentation
 
-- [Build or install the daemon](docs/desktop.md)
-- [Connect hardware or start a simulator](docs/operations.md)
-- [Configure a robot](docs/configuration.md) · [Robot descriptions](descriptions)
-- [Hardware API](docs/api.md) · [Motor control and safety](docs/control-and-safety.md)
+- [Run on hardware or in simulation](docs/operations.md)
+- [Configure a robot](docs/configuration.md)
+- [Hardware API](docs/api.md) and [control and safety](docs/control-and-safety.md)
+- [Desktop builds](docs/desktop.md) and [development setup](docs/development.md)
