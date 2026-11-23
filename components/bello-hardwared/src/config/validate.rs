@@ -324,6 +324,40 @@ mod tests {
     }
 
     #[test]
+    fn sim_buses_cannot_share_daemon_or_simulator_ports() {
+        use super::super::BusTransportConfig;
+        use bello_sim_can::SimBus;
+
+        let component = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut config = Config::load_raw(component.join("config/bello-vcan.yaml")).unwrap();
+        config.buses[0].transport = BusTransportConfig::Sim(SimBus {
+            daemon_port: 24000,
+            simulator_port: 24001,
+        });
+        for (daemon_port, simulator_port) in [(24000, 24002), (24002, 24001), (24001, 24000)] {
+            config.buses[1].transport = BusTransportConfig::Sim(SimBus {
+                daemon_port,
+                simulator_port,
+            });
+            let error = ResolvedTopology::resolve(config.clone()).err().unwrap();
+            assert!(
+                error
+                    .to_string()
+                    .contains("assigned to more than one CAN bus"),
+                "{error}"
+            );
+        }
+        config.buses[1].transport = BusTransportConfig::Sim(SimBus {
+            daemon_port: 24002,
+            simulator_port: 24003,
+        });
+        ResolvedTopology::resolve(config)
+            .unwrap()
+            .validate_platform()
+            .unwrap();
+    }
+
+    #[test]
     fn gsusb_deployment_mapping_deserializes() {
         let deployment: DeploymentConfig = serde_yaml::from_str(
             r#"

@@ -60,9 +60,8 @@ hardware:
 cargo run -p bello-hardwared -- \
   --check --config components/bello-hardwared/config/bello.yaml
 cargo run -p bello-hardwared -- \
-  --check --config components/bello-hardwared/config/bello-vcan.yaml
-cargo run -p robstride-emulator -- \
-  --check --config components/robstride-emulator/config/vcan.yaml
+  --check --config components/bello-hardwared/config/milly-sim.yaml
+cargo run -p robstride-emulator -- --check
 ```
 
 Do not hide warnings or make host hardware a prerequisite for ordinary unit and
@@ -73,25 +72,21 @@ fixtures. Use the daemon's `--check` command to validate a shipped profile.
 
 ## Host-vcan integration test
 
-TLS, mTLS, and Unix-socket process tests run under normal `cargo test` without
-host hardware. The vCAN control scenarios remain ignored Cargo integration
-tests. To run the complete file, create and bring up two host interfaces:
+Run `cargo e2e` for gRPC and simulated motor behavior, including faults, recovery,
+and coupled joints on two buses. These tests run in the normal workspace suite
+without creating network interfaces. The fault scenario also runs the Python
+client from the repository's development shell.
+
+The Linux SocketCAN checks capture frames from the kernel interface. To run them:
 
 ```sh
 sudo modprobe vcan
 sudo ip link add dev vcan0 type vcan
 sudo ip link set dev vcan0 up
-sudo ip link add dev vcan1 type vcan
-sudo ip link set dev vcan1 up
-cargo test -p bello-hardware-e2e --test vcan -- \
-  --ignored --nocapture --test-threads=1
+cargo e2e-vcan
 ```
 
-`cargo e2e` is an alias for the final command. The single test thread is
-required because the scenarios exclusively own their shared interfaces. Set
-`BELLO_E2E_CAN_INTERFACE=vcan2` to select the interface used by the single-bus
-scenarios. Set `BELLO_E2E_CAN_INTERFACES=vcan2,vcan3` to select the ordered pair
-used by the multi-bus scenario.
+Set `BELLO_E2E_CAN_INTERFACE` to use a different isolated vCAN interface.
 
 To measure command-to-CAN and feedback-to-telemetry latency:
 

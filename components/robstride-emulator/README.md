@@ -1,38 +1,25 @@
 # Robstride emulator
 
-`robstride-emulator` runs simulated Robstride actuators on SocketCAN for hardwared
-integration and fault testing. For rigid-body physics, use [bello-mujoco](../bello-mujoco/).
+`robstride-emulator` simulates Robstride motors and protocol faults. For rigid-body
+physics, use [bello-mujoco](../bello-mujoco/).
 
 ## Run
 
-Create a vCAN interface once per boot:
+The default [Milly profile](config/milly.yaml) uses loopback UDP. Start the emulator
+and hardwared in separate terminals:
 
 ```sh
-sudo ip link add dev vcan0 type vcan
-sudo ip link set dev vcan0 up
+cargo run -p robstride-emulator
+cargo run -p bello-hardwared -- --config components/bello-hardwared/config/milly-sim.yaml
 ```
 
-Validate and run the default example:
-
-```sh
-cargo run -p robstride-emulator -- --check \
-  --config components/robstride-emulator/config/vcan.yaml
-cargo run -p robstride-emulator -- \
-  --config components/robstride-emulator/config/vcan.yaml
-```
-
-Omitting `--config` selects this component's `config/vcan.yaml` regardless of
-the current directory. Run hardwared separately with its matching
-[`config/bello-vcan.yaml`](../bello-hardwared/config/bello-vcan.yaml).
-For the seven-actuator Milly profile, use `config/milly-vcan.yaml` here and
-[`config/milly-vcan.yaml`](../bello-hardwared/config/milly-vcan.yaml) in
-hardwared.
+Use `--config PATH` to load another profile and `--check` to validate it. For
+Linux SocketCAN tools, bring up `vcan0` and select `config/milly-vcan.yaml`
+in both components.
 
 ## Fault scenarios
 
-Use [config/faults.yaml](config/faults.yaml) to schedule feedback loss, delay,
-jitter, drive faults, temperature changes, and operating-mode changes.
-Bring the vCAN link down separately to test transport loss and reconnection.
-
-See [hardware behavior](../../docs/hardware.md), [operations](../../docs/operations.md),
-and [development and testing](../../docs/development.md) for the complete workflow.
+[config/faults.yaml](config/faults.yaml) exercises temperature, loss of feedback,
+drive faults, and operating-mode changes on a two-motor UDP bus. Its host ID is
+253. To exercise the default Milly profile, copy the `events` list into a local
+copy of [config/milly.yaml](config/milly.yaml).

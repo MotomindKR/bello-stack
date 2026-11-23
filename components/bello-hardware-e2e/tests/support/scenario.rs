@@ -163,7 +163,7 @@ pub async fn run(
     hardwared.interrupt()?;
     wait_for_graceful_shutdown(&mut telemetry, timeout_duration).await?;
     hardwared.stop();
-    println!("vcan integration passed: {feedback_fault}; {timeout_fault}; {lease_fault}");
+    println!("control and recovery passed: {feedback_fault}; {timeout_fault}; {lease_fault}");
     Ok(())
 }
 
@@ -176,7 +176,7 @@ async fn run_python_smoke(endpoint: &str) -> Result<()> {
             .expect("E2E component must have a components parent")
             .join("bello-hardware-python");
         let output = Command::new("python3")
-            .arg(package.join("tests/vcan_smoke.py"))
+            .arg(package.join("tests/control_smoke.py"))
             .arg(endpoint)
             .env("PYTHONPATH", package.join("src"))
             .output()
@@ -366,7 +366,7 @@ async fn wait_for_graceful_shutdown(
     }
 }
 
-async fn wait_for_motors_online(
+pub async fn wait_for_motors_online(
     client: &HardwareClient,
     duration: Duration,
     hardwared: &mut ManagedProcess,
@@ -415,6 +415,27 @@ async fn require_group_state(client: &HardwareClient, expected: GroupState) -> R
 fn require_state(actual: EnumValue<GroupState>, expected: GroupState) -> Result<()> {
     if actual != EnumValue::Known(expected) {
         bail!("expected state {expected:?}, got {actual:?}");
+    }
+    Ok(())
+}
+
+pub async fn require_accepted(
+    responses: &mut tonic::Streaming<bello_hardware_api::StreamCommandsResponse>,
+    sequence: u64,
+) -> Result<()> {
+    let response = timeout(Duration::from_secs(1), responses.message())
+        .await
+        .context("waiting for command acknowledgement")??
+        .ok_or_else(|| anyhow!("command response stream closed"))?;
+    if response.sequence != sequence
+        || response.result != bello_hardware_api::CommandResult::Accepted as i32
+    {
+        bail!(
+            "command {sequence} was not accepted: sequence={}, result={}, detail={}",
+            response.sequence,
+            response.result,
+            response.detail
+        );
     }
     Ok(())
 }

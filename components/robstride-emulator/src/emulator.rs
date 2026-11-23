@@ -369,7 +369,7 @@ mod tests {
 
     fn config(events: Vec<ScheduledEvent>) -> Config {
         Config {
-            interface: "vcan0".into(),
+            interface: crate::config::CanInterface::Socketcan("vcan0".into()),
             host_id: 0xfd,
             feedback_rate_hz: 100.0,
             dynamics: DynamicsConfig::default(),

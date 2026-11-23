@@ -5,9 +5,10 @@ edition.workspace = true
 rust-version.workspace = true
 license-file.workspace = true
 publish.workspace = true
-description = "Thin SocketCAN Robstride actuator emulator for Bello integration testing"
+description = "Robstride actuator emulator for Bello integration testing"
 
 [dependencies]
+bello-sim-can.workspace = true
 anyhow.workspace = true
 clap = { workspace = true, features = ["derive"] }
 robstride-protocol.workspace = true

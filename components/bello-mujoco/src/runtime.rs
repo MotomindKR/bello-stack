@@ -6,7 +6,7 @@ use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use rand::{SeedableRng, rngs::StdRng};
 use rand_distr::{Distribution, StandardNormal};
 use robstride_emulator::config::{
-    ActuatorConfig, Config as BusConfig, DynamicsConfig, ScheduledEvent,
+    ActuatorConfig, CanInterface, Config as BusConfig, DynamicsConfig, ScheduledEvent,
 };
 use robstride_protocol::{Frame, Request, frame_target, is_control_frame, parse_request};
 use serde::Deserialize;
@@ -24,7 +24,7 @@ const MAX_QUEUE: usize = 8192;
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub model: PathBuf,
-    pub bus_interfaces: BTreeMap<String, String>,
+    pub bus_interfaces: BTreeMap<String, CanInterface>,
     pub feedback_rate_hz: f64,
     pub temperature_c: f64,
     pub command_latency_seconds: f64,
@@ -107,15 +107,24 @@ impl Config {
             !config.pose.reference_frame.is_empty(),
             "empty pose reference frame"
         );
-        ensure!(
-            config
-                .bus_interfaces
-                .values()
-                .collect::<BTreeSet<_>>()
-                .len()
-                == config.bus_interfaces.len(),
-            "CAN interfaces must be distinct"
-        );
+        let mut devices = BTreeSet::new();
+        let mut ports = BTreeSet::new();
+        for interface in config.bus_interfaces.values() {
+            interface.validate()?;
+            match interface {
+                CanInterface::Socketcan(name) => {
+                    ensure!(devices.insert(name), "CAN interfaces must be distinct")
+                }
+                CanInterface::Sim(bus) => {
+                    for port in [bus.daemon_port, bus.simulator_port] {
+                        ensure!(
+                            ports.insert(port),
+                            "simulated CAN buses share UDP port {port}"
+                        );
+                    }
+                }
+            }
+        }
         for gain in [config.motor_kp_scale, config.motor_kd_scale] {
             ensure!(gain.is_finite() && gain >= 0., "invalid motor gain scale");
         }
@@ -285,7 +294,7 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
             },
             coordinates,
         ));
-        endpoints.insert(interface.clone(), CanEndpoint::open(interface)?);
+        endpoints.insert(interface.to_string(), CanEndpoint::open(interface)?);
     }
     let mut physics = RobstrideSimulation::new(robot.simulation, buses)?;
     physics.set_gain_scales(config.motor_kp_scale, config.motor_kd_scale)?;
@@ -494,7 +503,7 @@ mod tests {
 
     fn physics() -> RobstrideSimulation {
         let config = BusConfig {
-            interface: "test".into(),
+            interface: CanInterface::Socketcan("test".into()),
             host_id: 253,
             feedback_rate_hz: 100.,
             dynamics: DynamicsConfig::default(),

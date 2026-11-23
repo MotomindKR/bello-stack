@@ -76,7 +76,7 @@ impl RobstrideSimulation {
                     offset: coordinate.offset,
                 });
             }
-            let name = config.interface.clone();
+            let name = config.interface.to_string();
             ensure!(
                 buses
                     .insert(
@@ -216,7 +216,7 @@ mod tests {
 
     fn config() -> Config {
         Config {
-            interface: "vcan-test".into(),
+            interface: robstride_emulator::config::CanInterface::Socketcan("vcan-test".into()),
             host_id: 0xfd,
             feedback_rate_hz: 1000.,
             dynamics: DynamicsConfig::default(),
@@ -330,7 +330,8 @@ mod tests {
         let buses = (1..=2)
             .map(|motor| {
                 let mut bus = config();
-                bus.interface = format!("test{motor}");
+                bus.interface =
+                    robstride_emulator::config::CanInterface::Socketcan(format!("test{motor}"));
                 bus.actuators.retain(|actuator| actuator.id == motor);
                 let mapping = BTreeMap::from([(
                     motor,

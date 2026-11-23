@@ -4,7 +4,7 @@ This guide covers deployment and diagnostics. The complete configuration and
 safety behavior are described in [`configuration.md`](configuration.md) and
 [`control-and-safety.md`](control-and-safety.md); the checked examples are
 [`bello.yaml`](../components/bello-hardwared/config/bello.yaml) and
-[`bello-vcan.yaml`](../components/bello-hardwared/config/bello-vcan.yaml).
+[`bello-sim.yaml`](../components/bello-hardwared/config/bello-sim.yaml).
 
 > **Warning:** enabling or starting a physical group can move hardware. Verify
 > the emergency stop, mechanical clearance, actuator IDs/directions, limits,
@@ -98,9 +98,34 @@ turns on active feedback, so motor readiness is established by the enable
 operation rather than being a prerequisite for acquiring a lease. The API
 workflow is in [`api.md`](api.md#normal-control-workflow).
 
+## Simulate CAN without SocketCAN
+
+With the pinned MuJoCo 3.12.0 library installed, run these in separate terminals from
+the repository root. The Linux Nix shell supplies the library; on macOS, point
+`MUJOCO_DYNAMIC_LINK_DIR` and `DYLD_LIBRARY_PATH` at the directory containing
+`libmujoco.dylib`.
+
+```sh
+cargo run -p bello-mujoco -- run --config components/bello-mujoco/config/emulator_milly.yaml
+cargo run -p bello-hardwared -- --config components/bello-hardwared/config/milly-sim.yaml
+```
+
+Each simulated bus uses two IPv4 loopback UDP ports, one for hardwared and one for
+the simulator. Configure the same pair on both sides and give each bus its own
+ports. Either process can start first. Motor feedback tells you the peer is alive;
+an online CAN transport only means the daemon has bound its local socket.
+Use vCAN for tests that need SocketCAN tools such as `candump`. Use physical CAN
+for bus arbitration, electrical faults, or wire timing measurements.
+
+To run the standalone motor emulator with the same daemon profile, start
+`cargo run -p robstride-emulator` in place of MuJoCo. Its
+[events](../components/robstride-emulator/README.md#fault-scenarios) can inject
+actuator faults and delayed feedback.
+
 ## Virtual CAN and emulator
 
-Create `vcan0` once per boot:
+Use vCAN on Linux to inspect frames with `candump` or exercise SocketCAN link
+recovery. Bring up a virtual interface:
 
 ```sh
 sudo modprobe vcan
@@ -108,25 +133,12 @@ sudo ip link add dev vcan0 type vcan
 sudo ip link set dev vcan0 up
 ```
 
-The small checked emulator configuration is a protocol fixture:
+Run the matching SocketCAN profiles in separate terminals:
 
 ```sh
-cargo run -p robstride-emulator -- \
-  --check --config components/robstride-emulator/config/vcan.yaml
-cargo run -p robstride-emulator -- \
-  --config components/robstride-emulator/config/vcan.yaml
+cargo run -p robstride-emulator -- --config components/robstride-emulator/config/milly-vcan.yaml
+cargo run -p bello-hardwared -- --config components/bello-hardwared/config/milly-vcan.yaml
 ```
-
-Use the full `bello-vcan.yaml` deployment only with the Bello emulator flow
-later in this guide, which supplies both logical buses and the IMU endpoint.
-
-The RobStride emulator’s `events` list can inject feedback drop/delay/
-jitter, temperature, fault bits, and mode-status changes. Use the ready-made
-[`faults.yaml`](../components/robstride-emulator/config/faults.yaml), or follow
-the action syntax in the
-[emulator README](../components/robstride-emulator/README.md#fault-scenarios).
-Events are relative to emulator startup. Group faults remain latched after the
-injected condition clears and require `RecoverGroup`.
 
 To exercise transport reconnect rather than actuator faults:
 
@@ -141,30 +153,31 @@ process after restoring the link and restart it when necessary. Hardwared can
 restore the bus while its group remains fault-latched; feedback and explicit
 group recovery are still required.
 
-Run the [host-vCAN integration test](development.md#host-vcan-integration-test) to exercise the daemon and emulator together.
+The [Linux SocketCAN tests](development.md#host-vcan-integration-test) capture frames on vCAN to check command expiry and measure latency.
 
 ## Bello and Bello Mini emulation
 
 Follow the [native MuJoCo runtime instructions](../components/bello-mujoco/README.md)
-to set up the virtual CAN and serial endpoints and start `emulator_bello.yaml`
-or `emulator_mini.yaml`. For Bello, run hardwared and the pose estimator in
+to start `emulator_bello.yaml`
+or `emulator_mini.yaml`. These profiles need paired UARTs for the IMU and power board.
+For Bello, run hardwared and the pose estimator in
 separate terminals:
 
 ```sh
 cargo run -p bello-hardwared -- \
-  --config components/bello-hardwared/config/bello-vcan.yaml
+  --config components/bello-hardwared/config/bello-sim.yaml
 cargo run -p bello-state-estimatord -- \
   --config components/bello-state-estimatord/config/bello.yaml
 ```
 
-For Bello Mini vCAN, copy the estimator profile to `bello-mini.local.yaml`
+For Bello Mini simulation, copy the estimator profile to `bello-mini.local.yaml`
 in the same directory so its relative URDF path still resolves. Set
-`hardware_endpoint: http://127.0.0.1:50051` in the copy to match the vCAN
+`hardware_endpoint: http://127.0.0.1:50051` in the copy to match the simulated
 daemon's TCP listener. Start both processes in separate terminals:
 
 ```sh
 cargo run -p bello-hardwared -- \
-  --config components/bello-hardwared/config/bello-mini-vcan.yaml
+  --config components/bello-hardwared/config/bello-mini-sim.yaml
 cargo run -p bello-state-estimatord -- \
   --config components/bello-state-estimatord/config/bello-mini.local.yaml
 ```

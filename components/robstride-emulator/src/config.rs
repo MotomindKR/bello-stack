@@ -3,13 +3,40 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
+use bello_sim_can::SimBus;
 use robstride_protocol::{MAX_MOTOR_ID, MotorParams};
 use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum CanInterface {
+    Socketcan(String),
+    Sim(SimBus),
+}
+
+impl CanInterface {
+    pub fn validate(&self) -> Result<()> {
+        match self {
+            Self::Socketcan(name) if name.trim().is_empty() => bail!("interface must be non-empty"),
+            Self::Socketcan(_) => Ok(()),
+            Self::Sim(bus) => Ok(bus.validate()?),
+        }
+    }
+}
+
+impl std::fmt::Display for CanInterface {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Socketcan(name) => f.write_str(name),
+            Self::Sim(bus) => write!(f, "sim/{}/{}", bus.daemon_port, bus.simulator_port),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    pub interface: String,
+    pub interface: CanInterface,
     #[serde(default = "default_host_id")]
     pub host_id: u8,
     #[serde(default = "default_feedback_rate")]
@@ -92,16 +119,17 @@ impl Config {
         let path = path.as_ref();
         let text = fs::read_to_string(path)
             .with_context(|| format!("failed to read {}", path.display()))?;
-        let config: Self = serde_yaml::from_str(&text)
-            .with_context(|| format!("invalid YAML in {}", path.display()))?;
+        Self::parse(&text).with_context(|| format!("invalid configuration in {}", path.display()))
+    }
+
+    pub fn parse(yaml: &str) -> Result<Self> {
+        let config: Self = serde_yaml::from_str(yaml)?;
         config.validate()?;
         Ok(config)
     }
 
     pub fn validate(&self) -> Result<()> {
-        if self.interface.trim().is_empty() {
-            bail!("interface must be non-empty");
-        }
+        self.interface.validate()?;
         if !self.feedback_rate_hz.is_finite() || !(1.0..=2_000.0).contains(&self.feedback_rate_hz) {
             bail!("feedback_rate_hz must be in 1..=2000");
         }

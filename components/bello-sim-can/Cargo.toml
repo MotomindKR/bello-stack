@@ -1,0 +1,11 @@
+[package]
+name = "bello-sim-can"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license-file.workspace = true
+publish.workspace = true
+
+[dependencies]
+robstride-protocol.workspace = true
+serde = { workspace = true, features = ["derive"] }

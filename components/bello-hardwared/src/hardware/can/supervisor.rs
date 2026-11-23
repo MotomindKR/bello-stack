@@ -21,6 +21,8 @@ enum Outbound {
     Periodic(PeriodicControl, Arc<PeriodicBatch>),
 }
 
+mod blocking;
+mod sim;
 #[cfg(target_os = "linux")]
 mod socketcan;
 mod usb;
@@ -57,14 +59,19 @@ pub(super) fn run(
     match &spec.transport {
         BusTransportConfig::Socketcan { .. } => {
             #[cfg(target_os = "linux")]
-            socketcan::run(spec, queues, frames, lifecycle, shutdown);
+            blocking::run::<::socketcan::CanSocket>(spec, queues, frames, lifecycle, shutdown);
             #[cfg(not(target_os = "linux"))]
             {
-                lifecycle.enter_fault("SocketCAN requires Linux; select a GS-USB transport");
+                lifecycle.enter_fault(
+                    "SocketCAN requires Linux; use gsusb for hardware or sim for simulation",
+                );
                 reject_queued(&queues, "SocketCAN requires Linux");
             }
         }
         BusTransportConfig::Gsusb { .. } => usb::run(spec, queues, frames, lifecycle, shutdown),
+        BusTransportConfig::Sim(_) => {
+            blocking::run::<bello_sim_can::SimSocket>(spec, queues, frames, lifecycle, shutdown)
+        }
     }
 }
 

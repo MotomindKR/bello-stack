@@ -39,10 +39,6 @@ struct CanonicalGroup {
     motors: Vec<String>,
 }
 
-pub fn write_hardwared(path: &Path, interface: &str, listen: SocketAddr) -> io::Result<()> {
-    write_hardwared_with_control_rate(path, interface, listen, 250.0)
-}
-
 pub fn write_hardwared_with_control_rate(
     path: &Path,
     interface: &str,
@@ -51,7 +47,7 @@ pub fn write_hardwared_with_control_rate(
 ) -> io::Result<()> {
     write_hardwared_with_grpc(
         path,
-        interface,
+        &format!("{{ type: socketcan, interface: {interface} }}"),
         &format!(
             "  listen: [{{ type: tcp, address: {listen} }}]\n  default_lease_ms: 1000\n  maximum_lease_ms: 10000"
         ),
@@ -61,7 +57,7 @@ pub fn write_hardwared_with_control_rate(
 
 pub fn write_hardwared_with_grpc(
     path: &Path,
-    interface: &str,
+    transport: &str,
     grpc: &str,
     control_rate_hz: f64,
 ) -> io::Result<()> {
@@ -78,7 +74,7 @@ runtime:
 grpc:
 {grpc}
 
-bus_transports: {{ e2e_can: {{ type: socketcan, interface: {interface} }} }}
+bus_transports: {{ e2e_can: {transport} }}
 
 enabled_groups: [e2e_group]
 "#,
@@ -121,19 +117,19 @@ pub fn write_canonical_lower_body(
 
     let description_path = deployment_path.with_file_name("canonical-lower-body-hardware.yaml");
     fs::write(&description_path, serde_yaml::to_string(&description)?)?;
-    let [(can0_path, can0_interface), (can1_path, can1_interface)] = emulator_configs;
+    let [(can0_path, can0_ports), (can1_path, can1_ports)] = emulator_configs;
     fs::write(
         can0_path,
-        canonical_emulator(&identity, "lower_body", "can0", can0_interface)?,
+        canonical_emulator(&identity, "lower_body", "can0", can0_ports)?,
     )?;
     fs::write(
         can1_path,
-        canonical_emulator(&identity, "lower_body", "can1", can1_interface)?,
+        canonical_emulator(&identity, "lower_body", "can1", can1_ports)?,
     )?;
     fs::write(
         deployment_path,
         format!(
-            "description: {}\n\ngrpc:\n  listen: [{{ type: tcp, address: {listen} }}]\n  default_lease_ms: 1000\n  maximum_lease_ms: 10000\n\nbus_transports: {{ can0: {{ type: socketcan, interface: {can0_interface} }}, can1: {{ type: socketcan, interface: {can1_interface} }} }}\n\nenabled_groups: [lower_body]\n",
+            "description: {}\n\ngrpc:\n  listen: [{{ type: tcp, address: {listen} }}]\n  default_lease_ms: 1000\n  maximum_lease_ms: 10000\n\nbus_transports: {{ can0: {{ type: sim, {can0_ports} }}, can1: {{ type: sim, {can1_ports} }} }}\n\nenabled_groups: [lower_body]\n",
             description_path
                 .file_name()
                 .context("description path has no file name")?
@@ -155,7 +151,7 @@ fn canonical_emulator(
     identity: &CanonicalHardware,
     group_name: &str,
     bus_name: &str,
-    interface: &str,
+    ports: &str,
 ) -> Result<String> {
     let group = identity
         .motor_groups
@@ -186,7 +182,7 @@ fn canonical_emulator(
     }
 
     let mut output = format!(
-        "interface: {interface}\nhost_id: {}\nfeedback_rate_hz: 500.0\n\ndynamics:\n  position_response_hz: 20.0\n  idle_velocity_decay_hz: 20.0\n\nactuators:\n",
+        "interface: {{ {ports} }}\nhost_id: {}\nfeedback_rate_hz: 500.0\n\ndynamics:\n  position_response_hz: 20.0\n  idle_velocity_decay_hz: 20.0\n\nactuators:\n",
         bus.host_id
     );
     for motor in motors {

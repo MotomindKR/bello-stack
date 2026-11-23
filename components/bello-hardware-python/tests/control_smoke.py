@@ -34,5 +34,5 @@ def main(endpoint: str) -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        raise SystemExit("usage: vcan_smoke.py ENDPOINT")
+        raise SystemExit("usage: control_smoke.py ENDPOINT")
     main(sys.argv[1])

@@ -8,14 +8,14 @@ Bello Stack lets a Rust or Python application read a robot's sensors and command
 flowchart LR
     app["Your application<br/>Rust or Python client"] <-->|"gRPC commands and telemetry"| daemon["bello-hardwared"]
     daemon <-->|"CAN and serial"| robot["Physical motors and sensors"]
-    daemon <-->|"Virtual CAN and serial on Linux"| sim["bello-mujoco"]
+    daemon <-->|"Loopback UDP and simulated serial"| sim["bello-mujoco"]
 ```
 
 Your application chooses the motion. The daemon owns the devices, checks commands against the robot's limits, and applies the configured response to faults. Clients can read telemetry without taking control. To command a motor group, such as an arm, a client acquires an exclusive lease for that group. In simulation, MuJoCo advances the physics and returns motor and sensor feedback through the same device interfaces.
 
 For Bello and Bello Mini, the pose estimator combines motor encoders and an IMU to estimate local odometry. MuJoCo can also publish ground-truth pose for comparison and render images from configured cameras.
 
-The [robot descriptions](descriptions) cover Bello, Bello Mini, Mini Torso, and the single- and dual-arm Milly setups. Each pairs a URDF for geometry, joint limits, and transmissions with a hardware description for motors, buses, and control groups. A deployment connects that description to a particular host. For example, Milly's [USB CAN deployment](components/bello-hardwared/config/milly-gsusb.yaml) and [virtual CAN deployment](components/bello-hardwared/config/milly-vcan.yaml) both expose the same `arm` group.
+The [robot descriptions](descriptions) cover Bello, Bello Mini, Mini Torso, and the single- and dual-arm Milly setups. Each pairs a URDF for geometry, joint limits, and transmissions with a hardware description for motors, buses, and control groups. A deployment connects that description to a particular host. For example, Milly's [USB CAN deployment](components/bello-hardwared/config/milly-gsusb.yaml) and [loopback UDP deployment](components/bello-hardwared/config/milly-sim.yaml) both expose the same `arm` group.
 
 ## Try it without hardware
 
