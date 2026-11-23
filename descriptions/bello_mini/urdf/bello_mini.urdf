@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <robot name="bello_mini">
   <!--Designer-provided joint ranges use user-reviewed left-side signs; right roll/yaw signs are mirrored and physical stops require validation.-->
-  <!--Measured assembly masses reconciled 2026-09-22: 48.58 kg including separate 0.68 kg head. Head pose/inertia and hand inertias are nominal proxies; see ASSET_PROVENANCE.md.-->
+  <!--Head pose and inertia and hand inertias are approximate.-->
   <!--Astra Stereo S U3 sensor origins are nominal mechanical values: IR/depth is 2 mm behind the CAD front face; RGB is 2 mm forward of IR/depth. They are not factory-calibrated extrinsics.-->
   <!--Publish camera sensor TFs from this URDF or from the Orbbec driver, never from both sources simultaneously.-->
   <!--Left/right mass properties use mirrored spatial-inertia means; central-body inertials are symmetrized about y=0. Existing signed joint conventions are preserved.-->

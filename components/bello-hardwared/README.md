@@ -58,24 +58,15 @@ Visualization and recording are deliberately outside this process. External
 tools can subscribe to the daemon's read-only gRPC telemetry stream without
 affecting hardware ownership.
 
-The provisional Bello Mini profiles are [`config/bello-mini.yaml`](config/bello-mini.yaml)
-for physical transport bindings and [`config/bello-mini-vcan.yaml`](config/bello-mini-vcan.yaml)
-for `vcan0` through `vcan3`, `/dev/ttyIMU`, and `/dev/ttyPOWER`. Both use
-[`descriptions/bello_mini/hardware.yaml`](../../descriptions/bello_mini/hardware.yaml)
-and expose 28 motors: 14 in `lower_body` (both legs and waist yaw/roll) and
-14 in `upper_body` (seven per arm). Validate without opening hardware:
+Validate the [Bello Mini physical](config/bello-mini.yaml) or [vCAN](config/bello-mini-vcan.yaml)
+profile without opening hardware:
 
 ```sh
 cargo run -p bello-hardwared -- \
   --check --config components/bello-hardwared/config/bello-mini-vcan.yaml
 ```
 
-Mini includes operator-confirmed directions and an observation-derived ankle
-sign/order candidate. Physical operation still requires validation of the
-remaining directions, encoder zeros, physical stops, corrected ankle mapping,
-and differential reduction magnitudes; passing `--check` does not establish
-physical calibration. The [Mini provenance notes](../../descriptions/bello_mini/ASSET_PROVENANCE.md)
-record the evidence and remaining calibration work.
+Before physical operation, complete the [Mini calibration checks](../../descriptions/bello_mini/motor_topology.yaml).
 
 ## Interfaces
 

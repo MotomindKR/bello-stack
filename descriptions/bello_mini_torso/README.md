@@ -1,62 +1,12 @@
 # Bello Mini Torso
 
-The fixed-base torso retains both seven-joint arms, waist yaw/roll, pelvis,
-head, camera, and IMU. The two active hip-pitch motors drive one shared pitch
-joint. Including the two grippers, 20 actuators control 19 independent joints
-and eight passive linkage joints. The user specified an invisible
-base at the hip-pitch origin, upright zero, 60 degrees forward travel, and
-30 degrees backward travel. The hands are replaced by articulated Milly grippers,
-including Milly's wrist camera brackets, collision shapes and optical
-frames on both sides. Modeled moving mass is approximately 28.177 kg with the provisional
-gripper mass allocation described in the provenance.
+Both hip motors drive one pitch joint. Enable and command them together through the
+`torso_pitch` group. Before physical bring-up, verify motor addresses, directions,
+encoder zeros, travel stops, and load sharing on the installed assembly.
 
-Geometry, coordinate conventions, inherited calibration assumptions, and torque
-sharing are recorded in [ASSET_PROVENANCE.md](ASSET_PROVENANCE.md).
+## Virtual bring-up
 
-## Wrist pitch travel
-
-Both wrist-pitch joints have an upper travel limit of +80 degrees
-(1.3962634015954636 rad). Lower travel remains -90 degrees. Consumers must
-apply their normal command margin inside these limits; this does not change
-encoder calibration or program a drive-firmware stop.
-
-## Gripper control
-
-| Coordinate and motor group | Logical bus | Motor ID |
-| --- | --- | --- |
-| `left_gripper` | `can2` | 38 |
-| `right_gripper` | `can3` | 48 |
-
-Each gripper has its own lease and uses Milly's motor configuration
-(`ROBSTRIDE_05`, direction -1) and 100 Hz control/refresh rates. Its commanded
-range is -2.3 to 0 rad; -2.2 rad is the nominal open pose and 0 rad is closed.
-The emulator initializes both hands open. The physical daemon reads their
-actual positions; declaring the IDs does not program motor addresses or zeros.
-Confirm the installed motor model, CAN address, direction, and zero before use.
-
-Each URDF `bello:slider_crank` declaration preserves Milly's crank radius,
-rod length, slider offset, phase and reference. Only the crank is a motor
-coordinate; both fingers and rods are passive. The native emulator resolves
-these linkages independently for each hand. Arm IK consumers can hold
-the gripper coordinates at the measured or desired opening.
-
-## Mount geometry
-
-The camera bracket's wrist-facing mounting face sits flush against the retained
-wrist casing. `mini_torso_grippers.py` derives this seating plane from the visual
-meshes, including the camera bracket's existing 12 mm mounting plate. Using the
-old hand origin embeds the bracket approximately 15.46 mm into the wrist.
-The mount remains provisional pending installed hardware measurements.
-
-```sh
-uv run --with numpy --with scipy --with trimesh scripts/mini_torso_grippers.py
-uv run --with numpy --with scipy --with trimesh \
-  python -m unittest discover -s scripts -p test_mini_torso_grippers.py
-```
-
-## Validate without hardware
-
-From the stack root in its Linux Nix environment:
+From the repository root in the Linux Nix shell, validate the profiles:
 
 ```sh
 cargo run -p bello-hardwared -- --check \
@@ -67,18 +17,8 @@ cargo run -p bello-mujoco -- check \
   --config components/bello-mujoco/config/bello_mini_torso.yaml
 ```
 
-The model uses `root: fixed` and `floor: false`; the base root is at world zero
-and has no visual or collision geometry. There is no free-root joint or torso
-guide. Both hip actuators have signed unit mappings onto `torso_pitch_joint`.
-Native torque saturation retains the intersection of the URDF motor effort
-envelope and the protocol model range through emulator updates.
-
-## Virtual bring-up
-
-Prepare `vcan0` through `vcan3`, an IMU UART pair at `/dev/ttyIMU` and
-`/dev/ttyIMU-mujoco`, and a power UART pair at `/dev/ttyPOWER` and
-`/dev/ttyPOWER-mujoco`, following [operations](../../docs/operations.md).
-Run the emulator and daemon in separate Linux terminals:
+Set up the virtual CAN and UART devices using the [operations guide](../../docs/operations.md).
+Start each process in its own terminal:
 
 ```sh
 cargo run -p bello-mujoco -- run \
@@ -87,25 +27,12 @@ cargo run -p bello-hardwared -- \
   --config components/bello-hardwared/config/bello-mini-torso-vcan.yaml
 ```
 
-Follow the [hardware API control workflow](../../docs/api.md#normal-control-workflow)
-to command the `torso_pitch` group. Both hip motors must enable and move
-together. Hardwared rejects contradictory position or velocity commands.
-Encoder disagreement above 0.02 rad faults the group and disables both hips.
-Missing or stale feedback follows the group health and watchdog behavior.
-The waist and arms have separate leases.
+Use the [hardware API control workflow](../../docs/api.md#normal-control-workflow) to move the torso.
 
-## Physical commissioning and visual review
+## Regenerate the grippers
 
-The physical profile inherits Mini's CAN addresses, motor directions, IMU USB
-serial binding, and power UART. Confirm those bindings and encoder zeros on
-the installed assembly. Configuration checks do not establish physical encoder
-calibration or motor load sharing. Review the selected per-motor gains and
-encoder-disagreement tolerance before enabling the physical group.
-
-Local review images are written to the ignored
-`outputs/bello_mini_torso_review/` directory. `review.png` shows front, side,
-and three-quarter views plus the forward/backward limits. The review uses the
-canonical GLB visuals, including the detailed head and open grippers. Native MuJoCo
-video uses the retained companion STLs as described in the
-[Mini provenance](../bello_mini/ASSET_PROVENANCE.md). Generated images and
-inspection MJCF files are review artifacts rather than source descriptions.
+```sh
+uv run --with numpy --with scipy --with trimesh scripts/mini_torso_grippers.py
+uv run --with numpy --with scipy --with trimesh \
+  python -m unittest discover -s scripts -p test_mini_torso_grippers.py
+```

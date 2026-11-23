@@ -44,17 +44,8 @@ The maintained examples are:
 - [Bello Mini Torso vCAN deployment](../components/bello-hardwared/config/bello-mini-torso-vcan.yaml)
 - [Bello Mini Torso hardware description](../descriptions/bello_mini_torso/hardware.yaml)
 
-Bello Mini exposes 28 motors in `lower_body` (legs and both waist axes) and
-`upper_body` (seven motors per arm). These profiles use provisional motor
-directions and ankle transmissions. See the
-[calibration assumptions](../descriptions/bello_mini/ASSET_PROVENANCE.md) before
-physical operation. The physical bindings use `can0`, `can1`, and the IMU's
-stable `/dev/serial/by-id/usb-1a86_USB_Single_Serial_5C93185491-if00` path;
-vCAN uses `vcan0`, `vcan1`, and `/dev/ttyIMU`. Both use 115200 baud to match the
-installed EBIMU, with 100 Hz output to fit the ASCII samples within the serial
-bandwidth. The Mini profile warns at 60 C, faults at 95 C, and requires cooling
-to 75 C before recovery; the fault threshold is not a continuous operating
-target. Update the physical serial binding for a different sensor adapter.
+Before running Bello Mini on hardware, check the outstanding calibration work in
+[motor_topology.yaml](../descriptions/bello_mini/motor_topology.yaml) and set the IMU serial path for the installed adapter.
 
 The raw schema and defaults live in
 [`config/model.rs`](../components/bello-hardwared/src/config/model.rs). The

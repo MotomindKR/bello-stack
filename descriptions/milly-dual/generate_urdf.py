@@ -16,28 +16,15 @@ SOURCE = DESCRIPTION_DIR.parent / "milly" / "urdf" / "milly.urdf"
 OUTPUT = DESCRIPTION_DIR / "urdf" / "milly-dual.urdf"
 BELLO_NS = "https://motomind.kr/bello/urdf"
 ET.register_namespace("bello", BELLO_NS)
-# Arm labels follow the operator's head-on view of the +X-facing workcell:
-# world -Y is visual left and world +Y is visual right. The physical base
-# centers on the deployed dual-Milly fixture are 443 mm apart.
+# Left and right are from the operator's head-on view.
 SIDES = (("left", -0.2215), ("right", 0.2215))
 MOUNT_RPY = "0 0 1.5707963267948966"
-# The remounted D405 optical center was fitted against the table plane on
-# 2026-09-02. X includes the requested +40 mm longitudinal trial offset and Y
-# includes the measured 9 mm leftward offset from the arm midpoint.
-# The physical body has zero roll, faces the -X work area (yaw pi), and pitches
-# down about its local +Y. A separate optical child preserves the conventional
-# +X-right, +Y-down,
-# +Z-forward camera coordinates used by librealsense and WebXR projection.
 CENTER_D405_LONGITUDINAL_X = 0.040
 CENTER_D405_LATERAL_Y = -0.009
 CENTER_D405_HEIGHT = 0.35937731
 CENTER_D405_PITCH = 0.44660681555959347
 CENTER_D405_YAW = 3.141592653589793
 CENTER_D405_SIZE = (0.023, 0.042, 0.042)
-# Collision-only workcell geometry is deliberately expressed in the base frame,
-# independently of the pitched camera body. The keepout cube is centered on the
-# calibrated optical position. Its lower face defines the top of the support
-# post, whose lower face is the measured table plane at z=0.
 CENTER_D405_KEEPOUT_SIZE = (0.100, 0.100, 0.100)
 CENTER_D405_SUPPORT_POST_SIZE_XY = 0.040
 CENTER_D405_SUPPORT_POST_HEIGHT = CENTER_D405_HEIGHT - CENTER_D405_KEEPOUT_SIZE[2] / 2.0
@@ -90,8 +77,6 @@ def _mount(side: str, y: float) -> ET.Element:
 def _center_d405() -> tuple[ET.Element, ...]:
     body = ET.Element("link", {"name": "center_d405_link"})
     visual = ET.SubElement(body, "visual")
-    # Put the optical center at the link origin and draw the camera body behind
-    # the front/lens plane along conventional camera-link -X.
     ET.SubElement(visual, "origin", {"xyz": "-0.0115 0 0", "rpy": "0 0 0"})
     geometry = ET.SubElement(visual, "geometry")
     ET.SubElement(
@@ -211,20 +196,9 @@ def render() -> str:
             robot.append(_clone(material, side))
 
     robot.append(ET.Element("link", {"name": "dual_milly_base"}))
-    robot.append(
-        ET.Comment(
-            " Collision-only D405 keepout and support post, fixed in the table/base frame. "
-        )
-    )
     robot.extend(_center_d405_collision_obstacles())
-    robot.append(
-        ET.Comment(
-            " Center D405: table-plane calibrated height/pitch, zero roll, yaw pi into -X work area. "
-        )
-    )
     robot.extend(_center_d405())
     for side, y in SIDES:
-        robot.append(ET.Comment(f" {side.capitalize()} Milly arm. "))
         for link in source.findall("link"):
             robot.append(_clone(link, side))
         robot.append(_mount(side, y))
