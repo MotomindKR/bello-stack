@@ -53,7 +53,7 @@ jobs:
               metadata_command=(unzip -p)
             fi
             "${metadata_command[@]}" "$artifact" "$metadata_pattern" |
-              grep -Fx 'License-Expression: LicenseRef-Proprietary'
+              grep -Fx 'License-Expression: MIT'
             "${metadata_command[@]}" "$artifact" "$metadata_pattern" |
               grep -Fx 'License-File: LICENSE'
             "${metadata_command[@]}" "$artifact" "$metadata_pattern" |
