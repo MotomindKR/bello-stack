@@ -1,20 +1,38 @@
-# Bello stack
+# Bello Stack
 
-Bello stack is software for controlling and simulating robots. Each robot has a
-URDF that defines its geometry, joints, and transmissions, and a hardware
-description that assigns motors to buses and control groups. A deployment
-profile selects the groups to run and the interfaces to use. See the
-[included robot descriptions](descriptions) for examples.
+Bello Stack lets a Rust or Python application read a robot's sensors and command its motors through one gRPC API. The same application can drive a physical robot or exercise its controller against MuJoCo. The hardware daemon, client libraries, robot descriptions, and simulator live in this repository.
 
-On a physical robot, `bello-hardwared` talks to the motors over CAN and reads sensors over serial. A [Rust](components/bello-hardware-client) or [Python](components/bello-hardware-python) application can read telemetry and take control of a motor group over gRPC. The daemon enforces joint limits and handles faults.
+## How the pieces fit together
 
-The [MuJoCo simulator](components/bello-mujoco) emulates motors and sensors so the same daemon and application can run against simulated physics. By default, the simulator exchanges motor frames with the daemon over [loopback UDP](docs/operations.md#simulate-can-without-socketcan).
+```mermaid
+flowchart LR
+    app["Your application<br/>Rust or Python client"] <-->|"gRPC commands and telemetry"| daemon["bello-hardwared"]
+    daemon <-->|"CAN and serial"| robot["Physical motors and sensors"]
+    daemon <-->|"Loopback UDP and simulated serial"| sim["bello-mujoco"]
+```
 
-The [pose estimator](components/bello-state-estimatord) combines encoder and IMU readings to estimate the robot’s motion. MuJoCo can also publish ground-truth pose and rendered images through the [pose](components/bello-pose-api/proto/bello/pose/v1/pose.proto) and [camera](components/bello-camera-api/proto/bello/camera/v1/camera.proto) APIs.
+Your application chooses the motion. The daemon owns the devices, checks commands against the robot's limits, and applies the configured response to faults. Clients can read telemetry without taking control. To command a motor group, such as an arm, a client acquires an exclusive lease for that group. In simulation, MuJoCo advances the physics and returns motor and sensor feedback through the same device interfaces.
 
-## Documentation
+For Bello and Bello Mini, the pose estimator combines motor encoders and an IMU to estimate local odometry. MuJoCo can also publish ground-truth pose for comparison and render images from configured cameras.
 
-- [Run on hardware or in simulation](docs/operations.md)
-- [Configure a robot](docs/configuration.md)
-- [Hardware API](docs/api.md) and [control and safety](docs/control-and-safety.md)
-- [Desktop builds](docs/desktop.md) and [development setup](docs/development.md)
+The [robot descriptions](descriptions) cover Bello, Bello Mini, Mini Torso, and the single- and dual-arm Milly setups. Each pairs a URDF for geometry, joint limits, and transmissions with a hardware description for motors, buses, and control groups. A deployment connects that description to a particular host. For example, Milly's [USB CAN deployment](components/bello-hardwared/config/milly-gsusb.yaml) and [loopback UDP deployment](components/bello-hardwared/config/milly-sim.yaml) both expose the same `arm` group.
+
+## Try it without hardware
+
+From the repository root in the [development environment](docs/development.md#nix-and-direnv), validate the Milly deployment:
+
+```sh
+cargo run -p bello-hardwared -- --check --config components/bello-hardwared/config/milly-gsusb.yaml
+```
+
+The daemon loads the deployment and its robot description, prints `configuration is valid`, and exits before opening the CAN adapter.
+
+## Where to start
+
+| Goal | Entry point |
+| --- | --- |
+| Write a controller or telemetry tool | [Python client](components/bello-hardware-python/README.md), [Rust client](components/bello-hardware-client/README.md), and [hardware API](docs/api.md) |
+| Bring up a physical robot | [Hardware setup](docs/operations.md#physical-startup), [desktop builds and USB adapters](docs/desktop.md), and [control and safety](docs/control-and-safety.md) |
+| Test a controller without a robot | [MuJoCo physics simulation](components/bello-mujoco/README.md) or [Robstride fault injection](components/robstride-emulator/README.md#fault-scenarios) |
+| Add or adapt a robot | [Robot descriptions](descriptions) and [configuration reference](docs/configuration.md) |
+| Estimate pose or use simulated cameras | [Encoder and IMU pose estimator](components/bello-state-estimatord/README.md) and [MuJoCo camera streams](components/bello-mujoco/README.md#live-camera-streams) |
