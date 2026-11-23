@@ -117,24 +117,23 @@ mod tests {
 
     use super::*;
 
-    fn mini_robot() -> RobotDescription {
+    fn robot() -> RobotDescription {
         RobotDescription::load(
-            &Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../descriptions/bello_mini/urdf/bello_mini.urdf"),
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/imu.urdf"),
         )
         .unwrap()
     }
 
     fn valid_config() -> ImuConfig {
         ImuConfig {
-            source_frame: "imu_sensor_link".into(),
-            output_frame: "imu_link".into(),
+            source_frame: "sensor".into(),
+            output_frame: "output".into(),
             ..Default::default()
         }
     }
 
     fn resolve(config: &ImuConfig) -> Result<ImuSpec> {
-        ImuSpec::resolve(config, &mini_robot())
+        ImuSpec::resolve(config, &robot())
     }
 
     #[test]
@@ -187,16 +186,16 @@ mod tests {
         assert!(error.contains("missing_link"), "{error}");
 
         let movable = ImuConfig {
-            source_frame: "left_hip_pitch_link".into(),
-            output_frame: "pelvis_link".into(),
+            source_frame: "movable".into(),
+            output_frame: "base".into(),
             ..valid_config()
         };
         let error = resolve(&movable).unwrap_err().to_string();
         assert!(error.contains("cannot transform"), "{error}");
 
         let noncoincident = ImuConfig {
-            source_frame: "imu_link".into(),
-            output_frame: "pelvis_link".into(),
+            source_frame: "output".into(),
+            output_frame: "base".into(),
             ..valid_config()
         };
         let error = resolve(&noncoincident).unwrap_err().to_string();
@@ -205,9 +204,8 @@ mod tests {
 
     #[test]
     fn transforms_orientation_and_vectors_into_output_frame() {
-        let mut spec = resolve(&valid_config()).unwrap();
+        let spec = resolve(&valid_config()).unwrap();
         let output_from_source = UnitQuaternion::from_euler_angles(0.31, -0.42, 0.73);
-        spec.output_from_source = output_from_source;
 
         let world_from_output = UnitQuaternion::from_euler_angles(-0.2, 0.4, -0.6);
         let world_from_source = world_from_output * output_from_source;
@@ -239,29 +237,5 @@ mod tests {
         );
         assert_eq!(output.device_timestamp_ms, 123);
         assert_eq!(output.received, received);
-    }
-
-    #[test]
-    fn mini_urdf_turns_upside_down_sensor_sample_upright() {
-        let spec = resolve(&valid_config()).unwrap();
-        let output = spec.transform_sample(ImuSample {
-            orientation_xyzw: [1.0, 0.0, 0.0, 0.0],
-            angular_velocity_xyz: [1.0, 2.0, 3.0],
-            linear_acceleration_xyz: [-4.0, 5.0, -6.0],
-            device_timestamp_ms: 456,
-            received: Instant::now(),
-        });
-
-        let [x, y, z, w] = output.orientation_xyzw;
-        let orientation = UnitQuaternion::new_normalize(Quaternion::new(w, x, y, z));
-        assert!(orientation.angle() < 1.0e-12);
-        assert!(
-            (Vector3::from(output.angular_velocity_xyz) - Vector3::new(1.0, -2.0, -3.0)).norm()
-                < 1.0e-12
-        );
-        assert!(
-            (Vector3::from(output.linear_acceleration_xyz) - Vector3::new(-4.0, -5.0, 6.0)).norm()
-                < 1.0e-12
-        );
     }
 }

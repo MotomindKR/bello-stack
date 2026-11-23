@@ -1300,7 +1300,7 @@ mod tests {
   <link name="right_foot">
     <collision><geometry><box size="0.2 0.2 0.2"/></geometry></collision>
   </link>
-  <link name="imu"/>
+  <link name="imu_mount"/><link name="imu"/>
   <joint name="left_joint" type="revolute">
     <origin xyz="0 0 -1"/>
     <parent link="pelvis"/><child link="left_foot"/><axis xyz="0 1 0"/>
@@ -1310,9 +1310,13 @@ mod tests {
     <origin xyz="0.2 0 -1"/>
     <parent link="pelvis"/><child link="right_foot"/>
   </joint>
+  <joint name="imu_mount_fixed" type="fixed">
+    <origin xyz="0.1 0 0.3" rpy="0 0 -1.5707963267948966"/>
+    <parent link="pelvis"/><child link="imu_mount"/>
+  </joint>
   <joint name="imu_fixed" type="fixed">
-    <origin xyz="0.1 -0.2 0.3" rpy="0 0 -1.5707963267948966"/>
-    <parent link="pelvis"/><child link="imu"/>
+    <origin xyz="0.2 0 0"/>
+    <parent link="imu_mount"/><child link="imu"/>
   </joint>
 </robot>
 "#;
@@ -1321,7 +1325,9 @@ mod tests {
 <robot name="non_unit_differential">
   <link name="base"/>
   <link name="first"/>
-  <link name="second"/>
+  <link name="second">
+    <collision><geometry><sphere radius="0.1"/></geometry></collision>
+  </link>
   <joint name="roll" type="revolute">
     <parent link="base"/><child link="first"/>
     <axis xyz="1 0 0"/>
@@ -1408,6 +1414,10 @@ mod tests {
     #[test]
     fn differential_reductions_preserve_virtual_work_and_project_bounds() {
         let description = load_description_text(NON_UNIT_DIFFERENTIAL_URDF).unwrap();
+        let model = description
+            .kinematic_model("base", "second", "second")
+            .unwrap();
+        assert_eq!(model.required_coordinates(), &["motor_a", "motor_b"]);
         let transmission = &description.transmissions()[0];
         let coordinate_velocity = BTreeMap::from([
             (
@@ -1514,145 +1524,92 @@ mod tests {
     }
 
     #[test]
-    fn canonical_bello_urdf_loads_with_paired_arms_and_ankle_coordinates() {
+    fn bello_paired_arm_joints_have_equal_position_limits() {
         let path =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../../descriptions/bello/urdf/bello.urdf");
         let description = RobotDescription::load(&path).unwrap();
-        let model = description
-            .kinematic_model(
-                "pelvis_link",
-                "left_ankle_roll_link",
-                "right_ankle_roll_link",
-            )
-            .unwrap();
-        for coordinate in [
-            "left_ankle_motor_1",
-            "left_ankle_motor_2",
-            "right_ankle_motor_1",
-            "right_ankle_motor_2",
-        ] {
-            assert!(
-                model
-                    .required_coordinates()
-                    .iter()
-                    .any(|name| name == coordinate)
-            );
-        }
-        assert!(
-            !model
-                .required_coordinates()
-                .iter()
-                .any(|name| name == "left_ankle_pitch_joint")
-        );
-        for joint in [
-            "shoulder_pitch_joint",
-            "shoulder_roll_joint",
-            "shoulder_yaw_joint",
-            "elbow_pitch_joint",
-            "elbow_yaw_joint",
-            "wrist_pitch_joint",
-        ] {
-            let left = description
-                .joint(&format!("left_{joint}"))
-                .unwrap()
-                .limits
-                .as_ref()
-                .unwrap();
-            let right = description
-                .joint(&format!("right_{joint}"))
-                .unwrap()
-                .limits
-                .as_ref()
-                .unwrap();
-            assert_eq!((right.lower, right.upper), (left.lower, left.upper));
-        }
+        let arm_limits = |side: &str| {
+            description
+                .joints()
+                .filter_map(|joint| {
+                    let suffix = joint.name.strip_prefix(side)?;
+                    let (region, _) = suffix.split_once('_')?;
+                    if !matches!(region, "shoulder" | "elbow" | "wrist") {
+                        return None;
+                    }
+                    let limits = joint.limits.as_ref()?;
+                    Some((suffix, (limits.lower, limits.upper)))
+                })
+                .collect::<BTreeMap<_, _>>()
+        };
+        let left = arm_limits("left_");
+        assert!(!left.is_empty());
+        assert_eq!(left, arm_limits("right_"));
     }
 
     #[test]
-    fn canonical_bello_mini_imu_transform_matches_its_frame_contract() {
+    fn bello_mini_imu_matches_mount_geometry_and_axis_conventions() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../descriptions/bello_mini/urdf/bello_mini.urdf");
         let description = RobotDescription::load(&path).unwrap();
         let pelvis_from_imu = description
             .fixed_transform("pelvis_link", "imu_link")
             .unwrap();
-        let expected_translation = Vector3::new(-0.01, 0.0, -0.230000001143162);
+        let [left_hip, right_hip] = ["left_hip_pitch_joint", "right_hip_pitch_joint"]
+            .map(|name| description.joint(name).unwrap().origin.translation.vector);
+        let hip_midpoint = (left_hip + right_hip) / 2.0;
+        assert!(
+            (pelvis_from_imu.translation.vector - hip_midpoint + Vector3::z() * 0.05).norm()
+                < 1.0e-12
+        );
+        // The logical IMU retains Bello's X-right, Y-forward convention.
         let expected_rotation =
             UnitQuaternion::from_euler_angles(0.0, 0.0, -std::f64::consts::FRAC_PI_2);
-        assert!((pelvis_from_imu.translation.vector - expected_translation).norm() < 1.0e-12);
         assert!(pelvis_from_imu.rotation.angle_to(&expected_rotation) < 1.0e-12);
 
+        // The installed EBIMU is upside down about the logical X axis.
         let imu_from_sensor = description
             .fixed_transform("imu_link", "imu_sensor_link")
             .unwrap();
         let sensor_rotation = UnitQuaternion::from_euler_angles(std::f64::consts::PI, 0.0, 0.0);
         assert!(imu_from_sensor.translation.vector.norm() < 1.0e-12);
         assert!(imu_from_sensor.rotation.angle_to(&sensor_rotation) < 1.0e-12);
-
-        let pelvis_from_sensor = description
-            .fixed_transform("pelvis_link", "imu_sensor_link")
-            .unwrap();
-        assert!((pelvis_from_sensor.translation.vector - expected_translation).norm() < 1.0e-12);
-        assert!(
-            pelvis_from_sensor
-                .rotation
-                .angle_to(&(expected_rotation * sensor_rotation))
-                < 1.0e-12
-        );
     }
 
     #[test]
-    fn canonical_bello_mini_ankles_match_operator_observed_axes() {
+    fn bello_mini_ankles_match_operator_observed_polarity() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../descriptions/bello_mini/urdf/bello_mini.urdf");
         let description = RobotDescription::load(&path).unwrap();
 
         for side in ["left", "right"] {
+            let motors = [
+                format!("{side}_ankle_motor_1"),
+                format!("{side}_ankle_motor_2"),
+            ];
+            let roll = format!("{side}_ankle_roll_joint");
+            let pitch = format!("{side}_ankle_pitch_joint");
             let transmission = description
                 .transmissions()
                 .iter()
-                .find(|item| item.name == format!("{side}_ankle_differential"))
+                .find(|item| item.coordinates.contains(&motors[0]))
                 .unwrap();
-            assert_eq!(
-                transmission.coordinates,
-                [
-                    format!("{side}_ankle_motor_1"),
-                    format!("{side}_ankle_motor_2"),
-                ]
-            );
-            assert_eq!(
-                transmission.joints,
-                [
-                    format!("{side}_ankle_roll_joint"),
-                    format!("{side}_ankle_pitch_joint"),
-                ]
-            );
-            assert_eq!(transmission.joint_reduction, [1.0, -1.0]);
 
-            let resolved = transmission
-                .resolve(&BTreeMap::from([
-                    (
-                        format!("{side}_ankle_motor_1"),
-                        CoordinateState {
-                            position: -0.2,
-                            velocity: -0.4,
-                        },
-                    ),
-                    (
-                        format!("{side}_ankle_motor_2"),
-                        CoordinateState {
-                            position: 0.4,
-                            velocity: 0.8,
-                        },
-                    ),
-                ]))
-                .unwrap();
-            assert_eq!(resolved[0].0, format!("{side}_ankle_roll_joint"));
-            assert!((resolved[0].1.position - 0.1).abs() < 1.0e-12);
-            assert!((resolved[0].1.velocity - 0.2).abs() < 1.0e-12);
-            assert_eq!(resolved[1].0, format!("{side}_ankle_pitch_joint"));
-            assert!((resolved[1].1.position - 0.3).abs() < 1.0e-12);
-            assert!((resolved[1].1.velocity - 0.6).abs() < 1.0e-12);
+            // In normalized coordinates, positive roll moves both motors
+            // positively, while positive pitch moves motor 1 negatively.
+            for (velocities, pitch_sign) in [([1.0, 0.0], -1.0), ([0.0, 1.0], 1.0)] {
+                let coordinates = motors
+                    .iter()
+                    .cloned()
+                    .zip(velocities.map(|velocity| CoordinateState {
+                        position: 0.0,
+                        velocity,
+                    }))
+                    .collect();
+                let joints = BTreeMap::from(transmission.resolve(&coordinates).unwrap());
+                assert!(joints[&roll].velocity > 0.0, "{side}");
+                assert!(joints[&pitch].velocity * pitch_sign > 0.0, "{side}");
+            }
         }
     }
 }

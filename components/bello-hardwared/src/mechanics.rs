@@ -429,11 +429,6 @@ impl MechanicalEnvelope {
         }
         Ok(())
     }
-
-    #[cfg(test)]
-    pub(crate) fn differential_count(&self) -> usize {
-        self.differentials.len()
-    }
 }
 
 pub(crate) fn apply_coordinate_limits(

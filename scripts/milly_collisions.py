@@ -92,8 +92,7 @@ def preview(root, description, output):
     linkage = root.find(f"{{{NS}}}slider_crank")
 
     def poses(q):
-        positions = {f"joint_{i}": 0.0 for i in range(1, 7)}
-        positions[linkage.get("driver")] = q
+        positions = {linkage.attrib["driver"]: q}
         r, length, h, phase, reference = (
             float(linkage.get(k))
             for k in (
@@ -126,7 +125,7 @@ def preview(root, description, output):
                 motion = np.eye(4)
                 if joint.get("type") != "fixed":
                     axis = np.fromstring(joint.find("axis").get("xyz"), sep=" ")
-                    qj = positions[joint.get("name")]
+                    qj = positions.get(joint.attrib["name"], 0.0)
                     if joint.get("type") == "prismatic":
                         motion[:3, 3] = axis * qj
                     else:
@@ -200,10 +199,22 @@ def preview(root, description, output):
             "Gripper and camera · detail",
         ),
     )
+    children = {}
+    for joint in root.findall("joint"):
+        parent = joint.find("parent").attrib["link"]
+        children.setdefault(parent, []).append(joint.find("child").attrib["link"])
+    detail_links = {"gripper_base", "camera_link"}
+    pending = list(detail_links)
+    while pending:
+        parent = pending.pop()
+        for child in children.get(parent, ()):
+            if child not in detail_links:
+                detail_links.add(child)
+                pending.append(child)
     records = []
     for col in (1, 2):
         for name, kind, mesh, color in meshes:
-            if col == 2 and name in {"base_link", *(f"link_{i}" for i in range(1, 7))}:
+            if col == 2 and name not in detail_links:
                 continue
             records.append((name, kind, mesh, col))
             figure.add_trace(

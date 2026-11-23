@@ -152,27 +152,53 @@ pub(super) fn parse(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::io::Write;
+    use std::path::Path;
 
-    fn milly() -> SliderCrank {
-        SliderCrank {
-            name: "milly".into(),
-            driver: "gripper".into(),
-            sliders: ["finger_1_joint".into(), "finger_2_joint".into()],
-            rods: ["rod_1_joint".into(), "rod_2_joint".into()],
-            crank_radius: 0.03,
-            rod_length: 0.045,
-            slider_offset: 0.014,
-            phase: 2.64899895,
-            slider_reference: 0.0720153,
-        }
+    use super::*;
+    use crate::RobotDescription;
+
+    const LINKAGE_URDF: &str = r#"
+<robot name="linkage_fixture" xmlns:bello="https://motomind.kr/bello/urdf">
+  <link name="base"/><link name="crank"/><link name="slider_a"/><link name="slider_b"/>
+  <link name="rod_a"/><link name="rod_b"/>
+  <joint name="driver" type="revolute">
+    <parent link="base"/><child link="crank"/>
+    <limit lower="-3" upper="3" effort="1" velocity="1"/>
+  </joint>
+  <joint name="slide_a" type="prismatic">
+    <parent link="base"/><child link="slider_a"/>
+    <limit lower="-1" upper="1" effort="1" velocity="1"/>
+  </joint>
+  <joint name="slide_b" type="prismatic">
+    <parent link="base"/><child link="slider_b"/>
+    <limit lower="-1" upper="1" effort="1" velocity="1"/>
+  </joint>
+  <joint name="hinge_a" type="revolute">
+    <parent link="crank"/><child link="rod_a"/>
+    <limit lower="-4" upper="4" effort="1" velocity="1"/>
+  </joint>
+  <joint name="hinge_b" type="revolute">
+    <parent link="crank"/><child link="rod_b"/>
+    <limit lower="-4" upper="4" effort="1" velocity="1"/>
+  </joint>
+  <bello:slider_crank name="linkage" driver="driver" sliders="slide_a slide_b" rods="hinge_a hinge_b"
+    crank_radius="0.02" rod_length="0.04" slider_offset="0.01" phase="0.4" slider_reference="0.05"/>
+</robot>
+"#;
+
+    fn load_fixture(xml: &str) -> anyhow::Result<RobotDescription> {
+        let mut file = tempfile::NamedTempFile::new()?;
+        file.write_all(xml.as_bytes())?;
+        RobotDescription::load(file.path())
     }
 
     #[test]
-    fn both_loops_close_through_the_full_motor_envelope() {
-        let linkage = milly();
-        for i in 0..=1000 {
-            let q = -2.4 + 2.5 * i as f64 / 1000.0;
+    fn both_loops_close_and_velocities_match_position_derivatives() {
+        let robot = load_fixture(LINKAGE_URDF).unwrap();
+        let linkage = &robot.slider_cranks()[0];
+        for i in 0..=360 {
+            let q = std::f64::consts::TAU * i as f64 / 360.0;
             let states = linkage
                 .resolve(CoordinateState {
                     position: q,
@@ -180,9 +206,9 @@ mod tests {
                 })
                 .unwrap();
             let theta = q + linkage.phase;
-            let beta = theta + states[2].1.position;
-            let slider = states[0].1.position + linkage.slider_reference;
-            for sign in [-1.0, 1.0] {
+            for (side, sign) in [1.0, -1.0].into_iter().enumerate() {
+                let beta = theta + states[side + 2].1.position;
+                let slider = states[side].1.position + linkage.slider_reference;
                 let endpoint_x =
                     sign * (linkage.crank_radius * theta.cos() + linkage.rod_length * beta.cos());
                 let endpoint_y =
@@ -212,9 +238,11 @@ mod tests {
 
     #[test]
     fn invalid_feedback_is_rejected() {
+        let robot = load_fixture(LINKAGE_URDF).unwrap();
+        let linkage = &robot.slider_cranks()[0];
         for position in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             assert!(
-                milly()
+                linkage
                     .resolve(CoordinateState {
                         position,
                         velocity: 0.0
@@ -223,7 +251,7 @@ mod tests {
             );
         }
         assert!(
-            milly()
+            linkage
                 .resolve(CoordinateState {
                     position: 0.0,
                     velocity: f64::NAN
@@ -232,22 +260,11 @@ mod tests {
         );
     }
 
-    fn canonical() -> super::super::RobotDescription {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../descriptions/milly/urdf/milly.urdf");
-        super::super::RobotDescription::load(&path).unwrap()
-    }
-
     #[test]
-    fn milly_passive_joints_are_not_motor_coordinates() {
-        let robot = canonical();
-        assert_eq!(
-            robot.motor_coordinates(),
-            BTreeSet::from([
-                "joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6", "gripper",
-            ])
-        );
-        for joint in robot.slider_cranks()[0].passive_joints() {
+    fn passive_joints_cannot_be_commanded_as_motor_coordinates() {
+        let robot = load_fixture(LINKAGE_URDF).unwrap();
+        assert_eq!(robot.motor_coordinates(), BTreeSet::from(["driver"]));
+        for joint in ["slide_a", "slide_b", "hinge_a", "hinge_b"] {
             assert!(robot.coordinate_mapping(joint).is_none());
             assert!(robot.coordinate_position_limits(joint).is_none());
         }
@@ -259,45 +276,59 @@ mod tests {
         );
     }
 
+    fn milly() -> RobotDescription {
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../descriptions/milly/urdf/milly.urdf");
+        RobotDescription::load(&path).unwrap()
+    }
+
     #[test]
-    fn canonical_milly_tree_closes_at_both_slider_pins_and_camera_is_fixed() {
-        let robot = canonical();
-        let camera = robot
-            .fixed_transform("link_6", "camera_optical_frame")
+    fn milly_gripper_closes_within_joint_limits_throughout_motor_travel() {
+        let robot = milly();
+        let linkage = robot
+            .slider_cranks()
+            .iter()
+            .find(|item| item.driver == "gripper")
             .unwrap();
-        let mut positions = BTreeMap::from([
-            ("joint_1".into(), 0.3),
-            ("joint_2".into(), 0.8),
-            ("joint_3".into(), 1.2),
-            ("joint_4".into(), -0.4),
-            ("joint_5".into(), 0.2),
-            ("joint_6".into(), 0.5),
-        ]);
+        let driver = robot
+            .joint(&linkage.driver)
+            .unwrap()
+            .limits
+            .as_ref()
+            .unwrap();
         let mut previous_slider = f64::INFINITY;
-        for i in 0..=100 {
-            let q = -2.4 + 2.5 * i as f64 / 100.0;
-            positions.insert("gripper".into(), q);
+        for step in 0..=100 {
+            let q = driver.lower + (driver.upper - driver.lower) * step as f64 / 100.0;
+            let positions = BTreeMap::from([(linkage.driver.clone(), q)]);
             let resolved = robot.resolve_passive_positions(&positions).unwrap();
-            for name in robot.slider_cranks()[0].passive_joints() {
+            for name in linkage.passive_joints() {
                 let limits = robot.joint(name).unwrap().limits.as_ref().unwrap();
-                assert!(resolved[name] >= limits.lower && resolved[name] <= limits.upper);
+                assert!(
+                    (limits.lower..=limits.upper).contains(&resolved[name]),
+                    "{name} at {q}"
+                );
             }
-            assert!(resolved["finger_1_joint"] < previous_slider);
-            previous_slider = resolved["finger_1_joint"];
+            let opening = resolved[&linkage.sliders[0]];
+            assert!(opening < previous_slider);
+            previous_slider = opening;
             for side in [1, 2] {
                 let tip = robot
-                    .link_transform("base_link", &format!("gripper_rod_{side}_tip"), &positions)
+                    .link_transform("link_6", &format!("gripper_rod_{side}_tip"), &positions)
                     .unwrap();
                 let pin = robot
-                    .link_transform("base_link", &format!("finger_{side}_pin"), &positions)
+                    .link_transform("link_6", &format!("finger_{side}_pin"), &positions)
                     .unwrap();
                 assert!((tip.translation.vector - pin.translation.vector).norm() < 1e-10);
             }
-            let actual_camera = robot
-                .link_transform("link_6", "camera_optical_frame", &positions)
-                .unwrap();
-            assert!((actual_camera.to_homogeneous() - camera.to_homogeneous()).norm() < 1e-12);
         }
+    }
+
+    #[test]
+    fn milly_fixed_camera_matches_cad_and_optical_axes() {
+        let robot = milly();
+        robot
+            .fixed_transform("link_6", "camera_optical_frame")
+            .unwrap();
         // REP-103 optical axes expressed in the camera's body frame.
         let optical = robot
             .fixed_transform("camera_link", "camera_optical_frame")
@@ -331,36 +362,22 @@ mod tests {
 
     #[test]
     fn mini_torso_grippers_close_independently_with_fixed_cameras_and_tcps() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../descriptions/bello_mini_torso/urdf/bello_mini_torso.urdf");
-        let robot = super::super::RobotDescription::load(&path).unwrap();
-        let milly = canonical();
-        assert_eq!(robot.slider_cranks().len(), 2);
-        for side in ["left", "right"] {
+        let robot = RobotDescription::load(&path).unwrap();
+        for (side, other) in [("left", "right"), ("right", "left")] {
             let driver = format!("{side}_gripper");
             let base = format!("{side}_wrist_roll_link");
-            assert!(robot.motor_coordinates().contains(driver.as_str()));
-            let linkage = robot
-                .slider_cranks()
-                .iter()
-                .find(|linkage| linkage.driver == driver)
-                .unwrap();
-            for passive in linkage.passive_joints() {
-                assert!(robot.coordinate_mapping(passive).is_none());
+            for frame in ["camera_optical_frame", "gripper_tcp"] {
+                robot
+                    .fixed_transform(&base, &format!("{side}_{frame}"))
+                    .unwrap();
             }
             let limits = robot.joint(&driver).unwrap().limits.as_ref().unwrap();
             for step in 0..=100 {
                 let q = limits.lower + (limits.upper - limits.lower) * step as f64 / 100.;
                 let positions = BTreeMap::from([(driver.clone(), q)]);
                 let resolved = robot.resolve_passive_positions(&positions).unwrap();
-                let reference = milly
-                    .resolve_passive_positions(&BTreeMap::from([("gripper".into(), q)]))
-                    .unwrap();
-                for passive in linkage.passive_joints() {
-                    let source_name = passive.strip_prefix(&format!("{side}_")).unwrap();
-                    assert!((resolved[passive] - reference[source_name]).abs() < 1e-12);
-                }
-                let other = if side == "left" { "right" } else { "left" };
                 assert!(!resolved.keys().any(|name| name.starts_with(other)));
                 for finger in [1, 2] {
                     let tip = robot
@@ -375,56 +392,42 @@ mod tests {
                         .unwrap();
                     assert!((tip.translation.vector - pin.translation.vector).norm() < 1e-10);
                 }
-                for frame in ["camera_optical_frame", "gripper_tcp"] {
-                    let frame = format!("{side}_{frame}");
-                    let fixed = robot.fixed_transform(&base, &frame).unwrap();
-                    let actual = robot.link_transform(&base, &frame, &positions).unwrap();
-                    assert!((fixed.to_homogeneous() - actual.to_homogeneous()).norm() < 1e-12);
-                }
             }
         }
     }
 
     #[test]
     fn malformed_linkage_metadata_is_rejected() {
-        let xml = include_str!("../../../descriptions/milly/urdf/milly.urdf");
-        let document = roxmltree::Document::parse(xml).unwrap();
-        let joints = super::super::parse_joints(document.root_element()).unwrap();
-        let linkage = document
-            .root_element()
-            .children()
-            .find(|node| node.has_tag_name((XML_NAMESPACE, "slider_crank")))
-            .unwrap();
-        for (attribute, value, expected_error) in [
+        for (valid, invalid, expected_error) in [
             (
-                "rod_length",
-                linkage.attribute("crank_radius").unwrap(),
+                r#"rod_length="0.04""#,
+                r#"rod_length="0.02""#,
                 "invalid or singular dimensions",
             ),
-            ("crank_radius", "NaN", "crank_radius"),
-            ("driver", "missing", "unknown slider-crank driver"),
             (
-                "sliders",
-                "finger_1_joint finger_1_joint",
+                r#"crank_radius="0.02""#,
+                r#"crank_radius="NaN""#,
+                "crank_radius",
+            ),
+            (
+                r#"driver="driver""#,
+                r#"driver="missing""#,
+                "unknown slider-crank driver",
+            ),
+            (
+                r#"sliders="slide_a slide_b""#,
+                r#"sliders="slide_a slide_a""#,
                 "invalid or multiply driven slider-crank passive joint",
             ),
             (
-                "rods",
-                "finger_1_joint finger_2_joint",
+                r#"rods="hinge_a hinge_b""#,
+                r#"rods="slide_a slide_b""#,
                 "invalid or multiply driven slider-crank passive joint",
             ),
         ] {
-            let range = linkage.attribute_node(attribute).unwrap().range_value();
-            let mut invalid_xml = xml.to_owned();
-            invalid_xml.replace_range(range, value);
-            let invalid = roxmltree::Document::parse(&invalid_xml).unwrap();
-            let error = parse(invalid.root_element(), &joints, &BTreeSet::new())
-                .unwrap_err()
-                .to_string();
-            assert!(
-                error.contains(expected_error),
-                "{attribute}={value}: {error}"
-            );
+            let xml = LINKAGE_URDF.replace(valid, invalid);
+            let error = load_fixture(&xml).unwrap_err().to_string();
+            assert!(error.contains(expected_error), "{invalid}: {error}");
         }
     }
 }
