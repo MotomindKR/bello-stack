@@ -372,7 +372,6 @@ dependencies = [
  "clap",
  "futures-core",
  "nalgebra",
- "roxmltree",
  "serde",
  "serde_yaml_ng",
  "tempfile",

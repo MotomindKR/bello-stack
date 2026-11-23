@@ -15,7 +15,6 @@ bello-robot-description.workspace = true
 clap = { workspace = true, features = ["derive"] }
 futures-core.workspace = true
 nalgebra.workspace = true
-roxmltree.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_yaml.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
