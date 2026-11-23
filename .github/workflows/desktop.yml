@@ -37,7 +37,7 @@ jobs:
       PORTABLE_PACKAGES: >-
         -p bello-hardwared -p bello-hardware-client
         -p bello-hardware-api -p bello-pose-api -p bello-robot-description
-        -p cog-protocol -p robstride-protocol
+        -p cog-protocol -p robstride-protocol -p bello-sim-can -p robstride-emulator
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable

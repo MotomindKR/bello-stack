@@ -5,7 +5,7 @@ integration and fault testing. For rigid-body physics, use [bello-mujoco](../bel
 
 ## Run
 
-Create a vCAN interface once per boot:
+Use a [simulated CAN bus](../../docs/operations.md#simulate-can-without-socketcan) for local runs on UDP. For SocketCAN, create a vCAN interface once per boot:
 
 ```sh
 sudo ip link add dev vcan0 type vcan

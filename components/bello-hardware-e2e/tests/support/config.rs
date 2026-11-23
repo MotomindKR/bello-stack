@@ -51,7 +51,7 @@ pub fn write_hardwared_with_control_rate(
 ) -> io::Result<()> {
     write_hardwared_with_grpc(
         path,
-        interface,
+        &format!("{{ type: socketcan, interface: {interface} }}"),
         &format!(
             "  listen: [{{ type: tcp, address: {listen} }}]\n  default_lease_ms: 1000\n  maximum_lease_ms: 10000"
         ),
@@ -61,7 +61,7 @@ pub fn write_hardwared_with_control_rate(
 
 pub fn write_hardwared_with_grpc(
     path: &Path,
-    interface: &str,
+    transport: &str,
     grpc: &str,
     control_rate_hz: f64,
 ) -> io::Result<()> {
@@ -78,7 +78,7 @@ runtime:
 grpc:
 {grpc}
 
-bus_transports: {{ e2e_can: {{ type: socketcan, interface: {interface} }} }}
+bus_transports: {{ e2e_can: {transport} }}
 
 enabled_groups: [e2e_group]
 "#,

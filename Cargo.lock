@@ -284,6 +284,7 @@ dependencies = [
  "async-stream",
  "bello-hardware-api",
  "bello-robot-description",
+ "bello-sim-can",
  "clap",
  "cog-protocol",
  "crossbeam-channel",
@@ -315,6 +316,7 @@ dependencies = [
  "bello-camera-api",
  "bello-pose-api",
  "bello-robot-description",
+ "bello-sim-can",
  "clap",
  "cog-protocol",
  "futures-core",
@@ -358,6 +360,14 @@ dependencies = [
  "nalgebra",
  "roxmltree",
  "tempfile",
+]
+
+[[package]]
+name = "bello-sim-can"
+version = "0.1.0"
+dependencies = [
+ "robstride-protocol",
+ "serde",
 ]
 
 [[package]]
@@ -1809,6 +1819,7 @@ name = "robstride-emulator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bello-sim-can",
  "clap",
  "robstride-protocol",
  "serde",

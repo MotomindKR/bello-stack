@@ -238,6 +238,9 @@ For a GS-USB adapter, use its USB serial number and zero-based CAN channel:
 bus_transports: { can_a: { type: gsusb, serial: YOUR_ADAPTER_SERIAL, channel: 0 } }
 ```
 
+For a simulated bus, use `{ type: sim, daemon_port: 19100, simulator_port: 19101 }`.
+See the [simulator setup](operations.md#simulate-can-without-socketcan) for the peer configuration.
+
 GS-USB is supported on Linux, macOS, and Windows. SocketCAN is Linux-only;
 selecting it on another platform fails configuration checking and startup.
 The maintained `milly-gsusb.yaml` deployment is a portable example.

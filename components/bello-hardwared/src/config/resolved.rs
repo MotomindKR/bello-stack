@@ -43,7 +43,7 @@ impl ResolvedTopology {
                 && matches!(bus.transport, super::BusTransportConfig::Socketcan { .. })
             {
                 bail!(
-                    "CAN bus {name}: SocketCAN requires Linux; select type: gsusb on this platform"
+                    "CAN bus {name}: SocketCAN requires Linux; use gsusb for hardware or sim for simulation"
                 );
             }
         }
@@ -175,12 +175,20 @@ impl ResolvedTopology {
         let mut buses = HashMap::new();
         let mut can_transports = HashSet::new();
         let mut claimed_usb_serials = HashSet::new();
+        let mut sim_ports = HashSet::new();
         for raw in &config.buses {
             let spec = BusSpec::try_from(raw)?;
             if let crate::config::BusTransportConfig::Gsusb { serial, .. } = &spec.transport
                 && !claimed_usb_serials.insert(serial.clone())
             {
                 bail!("GS-USB device {serial} is assigned to more than one CAN bus");
+            }
+            if let crate::config::BusTransportConfig::Sim(bus) = &spec.transport {
+                for port in [bus.daemon_port, bus.simulator_port] {
+                    if !sim_ports.insert(port) {
+                        bail!("sim port {port} is assigned to more than one CAN bus");
+                    }
+                }
             }
             if !can_transports.insert(spec.transport.clone()) {
                 bail!(

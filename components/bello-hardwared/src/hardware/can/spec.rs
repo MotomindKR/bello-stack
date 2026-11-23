@@ -59,6 +59,7 @@ impl TryFrom<&BusConfig> for BusSpec {
             BusTransportConfig::Gsusb { serial, .. } if serial.trim().is_empty() => {
                 bail!("buses.{}.transport.serial must be non-empty", config.name);
             }
+            BusTransportConfig::Sim(bus) => bus.validate()?,
             _ => {}
         }
         if !(10_000..=1_000_000).contains(&config.bitrate) {

@@ -1,10 +1,7 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
+use std::io;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
-use crossbeam_channel::{Sender, bounded};
 use nix::errno::Errno;
 use socketcan::id::CAN_EFF_FLAG;
 use socketcan::{
@@ -12,13 +9,10 @@ use socketcan::{
 };
 use tracing::warn;
 
-use super::{
-    BusSpec, BusTxQueues, CanFrame, FrameWriter, ReceivedFrame, WriteFailure, prepare_reconnect,
-    reject_queued, run_tx,
-};
+use super::blocking::BlockingSocket;
+use super::{BusSpec, CanFrame, FrameWriter, ReceivedFrame, WriteFailure};
 use crate::config::BusTransportConfig;
 use crate::domain::BusName;
-use crate::hardware::lifecycle::DeviceLifecycle;
 
 impl FrameWriter for CanSocket {
     fn write_frame(&self, frame: CanFrame) -> Result<(), WriteFailure> {
@@ -33,170 +27,35 @@ impl FrameWriter for CanSocket {
     }
 }
 
-pub(super) fn run(
-    spec: BusSpec,
-    queues: BusTxQueues,
-    frames: Sender<ReceivedFrame>,
-    lifecycle: DeviceLifecycle,
-    shutdown: Arc<AtomicBool>,
-) {
-    let mut failures = 0_u32;
-    lifecycle.mark_connecting(format!("opening {}", spec.transport.label()));
-    while !shutdown.load(Ordering::Acquire) {
-        match open_sockets(&spec) {
-            Ok((writer, reader)) => {
-                failures = 0;
-                lifecycle.mark_online(format!("{} online", spec.transport.label()));
-                if let Err(detail) = run_session(writer, reader, &spec, &queues, &frames, &shutdown)
-                {
-                    if shutdown.load(Ordering::Acquire) {
-                        break;
-                    }
-                    prepare_reconnect(&spec, &lifecycle, &queues, detail, &shutdown, &mut failures);
-                }
-            }
-            Err(error) => prepare_reconnect(
-                &spec,
-                &lifecycle,
-                &queues,
-                error.to_string(),
-                &shutdown,
-                &mut failures,
-            ),
-        }
-    }
-    reject_queued(&queues, "CAN supervisor stopped");
-    lifecycle.shutdown("CAN supervisor stopped");
-}
-
-fn open_sockets(spec: &BusSpec) -> Result<(CanSocket, CanSocket)> {
-    let BusTransportConfig::Socketcan { interface } = &spec.transport else {
-        unreachable!("SocketCAN supervisor requires a SocketCAN transport")
-    };
-    let writer = CanSocket::open(interface)
-        .with_context(|| format!("opening SocketCAN writer {} ({})", spec.name, interface))?;
-    writer.set_write_timeout(Duration::from_millis(20))?;
-    let reader = CanSocket::open(interface)
-        .with_context(|| format!("opening SocketCAN reader {} ({})", spec.name, interface))?;
-    reader
-        .set_filters(&[(CAN_EFF_FLAG, CAN_EFF_FLAG)])
-        .with_context(|| {
-            format!(
-                "restricting SocketCAN reader {} ({}) to extended frames",
-                spec.name, interface
-            )
-        })?;
-    reader.set_read_timeout(Duration::from_millis(100))?;
-    Ok((writer, reader))
-}
-
-fn run_session(
-    writer: CanSocket,
-    reader: CanSocket,
-    spec: &BusSpec,
-    queues: &BusTxQueues,
-    frames: &Sender<ReceivedFrame>,
-    shutdown: &Arc<AtomicBool>,
-) -> Result<(), String> {
-    let session_stop = Arc::new(AtomicBool::new(false));
-    let (failure_tx, failure_rx) = bounded::<String>(2);
-
-    let tx_queues = queues.clone();
-    let tx_shutdown = shutdown.clone();
-    let tx_stop = session_stop.clone();
-    let tx_failure = failure_tx.clone();
-    let tx_spec = spec.clone();
-    let tx_bus = spec.name.to_string();
-    let tx = thread::Builder::new()
-        .name(format!("{tx_bus}-tx"))
-        .spawn(move || {
-            run_tx(
-                writer,
-                &tx_spec,
-                &tx_queues,
-                &tx_shutdown,
-                &tx_stop,
-                &tx_failure,
-            )
-        })
-        .map_err(|error| error.to_string())?;
-
-    let rx_shutdown = shutdown.clone();
-    let rx_stop = session_stop.clone();
-    let rx_failure = failure_tx;
-    let rx_bus = spec.name.clone();
-    let rx_frames = frames.clone();
-    let rx = match thread::Builder::new()
-        .name(format!("{rx_bus}-rx"))
-        .spawn(move || {
-            run_rx(
-                reader,
-                &rx_bus,
-                &rx_frames,
-                &rx_shutdown,
-                &rx_stop,
-                &rx_failure,
-            )
-        }) {
-        Ok(thread) => thread,
-        Err(error) => {
-            session_stop.store(true, Ordering::Release);
-            let _ = tx.join();
-            return Err(error.to_string());
-        }
-    };
-
-    let result = loop {
-        if shutdown.load(Ordering::Acquire) {
-            break Ok(());
-        }
-        match failure_rx.recv_timeout(Duration::from_millis(20)) {
-            Ok(error) => break Err(error),
-            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
-            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                break Err("CAN session workers disconnected".into());
-            }
-        }
-    };
-    session_stop.store(true, Ordering::Release);
-    if tx.join().is_err() || rx.join().is_err() {
-        return Err("CAN session worker panicked".into());
-    }
-    result
-}
-
-fn run_rx(
-    reader: CanSocket,
-    bus: &BusName,
-    frames: &Sender<ReceivedFrame>,
-    shutdown: &AtomicBool,
-    session_stop: &AtomicBool,
-    failure: &Sender<String>,
-) {
-    while !shutdown.load(Ordering::Acquire) && !session_stop.load(Ordering::Acquire) {
-        let wire = match reader.read_frame() {
-            Ok(frame) => frame,
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                ) =>
-            {
-                continue;
-            }
-            Err(error) => {
-                let _ = failure.try_send(format!("CAN read failed: {error}"));
-                break;
-            }
+impl BlockingSocket for CanSocket {
+    fn open_pair(spec: &BusSpec) -> Result<(Self, Self)> {
+        let BusTransportConfig::Socketcan { interface } = &spec.transport else {
+            unreachable!("SocketCAN supervisor requires a SocketCAN transport")
         };
-        let Some(received) = decode_received(bus, &wire) else {
+        let writer = CanSocket::open(interface)
+            .with_context(|| format!("opening SocketCAN writer {} ({})", spec.name, interface))?;
+        writer.set_write_timeout(Duration::from_millis(20))?;
+        let reader = CanSocket::open(interface)
+            .with_context(|| format!("opening SocketCAN reader {} ({})", spec.name, interface))?;
+        reader
+            .set_filters(&[(CAN_EFF_FLAG, CAN_EFF_FLAG)])
+            .with_context(|| {
+                format!(
+                    "restricting SocketCAN reader {} ({}) to extended frames",
+                    spec.name, interface
+                )
+            })?;
+        reader.set_read_timeout(Duration::from_millis(100))?;
+        Ok((writer, reader))
+    }
+
+    fn receive(&self, bus: &BusName) -> io::Result<Option<ReceivedFrame>> {
+        let wire = self.read_frame()?;
+        let received = decode_received(bus, &wire);
+        if received.is_none() {
             warn!(bus=%bus, dlc=wire.data().len(), "discarding CAN frame with invalid payload length");
-            continue;
-        };
-        if frames.try_send(received).is_err() {
-            let _ = failure.try_send("CAN receive queue is full".into());
-            break;
         }
+        Ok(received)
     }
 }
 

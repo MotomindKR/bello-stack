@@ -98,6 +98,29 @@ turns on active feedback, so motor readiness is established by the enable
 operation rather than being a prerequisite for acquiring a lease. The API
 workflow is in [`api.md`](api.md#normal-control-workflow).
 
+## Simulate CAN without SocketCAN
+
+With the pinned MuJoCo 3.12.0 library installed, run these in separate terminals from
+the repository root. The Linux Nix shell supplies the library; on macOS, point
+`MUJOCO_DYNAMIC_LINK_DIR` and `DYLD_LIBRARY_PATH` at the directory containing
+`libmujoco.dylib`.
+
+```sh
+cargo run -p bello-mujoco -- run --config components/bello-mujoco/config/emulator_milly_sim.yaml
+cargo run -p bello-hardwared -- --config components/bello-hardwared/config/milly-sim.yaml
+```
+
+Each simulated bus uses two IPv4 loopback UDP ports, one for hardwared and one for
+the simulator. Configure the same pair on both sides and give each bus its own
+ports. Either process can start first. Motor feedback tells you the peer is alive;
+an online CAN transport only means the daemon has bound its local socket.
+Use vCAN for tests that need SocketCAN tools such as `candump`. Use physical CAN
+for bus arbitration, electrical faults, or wire timing measurements.
+
+For the standalone Robstride emulator, use the same port pair as the value of
+`interface` in its config. Robots with serial sensors still need the UART devices
+specified in their profiles. The Milly example uses CAN alone.
+
 ## Virtual CAN and emulator
 
 Create `vcan0` once per boot:

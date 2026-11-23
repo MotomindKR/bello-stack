@@ -11,7 +11,8 @@ cargo run -p bello-mujoco -- check --config components/bello-mujoco/config/bello
 cargo run -p bello-mujoco -- run --config components/bello-mujoco/config/emulator_mini.yaml
 ```
 
-Before `run`, create the virtual CAN interfaces and paired UARTs specified by the
+For a run without SocketCAN, see [simulated CAN](../../docs/operations.md#simulate-can-without-socketcan).
+For a vCAN profile, create the virtual CAN interfaces and paired UARTs specified by the
 [emulator profile](config/). See [operations](../../docs/operations.md) and the
 [power-board guide](../../docs/power_board.md). Use `check --export-physics PATH`
 to inspect the compiled MJCF. Loading a URDF directly with `Simulation::load`

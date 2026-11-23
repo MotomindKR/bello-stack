@@ -11,6 +11,7 @@ members = [
   "components/bello-pose-api",
   "components/bello-mujoco",
   "components/bello-robot-description",
+  "components/bello-sim-can",
   "components/bello-state-estimatord",
   "components/robstride-emulator",
   "components/robstride-protocol",
@@ -32,6 +33,7 @@ bello-hardware-client = { path = "components/bello-hardware-client" }
 bello-hardwared = { path = "components/bello-hardwared" }
 bello-pose-api = { path = "components/bello-pose-api" }
 bello-robot-description = { path = "components/bello-robot-description" }
+bello-sim-can = { path = "components/bello-sim-can" }
 clap = "4"
 crossbeam-channel = "0.5"
 futures-core = "0.3"

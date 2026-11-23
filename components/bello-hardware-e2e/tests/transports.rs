@@ -5,6 +5,9 @@ mod config;
 #[path = "support/process.rs"]
 mod process;
 
+#[path = "support/sim.rs"]
+mod sim;
+
 use std::fs;
 use std::net::{SocketAddr, TcpListener};
 use std::path::Path;
@@ -20,8 +23,6 @@ use rcgen::{
     KeyUsagePurpose,
 };
 use tokio::time::{Instant, sleep, timeout};
-
-const UNAVAILABLE_CAN: &str = "bello_transport_test_missing_can";
 
 #[tokio::test]
 async fn daemon_accepts_server_authenticated_tls() -> Result<()> {
@@ -43,7 +44,7 @@ async fn daemon_accepts_server_authenticated_tls() -> Result<()> {
         paths.server_private_key.display(),
     );
     let config = directory.path().join("hardwared-tls.yaml");
-    config::write_hardwared_with_grpc(&config, UNAVAILABLE_CAN, &grpc, 250.0)?;
+    write_test_deployment(&config, &grpc)?;
     let mut daemon = start_daemon(&config)?;
 
     let options = ConnectOptions::new(format!("https://localhost:{}", address.port()))
@@ -83,7 +84,7 @@ async fn daemon_requires_a_trusted_client_certificate_for_mtls() -> Result<()> {
         paths.ca_certificate.display(),
     );
     let config = directory.path().join("hardwared-mtls.yaml");
-    config::write_hardwared_with_grpc(&config, UNAVAILABLE_CAN, &grpc, 250.0)?;
+    write_test_deployment(&config, &grpc)?;
     let mut daemon = start_daemon(&config)?;
     let endpoint = format!("https://localhost:{}", address.port());
 
@@ -129,7 +130,7 @@ async fn daemon_accepts_unix_connections_and_owns_socket_lifecycle() -> Result<(
         socket.display(),
     );
     let config = directory.path().join("hardwared-unix.yaml");
-    config::write_hardwared_with_grpc(&config, UNAVAILABLE_CAN, &grpc, 250.0)?;
+    write_test_deployment(&config, &grpc)?;
     let mut daemon = start_daemon(&config)?;
     let endpoint = format!("unix://{}", socket.display());
 
@@ -161,7 +162,7 @@ async fn tcp_and_unix_share_inventory_and_control_leases() -> Result<()> {
         socket.display(),
     );
     let config = directory.path().join("hardwared-dual.yaml");
-    config::write_hardwared_with_grpc(&config, UNAVAILABLE_CAN, &grpc, 250.0)?;
+    write_test_deployment(&config, &grpc)?;
     let mut daemon = start_daemon(&config)?;
     let tcp = connect(
         ConnectOptions::new(format!("http://{address}")),
@@ -220,7 +221,7 @@ async fn failed_second_listener_cleans_up_first_socket() -> Result<()> {
         socket.display(),
     );
     let config = directory.path().join("hardwared-bind-failure.yaml");
-    config::write_hardwared_with_grpc(&config, UNAVAILABLE_CAN, &grpc, 250.0)?;
+    write_test_deployment(&config, &grpc)?;
     let mut daemon = start_daemon(&config)?;
     timeout(Duration::from_secs(3), async {
         while daemon.ensure_running().is_ok() {
@@ -233,6 +234,12 @@ async fn failed_second_listener_cleans_up_first_socket() -> Result<()> {
         !socket.exists(),
         "failed startup left its Unix socket behind"
     );
+    Ok(())
+}
+
+fn write_test_deployment(path: &Path, grpc: &str) -> Result<()> {
+    let ports = sim::available_ports()?;
+    config::write_hardwared_with_grpc(path, &format!("{{ type: sim, {ports} }}"), grpc, 250.0)?;
     Ok(())
 }
 

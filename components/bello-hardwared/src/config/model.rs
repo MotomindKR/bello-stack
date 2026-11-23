@@ -226,12 +226,14 @@ pub struct BusConfig {
 pub enum BusTransportConfig {
     Socketcan { interface: String },
     Gsusb { serial: String, channel: u8 },
+    Sim(bello_sim_can::SimBus),
 }
 
 impl BusTransportConfig {
     pub fn label(&self) -> String {
         match self {
             Self::Socketcan { interface } => format!("socketcan:{interface}"),
+            Self::Sim(bus) => format!("sim:{}:{}", bus.daemon_port, bus.simulator_port),
             Self::Gsusb { serial, channel } => format!("gsusb:{serial}:{channel}"),
         }
     }

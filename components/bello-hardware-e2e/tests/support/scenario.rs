@@ -366,7 +366,7 @@ async fn wait_for_graceful_shutdown(
     }
 }
 
-async fn wait_for_motors_online(
+pub async fn wait_for_motors_online(
     client: &HardwareClient,
     duration: Duration,
     hardwared: &mut ManagedProcess,

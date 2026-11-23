@@ -30,11 +30,5 @@ fn main() -> Result<()> {
         println!("{}: configuration is valid", config_path.display());
         return Ok(());
     }
-    #[cfg(target_os = "linux")]
-    return robstride_emulator::runtime::run(config);
-    #[cfg(not(target_os = "linux"))]
-    {
-        drop(config);
-        anyhow::bail!("SocketCAN emulation requires Linux")
-    }
+    robstride_emulator::runtime::run(config)
 }
