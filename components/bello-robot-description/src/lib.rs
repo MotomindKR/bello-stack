@@ -163,7 +163,6 @@ pub struct RobotDescription {
     root_link: String,
     links: BTreeMap<String, Link>,
     joints: BTreeMap<String, Joint>,
-    children: BTreeMap<String, Vec<String>>,
     transmissions: Vec<DifferentialTransmission>,
     simple_transmissions: Vec<SimpleTransmission>,
     slider_cranks: Vec<SliderCrank>,
@@ -205,22 +204,11 @@ impl RobotDescription {
         if roots.len() != 1 {
             bail!("URDF must have exactly one root link, found {roots:?}");
         }
-        let mut children = BTreeMap::<String, Vec<String>>::new();
-        for joint in joints.values() {
-            children
-                .entry(joint.parent.clone())
-                .or_default()
-                .push(joint.name.clone());
-        }
-        for names in children.values_mut() {
-            names.sort();
-        }
         Ok(Self {
             name,
             root_link: roots[0].clone(),
             links,
             joints,
-            children,
             transmissions,
             simple_transmissions,
             slider_cranks,
@@ -249,14 +237,6 @@ impl RobotDescription {
 
     pub fn joint(&self, name: &str) -> Option<&Joint> {
         self.joints.get(name)
-    }
-
-    pub fn child_joints(&self, link: &str) -> impl Iterator<Item = &Joint> {
-        self.children
-            .get(link)
-            .into_iter()
-            .flatten()
-            .filter_map(|name| self.joints.get(name))
     }
 
     pub fn slider_cranks(&self) -> &[SliderCrank] {
