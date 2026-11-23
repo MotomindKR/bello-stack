@@ -17,9 +17,10 @@ and tests the daemon, protocol libraries, shared robot description library, and
 Rust client on all three operating systems. It packages the release daemon with
 its robot assets.
 
-The checked-in Nix flake supplies Rust/Cargo, rustfmt, Clippy, Python, gRPC
-Python tooling, pytest, Ruff, mypy, system `protoc`, Buf, `grpcurl`, can-utils,
-iproute2, and native build dependencies. Enter it automatically:
+On Apple Silicon macOS and Linux, the Nix shell supplies Rust/Cargo, rustfmt,
+Clippy, Python, gRPC Python tooling, pytest, Ruff, mypy, `protoc`, Buf, and
+`grpcurl`. The Linux shell also includes MuJoCo, can-utils, and iproute2.
+Enter the shell automatically:
 
 ```sh
 direnv allow
