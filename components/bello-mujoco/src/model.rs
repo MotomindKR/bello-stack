@@ -877,7 +877,7 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
     }
 
     #[test]
-    fn milly_arm_motion_at_ui_gains_stays_inside_hardware_safety_limits() {
+    fn milly_arm_motion_stays_inside_hardware_safety_limits() {
         let mut config =
             ModelConfig::load(&Path::new(env!("CARGO_MANIFEST_DIR")).join("config/milly.yaml"))
                 .unwrap();

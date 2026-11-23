@@ -135,10 +135,9 @@ virtual joint that rotated both jaws as one rigid assembly has been removed.
 
 URDF represents the spanning tree. The namespaced `bello:slider_crank` element
 declares the four passive joints and the dimensions measured from STEP cylinder
-axes. `bello-robot-description` computes their positions and velocities, and
-`bello-visualizer` applies them after reconstructing motor feedback. There are
-still exactly seven motor coordinates; the four passive joints cannot be used
-as independent motor coordinates.
+axes. `bello-robot-description` computes the passive joint positions and
+velocities. The arm has seven motor coordinates. The four passive joints
+follow the driven gripper crank.
 
 For motor angle `q`, crank angle `theta = q + phase`, radius `r`, rod length `L`
 and slider offset `h`, the outward assembly branch is:

@@ -1,10 +1,9 @@
 # Bello stack
 
-Bello stack provides a Rust actuator and IMU daemon and native visualizer for
-Linux, macOS, and Windows, with Rust and Python clients. Its production hardware component
-is one monolithic daemon that
-owns SocketCAN or GS-USB buses, Robstride actuators, serial devices, EBIMU sensors,
-motor-group control, safety, gRPC, and telemetry.
+Bello stack provides a Rust actuator and IMU daemon for Linux, macOS, and
+Windows, with Rust and Python clients. The daemon owns SocketCAN or GS-USB
+buses, Robstride actuators, serial devices, EBIMU sensors, motor-group control,
+safety, gRPC, and telemetry.
 
 Behavior policy remains outside this repository. Robot-level local pose
 generation is provided as a separate read-only service and never participates
@@ -22,7 +21,6 @@ in hardware command safety.
 | [`bello-camera-api`](components/bello-camera-api) | Shared timestamped camera frames, bounded subscriptions and WebRTC signaling | Rust library and protobuf descriptor |
 | [`bello-state-estimatord`](components/bello-state-estimatord) | URDF/IMU/encoder contact-aided local pose provider | `bello-state-estimatord` binary |
 | [`bello-robot-description`](components/bello-robot-description) | Shared URDF hierarchy, visuals, joint limits, differential transmissions, and kinematics | Rust library |
-| [`bello-visualizer`](components/bello-visualizer) | Native URDF monitor and toggle-controlled multi-group command UI | `bello-visualizer` binary |
 | [`robstride-protocol`](components/robstride-protocol) | Robstride extended-CAN frames, codecs, and model limits | Rust library |
 | [`robstride-emulator`](components/robstride-emulator) | Thin SocketCAN actuator emulator with deterministic faults | `robstride-emulator` binary |
 | [`bello-hardware-e2e`](components/bello-hardware-e2e) | Process-level gRPC and vCAN scenarios | Cargo integration tests |
@@ -31,7 +29,7 @@ Shared Cargo, Nix, Buf, and CI configuration remains at the repository root.
 Component-specific source and examples stay under `components/`.
 
 GS-USB adapters work on all three desktop platforms; SocketCAN is Linux-only.
-The default Cargo build produces the hardware daemon and visualizer.
+The default Cargo build produces `bello-hardwared`.
 See [desktop builds and USB setup](docs/desktop.md) for native build artifacts,
 platform requirements, and the Milly GS-USB deployment. The MuJoCo host
 integration and vCAN tests use Linux.
@@ -79,8 +77,6 @@ Rust applications should normally start with the
 [`bello-hardware-client` guide](components/bello-hardware-client/README.md).
 Python applications should start with the
 [`bello-hardware` package guide](components/bello-hardware-python/README.md).
-The native viewer and its single-file YAML contract are documented in the
-[`bello-visualizer` guide](components/bello-visualizer/README.md).
 
 ## Repository checks
 

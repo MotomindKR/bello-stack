@@ -12,7 +12,6 @@ source comments.
 | Prepare a robot configuration | [Configuration](configuration.md) | [Operations](operations.md) |
 | Build a Rust gRPC client | [`bello-hardware-client`](../components/bello-hardware-client) | [API](api.md), [Control and safety](control-and-safety.md) |
 | Build a Python client | [`bello-hardware-python`](../components/bello-hardware-python) | [API](api.md), [Control and safety](control-and-safety.md) |
-| Monitor or command against the robot description | [`bello-visualizer`](../components/bello-visualizer) | [Configuration](configuration.md), [API](api.md) |
 | Diagnose CAN, motor, serial, or IMU faults | [Hardware](hardware.md) | [Operations](operations.md) |
 | Run or test the stack | [Operations](operations.md) | [Development](development.md) |
 | Run on Linux, macOS, or Windows | [Desktop builds](desktop.md) | [Operations](operations.md) |
@@ -34,8 +33,6 @@ source comments.
   maintained high-level Rust client, explicit renewal, and command streams.
 - [`bello-hardware-python`](../components/bello-hardware-python) documents the
   blocking pure-Python client and synchronous complete state reads.
-- [`bello-visualizer`](../components/bello-visualizer) documents native URDF
-  rendering, transmission reconstruction, tracking, and toggle control.
 - [Operations](operations.md) provides startup, vCAN emulation, diagnostics,
   and shutdown procedures.
 - [Development](development.md) documents the toolchain, source layout, checks,

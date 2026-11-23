@@ -35,7 +35,7 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
       PORTABLE_PACKAGES: >-
-        -p bello-hardwared -p bello-visualizer -p bello-hardware-client
+        -p bello-hardwared -p bello-hardware-client
         -p bello-hardware-api -p bello-pose-api -p bello-robot-description
         -p cog-protocol -p robstride-protocol
     steps:
@@ -51,14 +51,14 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes pkg-config libudev-dev libwayland-dev libxkbcommon-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libegl1-mesa-dev
+          sudo apt-get install --yes pkg-config libudev-dev
       - name: Clippy
         run: cargo clippy --locked $PORTABLE_PACKAGES --all-targets -- -D warnings
       - name: Test portable components
         run: cargo test --locked $PORTABLE_PACKAGES --all-targets
-      - name: Build release executables
+      - name: Build release daemon
         run: cargo build --locked --release
-      - name: Package executables and robot assets
+      - name: Package daemon and robot assets
         run: python scripts/package-desktop.py --platform '${{ matrix.platform }}'
       - uses: actions/upload-artifact@v7
         with:

@@ -155,11 +155,36 @@ The Cargo-native end-to-end test owns its phases deterministically and is the
 preferred regression check; see
 [`development.md`](development.md#host-vcan-integration-test).
 
-## Bello visualization
+## Bello and Bello Mini emulation
 
-The maintained visualizer reads the canonical URDF under
-`descriptions/bello/`, hardware inventory from port 50051, and an optional
-neutral `PoseService` on port 50053. Inspect a configured pose provider with:
+Follow the [native MuJoCo runtime instructions](../components/bello-mujoco/README.md)
+to set up the virtual CAN and serial endpoints and start `emulator_bello.yaml`
+or `emulator_mini.yaml`. For Bello, run hardwared and the pose estimator in
+separate terminals:
+
+```sh
+cargo run -p bello-hardwared -- \
+  --config components/bello-hardwared/config/bello-vcan.yaml
+cargo run -p bello-state-estimatord -- \
+  --config components/bello-state-estimatord/config/bello.yaml
+```
+
+For Bello Mini vCAN, copy the estimator profile to `bello-mini.local.yaml`
+in the same directory so its relative URDF path still resolves. Set
+`hardware_endpoint: http://127.0.0.1:50051` in the copy to match the vCAN
+daemon's TCP listener. Start both processes in separate terminals:
+
+```sh
+cargo run -p bello-hardwared -- \
+  --config components/bello-hardwared/config/bello-mini-vcan.yaml
+cargo run -p bello-state-estimatord -- \
+  --config components/bello-state-estimatord/config/bello-mini.local.yaml
+```
+
+The Mini description remains provisional until encoder-zero and ankle-reduction
+calibration is complete.
+
+Inspect the estimator's `PoseService` on port 50053:
 
 ```sh
 grpcurl -plaintext \
@@ -169,43 +194,9 @@ grpcurl -plaintext \
   127.0.0.1:50053 bello.pose.v1.PoseService/WatchPose
 ```
 
-When the configured SocketCAN, IMU, hardware, and pose providers are available,
-start each process in a separate terminal:
-
-```sh
-cargo run -p bello-hardwared -- \
-  --config components/bello-hardwared/config/bello-vcan.yaml
-cp components/bello-visualizer/config/bello.example.yaml \
-  components/bello-visualizer/config/bello.yaml
-cargo run -p bello-visualizer -- \
-  --config components/bello-visualizer/config/bello.yaml
-```
-
-For Bello Mini vCAN, select both Mini profiles instead:
-
-```sh
-cargo run -p bello-hardwared -- \
-  --config components/bello-hardwared/config/bello-mini-vcan.yaml
-cargo run -p bello-state-estimatord -- \
-  --config components/bello-state-estimatord/config/bello-mini.yaml
-cp components/bello-visualizer/config/bello-mini.example.yaml \
-  components/bello-visualizer/config/bello-mini.yaml
-cargo run -p bello-visualizer -- \
-  --config components/bello-visualizer/config/bello-mini.yaml
-```
-
-The Mini description remains provisional until encoder-zero and ankle-reduction
-calibration is complete.
-
-Both visualizer service endpoints default to localhost. When the providers run
-on another host, use TLS and append `--hardware-endpoint https://HOST:50051`.
-Use `--pose-endpoint https://HOST:50053` for either estimator. Mini's default
-visualizer profile uses that estimator endpoint; MuJoCo ground truth stays
-available on port 50052 for estimator comparison.
-
-If hardware or pose telemetry disconnects or becomes stale, the visualizer
-freezes the last root transform and shows the condition; root tracking never
-participates in command or safety decisions.
+Use the same request on port 50052 for MuJoCo ground truth.
+See the [pose estimator README](../components/bello-state-estimatord/README.md)
+for the estimator's configuration and frames.
 
 ## Shutdown behavior
 

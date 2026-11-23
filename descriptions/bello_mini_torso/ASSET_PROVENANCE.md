@@ -128,8 +128,7 @@ The user specified the hip-pitch axis at world zero and an invisible base.
 The base and mounting frames have no visual or collision geometry and no
 fabricated mass. The torso MuJoCo profile selects `root: fixed`, an initial
 root position of `[0, 0, 0]`, and `floor: false`. The floor is omitted because
-the retained pelvis and sensor geometry extend below the pivot. The viewer
-also uses a fixed identity root; no foot-contact pose estimator is required.
+the retained pelvis and sensor geometry extend below the pivot.
 
 ## Parallel hip actuation
 
@@ -152,10 +151,7 @@ transmission reductions.
 
 The stack parses these simple mappings alongside existing differentials.
 MuJoCo creates one native tendon/actuator per motor, both wrapping the same
-pitch joint, so efforts sum by virtual work. The viewer reconstructs the joint
-from both encoders and divides requested joint torque equally for the unit
-reductions. Its pitch gain defaults are per motor: `kp=50`, `kd=2`, giving
-combined joint stiffness 100 and damping 4 in the normalized unit mapping.
+pitch joint, so efforts sum by virtual work.
 
 `hardware.yaml` preserves the Mini motor names, buses, CAN IDs, models, and
 protocol directions. Both hip motors belong to `torso_pitch`; the waist axes
@@ -172,8 +168,7 @@ The physical and vCAN deployments are
 `components/bello-hardwared/config/bello-mini-torso.yaml` and
 `bello-mini-torso-vcan.yaml`. The native profiles are
 `components/bello-mujoco/config/bello_mini_torso.yaml` and
-`emulator_mini_torso.yaml`; the viewer profile is
-`components/bello-visualizer/config/bello-mini-torso.example.yaml`.
+`emulator_mini_torso.yaml`.
 See [the bring-up guide](README.md) for commands and review artifacts.
 
 ## Travel and effort

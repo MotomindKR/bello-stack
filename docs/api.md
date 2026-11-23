@@ -21,8 +21,7 @@ groups, and IMUs with their initial status. Each IMU identifies its physical
 that does not match their observation model. Each motor also carries the
 daemon's resolved coordinate-space position, velocity, torque, `kp`, and `kd`
 command limits. `RobotStates` aggregates live motor,
-group, IMU, component-health, and command-policy telemetry; the visualizer uses
-these high-level interfaces rather than matching protobuf payloads itself.
+group, IMU, component-health, and command-policy telemetry.
 `RobotState::last_change()` identifies the exact aggregate entry changed by an
 event; consumers do not treat daemon-relative timestamps as unique IDs.
 
@@ -285,7 +284,6 @@ For startup, hardware, diagnostics, and shutdown procedures, see
 
 The policy runner in `bello_mujoco` hosts `bello.operator.v1.OperatorService`
 on port 50055. The Electron console sends controller samples directly to it.
-The retired visualizer-hosted `RemoteCommandService` is no longer provided.
 Hardware and pose APIs remain independent of the policy operator protocol.
 
 ## External pose stream
@@ -296,10 +294,7 @@ requested reference/tracked frame pair with sequence, translation in metres,
 normalized `xyzw` orientation, estimator-provided linear velocity in metres per
 second, filtered angular velocity in radians per second expressed in
 tracked-frame axes, a precise source monotonic timestamp, and producer-reported
-age. Its convention is `reference_from_tracked`. The visualizer composes the
-configured `tracked_from_model_root`; disconnects, frame/sequence errors, or
-stale samples freeze the last display transform and do not affect command or
-safety logic.
+age. Its convention is `reference_from_tracked`.
 
 [`bello-state-estimatord`](../components/bello-state-estimatord) is the
 maintained local provider for Bello and Bello Mini. It consumes the high-level
