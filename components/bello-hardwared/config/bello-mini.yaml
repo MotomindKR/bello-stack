@@ -2,21 +2,10 @@
 # Directions, encoder zeros, and ankle coupling require physical calibration.
 description: ../../../descriptions/bello_mini/hardware.yaml
 
-runtime:
-  telemetry_capacity: 4096
-  motor_velocity_filter:
-    cutoff_hz: 10.0
-  imu_filter:
-    orientation_cutoff_hz: 10.0
-    gyro_cutoff_hz: 10.0
-    acceleration_cutoff_hz: 10.0
-
 grpc:
   listen:
     - { type: tcp, address: 0.0.0.0:50051 }
     - { type: unix, path: /run/user/1000/bello-hardwared.sock, mode: "0600" }
-  default_lease_ms: 1000
-  maximum_lease_ms: 5000
 
 bus_transports: { can0: { type: socketcan, interface: can0 }, can1: { type: socketcan, interface: can1 }, can2: { type: socketcan, interface: can2 }, can3: { type: socketcan, interface: can3 } }
 serial_ports:

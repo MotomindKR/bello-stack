@@ -1,16 +1,12 @@
 description: ../../../descriptions/milly-dual/hardware.yaml
 
 runtime:
-  telemetry_capacity: 4096
   motor_velocity_filter: { cutoff_hz: 15.0 }
 
 grpc:
   listen: [{ type: tcp, address: 0.0.0.0:50051 }]
-  default_lease_ms: 1000
-  maximum_lease_ms: 5000
 
 bus_transports:
   can0: { type: socketcan, interface: vcan0 }
   can1: { type: socketcan, interface: vcan1 }
-serial_ports: {}
 enabled_groups: [dual_arm]
