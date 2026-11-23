@@ -387,36 +387,43 @@ mod tests {
 
     #[test]
     fn malformed_linkage_metadata_is_rejected() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../descriptions/milly/urdf/milly.urdf");
-        let xml = std::fs::read_to_string(&path).unwrap();
-        // Keep relative mesh paths valid when using a temporary description.
-        let mesh_dir = path
-            .parent()
-            .unwrap()
-            .join("../meshes")
-            .canonicalize()
+        let xml = include_str!("../../../descriptions/milly/urdf/milly.urdf");
+        let document = roxmltree::Document::parse(xml).unwrap();
+        let joints = super::super::parse_joints(document.root_element()).unwrap();
+        let linkage = document
+            .root_element()
+            .children()
+            .find(|node| node.has_tag_name((XML_NAMESPACE, "slider_crank")))
             .unwrap();
-        let xml = xml.replace("../meshes", mesh_dir.to_str().unwrap());
-        for (from, to) in [
-            ("rod_length=\"0.045\"", "rod_length=\"0.03\""),
-            ("crank_radius=\"0.03\"", "crank_radius=\"NaN\""),
-            ("driver=\"gripper\"", "driver=\"missing\""),
+        for (attribute, value, expected_error) in [
             (
-                "sliders=\"finger_1_joint finger_2_joint\"",
-                "sliders=\"finger_1_joint finger_1_joint\"",
+                "rod_length",
+                linkage.attribute("crank_radius").unwrap(),
+                "invalid or singular dimensions",
+            ),
+            ("crank_radius", "NaN", "crank_radius"),
+            ("driver", "missing", "unknown slider-crank driver"),
+            (
+                "sliders",
+                "finger_1_joint finger_1_joint",
+                "invalid or multiply driven slider-crank passive joint",
             ),
             (
-                "rods=\"gripper_rod_1_joint gripper_rod_2_joint\"",
-                "rods=\"finger_1_joint finger_2_joint\"",
+                "rods",
+                "finger_1_joint finger_2_joint",
+                "invalid or multiply driven slider-crank passive joint",
             ),
         ] {
-            assert!(xml.contains(from));
-            let file = tempfile::NamedTempFile::new().unwrap();
-            std::fs::write(file.path(), xml.replace(from, to)).unwrap();
+            let range = linkage.attribute_node(attribute).unwrap().range_value();
+            let mut invalid_xml = xml.to_owned();
+            invalid_xml.replace_range(range, value);
+            let invalid = roxmltree::Document::parse(&invalid_xml).unwrap();
+            let error = parse(invalid.root_element(), &joints, &BTreeSet::new())
+                .unwrap_err()
+                .to_string();
             assert!(
-                super::super::RobotDescription::load(file.path()).is_err(),
-                "accepted {to}"
+                error.contains(expected_error),
+                "{attribute}={value}: {error}"
             );
         }
     }

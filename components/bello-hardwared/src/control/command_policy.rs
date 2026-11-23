@@ -268,17 +268,15 @@ mod tests {
     }
 
     #[test]
-    fn canonical_target_step_rejects_more_than_two_radians() {
-        let motor = motor();
-        assert_eq!(motor.command_policy.maximum_position_step, 2.0);
-        let report = check_command(
-            ImpedanceCommand {
-                position: 1.0,
-                ..Default::default()
-            },
-            Some(PositionReference::Measured(-1.001)),
-            &motor,
-        );
+    fn target_step_rejects_only_above_the_configured_limit() {
+        let mut motor = motor();
+        motor.command_policy.maximum_position_step = 0.75;
+        motor.command_policy.position_step = CommandBehavior::Reject;
+        let command = ImpedanceCommand::default();
+        let at_limit = check_command(command, Some(PositionReference::Measured(-0.75)), &motor);
+        assert!(at_limit.issues.is_empty());
+
+        let report = check_command(command, Some(PositionReference::Measured(-0.76)), &motor);
         assert_eq!(report.issues.len(), 1);
         assert_eq!(report.issues[0].check, CommandPolicyCheck::PositionStep);
         assert_eq!(report.issues[0].behavior, CommandBehavior::Reject);

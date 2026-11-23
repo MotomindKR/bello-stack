@@ -307,77 +307,87 @@ mod tests {
     #[test]
     fn bundled_deployments_compose_their_canonical_descriptions() {
         let component = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let physical = Config::load_raw(component.join("config/bello.yaml")).unwrap();
-        let vcan = Config::load_raw(component.join("config/bello-vcan.yaml")).unwrap();
+        for robot in ["bello", "milly"] {
+            let source = component.join(format!("../../descriptions/{robot}/hardware.yaml"));
+            let description: HardwareDescription = load_yaml(&source).unwrap();
+            let [physical, simulated] = ["", "-vcan"].map(|suffix| {
+                let path = component.join(format!("config/{robot}{suffix}.yaml"));
+                let deployment: DeploymentConfig = load_yaml(&path).unwrap();
+                let config = Config::load_raw(&path).unwrap();
 
-        assert_eq!(physical.motors.len(), 25);
-        assert_eq!(physical.motor_groups.len(), 2);
-        assert_eq!(vcan.motors.len(), 25);
-        assert_eq!(vcan.motor_groups.len(), 2);
-        assert!(
-            physical
-                .motors
-                .iter()
-                .find(|motor| motor.name == "waist_yaw")
-                .is_some_and(|motor| motor.bus == "can1")
-        );
-        assert_eq!(
-            physical
-                .motors
-                .iter()
-                .map(|motor| motor.name.as_str())
-                .collect::<Vec<_>>(),
-            vcan.motors
-                .iter()
-                .map(|motor| motor.name.as_str())
-                .collect::<Vec<_>>()
-        );
-        for name in ["can0", "can1"] {
-            let physical_bus = physical.buses.iter().find(|bus| bus.name == name).unwrap();
-            let vcan_bus = vcan.buses.iter().find(|bus| bus.name == name).unwrap();
-            assert_eq!(physical_bus.host_id, vcan_bus.host_id);
-            assert_eq!(physical_bus.bitrate, vcan_bus.bitrate);
+                let selected_motors: HashSet<_> = description
+                    .motor_groups
+                    .iter()
+                    .filter(|group| deployment.enabled_groups.contains(&group.name))
+                    .flat_map(|group| &group.motors)
+                    .collect();
+                let authored_wiring = description
+                    .motors
+                    .iter()
+                    .filter(|motor| selected_motors.contains(&motor.name))
+                    .map(|motor| (&motor.name, &motor.bus, motor.id))
+                    .collect::<HashSet<_>>();
+                let wiring = config
+                    .motors
+                    .iter()
+                    .map(|motor| (&motor.name, &motor.bus, motor.id))
+                    .collect();
+                assert_eq!(authored_wiring, wiring, "{path:?}");
+                for bus in &config.buses {
+                    let logical = description
+                        .logical_buses
+                        .iter()
+                        .find(|logical| logical.name == bus.name)
+                        .unwrap();
+                    assert_eq!(
+                        (bus.host_id, bus.bitrate, bus.maximum_utilization),
+                        (
+                            logical.host_id,
+                            logical.bitrate,
+                            logical.maximum_utilization
+                        ),
+                        "{path:?}"
+                    );
+                    assert_eq!(
+                        bus.transport, deployment.bus_transports[&bus.name],
+                        "{path:?}"
+                    );
+                }
+                for device in &config.serial_devices {
+                    let logical = description
+                        .serial_devices
+                        .iter()
+                        .find(|logical| logical.name == device.name)
+                        .unwrap();
+                    assert_eq!(device.baud_rate, logical.baud_rate, "{path:?}");
+                    assert_eq!(
+                        device.port, deployment.serial_ports[&device.name],
+                        "{path:?}"
+                    );
+                }
+                config
+            });
             assert_eq!(
-                physical_bus.maximum_utilization,
-                vcan_bus.maximum_utilization
+                physical.robot_description.canonicalize().unwrap(),
+                simulated.robot_description.canonicalize().unwrap()
             );
-            assert_ne!(physical_bus.transport, vcan_bus.transport);
+            let [physical_groups, simulated_groups] = [&physical, &simulated].map(|config| {
+                config
+                    .motor_groups
+                    .iter()
+                    .map(|group| (&group.name, &group.motors))
+                    .collect::<HashSet<_>>()
+            });
+            assert_eq!(physical_groups, simulated_groups, "{robot}");
+            for bus in &physical.buses {
+                let peer = simulated
+                    .buses
+                    .iter()
+                    .find(|peer| peer.name == bus.name)
+                    .unwrap();
+                assert_ne!(bus.transport, peer.transport, "{robot}/{}", bus.name);
+            }
         }
-        let physical_imu = physical
-            .serial_devices
-            .iter()
-            .find(|s| s.name == "imu_serial")
-            .unwrap();
-        let vcan_imu = vcan
-            .serial_devices
-            .iter()
-            .find(|s| s.name == "imu_serial")
-            .unwrap();
-        assert_eq!(physical_imu.baud_rate, vcan_imu.baud_rate);
-        assert_ne!(physical_imu.port, vcan_imu.port);
-        assert!(physical.power_boards.is_empty());
-        assert_eq!(vcan.power_boards.len(), 1);
-        assert_eq!(
-            vcan.serial_devices
-                .iter()
-                .find(|s| s.name == "power_board_serial")
-                .unwrap()
-                .port,
-            "/dev/ttyPOWER"
-        );
-
-        let milly = Config::load_raw(component.join("config/milly.yaml")).unwrap();
-        let milly_vcan = Config::load_raw(component.join("config/milly-vcan.yaml")).unwrap();
-        assert_eq!(milly.motors.len(), 7);
-        assert_eq!(milly.motor_groups.len(), 1);
-        assert_eq!(milly.motor_groups[0].name, "arm");
-        assert_eq!(milly_vcan.motors.len(), 7);
-        assert_eq!(milly_vcan.motor_groups.len(), 1);
-        assert_eq!(milly.buses[0].name, "can0");
-        assert_eq!(milly.buses[0].transport.label(), "socketcan:can0");
-        assert_eq!(milly_vcan.buses[0].transport.label(), "socketcan:vcan0");
-        assert!(milly.serial_devices.is_empty());
-        assert!(milly_vcan.serial_devices.is_empty());
     }
 
     #[test]
@@ -402,19 +412,20 @@ mod tests {
 
     #[test]
     fn gsusb_deployment_mapping_deserializes() {
-        let component = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let yaml = fs::read_to_string(component.join("config/bello-vcan.yaml"))
-            .unwrap()
-            .replace(
-                "can0: { type: socketcan, interface: vcan0 }",
-                "can0: { type: gsusb, serial: ADAPTER-A, channel: 0 }",
-            );
-        let deployment: DeploymentConfig = serde_yaml::from_str(&yaml).unwrap();
+        let deployment: DeploymentConfig = serde_yaml::from_str(
+            r#"
+description: hardware.yaml
+enabled_groups: [group]
+bus_transports:
+  can0: { type: gsusb, serial: ADAPTER-A, channel: 1 }
+"#,
+        )
+        .unwrap();
         assert_eq!(
             deployment.bus_transports["can0"],
             crate::config::BusTransportConfig::Gsusb {
                 serial: "ADAPTER-A".into(),
-                channel: 0,
+                channel: 1,
             }
         );
     }
