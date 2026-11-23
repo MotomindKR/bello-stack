@@ -1,7 +1,6 @@
 use anyhow::Result;
 use robstride_protocol::Frame;
 
-/// Shared nonblocking UART transport for emulated sensors, with bounded output.
 pub(crate) struct Uart {
     file: std::fs::File,
     pending: std::collections::VecDeque<u8>,

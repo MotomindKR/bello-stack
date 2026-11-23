@@ -1,4 +1,3 @@
-//! Import CAD visual materials without changing the physics model or source URDF.
 use anyhow::{Context, Result, ensure};
 use mujoco_rs::prelude::MjSpec;
 use nalgebra::{Matrix4, Point3, Vector3};

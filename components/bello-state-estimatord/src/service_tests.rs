@@ -1,4 +1,3 @@
-//! Synthetic gRPC outages; no CAN devices or robot-specific assertions.
 use super::*;
 use bello_hardware_client::raw::proto as p;
 use p::hardware_service_server::{HardwareService, HardwareServiceServer};

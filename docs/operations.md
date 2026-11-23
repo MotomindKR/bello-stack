@@ -31,12 +31,7 @@ cargo run -p bello-hardwared -- \
   --check --config components/bello-hardwared/config/bello.yaml
 ```
 
-Validation is strict: unknown YAML fields, duplicate CAN assignments or serial ports,
-invalid references, unsupported actuator limits, unsafe timing, and excessive
-CAN utilization are rejected. The configured CAN `bitrate` is used for timing
-and utilization calculations and must match the externally configured physical
-link. The `--config` argument is always required so deployment selection is
-explicit.
+The configured CAN bitrate must match the physical link.
 
 ## Physical startup
 
@@ -124,13 +119,10 @@ cargo run -p robstride-emulator -- \
   --config components/robstride-emulator/config/vcan.yaml
 ```
 
-The process-level vCAN tests generate a matching strict hardware description
-and deployment for this fixture; there is no second checked-in robot topology.
 Use the full `bello-vcan.yaml` deployment only with the Bello emulator flow
 later in this guide, which supplies both logical buses and the IMU endpoint.
 
-The RobStride emulator is intentionally a thin protocol/integration model, not
-a robot dynamics simulator. Its strict `events` list can inject feedback drop/delay/
+The RobStride emulator’s `events` list can inject feedback drop/delay/
 jitter, temperature, fault bits, and mode-status changes. Use the ready-made
 [`faults.yaml`](../components/robstride-emulator/config/faults.yaml), or follow
 the action syntax in the
@@ -151,9 +143,7 @@ process after restoring the link and restart it when necessary. Hardwared can
 restore the bus while its group remains fault-latched; feedback and explicit
 group recovery are still required.
 
-The Cargo-native end-to-end test owns its phases deterministically and is the
-preferred regression check; see
-[`development.md`](development.md#host-vcan-integration-test).
+Run the [host-vCAN integration test](development.md#host-vcan-integration-test) to exercise the daemon and emulator together.
 
 ## Bello and Bello Mini emulation
 

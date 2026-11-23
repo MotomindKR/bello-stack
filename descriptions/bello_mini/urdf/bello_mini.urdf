@@ -1,11 +1,8 @@
 <?xml version='1.0' encoding='utf-8'?>
 <robot name="bello_mini">
-  <!--Designer-provided joint ranges use user-reviewed left-side signs; right roll/yaw signs are mirrored and physical stops require validation.-->
-  <!--Head pose and inertia and hand inertias are approximate.-->
-  <!--Astra Stereo S U3 sensor origins are nominal mechanical values: IR/depth is 2 mm behind the CAD front face; RGB is 2 mm forward of IR/depth. They are not factory-calibrated extrinsics.-->
+  <!--Head placement, head inertia and hand inertias are approximate.-->
+  <!--Astra sensor frames use nominal mechanical offsets.-->
   <!--Publish camera sensor TFs from this URDF or from the Orbbec driver, never from both sources simultaneously.-->
-  <!--Left/right mass properties use mirrored spatial-inertia means; central-body inertials are symmetrized about y=0. Existing signed joint conventions are preserved.-->
-  <!--imu_link is the published logical IMU frame; imu_sensor_link is the coincident physical EBIMU frame and records its upside-down mounting.-->
   <mujoco>
     <compiler fusestatic="false" inertiafromgeom="false" discardvisual="false" strippath="false" />
   </mujoco>
@@ -709,7 +706,6 @@
       </geometry>
     </collision>
   </link>
-  <!--Head mount inferred on torso centerline above CAD mesh top (z=0.332759 m); 60 mm sphere is an approximate visual/collision/inertia proxy, not measured head geometry.-->
   <link name="head_link">
     <inertial>
       <origin xyz="0 0 0.060" rpy="0 0 0" />
@@ -1064,7 +1060,6 @@
     <child link="right_end_effector_sphere_link" />
     <origin xyz="0 0 -0.037497803653348316" rpy="0 0 0" />
   </joint>
-  <!--Operator-observation-derived ankle candidate: m1 = -pitch + roll, m2 = pitch + roll. Validate after this change; unit reductions and zero offsets remain uncalibrated. See motor_topology.yaml.-->
   <transmission name="left_ankle_differential">
     <type>transmission_interface/DifferentialTransmission</type>
     <actuator name="left_ankle_motor_1" role="actuator1">

@@ -1,5 +1,3 @@
-# Stable Bello hardware identity and protocol settings. Deployment files only
-# select groups and bind logical transports to host device names.
 robot_description: urdf/bello.urdf
 
 logical_buses:

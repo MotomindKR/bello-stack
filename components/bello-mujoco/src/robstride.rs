@@ -1,5 +1,3 @@
-//! Native physics behind the existing RobStride protocol engine.
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
@@ -31,7 +29,6 @@ pub struct RobstrideSimulation {
 
 impl RobstrideSimulation {
     /// Coordinates map CAN IDs to compiled actuators and URDF zero offsets.
-    /// The caller derives that mapping from the canonical hardware description.
     pub fn new(
         simulation: Simulation,
         configs: Vec<(Config, BTreeMap<u8, Coordinate>)>,

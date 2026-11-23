@@ -1,5 +1,3 @@
-//! Headless MuJoCo 3.12.0 physics through mujoco-rs.
-
 use std::ffi::CString;
 use std::marker::PhantomData;
 use std::path::Path;
@@ -45,7 +43,6 @@ impl Simulation {
         Self::from_model(MjModel::from_xml(path)?)
     }
 
-    /// Compile self-contained model XML without Python or file extraction.
     pub fn from_xml(xml: &[u8]) -> Result<Self> {
         Self::check_version()?;
         Self::from_model(MjModel::from_xml_string(std::str::from_utf8(xml)?)?)

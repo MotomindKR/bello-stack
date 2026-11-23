@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package bello.pose.v1;
 
-// Streams externally estimated rigid transforms without imposing a tracker implementation.
 service PoseService {
   rpc WatchPose(WatchPoseRequest) returns (stream WatchPoseResponse);
 }

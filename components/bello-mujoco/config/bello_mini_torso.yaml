@@ -1,4 +1,3 @@
-# Invisible fixed base at the hip-pitch axis; no floor intersects the below-pivot pelvis.
 hardware: ../../../descriptions/bello_mini_torso/hardware.yaml
 timestep_seconds: 0.0025
 initial_root_position: [0.0, 0.0, 0.0]

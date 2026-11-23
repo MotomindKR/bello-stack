@@ -9,7 +9,6 @@ use crate::lease::GroupLease;
 use crate::telemetry::{TelemetryFilter, TelemetryStream};
 use crate::{ConnectOptions, Error, LeaseDuration};
 
-/// Cloneable handle to the Bello hardware gRPC service.
 #[derive(Clone)]
 pub struct HardwareClient {
     pub(crate) inner: HardwareServiceClient<Channel>,
@@ -32,8 +31,6 @@ impl HardwareClient {
         Self::connect_endpoint(options.into_endpoint()?).await
     }
 
-    /// Connects an endpoint configured entirely by the caller. This is the
-    /// escape hatch for custom CAs, mTLS, proxies, or different channel policy.
     pub async fn connect_endpoint(endpoint: Endpoint) -> Result<Self, Error> {
         Ok(Self::from_channel(endpoint.connect().await?))
     }
@@ -61,11 +58,7 @@ impl HardwareClient {
         TelemetryStream::open(self, filter).await
     }
 
-    /// Acquires exclusive write authority for one motor group.
-    ///
-    /// Renewal is deliberately explicit: callers should renew well before
-    /// [`GroupLease::deadline`] while long lifecycle operations or control are
-    /// active.
+    /// Renew before [`GroupLease::deadline`], including during long lifecycle calls.
     pub async fn acquire_lease(
         &self,
         group: impl Into<String>,

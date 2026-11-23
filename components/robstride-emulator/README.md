@@ -1,12 +1,7 @@
 # Robstride emulator
 
-`robstride-emulator` is a thin SocketCAN actuator emulator for exercising
-`bello-hardwared` through the real CAN transport and Robstride protocol layers.
-It is intended for integration and fault testing, not rigid-body simulation.
-
-The emulator supports the operations currently used by hardwared: run-mode
-writes, active-report configuration, enable, stop and clear-fault, and impedance
-control. It returns bounded first-order feedback.
+`robstride-emulator` runs simulated Robstride actuators on SocketCAN for hardwared
+integration and fault testing. For rigid-body physics, use [bello-mujoco](../bello-mujoco/).
 
 ## Run
 
@@ -35,14 +30,8 @@ hardwared.
 
 ## Fault scenarios
 
-Scheduled YAML events can:
-
-- drop, delay, or jitter feedback;
-- set reported motor fault bits;
-- raise or clear temperature;
-- set or clear the reported operating mode.
-
-[`config/faults.yaml`](config/faults.yaml) contains a deterministic example.
+Use [config/faults.yaml](config/faults.yaml) to schedule feedback loss, delay,
+jitter, drive faults, temperature changes, and operating-mode changes.
 Bring the vCAN link down separately to test transport loss and reconnection.
 
 See [hardware behavior](../../docs/hardware.md), [operations](../../docs/operations.md),

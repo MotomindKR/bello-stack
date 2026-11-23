@@ -1,5 +1,3 @@
-"""Public exception hierarchy for the Bello client."""
-
 from __future__ import annotations
 
 from collections.abc import Sequence

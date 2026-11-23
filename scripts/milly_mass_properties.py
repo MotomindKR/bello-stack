@@ -3,9 +3,7 @@
 
 uv run --with numpy --with scipy scripts/milly_mass_properties.py
 
-Joint definitions, control conventions, visuals and collision geometry are not
-modified. The nominal moving linkage inertias are partitioned out of the SDK
-wrist aggregate at the CAD reference pose instead of adding mass to the robot.
+The SDK wrist mass includes the moving linkage at the CAD reference pose.
 """
 
 from __future__ import annotations

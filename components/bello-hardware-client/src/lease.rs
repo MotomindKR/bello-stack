@@ -16,7 +16,6 @@ use crate::command::{self, CommandStream, CommandStreamOptions};
 use crate::duration::positive_milliseconds;
 use crate::{CommandValidity, EnumValue, Error, HardwareClient};
 
-/// Requested lease duration on acquire or renew.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum LeaseDuration {
     /// Let the daemon select its configured default.
@@ -35,7 +34,6 @@ impl LeaseDuration {
     }
 }
 
-/// Local status of the high-level lease handle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LeaseStatus {
     Active,

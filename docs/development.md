@@ -2,25 +2,12 @@
 
 [Documentation index](README.md)
 
-This document covers repository mechanics and review order. Runtime behavior is
-documented in [`operations.md`](operations.md), the external contract in
-[`api.md`](api.md), and deeper structure and configuration in
-[`architecture.md`](architecture.md) and
-[`configuration.md`](configuration.md).
-
 ## Nix and direnv
 
-For native Windows/macOS builds and downloadable desktop artifacts, see
-[desktop builds](desktop.md). The full workspace, MuJoCo host integration,
-and vCAN tests are checked on Linux. The Desktop CI workflow builds, lints,
-and tests the daemon, protocol libraries, shared robot description library, and
-Rust client on all three operating systems. It packages the release daemon with
-its robot assets.
+The full workspace and vCAN tests run on Linux. For native executable builds on
+Linux, macOS, and Windows, see [desktop builds](desktop.md).
 
-On Apple Silicon macOS and Linux, the Nix shell supplies Rust/Cargo, rustfmt,
-Clippy, Python, gRPC Python tooling, pytest, Ruff, mypy, `protoc`, Buf, and
-`grpcurl`. The Linux shell also includes MuJoCo, can-utils, and iproute2.
-Enter the shell automatically:
+Enter the development shell with direnv or Nix:
 
 ```sh
 direnv allow
@@ -34,25 +21,13 @@ nix develop
 
 The shell places Cargo artifacts under
 `${XDG_CACHE_HOME:-$HOME/.cache}/bello-stack/cargo-target`, keeping the repository
-and Nix source snapshots small. The workspace declares Rust 1.95 as its minimum
-supported version; the concrete Nix inputs are pinned by
-[`flake.lock`](../flake.lock). See [`flake.nix`](../flake.nix) and
-[`.envrc`](../.envrc).
+and Nix source snapshots small.
 
 ## Protobuf toolchain policy
 
-Cargo does not download or vendor `protoc`. The shared API crates' build scripts
-invoke `tonic-prost-build` with the `protoc` found on `PATH`; the Nix shell
-provides it. This keeps compiler selection explicit and reproducible. See
-[`build.rs`](../components/bello-hardware-api/build.rs).
-
-Buf owns source formatting and linting under the repository-level
-[`buf.yaml`](../buf.yaml). When changing an API, edit its canonical schema under
-the corresponding API component, run Buf, then compile/test its producers and
-clients. The contracts are
-greenfield: backward compatibility is not currently required, but field types,
-enum values, workflow changes, and downstream test updates should still be
-reviewed together.
+The API crates need `protoc` on `PATH`. The Nix shell supplies it.
+After editing a `.proto`, run Buf and rebuild its producers and clients.
+The hardware API and configuration can change incompatibly.
 
 The Python package commits private generated bindings so wheels do not require
 a protobuf compiler. Regenerate them after every contract change and review the
@@ -61,39 +36,6 @@ result with the handwritten conversions:
 ```sh
 python components/bello-hardware-python/scripts/generate_proto.py
 ```
-
-## Workspace and source layout
-
-The Cargo workspace includes these core components:
-
-- [`bello-hardware-api`](../components/bello-hardware-api): protobuf source and
-  generated tonic client/server types;
-- [`bello-hardware-client`](../components/bello-hardware-client): maintained
-  robot/group/coordinate client with internal lease, command, and state machinery;
-- [`bello-hardwared`](../components/bello-hardwared): daemon and `run`/`check`
-  library entrypoints;
-- [`robstride-protocol`](../components/robstride-protocol): Robstride wire model,
-  frame layout, and codec helpers;
-- [`robstride-emulator`](../components/robstride-emulator): thin SocketCAN
-  actuator emulator;
-- [`bello-hardware-e2e`](../components/bello-hardware-e2e): process-level,
-  Cargo-driven vcan integration test.
-
-The adjacent
-[`bello-hardware-python`](../components/bello-hardware-python) component is a
-pure-Python package rather than a Cargo workspace member. It uses generated
-blocking gRPC bindings behind a small robot/group API. Cartesian teleoperation
-is maintained separately in
-[`MotomindKR/bello_torso_control`](https://github.com/MotomindKR/bello_torso_control), which pins
-this stack and commands the daemon through leased hardware-client sessions.
-
-Conceptually, configuration assembles transport and device workers, group
-control consumes narrow hardware handles, and the API presents daemon
-state. This is an ownership and data-flow model, not a claim that Rust module
-dependencies are strictly one-way. The maintained directory map and layering rationale are in
-[`architecture.md`](architecture.md). Avoid a generic transport abstraction
-that erases CAN/serial queue and reconnect semantics; share small
-lifecycle/backoff primitives instead.
 
 ## Normal checks
 
@@ -113,11 +55,7 @@ pytest
 python -m hatchling build
 ```
 
-The Python client distribution is private and includes the repository's
-proprietary license notice in its source and wheel metadata.
-
-During iteration, use focused package/test commands first, then finish with the
-workspace commands. Configuration-only validation is quick and does not open
+Configuration-only validation is quick and does not open
 hardware:
 
 ```sh
@@ -155,63 +93,4 @@ cargo test -p bello-hardware-e2e --test vcan -- \
 required because the scenarios exclusively own their shared interfaces. Set
 `BELLO_E2E_CAN_INTERFACE=vcan2` to select the interface used by the single-bus
 scenarios. Set `BELLO_E2E_CAN_INTERFACES=vcan2,vcan3` to select the ordered pair
-used by the canonical multi-bus scenario. Each test writes those names into its
-generated runtime configurations. The suite also chooses free loopback gRPC
-ports, controls fault phases by suspending/resuming the emulator, and verifies
-child-process liveness. Details are in the
-[E2E README](../components/bello-hardware-e2e/README.md) and
-[`tests/vcan.rs`](../components/bello-hardware-e2e/tests/vcan.rs).
-
-## CI
-
-[GitHub Actions](../.github/workflows/ci.yml) runs two jobs:
-
-1. hermetic formatting, workspace Clippy with warnings denied, all-feature
-   workspace tests, and Buf format/lint;
-2. after those pass, creation of `vcan0` and `vcan1` and the ignored Cargo
-   integration tests.
-
-Keep local commands aligned with CI. A change is not complete when only the
-focused test passes; run the proportionate workspace checks before handoff.
-
-## Suggested review order
-
-For a first full review, read in this order:
-
-1. [`hardware.proto`](../components/bello-hardware-api/proto/bello/hardware/v1/hardware.proto)
-   and [`api.md`](api.md) for the external contract.
-2. [`config/model.rs`](../components/bello-hardwared/src/config/model.rs),
-   [`config/resolved.rs`](../components/bello-hardwared/src/config/resolved.rs),
-   and the owning `spec.rs` modules under
-   [`hardware/`](../components/bello-hardwared/src/hardware),
-   [`control/`](../components/bello-hardwared/src/control), and
-   [`api/grpc/`](../components/bello-hardwared/src/api/grpc) for accepted input,
-   local validation, and resolved topology.
-3. [`domain/`](../components/bello-hardwared/src/domain) for IDs, commands,
-   telemetry, and errors shared across boundaries.
-4. [`app/run.rs`](../components/bello-hardwared/src/app/run.rs) and
-   [`app/daemon.rs`](../components/bello-hardwared/src/app/daemon.rs) for startup,
-   ownership, and shutdown order.
-5. [`hardware/lifecycle.rs`](../components/bello-hardwared/src/hardware/lifecycle.rs),
-   then [`hardware/can/`](../components/bello-hardwared/src/hardware/can) and
-   [`hardware/serial/`](../components/bello-hardwared/src/hardware/serial) for
-   transport supervision.
-6. [`hardware/robstride/`](../components/bello-hardwared/src/hardware/robstride)
-   and [`hardware/imu/`](../components/bello-hardwared/src/hardware/imu) for
-   device behavior.
-7. [`control/`](../components/bello-hardwared/src/control) for group FSM, safety
-   policy, mailbox scheduling, and fixed-rate control.
-8. [`api/grpc/`](../components/bello-hardwared/src/api/grpc),
-   [`bello-hardware-client`](../components/bello-hardware-client), and
-   [`telemetry.rs`](../components/bello-hardwared/src/telemetry.rs) for external
-   presentation, followed by
-   [`bello-hardware-python`](../components/bello-hardware-python) for the other
-   maintained language client.
-9. [`robstride-emulator`](../components/robstride-emulator) and the
-   [`vcan` integration test](../components/bello-hardware-e2e/tests/vcan.rs) for
-   executable examples of the full boundary.
-
-For a focused change, start at the relevant public boundary and follow the same
-dependency direction. Review safety reactions and shutdown effects whenever a
-change touches queues, leases, lifecycle transitions, transport freshness, or
-command validity.
+used by the canonical multi-bus scenario. See the [E2E guide](../components/bello-hardware-e2e/README.md) for individual scenarios.

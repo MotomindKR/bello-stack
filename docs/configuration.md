@@ -27,22 +27,8 @@ unavailable transport normally appears as reconnecting after process startup.
 `--config` is required for both paths; the daemon never selects a deployment
 file implicitly.
 
-The maintained examples are:
-
-- [production hardware](../components/bello-hardwared/config/bello.yaml)
-- [full Bello vCAN deployment](../components/bello-hardwared/config/bello-vcan.yaml)
-- [canonical Bello hardware description](../descriptions/bello/hardware.yaml)
-- [Milly single-arm hardware](../components/bello-hardwared/config/milly.yaml)
-- [Milly single-arm vCAN deployment](../components/bello-hardwared/config/milly-vcan.yaml)
-- [Dual-Milly hardware](../components/bello-hardwared/config/milly-dual.yaml)
-- [Dual-Milly vCAN deployment](../components/bello-hardwared/config/milly-dual-vcan.yaml)
-- [canonical Milly hardware description](../descriptions/milly/hardware.yaml)
-- [provisional Bello Mini physical bindings](../components/bello-hardwared/config/bello-mini.yaml)
-- [provisional Bello Mini vCAN deployment](../components/bello-hardwared/config/bello-mini-vcan.yaml)
-- [Bello Mini hardware description](../descriptions/bello_mini/hardware.yaml)
-- [Bello Mini Torso hardware](../components/bello-hardwared/config/bello-mini-torso.yaml)
-- [Bello Mini Torso vCAN deployment](../components/bello-hardwared/config/bello-mini-torso-vcan.yaml)
-- [Bello Mini Torso hardware description](../descriptions/bello_mini_torso/hardware.yaml)
+Start with the robot's [hardware description](../descriptions/) and select a
+[deployment profile](../components/bello-hardwared/config/).
 
 Before running Bello Mini on hardware, check the outstanding calibration work in
 [motor_topology.yaml](../descriptions/bello_mini/motor_topology.yaml) and set the IMU serial path for the installed adapter.
@@ -52,20 +38,8 @@ The raw schema and defaults live in
 validated boundary types live beside the subsystem that consumes them, and
 cross-object checks live in
 [`config/resolved.rs`](../components/bello-hardwared/src/config/resolved.rs).
-Those files are the source of truth when this guide and the executable differ.
 
 ## Document structure
-
-The deployment's top-level sections are:
-
-```yaml
-description: path/to/hardware.yaml
-runtime: {}
-grpc: {}
-bus_transports: {}   # logical bus name -> SocketCAN or GS-USB transport
-serial_ports: {}     # logical serial name -> host device path
-enabled_groups: []   # explicit selection from the description
-```
 
 Unknown fields are rejected at every YAML object boundary. This catches
 misspelled keys instead of silently applying a default. Relative description
@@ -75,13 +49,7 @@ unused bus mappings, and incomplete description ownership are rejected.
 Each shipped robot has a `descriptions/<model>/hardware.yaml` and a
 `urdf/<model>.urdf` in the same model directory. The deployment's
 `description` field points to the hardware YAML, which names the URDF.
-For Bello the reference is
-
-```yaml
-robot_description: urdf/bello.urdf
-```
-
-That path resolves from the hardware-description file. Every controlled
+Relative URDF paths resolve from the hardware description. Every controlled
 coordinate must resolve to either a movable URDF joint or one actuator
 coordinate of a complete differential or simple transmission. Several simple
 transmissions may drive one shared joint, with distinct actuator coordinates.
@@ -94,36 +62,13 @@ coordinates; their joint names cannot serve as implicit direct-drive aliases.
 
 ### `runtime`
 
-```yaml
-runtime:
-  telemetry_capacity: 4096
-  motor_velocity_filter:
-    cutoff_hz: 10.0
-  imu_filter:
-    orientation_cutoff_hz: 10.0
-    gyro_cutoff_hz: 10.0
-    acceleration_cutoff_hz: 10.0
-```
-
 `telemetry_capacity` is the capacity of the process-wide broadcast channel,
 not a sampling rate and not a per-device history length. Every motor sample,
 IMU sample, group timing sample, lifecycle transition, and command-policy event
 shares it. Each subscriber receives events independently; a lagging subscriber
 can drop old events without blocking hardware control.
 
-- default: `4096`
-- valid range: `64..=1000000`
-
-`motor_velocity_filter` applies a timestamp-aware first-order low-pass filter
-to every actuator-reported velocity sample in the Robstride feedback dispatcher
-before publishing it:
-
-```text
-alpha = 1 - exp(-2 * pi * cutoff_hz * sample_interval)
-published = previous_published + alpha * (current - previous_published)
-```
-
-The cutoff must be finite and positive and defaults to `10.0` Hz. Deriving the
+`motor_velocity_filter` filters actuator-reported velocity. Deriving the
 coefficient from each receive interval keeps the physical cutoff stable when
 feedback timing varies. The first sample, and the first sample after a
 non-increasing timestamp or a gap longer than the motor group's feedback
@@ -139,21 +84,14 @@ The coefficient uses the EBIMU device timestamp rather than the serial chunk
 receive time, so several records delivered in one operating-system read retain
 their original sample intervals.
 
-All three cutoffs default to `10.0` Hz. Each must be finite, positive, and below
-half the configured IMU output rate. The first sample passes through unchanged.
+Each IMU cutoff must be finite, positive, and below half the configured output
+rate. The first sample passes through unchanged.
 A non-increasing device timestamp, a gap longer than 100 ms, or a serial
 reconnect resets the filter instead of blending across an invalid interval.
 This host filter is separate from the EBIMU's persistent onboard
 accelerometer-filter and vibration-cancellation settings.
 
 ### `grpc`
-
-```yaml
-grpc:
-  listen: [{ type: tcp, address: 127.0.0.1:50051 }]
-  default_lease_ms: 1000
-  maximum_lease_ms: 5000
-```
 
 The `listen` field is a nonempty list of endpoints; its default is one TCP
 listener on loopback. All endpoints share the same hardware and exclusive
@@ -173,8 +111,6 @@ grpc:
   tls:
     certificate: /etc/bello/tls/server.crt
     private_key: /etc/bello/tls/server.key
-  default_lease_ms: 1000
-  maximum_lease_ms: 5000
 ```
 
 Adding `client_ca` enables mutual TLS. A connection must then present a client
@@ -198,8 +134,6 @@ grpc:
     - type: unix
       path: /run/bello/hardwared.sock
       mode: "0660"
-  default_lease_ms: 1000
-  maximum_lease_ms: 5000
 ```
 
 To expose TCP and a local Unix socket simultaneously:
@@ -264,9 +198,7 @@ Serial names and mapped physical ports must be unique. `baud_rate` must be posit
 and `timeout_ms` is in `1..=500`. The timeout bounds a write from queueing
 through completion; it is also the OS read timeout.
 
-The current EBIMU driver requires exclusive ownership: every configured serial
-device is assigned to exactly one IMU, and every IMU names an existing serial
-device. An unused serial entry or two sensors sharing one entry is rejected.
+Each serial device belongs to exactly one IMU or power board.
 
 `source_frame` names the URDF link whose axes match the parsed EBIMU sample.
 `output_frame` names the frame exposed through hardwared telemetry and state
@@ -278,8 +210,7 @@ before host filtering or publication. Set both names to the same link for an
 identity transform.
 
 `output_rate_hz` is in `1..=1000` and must divide 1000 exactly because the
-device accepts an integer-millisecond interval. Consequently, the accepted
-rates are `1, 2, 4, 5, 8, 10, 20, 25, 40, 50, 100, 125, 200, 250, 500, 1000`.
+device accepts an integer-millisecond interval.
 `stale_timeout_ms` is in `1..=60000` and must cover at least two output periods
 and the 20 ms sensor poll period.
 
@@ -322,8 +253,7 @@ logical bus; the current `gsusbio` socket claims the whole USB interface.
 configured SocketCAN interface when that backend is selected. It is in
 `10000..=1000000`. `maximum_utilization` is finite and in `(0, 1]`.
 
-Defaults are host ID `253` (`0xFD`), bitrate `1000000`, and maximum utilization
-`0.75`. Bus names and transport assignments must both be unique. Each bus
+Bus names and transport assignments must both be unique. Each bus
 must have at least one motor.
 
 The resolver budgets two extended eight-byte frames per motor per transmission
@@ -335,32 +265,6 @@ and the utilization check in
 [`config/resolved.rs`](../components/bello-hardwared/src/config/resolved.rs).
 
 ### Hardware-description `motors`
-
-```yaml
-motors:
-  - name: motor_a
-    coordinate: coordinate_a
-    bus: can_a
-    id: 1
-    model: ROBSTRIDE_03
-    direction: 1
-    limits:
-      position_min: -2.0
-      position_max: 2.0
-    health:
-      safe_position_min: -2.2
-      safe_position_max: 2.2
-      feedback_position_tolerance: 0.4
-      temperature_warning_c: 60.0
-      maximum_temperature_c: 80.0
-      temperature_recovery_c: 75.0
-      temperature_recovery_duration_ms: 2000
-    command_policy:
-      maximum_position_step: 0.5
-      limit: reject
-      position_step: fault
-    fault_damping_kd: 10.0
-```
 
 `name` identifies the device, while `coordinate` is its external robot/coordinate name.
 `bus` must name a declared logical bus. The `(bus, id)` address is unique, and a motor
@@ -409,10 +313,7 @@ configured value without torque-envelope evaluation or group-wide scaling; the
 Robstride Type-1 encoder applies only its physical gain encoding range.
 `maximum_position_step` compares the first target of a lease generation
 with fresh measured feedback and subsequent targets with the previously
-accepted target. Bello's maintained hardware description sets this guard to
-0.5 rad. Model-dependent bounds are intentionally documented in
-[`hardware/robstride/spec.rs`](../components/bello-hardwared/src/hardware/robstride/spec.rs)
-rather than duplicated here.
+accepted target.
 
 Direct joints use their URDF limits directly. Differential actuator
 coordinates receive conservative independent ranges for inventory and scalar
@@ -424,30 +325,11 @@ clamp.
 
 ### Hardware-description `motor_groups`
 
-```yaml
-motor_groups:
-  - name: group_alpha
-    motors: [motor_a, motor_b]
-    control_rate_hz: 250.0
-    command_refresh_rate_hz: 50.0
-    command_timeout_ms: 100
-    feedback_timeout_ms: 100
-    enable_timeout_ms: 500
-    enable_retries: 3
-    fault_policy:
-      default: damping
-      overrides:
-        temperature: disable
-        reported_motor_fault: disable
-```
-
 A group is an arbitrary synchronized control and ownership unit. It is not tied
 to body regions or to a single CAN interface. Groups may span buses, and
 different groups may share a bus. Every motor belongs to exactly one group.
 
-- `control_rate_hz`: finite, `1..=2000` (default `500`)
-- `command_refresh_rate_hz`: finite, `1..=control_rate_hz`; omission preserves
-  the legacy behavior by using `control_rate_hz`
+- Omit `command_refresh_rate_hz` to refresh at `control_rate_hz`.
 - `command_transmission`: `on_update` (default) sends accepted updates immediately
   and refreshes only when the producer pauses; `periodic` stages updates and
   sends the latest target on the CAN TX worker's `command_refresh_rate_hz` clock.
@@ -457,28 +339,15 @@ different groups may share a bus. Every motor belongs to exactly one group.
 - `periodic_feedback_during_control`: boolean (default `true`). When `false`,
   periodic motor reports are disabled only in Running; command replies provide
   feedback. Damping, stop, disable, faults, and shutdown restore periodic reports.
-- `command_timeout_ms`: `1..=10000` (default `100`)
-- `feedback_timeout_ms`: `1..=10000` (default `100`)
 - `parallel_feedback_position_tolerance`: finite, `(0, 0.4]` (default `0.02`),
   in shared-joint units (radians for revolute joints). This is the maximum
   disagreement between encoder positions resolved through parallel simple
   transmissions. Targets must agree to numerical precision in both position
   and velocity; violating feedback follows the group's `safe_position` fault
   response.
-- `enable_timeout_ms`: `1..=30000` (default `500`)
-- `enable_retries`: `1..=100` (default `3`)
 
 The fault policy chooses the group's safety reaction. The default response is
-`damping`; an override maps a specific cause to `damping` or `disable`. Cause
-keys are:
-
-```text
-command_limit             command_position_step     safe_position
-stale_feedback            temperature               reported_motor_fault
-mode_status               communication             enable
-transmission              disable                   recover
-exit                      internal
-```
+`damping`; an override maps a specific cause to `damping` or `disable`.
 
 Per-motor health and command settings decide whether a motor reports a
 condition; the group policy decides how the whole owning group reacts to that
@@ -489,77 +358,16 @@ Definitions remain authoritative in
 
 ## Reconnect policy
 
-Both CAN buses and serial devices use:
-
-```yaml
-reconnect:
-  initial_delay_ms: 100
-  maximum_delay_ms: 5000
-```
-
-Defaults are 100 ms and 5000 ms. The initial delay must be positive, the
-maximum must be at least the initial delay, and the maximum is at most 60000
-ms. The runtime uses bounded exponential backoff. See
+CAN and serial transports reconnect with bounded exponential backoff. See
 [`hardware/lifecycle.rs`](../components/bello-hardwared/src/hardware/lifecycle.rs).
 
 ## Validation boundaries
 
-Validation is deliberately distributed while still forming one startup pass:
-
-1. YAML deserialization validates shape, scalar types, enum spellings, and
-   rejects unknown keys via the raw types in
-   [`config/model.rs`](../components/bello-hardwared/src/config/model.rs).
-2. Each consuming subsystem converts raw data into a side-effect-free validated
-   spec. This is where local ranges and semantic relationships are checked:
-   gRPC, CAN, serial, IMU, motor, and motor-group settings.
-3. [`ResolvedTopology`](../components/bello-hardwared/src/config/resolved.rs)
-   checks global references, uniqueness, exclusive ownership, group membership,
-   and CAN timing/utilization.
-4. Only after resolution succeeds does startup open hardware and spawn workers.
-
-This keeps hardware-specific rules close to the hardware boundary without
-allowing partially validated configuration to reach runtime code.
+The [YAML types](../components/bello-hardwared/src/config/model.rs) reject unknown fields.
+Each subsystem checks its settings, then the [topology resolver](../components/bello-hardwared/src/config/resolved.rs)
+checks references, exclusive ownership and CAN capacity before startup opens hardware.
 
 ## YAML anchors and aliases
 
-YAML anchors are useful for repeated complete objects. The production example
-uses direct aliases for motor health, command policy, and group fault policy:
-
-```yaml
-motors:
-  - name: motor_a
-    # ...
-    health: &motor_health
-      safe_position_min: -12.57
-      safe_position_max: 12.57
-      temperature_warning_c: 60.0
-      maximum_temperature_c: 80.0
-      temperature_recovery_c: 75.0
-      temperature_recovery_duration_ms: 2000
-  - name: motor_b
-    # ...
-    health: *motor_health
-```
-
-The anchor labels a YAML node and each alias reuses that whole node before Rust
-deserialization. Validation is unchanged: aliased content still has to satisfy
-the target object schema. Prefer direct aliases as above. YAML merge keys
-(`<<`) are not part of this configuration contract and should not be relied on.
-
-## Reading the examples
-
-The [hardware description](../descriptions/bello/hardware.yaml) defines Bello's
-logical buses, 25 physical motors, command policy, and two ownership groups. The
-[production deployment](../components/bello-hardwared/config/bello.yaml)
-enables all groups and maps `can0`/`can1` to physical interfaces. The
-[vCAN deployment](../components/bello-hardwared/config/bello-vcan.yaml)
-preserves those logical assignments while mapping `can0`/`can1` to
-`vcan0`/`vcan1`.
-
-The [Bello Mini hardware description](../descriptions/bello_mini/hardware.yaml)
-sets 300 Hz safety ticks and periodic CAN transmission, with
-`periodic_feedback_during_control: false`. Each target retains its original
-validity deadline between updates. Periodic feedback is disabled only while
-the group is Running. At seven motors per bus, 300 command and reply
-exchanges per motor per second are estimated to use 63 to 67 percent of a
-1 Mbps bus.
+Use direct aliases to share a complete object, as in [Bello’s hardware description](../descriptions/bello/hardware.yaml).
+YAML merge keys (`<<`) are unsupported.

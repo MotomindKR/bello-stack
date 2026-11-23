@@ -1,6 +1,5 @@
 #![cfg(target_os = "linux")]
 
-//! Opt-in transport behavior check; no robot-specific configuration snapshots.
 use bello_mujoco::{
     model::{Hardware, ModelConfig},
     runtime::Config,

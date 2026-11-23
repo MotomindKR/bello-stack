@@ -7,7 +7,7 @@ message Camera {
   uint32 width = 2;
   uint32 height = 3;
   uint32 fps = 4;
-  // "v4l2" or "mujoco". Source metadata is snapshotted in dataset provenance.
+  // "v4l2" or "mujoco".
   string source = 5;
   string metadata_json = 6;
 }

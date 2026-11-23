@@ -1,5 +1,3 @@
-//! Robot-owned native model construction. No policy or deployment artifact inputs.
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -98,7 +96,6 @@ impl ModelConfig {
     }
 }
 
-// This reads identity/geometry only; daemon health and command policy remain daemon-owned.
 #[derive(Debug, Deserialize)]
 pub struct Hardware {
     pub robot_description: PathBuf,

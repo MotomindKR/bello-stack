@@ -49,8 +49,6 @@ impl ControlBatcher {
     }
 
     fn submit(&self, motor: &MotorName, bus: &BusHandle, frame: CanFrame) -> Result<(), BusError> {
-        // Group control invokes each motor handle once per tick. Hold those frames
-        // until the tick is complete, then enqueue one atomic queue item per bus.
         let mut pending = self.pending.lock();
         if !pending.motors.insert(motor.clone()) {
             *pending = PendingControlBatch::default();
@@ -73,9 +71,7 @@ impl ControlBatcher {
         *pending = PendingControlBatch::default();
         drop(pending);
         let expires_at = started + self.fresh_for;
-        // Attempt every bus before reporting failure. This cannot make separate
-        // CAN interfaces physically atomic, but it keeps a failed interface
-        // from suppressing the same logical tick on every later interface.
+        // A failed bus must not prevent the other buses from receiving this tick.
         let mut first_error = None;
         for (bus, frames) in batches.into_values() {
             if let Err(error) = bus.enqueue_control_batch(frames, expires_at) {
@@ -96,7 +92,6 @@ pub(crate) struct MotorFault {
     pub(crate) detail: String,
 }
 
-/// Timestamped protocol feedback owned by the motor device layer.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TimedFeedback {
     pub(crate) value: Feedback,
@@ -109,10 +104,6 @@ pub(super) struct FeedbackProcessingConfig {
     pub(super) velocity_filter: MotorVelocityFilterConfig,
 }
 
-/// One Robstride device bound to one raw CAN transport.
-///
-/// This is the protocol and device-lifecycle boundary. Group control uses this
-/// type rather than constructing frames or inspecting CAN transport internals.
 #[derive(Clone)]
 pub(crate) struct MotorController {
     pub(crate) spec: MotorSpec,

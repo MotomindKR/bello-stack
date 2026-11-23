@@ -202,7 +202,6 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
             "monitoring re-enabled periodic reports during control"
         );
     }
-    // Keep the command stream and lease alive, but stop supplying targets.
     sleep(Duration::from_millis(180)).await;
     let frame = client
         .grpc_client()
@@ -235,7 +234,6 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
     );
     drop(sender);
     drop(replies);
-    // Stop and lease release must revoke repeats, even with live target validity.
     let long_validity = CommandValidity::For(Duration::from_millis(400));
     lease.start(long_validity, commands()).await?;
     sleep(Duration::from_millis(20)).await;
@@ -274,8 +272,6 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
     assert_eq!(state.groups[0].state, GroupState::Damped as i32);
     assert_eq!(state.groups[0].cause, GroupCause::LeaseLoss as i32);
 
-    // Freeze only the isolated fixture, with targets and feedback still fresh.
-    // A sustained scheduling gap must fault instead of replaying missed ticks.
     let mut lease = client
         .acquire_lease(
             "e2e_group",

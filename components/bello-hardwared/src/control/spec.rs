@@ -6,7 +6,6 @@ use crate::config::{CommandTransmission, FaultPolicyConfig, GroupConfig};
 use crate::domain::{GroupName, MotorName};
 use crate::mechanics::MechanicalEnvelope;
 
-/// Validated, side-effect-free definition of a synchronized motor group.
 #[derive(Clone, Debug)]
 pub(crate) struct GroupSpec {
     pub(crate) name: GroupName,

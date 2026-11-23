@@ -78,7 +78,6 @@ impl GroupHandle {
     }
 
     pub(crate) fn request_emergency_damping(&self) {
-        // Invalidate periodic CAN targets before waking the controller.
         self.lease_generation.store(0, Ordering::Release);
         self.emergency_pending.store(true, Ordering::Release);
         let _ = self.wake_tx.try_send(());

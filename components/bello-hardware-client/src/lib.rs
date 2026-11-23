@@ -1,8 +1,4 @@
-//! Robot-oriented access to `bello-hardwared`.
-//!
-//! Start with [`Robot`], [`MotorGroup`], and [`ControlSession`]. Generated
-//! protobuf messages and the lease-oriented transport layer are intentionally
-//! isolated under [`raw`] for diagnostics and specialized tooling.
+//! Use [`Robot`] for group control and [`raw`] for protobuf and lease access.
 
 mod client;
 mod command;
@@ -44,10 +40,6 @@ pub use types::{
 };
 
 /// Low-level protobuf, lease, command-stream, and telemetry primitives.
-///
-/// Normal robot applications should use the crate-root API. This module exists
-/// for diagnostics, performance probes, and integrations that need the exact
-/// wire contract.
 pub mod raw {
     pub use bello_hardware_api as proto;
 

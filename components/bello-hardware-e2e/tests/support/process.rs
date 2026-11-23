@@ -119,9 +119,7 @@ impl ManagedProcess {
             self.suspended = false;
         }
         let _ = kill(Pid::from_raw(child.id() as i32), Signal::SIGINT);
-        // hardwared itself allows two seconds for gRPC draining; leave the
-        // process harness enough margin to observe its bounded exit and RAII
-        // cleanup before escalating to SIGKILL.
+        // Allow the daemon to drain gRPC before escalating to SIGKILL.
         let deadline = Instant::now() + Duration::from_secs(3);
         while Instant::now() < deadline {
             match child.try_wait() {

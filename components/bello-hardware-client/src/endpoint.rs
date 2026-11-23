@@ -10,7 +10,6 @@ const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
 const DEFAULT_KEEPALIVE_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// Connection settings for the hardware gRPC endpoint.
 #[derive(Clone, Debug)]
 pub struct ConnectOptions {
     endpoint: String,
@@ -66,8 +65,6 @@ struct Keepalive {
 }
 
 impl ConnectOptions {
-    /// Creates settings with a five-second connect timeout and HTTP/2
-    /// keepalive every ten seconds with a three-second acknowledgement timeout.
     pub fn new(endpoint: impl Into<String>) -> Self {
         Self {
             endpoint: endpoint.into(),

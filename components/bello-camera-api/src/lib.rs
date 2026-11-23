@@ -1,4 +1,3 @@
-//! Timestamped camera frames shared by hardware capture, HIL rendering and recording.
 use std::{pin::Pin, sync::Arc};
 use tokio::sync::{broadcast, watch};
 use tonic::{Request, Response, Status};

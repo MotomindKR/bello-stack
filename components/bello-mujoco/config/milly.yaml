@@ -1,5 +1,3 @@
-# Fixed-base Milly physics. SDK mass properties are mapped into the canonical
-# URDF, including the wrist/linkage mass partition. Damping remains estimated.
 hardware: ../../../descriptions/milly/hardware.yaml
 root: fixed
 floor: true
@@ -16,7 +14,7 @@ initial_joint_positions:
   gripper: 0.0
 neighbor_exclusion_depth: 2
 physics:
-  # Activate compliant stops inside the safety boundary; leave hardware limits unchanged.
+  # Joint damping values are estimates.
   joint_dynamics:
     joint_1: {damping: 0.1, armature: 0.01, limit_margin: 0.02, limit_time_constant: 0.004}
     joint_2: {damping: 0.1, armature: 0.01, limit_margin: 0.02, limit_time_constant: 0.004}

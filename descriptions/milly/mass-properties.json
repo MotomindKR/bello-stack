@@ -4,7 +4,6 @@
   "source_path": "platform/python/motomind_milly_sdk/src/motomind_milly/robot/MILLY.urdf",
   "source_sha256": "91c36b3eac03e85a3e864d3fc53b02f2038f1dc5a9ca79e2c6b60f23b62611a1",
   "source_total_mass_kg": 5.449411285057828,
-  "mapping": "SDK visual origins and exterior-assets.json cad_to_link map the common CAD assembly, in metres, to each local link frame. Only inertial elements are updated.",
   "links": {
     "base_link": {
       "source_link_from_cad": [
@@ -433,7 +432,7 @@
   "linkage_partition": {
     "aggregate_link": "link_6",
     "reference_gripper_angle_rad": -2.2,
-    "status": "Retained nominal crank/rod mass properties; not separately measured. Subtracted from the SDK link_6 aggregate in the common CAD reference pose, preserving aggregate mass, center of mass and inertia at that pose.",
+    "status": "Crank and rod inertias are estimates.",
     "parts": [
       {
         "link": "gripper_drive",

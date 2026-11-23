@@ -2,75 +2,10 @@
 
 [Documentation index](README.md)
 
-The authoritative contract is
-[`hardware.proto`](../components/bello-hardware-api/proto/bello/hardware/v1/hardware.proto).
-This guide describes the intended workflow and runtime semantics; generated
-client types should be used instead of duplicating the schema by hand. Rust
-applications should normally use the robot-oriented
-[`bello-hardware-client`](../components/bello-hardware-client). Generated tonic
-types and lease-oriented primitives remain available under its explicit `raw`
-module for diagnostics and specialized integrations.
-Python applications should normally use the pure-Python
-[`bello-hardware`](../components/bello-hardware-python) package. It presents the
-same robot, group, complete-frame, and renewed-session concepts over generated
-blocking gRPC bindings.
-
-The Rust client's `Robot` inventory exposes buses, serial devices, motors,
-groups, and IMUs with their initial status. Each IMU identifies its physical
-`source_frame` and published `output_frame`; clients can reject a frame contract
-that does not match their observation model. Each motor also carries the
-daemon's resolved coordinate-space position, velocity, torque, `kp`, and `kd`
-command limits. `RobotStates` aggregates live motor,
-group, IMU, component-health, and command-policy telemetry.
-`RobotState::last_change()` identifies the exact aggregate entry changed by an
-event; consumers do not treat daemon-relative timestamps as unique IDs.
-
-The protobuf package is `bello.hardware.v1` and the fully qualified service is
-`bello.hardware.v1.HardwareService`. It uses proto3 conventions: enum value zero
-is `UNSPECIFIED`, repeated fields default to empty, and telemetry payloads use a
-`oneof`. Group/device states, command results, group causes, fault responses, and
-command-policy decisions are typed enums. IMU orientation and vectors are
-fixed-shape messages rather than variable-length arrays.
-
-## Maintained Rust client
-
-The [`bello-hardware-client` README](../components/bello-hardware-client/README.md)
-contains the complete application workflow. `Robot` loads and validates daemon
-inventory, `MotorGroup` creates complete coordinate-oriented command frames,
-`ControlSession` owns automatic lease renewal and synchronous acknowledgement
-handling, and `RobotStates` aggregates event telemetry into typed latest-value
-state.
-
-These helpers do not duplicate daemon safety limits or hide motion ambiguity:
-an active motion session is never transparently reacquired, reconnected, or
-replayed. Explicit `shutdown` performs stop, disable, renewal-task termination,
-and release; `Drop` cannot perform asynchronous network cleanup.
-
-Specialized tooling can use `bello_hardware_client::raw`. Its `HardwareClient`,
-`GroupLease`, `LeaseRenewer`, command stream, and telemetry filter preserve the
-protocol-oriented behavior. `raw::proto` exposes the generated wire contract
-and `HardwareClient::grpc_client` returns the tonic stub.
-
-## Maintained Python client
-
-The [`bello-hardware Python README`](../components/bello-hardware-python/README.md)
-contains its concise application workflow. The package uses `grpcio` directly;
-it does not load or bind the Rust client. Generated protobuf modules are a
-private transport detail shipped in the wheel, so application machines need
-neither Rust nor `protoc`.
-
-The public API is deliberately blocking. State frames are read synchronously;
-only lease renewal and command acknowledgements use small background I/O
-threads. `ControlSession.send` still returns only after the matching daemon
-acknowledgement. Ambiguous or rejected motion is never reconnected, reacquired,
-or replayed automatically.
-Lifecycle transport failures retain their gRPC status through
-`ControlRpcError`; lease denial remains the more specific `LeaseLostError`.
-
-Both maintained clients are peers over this protocol. Daemon-side validation,
-group lifecycle, safety policy, and lease reactions remain authoritative; the
-clients duplicate only the small amount of state needed for safe and ergonomic
-use of the wire contract.
+See [hardware.proto](../components/bello-hardware-api/proto/bello/hardware/v1/hardware.proto)
+for the wire contract. The [Rust](../components/bello-hardware-client/README.md)
+and [Python](../components/bello-hardware-python/README.md) client guides show how to open
+a control session, renew its lease, and shut it down.
 
 ## Access model
 
@@ -87,17 +22,6 @@ ownership generation. Lease behavior is implemented in
 [`lease.rs`](../components/bello-hardwared/src/lease.rs) and admission is
 serialized in
 [`daemon.rs`](../components/bello-hardwared/src/app/daemon.rs).
-
-| RPC | Lease required | Purpose |
-| --- | --- | --- |
-| `ListHardware` | No | Read configured topology and current component/group states. |
-| `WatchTelemetry` | No | Subscribe to selected dynamic events. |
-| `GetStateFrame` | No | Read one complete latest motor, IMU, and group state frame. |
-| `AcquireLease` | No | Obtain exclusive write ownership for one group. |
-| `RenewLease` | Token | Extend that token's expiry. |
-| `ReleaseLease` | Token | Invalidate ownership and wait for the group reaction. |
-| `EnableGroup`, `StartControl`, `StopControl`, `DisableGroup`, `RecoverGroup` | Group token | Drive the motor-group lifecycle. |
-| `StreamCommands` | Token in every request | Submit complete impedance-command snapshots and receive typed results. |
 
 ## Normal control workflow
 
@@ -192,9 +116,7 @@ safety-policy YAML. Each bus includes a `transport` label such as
   a non-empty `imus` list is invalid when `include_imu` is false;
 - empty or unknown group/IMU selectors fail the RPC with `INVALID_ARGUMENT`.
 
-Each response carries daemon-relative `monotonic_ns` and exactly one payload:
-motor feedback, fixed-shape IMU data, group state/timing, component health, or a
-command-policy decision. Samples are neither averaged nor replaced with a
+Samples are neither averaged nor replaced with a
 single latest state: every selected broadcast event is forwarded while the
 subscriber keeps pace. Motor and IMU events follow their received rates. Group
 state/cause/detail changes publish immediately. `cause` describes normal
@@ -208,17 +130,8 @@ Subtract the age from this timestamp to estimate sensor acquisition time;
 client transport delay still contributes to the sample's age at receipt.
 Sub-millisecond server queueing is rounded up, so serialization cannot renew a sample.
 
-Motor velocity in both telemetry events and state frames is the output of the
-configured `runtime.motor_velocity_filter`. The filter consumes every raw
-actuator-reported velocity sample and derives its coefficient from consecutive
-receive timestamps before either API samples or forwards it. Both APIs
-therefore expose the same filtered value. This does not replace the raw
-protocol value used internally for motor health and safety.
-
-IMU orientation, angular velocity, and linear acceleration in both telemetry
-events and state frames are likewise filtered before publication. Their
-independent timestamp-aware cutoffs are configured under `runtime.imu_filter`
-and default to 10 Hz.
+State frames and telemetry use the same [motor and IMU filters](configuration.md#runtime).
+Motor health checks use raw feedback.
 
 The telemetry ring is bounded by `runtime.telemetry_capacity`. A slow
 subscriber loses overwritten events rather than blocking hardware control. On
@@ -280,21 +193,11 @@ For startup, hardware, diagnostics, and shutdown procedures, see
 [`operations.md`](operations.md). For build and review conventions, see
 [`development.md`](development.md).
 
-## Policy operator control
-
-The policy runner in `bello_mujoco` hosts `bello.operator.v1.OperatorService`
-on port 50055. The Electron console sends controller samples directly to it.
-Hardware and pose APIs remain independent of the policy operator protocol.
-
 ## External pose stream
 
 [`pose.proto`](../components/bello-pose-api/proto/bello/pose/v1/pose.proto)
-defines the independent `bello.pose.v1.PoseService`. `WatchPose` streams a
-requested reference/tracked frame pair with sequence, translation in metres,
-normalized `xyzw` orientation, estimator-provided linear velocity in metres per
-second, filtered angular velocity in radians per second expressed in
-tracked-frame axes, a precise source monotonic timestamp, and producer-reported
-age. Its convention is `reference_from_tracked`.
+defines `WatchPose`. The transform is `reference_from_tracked`; orientation
+uses normalized `xyzw` quaternions and angular velocity uses tracked-frame axes.
 
 [`bello-state-estimatord`](../components/bello-state-estimatord) is the
 maintained local provider for Bello and Bello Mini. It consumes the high-level
@@ -302,9 +205,4 @@ maintained local provider for Bello and Bello Mini. It consumes the high-level
 encoder/URDF stationary-foot corrections to IMU-propagated translation. The
 configured `imu_frame` must be rigidly attached below `tracked_frame`; the
 estimator runs at the IMU origin and uses that URDF transform to publish the
-requested tracked-frame pose and twist. It implements this existing RPC
-directly; clients do not submit estimates and no second estimator-specific
-service exists. The service publishes pose, linear velocity, filtered local
-angular velocity, source time, sequence, frame names, and age. Filter covariance
-and contact internals remain private implementation details. The canonical
-physical and emulator configurations low-pass angular velocity at 15 Hz.
+requested tracked-frame pose and twist.

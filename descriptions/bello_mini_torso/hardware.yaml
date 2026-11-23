@@ -1,6 +1,4 @@
-# Bello Mini Torso: invisible fixed base at the hip-pitch axis, +60/-30 degree travel.
-# Motor identity and protocol directions inherit Mini; validate physical zeros and torque sharing.
-# Each hip uses half the source damping gain; both belong to torso_pitch.
+# Verify both hip encoder zeros and load sharing on the installed torso.
 robot_description: urdf/bello_mini_torso.urdf
 
 logical_buses:

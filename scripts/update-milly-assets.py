@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Regenerate Milly's exterior visuals and gripper tree from the reviewed STEP.
+"""Regenerate Milly's exterior visuals and gripper tree from the case assembly STEP.
 
 uv run --with cadquery==2.8.0 --with trimesh==5.1.1 --with scipy \
     scripts/update-milly-assets.py --step '/path/Milly_Assem_0914_Case Only.STEP'
 
-The input CAD is proprietary and supplied separately. Assembly instances are
-identified by their full path, including occurrence tags (names are not unique).
-All mesh vertices are stored in metres in their owning URDF link frame.
+The input CAD is proprietary and supplied separately.
 """
 
 from __future__ import annotations
@@ -42,8 +40,7 @@ MATERIALS = {
     "milly_metal": "0.52 0.55 0.58 1",
 }
 RADIUS, ROD, OFFSET = 0.030, 0.045, 0.014
-# Pin centres measured from the STEP's cylindrical faces. The legacy feedback
-# bridge supplies the -2.2 rad open endpoint; the encoder phase needs calibration.
+# The STEP pin centers give the opening angle. Calibrate the encoder phase on hardware.
 OPEN_ANGLE = math.atan2(251.2017 - 238.1795, 27.0263)
 OPEN_MOTOR = -2.2
 PHASE = OPEN_ANGLE - OPEN_MOTOR
@@ -51,7 +48,6 @@ SLIDER_REFERENCE = RADIUS * math.cos(OPEN_ANGLE) + math.sqrt(
     ROD**2 - (OFFSET - RADIUS * math.sin(OPEN_ANGLE)) ** 2
 )
 CENTRE_CAD = np.array([0.0, -0.1985206, 0.2381795])
-# Gripper X = CAD X, Y = CAD Z, Z = -CAD Y (motor/hinge axis).
 CAD_FROM_GRIPPER = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
 
@@ -177,8 +173,7 @@ def main():
         )
 
     links = {link.get("name"): link for link in root.findall("link")}
-    # Preserve arm joint frames and limits; reapply SDK mass properties below.
-    # Registration is fixed from matching CAD shoulder axes and origins, not ICP.
+    # Align the CAD shoulder axes to the URDF shoulder frame.
     transforms = {"link_1": pose()}
     transforms["link_1"][:3, :3] = np.diag([-1.0, 1.0, -1.0])
     transforms["link_1"][:3, 3] = [0.0, 0.0575, 0.072]
@@ -297,7 +292,6 @@ def main():
             (0, 0, 1),
             (-4, 1, 100, 100),
         )
-        # Explicit endpoint frames make the loop closure inspectable by any FK tool.
         new_link(f"gripper_rod_{i}_tip")
         joint(
             f"gripper_rod_{i}_tip_mount",
@@ -348,7 +342,6 @@ def main():
 
     visual_dir = dest / "meshes/visual/exterior"
     visual_dir.mkdir(parents=True, exist_ok=True)
-    # (owning link, material, STEP indices, output basename)
     groups = [
         ("base_link", "milly_base", [1, 2], "base"),
         ("link_1", "milly_black", [5], "shoulder_frame"),
@@ -391,8 +384,7 @@ def main():
             }
         )
 
-    # Retain real exterior hardware absent from the case-only STEP. The rounded
-    # legacy jaws match the supplied robot photo; the STEP has different jaws.
+    # The case assembly omits the installed base connector and uses different jaws.
     retained_dir = dest / "meshes/visual/retained"
     retained_dir.mkdir(exist_ok=True)
     legacy = [
@@ -407,7 +399,7 @@ def main():
         (1, [0.06552811, 0.0081136605, -0.11519444]),
         (2, [-0.065921114, -0.0042637112, -0.11519444]),
     ]:
-        # Original jaw mesh was expressed in its own fixed frame on link_6.
+        # The jaw meshes are in link_6 coordinates.
         relative = (
             transforms[f"finger_{i}"] @ np.linalg.inv(transforms["link_6"]) @ pose(xyz)
         )
@@ -446,7 +438,6 @@ def main():
             }
         )
 
-    # Reapply the reviewed primitive recipe after regenerating link frames.
     apply_collisions(root, dest)
     apply_mass_properties(root, dest, transforms)
     ET.indent(root, space="  ")
@@ -465,7 +456,6 @@ def main():
         "omitted_instances": [
             parts[i]["path"] for i in range(len(parts)) if i not in used
         ],
-        "omission_reason": "Internal mounting plates, spacers and limit hardware are covered by the exterior cases. STEP fingers and finger brackets are replaced by the rounded legacy jaw assemblies matching the robot photo.",
         "retained_legacy_meshes": retained_manifest,
         "gripper": {
             "crank_radius_m": RADIUS,
@@ -473,7 +463,7 @@ def main():
             "slider_offset_m": OFFSET,
             "cad_crank_angle_rad": OPEN_ANGLE,
             "motor_at_cad_pose_rad": OPEN_MOTOR,
-            "encoder_phase_status": "Legacy open endpoint assumption; requires physical calibration.",
+            "encoder_phase_status": "Requires physical calibration at the open position.",
         },
         "camera": {
             "lens_centre_cad_m": lens.tolist(),
@@ -482,7 +472,6 @@ def main():
         },
     }
     (dest / "exterior-assets.json").write_text(json.dumps(metadata, indent=2) + "\n")
-    # Delete only the replaced, formerly referenced visual assets.
     old_parts = dest / "meshes/visual/parts"
     if old_parts.exists():
         for old in old_parts.glob("*.stl"):

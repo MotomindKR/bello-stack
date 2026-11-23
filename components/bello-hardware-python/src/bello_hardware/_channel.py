@@ -1,5 +1,3 @@
-"""gRPC channel creation shared by the blocking client."""
-
 from __future__ import annotations
 
 from pathlib import Path

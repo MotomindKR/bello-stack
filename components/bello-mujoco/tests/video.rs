@@ -65,7 +65,6 @@ fn software_video_is_visible_bounded_and_refuses_overwrites() {
     let original = std::fs::read(&output).unwrap();
     assert!(!render(dir.path()).status.success());
     assert_eq!(std::fs::read(&output).unwrap(), original);
-    // A truncated pose must fail before allocating graphics resources.
     std::fs::write(dir.path().join("qpos.bin"), [0; 3]).unwrap();
     let result = render(dir.path());
     assert!(!result.status.success());

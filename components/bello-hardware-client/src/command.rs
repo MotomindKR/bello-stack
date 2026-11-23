@@ -21,7 +21,6 @@ pub enum CommandValidity {
     /// Use the motor group's configured command timeout.
     #[default]
     GroupDefault,
-    /// Cap validity to this duration.
     For(Duration),
 }
 
@@ -46,8 +45,7 @@ impl Default for CommandStreamOptions {
 }
 
 impl CommandStreamOptions {
-    /// Sets the bounded local request queue capacity. One is the safe default:
-    /// command validity starts only when the daemon receives the request.
+    /// Queued commands begin their validity period when the daemon receives them.
     pub fn queue_capacity(mut self, capacity: usize) -> Self {
         self.queue_capacity = capacity;
         self

@@ -148,7 +148,6 @@ impl Capture {
             eprintln!("Video: no released-torso frames captured; no video written.");
             return Ok(());
         }
-        // Rendering never runs while CAN, serial or pose services are live.
         let visual = model::build_visual(config)?.simulation;
         let a = source.data.model();
         let b = visual.data.model();

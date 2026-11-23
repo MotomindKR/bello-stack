@@ -1,9 +1,5 @@
 # Bello stack documentation
 
-These guides describe the current Bello hardware stack as implemented. They
-separate stable concepts and operational behavior from crate-level READMEs and
-source comments.
-
 ## Suggested reading paths
 
 | Goal | Start here | Continue with |
@@ -17,26 +13,7 @@ source comments.
 | Run on Linux, macOS, or Windows | [Desktop builds](desktop.md) | [Operations](operations.md) |
 | Review or modify the code | [Architecture](architecture.md) | [Development](development.md) |
 
-## Guide map
-
-- [Architecture](architecture.md) explains process boundaries, ownership,
-  workers, data flow, lifecycle, and shutdown.
-- [Configuration](configuration.md) describes the hardware-daemon YAML model,
-  validation boundaries, topology rules, and examples.
-- [Hardware](hardware.md) covers SocketCAN, Robstride devices, serial sessions,
-  EBIMU configuration, timing, and reconnect behavior.
-- [Control and safety](control-and-safety.md) covers leases, the motor-group FSM,
-  command handling, watchdogs, health checks, fault responses, and recovery.
-- [API](api.md) explains the protobuf service, normal client workflow, typed
-  results, telemetry filters, and security boundary.
-- [`bello-hardware-client`](../components/bello-hardware-client) documents the
-  maintained high-level Rust client, explicit renewal, and command streams.
-- [`bello-hardware-python`](../components/bello-hardware-python) documents the
-  blocking pure-Python client and synchronous complete state reads.
-- [Operations](operations.md) provides startup, vCAN emulation, diagnostics,
-  and shutdown procedures.
-- [Development](development.md) documents the toolchain, source layout, checks,
-  integration tests, and a code-review order.
+See [power-board telemetry](power_board.md) for power monitoring and the emergency button.
 
 ## Core terminology
 
@@ -52,28 +29,3 @@ source comments.
   it maps to a URDF joint directly or through a differential transmission.
 - **Telemetry** is the event stream produced by transports, devices, and group
   controllers and exposed through gRPC.
-
-## Sources of truth
-
-Documentation is explanatory. The authoritative machine-readable interfaces
-remain:
-
-- [`hardware.proto`](../components/bello-hardware-api/proto/bello/hardware/v1/hardware.proto)
-  for the gRPC contract;
-- [`config/model.rs`](../components/bello-hardwared/src/config/model.rs) and the
-  validated specification modules for YAML fields and limits;
-- [`config/bello.yaml`](../components/bello-hardwared/config/bello.yaml) and
-  [`config/bello-vcan.yaml`](../components/bello-hardwared/config/bello-vcan.yaml) for
-  maintained example configurations.
-- [`bello-state-estimatord/config`](../components/bello-state-estimatord/config)
-  for the transport-independent Bello and Bello Mini pose-estimator profiles.
-- [`descriptions/bello`](../descriptions/bello) for the canonical robot
-  description, meshes, hardware topology, and their provenance boundary.
-- [`descriptions/milly`](../descriptions/milly) for the canonical Milly
-  single-arm description, hardware topology, and asset provenance.
-- [`descriptions/bello_mini_torso`](../descriptions/bello_mini_torso) for the
-  fixed-base Mini torso URDF, parallel hip-pitch hardware topology, deployment
-  profiles, mounting contract, and bring-up guide.
-
-The project is greenfield. Documentation describes the current interface only;
-it does not preserve historical aliases or compatibility behavior.
