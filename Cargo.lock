@@ -262,6 +262,7 @@ dependencies = [
  "bello-hardware-api",
  "bello-hardware-client",
  "bello-hardwared",
+ "bello-sim-can",
  "nix 0.29.0",
  "rcgen",
  "robstride-emulator",

@@ -16,8 +16,29 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use bello_hardware_api::{GetStateFrameRequest, GetStateFrameResponse, GroupState, MotorCommand};
 use bello_hardware_client::raw::{CommandValidity, EnumValue, HardwareClient, LeaseDuration};
+use bello_sim_can::SimBus;
 use support::process::ManagedProcess;
 use tokio::time::{sleep, timeout};
+
+#[tokio::test]
+async fn queued_sim_feedback_keeps_its_age() -> Result<()> {
+    let [ports] = sim::available_ports()?;
+    let bus: SimBus = serde_yaml::from_str(&format!("{{ {ports} }}"))?;
+    let (_directory, endpoint, mut daemon, mut emulator) = spawn_pair_on_ports(&ports)?;
+    support::scenario::queued_feedback_keeps_its_age(
+        &endpoint,
+        &mut daemon,
+        &mut emulator,
+        |frames| {
+            let sender = bus.open_simulator()?;
+            for frame in frames {
+                sender.send(frame)?;
+            }
+            Ok(())
+        },
+    )
+    .await
+}
 
 #[tokio::test]
 async fn simulated_can_delivers_motion_and_faults_when_emulator_stops() -> Result<()> {
@@ -126,11 +147,17 @@ async fn control_fault_and_recovery() -> Result<()> {
 }
 
 fn spawn_pair() -> Result<(tempfile::TempDir, String, ManagedProcess, ManagedProcess)> {
+    let [ports] = sim::available_ports()?;
+    spawn_pair_on_ports(&ports)
+}
+
+fn spawn_pair_on_ports(
+    ports: &str,
+) -> Result<(tempfile::TempDir, String, ManagedProcess, ManagedProcess)> {
     let directory = tempfile::tempdir()?;
     let deployment = directory.path().join("hardwared.yaml");
     let emulator_config = directory.path().join("emulator.yaml");
     let grpc = TcpListener::bind(("127.0.0.1", 0))?.local_addr()?;
-    let [ports] = sim::available_ports()?;
     support::config::write_hardwared_with_grpc(
         &deployment,
         &format!("{{ type: sim, {ports} }}"),
