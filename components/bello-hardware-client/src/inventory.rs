@@ -579,7 +579,7 @@ mod tests {
                     bus: "can0".into(),
                     id: 1,
                 }),
-                model: "ROBSTRIDE_03".into(),
+                model: "RS_03".into(),
                 direction: 1,
                 status: None,
                 limits: Some(proto::MotorLimits {

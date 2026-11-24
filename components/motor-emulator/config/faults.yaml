@@ -7,8 +7,8 @@ dynamics:
   idle_velocity_decay_hz: 20.0
 
 actuators:
-  - { id: 1, model: ROBSTRIDE_03, direction: 1, initial_position: 0.0 }
-  - { id: 2, model: ROBSTRIDE_03, direction: -1, initial_position: 0.0 }
+  - { id: 1, model: RS_03, direction: 1, initial_position: 0.0 }
+  - { id: 2, model: RS_03, direction: -1, initial_position: 0.0 }
 
 events:
   - { at_ms: 5000, actuator_id: 1, action: { type: set_temperature, celsius: 85.0 } }

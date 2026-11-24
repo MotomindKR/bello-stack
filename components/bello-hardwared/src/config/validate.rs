@@ -468,8 +468,8 @@ bus_transports:
 buses:
   - { name: shared, transport: { type: socketcan, interface: vcan0 }, maximum_utilization: 1.0 }
 motors:
-  - { name: motor_a, coordinate: e2e_joint_1, bus: shared, id: 1, model: ROBSTRIDE_03 }
-  - { name: motor_b, coordinate: e2e_joint_2, bus: shared, id: 2, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: e2e_joint_1, bus: shared, id: 1, model: RS_03 }
+  - { name: motor_b, coordinate: e2e_joint_2, bus: shared, id: 2, model: RS_03 }
 "#;
 
     fn one_group(prefix: &str) -> String {
@@ -525,8 +525,8 @@ motors:
 buses:
   - { name: slow, transport: { type: socketcan, interface: vcan0 }, bitrate: 10000, maximum_utilization: 1.0 }
 motors:
-  - { name: motor_a, coordinate: e2e_joint_1, bus: slow, id: 1, model: ROBSTRIDE_03 }
-  - { name: motor_b, coordinate: e2e_joint_2, bus: slow, id: 2, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: e2e_joint_1, bus: slow, id: 1, model: RS_03 }
+  - { name: motor_b, coordinate: e2e_joint_2, bus: slow, id: 2, model: RS_03 }
 motor_groups:
   - { name: group_a, motors: [motor_a], control_rate_hz: 20.0 }
   - { name: group_b, motors: [motor_b], control_rate_hz: 20.0 }
@@ -541,7 +541,7 @@ motor_groups:
 buses:
   - { name: saturated, transport: { type: socketcan, interface: vcan0 }, bitrate: 10000, maximum_utilization: 1.0 }
 motors:
-  - { name: motor_a, coordinate: e2e_joint_1, bus: saturated, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: e2e_joint_1, bus: saturated, id: 1, model: RS_03 }
 motor_groups:
   - { name: group, motors: [motor_a], control_rate_hz: 33.333333333333336 }
 "#;
@@ -555,7 +555,7 @@ motor_groups:
 buses:
   - { name: slow, transport: { type: socketcan, interface: vcan0 }, bitrate: 10000, maximum_utilization: 1.0 }
 motors:
-  - { name: motor_a, coordinate: e2e_joint_1, bus: slow, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: e2e_joint_1, bus: slow, id: 1, model: RS_03 }
 motor_groups:
   - { name: group, motors: [motor_a], control_rate_hz: 1000.0, command_refresh_rate_hz: 20.0, command_transmission: periodic }
 "#;
@@ -574,8 +574,8 @@ motor_groups:
 buses:
   - { name: slow, transport: { type: socketcan, interface: vcan0 }, bitrate: 10000, maximum_utilization: 1.0 }
 motors:
-  - { name: motor_a, coordinate: e2e_joint_1, bus: slow, id: 1, model: ROBSTRIDE_03 }
-  - { name: motor_b, coordinate: e2e_joint_2, bus: slow, id: 2, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: e2e_joint_1, bus: slow, id: 1, model: RS_03 }
+  - { name: motor_b, coordinate: e2e_joint_2, bus: slow, id: 2, model: RS_03 }
 motor_groups:
   - { name: group_a, motors: [motor_a], control_rate_hz: 1000.0, command_refresh_rate_hz: 20.0, command_transmission: periodic }
   - { name: group_b, motors: [motor_b], control_rate_hz: 1000.0, command_refresh_rate_hz: 20.0, command_transmission: periodic }
@@ -630,8 +630,8 @@ buses:
   - { name: first, transport: { type: socketcan, interface: can0 } }
   - { name: second, transport: { type: socketcan, interface: can0 } }
 motors:
-  - { name: motor_a, coordinate: coordinate_a, bus: first, id: 1, model: ROBSTRIDE_03 }
-  - { name: motor_b, coordinate: coordinate_b, bus: second, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: coordinate_a, bus: first, id: 1, model: RS_03 }
+  - { name: motor_b, coordinate: coordinate_b, bus: second, id: 1, model: RS_03 }
 motor_groups:
   - { name: group, motors: [motor_a, motor_b] }
 "#;
@@ -661,7 +661,7 @@ buses:
   - { name: used, transport: { type: socketcan, interface: can0 } }
   - { name: unused, transport: { type: socketcan, interface: can1 } }
 motors:
-  - { name: motor_a, coordinate: e2e_joint_1, bus: used, id: 1, model: ROBSTRIDE_03 }
+  - { name: motor_a, coordinate: e2e_joint_1, bus: used, id: 1, model: RS_03 }
 motor_groups:
   - { name: group, motors: [motor_a] }
 "#;

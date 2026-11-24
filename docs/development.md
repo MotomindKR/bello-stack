@@ -61,7 +61,7 @@ cargo run -p bello-hardwared -- \
   --check --config components/bello-hardwared/config/bello.yaml
 cargo run -p bello-hardwared -- \
   --check --config components/bello-hardwared/config/milly-sim.yaml
-cargo run -p robstride-emulator -- --check
+cargo run --manifest-path components/motor-emulator/Cargo.toml -- --check
 ```
 
 Do not hide warnings or make host hardware a prerequisite for ordinary unit and

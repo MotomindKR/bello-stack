@@ -464,7 +464,7 @@ async fn grpc_can_latency_distribution() -> Result<()> {
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(500_usize);
-    let params = MotorParams::for_model("ROBSTRIDE_03", 1).expect("known motor model");
+    let params = MotorParams::for_model("RS_03", 1).expect("known motor model");
     let mut monitor = CanMonitor::start(&interface)?;
     let mut outbound = Vec::with_capacity(samples);
     let mut random = 0x9e37_79b9_u32;

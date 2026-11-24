@@ -30,27 +30,27 @@ motor_model_catalog:
     specification_date: '2026-07-13'
     url: https://github.com/RobStride/Product_Information
   models:
-    ROBSTRIDE_00:
+    RS_00:
       mass_kg: 0.31
       mass_tolerance_kg: 0.003
       peak_torque_nm: 14.0
       maximum_speed_rad_s: 33.0
-    ROBSTRIDE_02:
+    RS_02:
       mass_kg: 0.38
       mass_tolerance_kg: 0.003
       peak_torque_nm: 17.0
       maximum_speed_rad_s: 44.0
-    ROBSTRIDE_03:
+    RS_03:
       mass_kg: 0.9
       mass_tolerance_kg: 0.02
       peak_torque_nm: 60.0
       maximum_speed_rad_s: 20.0
-    ROBSTRIDE_04:
+    RS_04:
       mass_kg: 1.42
       mass_tolerance_kg: 0.02
       peak_torque_nm: 120.0
       maximum_speed_rad_s: 15.0
-    ROBSTRIDE_06:
+    RS_06:
       mass_kg: 0.621
       mass_tolerance_kg: null
       peak_torque_nm: 36.0
@@ -58,7 +58,7 @@ motor_model_catalog:
 motors:
 - name: waist_yaw_motor
   cad_id: motor-12
-  model: ROBSTRIDE_03
+  model: RS_03
   side: center
   station: waist_yaw
   coupling: direct
@@ -91,7 +91,7 @@ motors:
     status: direction_confirmed_by_operator
 - name: waist_roll_motor
   cad_id: motor-01
-  model: ROBSTRIDE_03
+  model: RS_03
   side: center
   station: waist_roll
   coupling: direct
@@ -124,7 +124,7 @@ motors:
     status: can_assigned_direction_calibration_required
 - name: left_hip_pitch_motor
   cad_id: motor-11
-  model: ROBSTRIDE_04
+  model: RS_04
   side: left
   station: hip_pitch
   coupling: direct
@@ -157,7 +157,7 @@ motors:
     status: direction_confirmed_by_operator
 - name: left_hip_roll_motor
   cad_id: motor-05
-  model: ROBSTRIDE_03
+  model: RS_03
   side: left
   station: hip_roll
   coupling: direct
@@ -190,7 +190,7 @@ motors:
     status: direction_confirmed_by_operator
 - name: left_hip_yaw_motor
   cad_id: motor-16
-  model: ROBSTRIDE_03
+  model: RS_03
   side: left
   station: hip_yaw
   coupling: direct
@@ -223,7 +223,7 @@ motors:
     status: can_assigned_direction_calibration_required
 - name: left_knee_motor
   cad_id: motor-14
-  model: ROBSTRIDE_04
+  model: RS_04
   side: left
   station: knee
   coupling: direct
@@ -256,7 +256,7 @@ motors:
     status: can_assigned_direction_calibration_required
 - name: left_ankle_motor_1
   cad_id: motor-15
-  model: ROBSTRIDE_02
+  model: RS_02
   side: left
   station: ankle_differential_upper
   coupling: differential
@@ -294,7 +294,7 @@ motors:
     status: direction_confirmed_by_operator
 - name: left_ankle_motor_2
   cad_id: motor-13
-  model: ROBSTRIDE_02
+  model: RS_02
   side: left
   station: ankle_differential_lower
   coupling: differential
@@ -332,7 +332,7 @@ motors:
     status: direction_confirmed_by_operator
 - name: right_hip_pitch_motor
   cad_id: motor-04
-  model: ROBSTRIDE_04
+  model: RS_04
   side: right
   station: hip_pitch
   coupling: direct
@@ -365,7 +365,7 @@ motors:
     status: direction_confirmed_by_operator
 - name: right_hip_roll_motor
   cad_id: motor-06
-  model: ROBSTRIDE_03
+  model: RS_03
   side: right
   station: hip_roll
   coupling: direct
@@ -398,7 +398,7 @@ motors:
     status: direction_confirmed_by_operator
 - name: right_hip_yaw_motor
   cad_id: motor-07
-  model: ROBSTRIDE_03
+  model: RS_03
   side: right
   station: hip_yaw
   coupling: direct
@@ -431,7 +431,7 @@ motors:
     status: can_assigned_direction_calibration_required
 - name: right_knee_motor
   cad_id: motor-09
-  model: ROBSTRIDE_04
+  model: RS_04
   side: right
   station: knee
   coupling: direct
@@ -464,7 +464,7 @@ motors:
     status: can_assigned_direction_calibration_required
 - name: right_ankle_motor_1
   cad_id: motor-10
-  model: ROBSTRIDE_02
+  model: RS_02
   side: right
   station: ankle_differential_upper
   coupling: differential
@@ -502,7 +502,7 @@ motors:
     status: direction_confirmed_by_operator
 - name: right_ankle_motor_2
   cad_id: motor-08
-  model: ROBSTRIDE_02
+  model: RS_02
   side: right
   station: ankle_differential_lower
   coupling: differential
@@ -540,7 +540,7 @@ motors:
     status: direction_confirmed_by_operator
 - name: left_shoulder_pitch_motor
   cad_id: motor-02
-  model: ROBSTRIDE_03
+  model: RS_03
   side: left
   station: shoulder_pitch
   coupling: direct
@@ -573,7 +573,7 @@ motors:
     status: direction_confirmed_by_operator
 - name: left_shoulder_roll_motor
   cad_id: motor-24
-  model: ROBSTRIDE_03
+  model: RS_03
   side: left
   station: shoulder_roll
   coupling: direct
@@ -606,7 +606,7 @@ motors:
     status: can_assigned_direction_calibration_required
 - name: left_shoulder_yaw_motor
   cad_id: motor-26
-  model: ROBSTRIDE_06
+  model: RS_06
   side: left
   station: shoulder_yaw
   coupling: direct
@@ -639,7 +639,7 @@ motors:
     status: can_assigned_direction_calibration_required
 - name: left_elbow_pitch_motor
   cad_id: motor-25
-  model: ROBSTRIDE_06
+  model: RS_06
   side: left
   station: elbow_pitch
   coupling: direct
@@ -672,7 +672,7 @@ motors:
     status: can_assigned_direction_calibration_required
 - name: left_wrist_yaw_motor
   cad_id: motor-27
-  model: ROBSTRIDE_00
+  model: RS_00
   side: left
   station: wrist_yaw
   coupling: direct
@@ -705,7 +705,7 @@ motors:
     status: can_assigned_direction_calibration_required
 - name: left_wrist_pitch_motor
   cad_id: motor-28
-  model: ROBSTRIDE_00
+  model: RS_00
   side: left
   station: wrist_pitch
   coupling: direct
@@ -738,7 +738,7 @@ motors:
     status: direction_confirmed_by_operator
 - name: left_wrist_roll_motor
   cad_id: motor-23
-  model: ROBSTRIDE_00
+  model: RS_00
   side: left
   station: wrist_roll
   coupling: direct
@@ -771,7 +771,7 @@ motors:
     status: can_assigned_direction_calibration_required
 - name: right_shoulder_pitch_motor
   cad_id: motor-03
-  model: ROBSTRIDE_03
+  model: RS_03
   side: right
   station: shoulder_pitch
   coupling: direct
@@ -804,7 +804,7 @@ motors:
     status: direction_confirmed_by_operator
 - name: right_shoulder_roll_motor
   cad_id: motor-18
-  model: ROBSTRIDE_03
+  model: RS_03
   side: right
   station: shoulder_roll
   coupling: direct
@@ -837,7 +837,7 @@ motors:
     status: can_assigned_direction_calibration_required
 - name: right_shoulder_yaw_motor
   cad_id: motor-20
-  model: ROBSTRIDE_06
+  model: RS_06
   side: right
   station: shoulder_yaw
   coupling: direct
@@ -870,7 +870,7 @@ motors:
     status: can_assigned_direction_calibration_required
 - name: right_elbow_pitch_motor
   cad_id: motor-19
-  model: ROBSTRIDE_06
+  model: RS_06
   side: right
   station: elbow_pitch
   coupling: direct
@@ -903,7 +903,7 @@ motors:
     status: can_assigned_direction_calibration_required
 - name: right_wrist_yaw_motor
   cad_id: motor-21
-  model: ROBSTRIDE_00
+  model: RS_00
   side: right
   station: wrist_yaw
   coupling: direct
@@ -936,7 +936,7 @@ motors:
     status: can_assigned_direction_calibration_required
 - name: right_wrist_pitch_motor
   cad_id: motor-22
-  model: ROBSTRIDE_00
+  model: RS_00
   side: right
   station: wrist_pitch
   coupling: direct
@@ -969,7 +969,7 @@ motors:
     status: direction_confirmed_by_operator
 - name: right_wrist_roll_motor
   cad_id: motor-17
-  model: ROBSTRIDE_00
+  model: RS_00
   side: right
   station: wrist_roll
   coupling: direct

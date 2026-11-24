@@ -648,8 +648,8 @@ mod tests {
 robot_description: robot.urdf
 logical_buses: [{name: lower, host_id: 253}]
 motors:
-  - {name: second_motor, coordinate: b, bus: lower, id: 2, model: ROBSTRIDE_03, direction: -1}
-  - {name: first_motor, coordinate: a, bus: lower, id: 1, model: ROBSTRIDE_03, direction: 1}
+  - {name: second_motor, coordinate: b, bus: lower, id: 2, model: RS_03, direction: -1}
+  - {name: first_motor, coordinate: a, bus: lower, id: 1, model: RS_03, direction: 1}
 imus: [{name: imu, source_frame: imu, output_frame: base}]
 "#,
         )

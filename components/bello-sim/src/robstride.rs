@@ -224,7 +224,7 @@ mod tests {
             actuators: (1..=2)
                 .map(|id| ActuatorConfig {
                     id,
-                    model: "ROBSTRIDE_03".into(),
+                    model: "RS_03".into(),
                     direction: if id == 1 { -1 } else { 1 },
                     initial_position: 0.,
                     initial_temperature_c: 25.,
@@ -254,7 +254,7 @@ mod tests {
         let mut runtime =
             RobstrideSimulation::new(crate::tests::simulation(), vec![(config(), mapping)])
                 .unwrap();
-        let params = MotorParams::for_model("ROBSTRIDE_03", -1).unwrap();
+        let params = MotorParams::for_model("RS_03", -1).unwrap();
         for frame in [
             active_report_frame(0xfd, 1, true),
             param_write_u8_frame(0xfd, 1, 0x7005, 0),
@@ -358,7 +358,7 @@ mod tests {
         }
         let command = |motor, direction| {
             control_frame(
-                MotorParams::for_model("ROBSTRIDE_03", direction).unwrap(),
+                MotorParams::for_model("RS_03", direction).unwrap(),
                 ControlCommand {
                     motor_id: motor,
                     position: 0.5,
@@ -439,7 +439,7 @@ mod tests {
             ),
         ]);
         let mut runtime = RobstrideSimulation::new(simulation, vec![(config(), mapping)]).unwrap();
-        let params = MotorParams::for_model("ROBSTRIDE_03", -1).unwrap();
+        let params = MotorParams::for_model("RS_03", -1).unwrap();
         for frame in [
             param_write_u8_frame(0xfd, 1, 0x7005, 0),
             enable_frame(0xfd, 1),

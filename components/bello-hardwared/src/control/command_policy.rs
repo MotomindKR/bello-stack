@@ -174,7 +174,7 @@ name: motor
 coordinate: joint
 bus: can
 id: 1
-model: ROBSTRIDE_03
+model: RS_03
 command_policy: { limit: reject }
 "#,
         )
