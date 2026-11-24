@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import grpc  # type: ignore[import-untyped]
 import pytest
@@ -87,6 +89,101 @@ def test_async_commands_pipeline_before_acknowledgements(
         assert receipts[0].acknowledgement_latency_ms >= 30.0
 
     assert hardware_server.service.command_count == 4
+
+
+@pytest.mark.parametrize("late", [False, True], ids=["on-time", "late"])
+def test_async_receipt_uses_acknowledgement_deadline(
+    hardware_server: RunningServer, late: bool
+) -> None:
+    acknowledgement_timeout = 0.25
+    with (
+        Robot.connect(hardware_server.endpoint) as robot,
+        robot.group("leg").control(
+            "pytest", acknowledgement_timeout=acknowledgement_timeout
+        ) as control,
+    ):
+        control.start(frame())
+        acknowledge = threading.Event()
+        if not late:
+            acknowledge.set()
+        hardware_server.service.command_ack_gate = acknowledge
+        receipt = control.send_async(frame(0.1))
+        deadline = time.monotonic() + acknowledgement_timeout
+
+        if late:
+            time.sleep(acknowledgement_timeout)
+            acknowledge.set()
+
+        wait_until = time.monotonic() + 2.0
+        while not receipt.done() and time.monotonic() < wait_until:
+            time.sleep(0.001)
+        assert receipt.done()
+        latency_ms = receipt.acknowledgement_latency_ms
+        assert latency_ms is not None
+
+        if late:
+            assert latency_ms > acknowledgement_timeout * 1000
+            with pytest.raises(AcknowledgementError):
+                receipt.result()
+            assert control.state is ControlState.UNCERTAIN
+        else:
+            assert latency_ms < acknowledgement_timeout * 1000
+            time.sleep(max(0.0, deadline - time.monotonic()))
+            receipt.result()
+            assert control.state is ControlState.RUNNING
+            control.send(frame(0.2))
+
+
+@pytest.mark.parametrize("during_resume", [False, True], ids=["after-resume", "during-resume"])
+def test_closed_stream_receipt_preserves_resumed_control(
+    hardware_server: RunningServer, during_resume: bool
+) -> None:
+    with (
+        Robot.connect(hardware_server.endpoint) as robot,
+        robot.group("leg").control(
+            "pytest", acknowledgement_timeout=1.0, rpc_timeout=3.0
+        ) as control,
+    ):
+        control.start(frame())
+        acknowledge = threading.Event()
+        hardware_server.service.command_ack_gate = acknowledge
+        receipt = control.send_async(frame(0.1))
+        assert not receipt.done()
+        control.stop()
+        acknowledge.set()
+
+        if during_resume:
+            resume_started = threading.Event()
+            allow_resume = threading.Event()
+            read_started = threading.Event()
+
+            def pause_resume() -> None:
+                resume_started.set()
+                assert allow_resume.wait(2.0)
+
+            def read_receipt() -> None:
+                read_started.set()
+                receipt.result()
+
+            hardware_server.service.before_start_control = pause_resume
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                resume = executor.submit(control.resume, frame())
+                try:
+                    assert resume_started.wait(2.0)
+                    result = executor.submit(read_receipt)
+                    assert read_started.wait(2.0)
+                finally:
+                    allow_resume.set()
+                resume.result(timeout=3.0)
+                with pytest.raises(AcknowledgementError):
+                    result.result(timeout=3.0)
+        else:
+            control.resume(frame())
+            with pytest.raises(AcknowledgementError):
+                receipt.result()
+
+        assert control.state is ControlState.RUNNING
+        control.send(frame(0.2))
 
 
 def test_bounded_command_pipeline_preserves_fixed_rate_submission(

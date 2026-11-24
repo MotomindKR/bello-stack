@@ -56,7 +56,8 @@ class _Pending:
 class CommandReceipt:
     """Acknowledgement handle for a command submitted without blocking."""
 
-    _session: Any
+    _session: ControlSession
+    _stream: _CommandStream
     _sequence: int
     _pending: _Pending
     _deadline: float
@@ -125,18 +126,21 @@ class _CommandStream:
 
         return pending
 
-    def wait(self, sequence: int, pending: _Pending, timeout: float) -> Any:
-        if timeout <= 0.0 or not pending.event.wait(timeout):
-            with self._lock:
+    def wait(self, sequence: int, pending: _Pending, deadline: float) -> Any:
+        pending.event.wait(max(0.0, deadline - time.monotonic()))
+        with self._lock:
+            if pending.completed_at is None or pending.completed_at > deadline:
                 self._pending.pop(sequence, None)
-            raise AcknowledgementError(f"timed out waiting for command {sequence} acknowledgement")
-        if pending.error is not None:
-            raise pending.error
-        return pending.response
+                raise AcknowledgementError(
+                    f"timed out waiting for command {sequence} acknowledgement"
+                )
+            if pending.error is not None:
+                raise pending.error
+            return pending.response
 
     def send(self, request: proto.StreamCommandsRequest, timeout: float) -> Any:
         pending = self.submit(request, timeout)
-        return self.wait(request.sequence, pending, timeout)
+        return self.wait(request.sequence, pending, time.monotonic() + timeout)
 
     def _receive(self) -> None:
         try:
@@ -151,16 +155,17 @@ class _CommandStream:
                     return
                 with self._lock:
                     pending = self._pending.pop(response.sequence, None)
-                if pending is None:
-                    self._fail(
-                        AcknowledgementError(
-                            f"received unexpected command acknowledgement {response.sequence}"
-                        )
+                    if pending is not None:
+                        pending.response = response
+                        pending.completed_at = time.monotonic()
+                        pending.event.set()
+                        continue
+                self._fail(
+                    AcknowledgementError(
+                        f"received unexpected command acknowledgement {response.sequence}"
                     )
-                    return
-                pending.response = response
-                pending.completed_at = time.monotonic()
-                pending.event.set()
+                )
+                return
             if not self._closing:
                 self._fail(AcknowledgementError("command acknowledgement stream closed"))
         except grpc.RpcError as error:
@@ -174,25 +179,21 @@ class _CommandStream:
         with self._lock:
             if self._fatal is None:
                 self._fatal = error
-            pending = tuple(self._pending.values())
-            self._pending.clear()
-        for item in pending:
-            item.error = error
-            item.completed_at = time.monotonic()
-            item.event.set()
+            self._fail_pending(error)
+
+    def _fail_pending(self, error: BaseException) -> None:
+        for pending in self._pending.values():
+            pending.error = error
+            pending.completed_at = time.monotonic()
+            pending.event.set()
+        self._pending.clear()
 
     def close(self, timeout: float) -> None:
         with self._lock:
             if self._closing:
                 return
             self._closing = True
-            pending = tuple(self._pending.values())
-            self._pending.clear()
-        error = AcknowledgementError("command stream closed")
-        for item in pending:
-            item.error = error
-            item.completed_at = time.monotonic()
-            item.event.set()
+            self._fail_pending(AcknowledgementError("command stream closed"))
         with suppress(queue.Full):
             self._requests.put_nowait(self._SENTINEL)
         self._call.cancel()
@@ -419,6 +420,7 @@ class ControlSession:
             pending = stream.submit(request, self._acknowledgement_timeout)
             return CommandReceipt(
                 self,
+                stream,
                 sequence,
                 pending,
                 time.monotonic() + self._acknowledgement_timeout,
@@ -552,19 +554,18 @@ class ControlSession:
         self._check_renewal()
 
     def _resolve_receipt(self, receipt: CommandReceipt) -> None:
-        stream = self._stream
-        if stream is None:
-            raise self._invalid("await a command acknowledgement")
         try:
-            response = stream.wait(
+            response = receipt._stream.wait(
                 receipt._sequence,
                 receipt._pending,
-                receipt._deadline - time.monotonic(),
+                receipt._deadline,
             )
             self._validate_response(receipt._sequence, response)
             self._check_renewal()
         except BaseException as error:
-            self._handle_command_error(error)
+            with self._operation_lock:
+                if self._stream is receipt._stream:
+                    self._handle_command_error(error)
             raise
 
     def _validate_response(self, sequence: int, response: Any) -> None:
