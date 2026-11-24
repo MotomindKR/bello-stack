@@ -17,7 +17,7 @@ and Windows x86-64. [Linux workflow](../.github/workflows/ci.yml) · [Desktop wo
 | [bello-hardware-client](../components/bello-hardware-client) | CI | CI | CI | Rust gRPC client. Use TCP or TLS on Windows. |
 | [bello-hardware-python](../components/bello-hardware-python) | CI | Tested | Unverified | Python 3.10+ gRPC client. The installable package is `bello-hardware`. |
 | [bello-sim](../components/bello-sim) | CI | Tested | Unsupported | MuJoCo physics and simulated devices. Offline video recording requires Linux. |
-| [robstride-emulator](../components/robstride-emulator) | CI | CI | CI | Standalone motor emulator over UDP. The vCAN backend requires Linux. |
+| [Motor emulator](../components/motor-emulator) | CI | CI | CI | Standalone motor emulator over UDP. The vCAN backend requires Linux. |
 | [bello-state-estimatord](../components/bello-state-estimatord) | CI | Tested | Unverified | Estimates pose from encoder and IMU readings served by hardwared. |
 | [bello-hardware-api](../components/bello-hardware-api) | CI | CI | CI | Hardware gRPC service definitions and Rust bindings. |
 | [bello-pose-api](../components/bello-pose-api) | CI | CI | CI | Pose gRPC service definitions and Rust bindings. |
@@ -25,7 +25,7 @@ and Windows x86-64. [Linux workflow](../.github/workflows/ci.yml) · [Desktop wo
 | [bello-robot-description](../components/bello-robot-description) | CI | CI | CI | Loads robot models from URDF. |
 | [bello-sim-can](../components/bello-sim-can) | CI | CI | CI | Loopback UDP transport for simulated CAN frames. |
 | [cog-protocol](../components/cog-protocol) | CI | CI | CI | Power-board serial protocol. |
-| [robstride-protocol](../components/robstride-protocol) | CI | CI | CI | Motor CAN protocol. |
+| Motor CAN protocol | CI | CI | CI | Motor command and feedback frames. |
 | [bello-hardware-e2e](../components/bello-hardware-e2e) | CI | Tested | Unsupported | Process tests use Unix signals. UDP and gRPC cases run on macOS. vCAN cases require Linux. |
 
 ## Native executables

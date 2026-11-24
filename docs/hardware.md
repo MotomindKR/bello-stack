@@ -3,8 +3,8 @@
 `bello-hardwared` separates transport ownership from device protocols:
 
 ```text
-CAN supervisor    -> Robstride motor controller -> motor-group controller
-serial supervisor -> EBIMU sensor worker         -> telemetry
+CAN supervisor    -> motor controller    -> motor-group controller
+serial supervisor -> EBIMU sensor worker -> telemetry
 ```
 
 Each transport and device publishes a common lifecycle status, but recovery is
@@ -43,7 +43,7 @@ The session then owns two worker threads:
 - RX installs a kernel filter for extended-ID frames, blocks on SocketCAN,
   accepts only eight-byte frames, timestamps them, and publishes them to one
   process-wide bounded frame queue of 8192 entries. Standard-ID devices can
-  share the physical bus without entering the Robstride receive path.
+  share the physical bus without entering the motor feedback path.
 - TX waits for queued batches or a periodic target's next deadline.
 
 The supervisor checks the workers' failure channel every 20 ms. A reported
@@ -57,7 +57,7 @@ supported USB adapters by serial number, configures the selected classic-CAN
 channel at the declared nominal bitrate, and splits a `gsusbio` socket into a
 sender and receiver. The transmit worker retains the same prioritized queues
 and deadlines as SocketCAN; it submits USB sends through that runtime. The
-receiver forwards only extended, eight-byte data frames to Robstride. USB
+receiver forwards only extended, eight-byte data frames to the motor feedback dispatcher. USB
 disconnects, CAN error frames, and receive overflow end the session and enter
 the normal reconnect path. A completed send confirms the USB transfer, not CAN
 bus acknowledgment. Physical timing and fault response must be validated on
@@ -142,16 +142,16 @@ The bus becomes `Online` after the sockets open. It does not claim that every
 motor is healthy. Shutdown rejects remaining work and moves the lifecycle to
 `Shutdown`.
 
-## Robstride motor devices
+## Motor devices
 
 ### Startup is not enable
 
 At daemon startup, the motor manager constructs one logical
 `MotorController` for each configured motor, binds it to its bus, and starts a
-single `robstride-rx` feedback dispatcher. It does **not** send enable or motor
+single feedback dispatcher. It does **not** send enable or motor
 configuration commands. The device lifecycle waits for valid feedback, which
 may be received before the group is enabled. See
-[`hardware/robstride/manager.rs`](../components/bello-hardwared/src/hardware/robstride/manager.rs).
+`manager.rs` in the [hardware modules](../components/bello-hardwared/src/hardware).
 
 An `EnableGroup` operation performs the motor-side setup. For each motor, the
 controller sends one configuration-priority CAN batch in this order:
@@ -164,7 +164,7 @@ The motor then clears old cached feedback, arms its operating-feedback
 expectation, and waits for fresh healthy feedback. The group retries up to
 `enable_retries`, with each attempt bounded by `enable_timeout_ms`. The frame
 construction and feedback boundary are in
-[`hardware/robstride/controller.rs`](../components/bello-hardwared/src/hardware/robstride/controller.rs);
+`controller.rs` in the [hardware modules](../components/bello-hardwared/src/hardware);
 the group procedure is in
 [`control/group.rs`](../components/bello-hardwared/src/control/group.rs).
 
@@ -225,7 +225,7 @@ threshold the temperature fault latches. It clears at the motor-device layer
 only after temperature remains at or below the recovery threshold for the
 configured continuous recovery duration. Going above the recovery threshold
 restarts that timer. See
-[`hardware/robstride/health.rs`](../components/bello-hardwared/src/hardware/robstride/health.rs).
+`health.rs` in the [hardware modules](../components/bello-hardwared/src/hardware).
 
 If the CAN lifecycle leaves `Online`, each bound motor records a
 `communication` fault and enters reconnecting behavior. Once the transport is

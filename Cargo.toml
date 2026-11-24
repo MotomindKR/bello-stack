@@ -13,7 +13,7 @@ members = [
   "components/bello-robot-description",
   "components/bello-sim-can",
   "components/bello-state-estimatord",
-  "components/robstride-emulator",
+  "components/motor-emulator",
   "components/robstride-protocol",
 ]
 
@@ -43,7 +43,7 @@ parking_lot = "0.12"
 prost = "0.14"
 nalgebra = "0.34"
 rcgen = "0.14"
-robstride-emulator = { path = "components/robstride-emulator" }
+robstride-emulator = { path = "components/motor-emulator" }
 robstride-protocol = { path = "components/robstride-protocol" }
 serde = "1"
 serde_yaml = { package = "serde_yaml_ng", version = "0.10" }
