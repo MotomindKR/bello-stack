@@ -395,16 +395,17 @@ fn receive_prioritized(
             .values()
             .filter_map(|control| control.next_tick(now).map(|due| (due, control.clone())))
             .min_by_key(|(due, _)| *due);
-        let mut timeout = Duration::from_millis(20);
-        if let Some((due, control)) = earliest {
-            if let Some(batch) = control.take_due(now) {
-                return Some(Outbound::Periodic(control, batch));
+        let idle_timeout = Duration::from_millis(20);
+        let timeout = match earliest {
+            Some((due, control)) if due <= now => {
+                if let Some(batch) = control.take_due(now) {
+                    return Some(Outbound::Periodic(control, batch));
+                }
+                continue;
             }
-            // A revoked/stalled slot has no next tick. Avoid spinning on it.
-            if control.next_tick(now).is_some() {
-                timeout = timeout.min(due.saturating_duration_since(now));
-            }
-        }
+            Some((due, _)) => idle_timeout.min(due.duration_since(now)),
+            None => idle_timeout,
+        };
         select_biased! {
             recv(queues.safety) -> batch => return batch.ok().map(Outbound::Priority),
             recv(queues.configuration) -> batch => return batch.ok().map(Outbound::Priority),
@@ -424,13 +425,18 @@ mod tests {
     use crossbeam_channel::bounded;
 
     use super::*;
+    use crate::domain::GroupName;
 
-    fn periodic_fixture(valid_for: Duration) -> (BusSpec, PeriodicControl, Arc<PeriodicBatch>) {
+    fn test_bus_spec() -> BusSpec {
         let config: crate::config::BusConfig = serde_yaml::from_str(
             "name: can\ntransport: { type: socketcan, interface: vcan0 }\nbitrate: 1000000\nmaximum_utilization: 1.0",
         )
         .unwrap();
-        let spec = BusSpec::try_from(&config).unwrap();
+        BusSpec::try_from(&config).unwrap()
+    }
+
+    fn periodic_fixture(valid_for: Duration) -> (BusSpec, PeriodicControl, Arc<PeriodicBatch>) {
+        let spec = test_bus_spec();
         let control = PeriodicControl::new(
             crate::domain::GroupName::from("group"),
             spec.name.clone(),
@@ -668,6 +674,66 @@ mod tests {
             matches!(receive_prioritized(&queues, &AtomicBool::new(false), &AtomicBool::new(false)),
             Some(Outbound::Periodic(_, batch)) if batch.frames[0].id == 3)
         );
+    }
+
+    #[test]
+    fn healthy_periodic_group_writes_when_the_earliest_group_stalls() {
+        let spec = test_bus_spec();
+        let period = Duration::from_secs(1);
+        let expires_at = Instant::now() + Duration::from_secs(10);
+        let (wake_tx, wake) = bounded(1);
+        let mut periodic = std::collections::BTreeMap::new();
+        for (name, id) in [("earliest", 1), ("healthy", 2)] {
+            let group = GroupName::from(name);
+            let control = PeriodicControl::new(
+                group.clone(),
+                spec.name.clone(),
+                period,
+                Arc::new(AtomicU64::new(1)),
+                Arc::new(AtomicBool::new(false)),
+                wake_tx.clone(),
+            );
+            control.publish(vec![CanFrame { id, data: [0; 8] }], expires_at, 1);
+            periodic.insert(group, control);
+        }
+        let earliest = periodic[&GroupName::from("earliest")].clone();
+        earliest.sent(Instant::now() - period * 5);
+        wake.try_recv().unwrap();
+
+        let (control_tx, control) = bounded(1);
+        control_tx
+            .send(ControlBatch {
+                frames: vec![CanFrame {
+                    id: 3,
+                    data: [0; 8],
+                }],
+                expires_at,
+            })
+            .unwrap();
+        let queues = BusTxQueues {
+            safety: crossbeam_channel::never(),
+            configuration: crossbeam_channel::never(),
+            control,
+            periodic: Arc::new(parking_lot::Mutex::new(periodic)),
+            wake,
+        };
+        let selected =
+            receive_prioritized(&queues, &AtomicBool::new(false), &AtomicBool::new(false));
+        let now = Instant::now();
+        assert!(earliest.next_tick(now).is_none());
+        assert!(earliest.failure(now).is_some());
+        let Some(Outbound::Periodic(control, batch)) = selected else {
+            panic!("the due periodic group should be selected before queued control traffic");
+        };
+        let mut written = Vec::new();
+        assert!(
+            transmit_periodic_batch(&spec, &control, &batch, |frame| {
+                written.push(frame.id);
+                Ok(())
+            })
+            .unwrap()
+        );
+        assert_eq!(written, [2]);
     }
 
     #[test]
