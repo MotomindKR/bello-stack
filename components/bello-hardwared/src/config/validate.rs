@@ -270,6 +270,7 @@ impl Config {
 
         Ok(Self {
             robot_description,
+            simulation: deployment.simulation,
             runtime: deployment.runtime,
             grpc: deployment.grpc,
             serial_devices,

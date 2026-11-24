@@ -46,7 +46,8 @@ pub struct Config {
 #[serde(deny_unknown_fields)]
 pub struct ImuConfig {
     pub name: String,
-    pub device: PathBuf,
+    #[serde(flatten)]
+    pub endpoint: crate::uart::Endpoint,
     pub rate_hz: f64,
     pub orientation_std_radians: f64,
     pub acceleration_std_mps2: f64,
@@ -81,7 +82,7 @@ impl Config {
             power.validate()?;
             if let Some(imu) = &config.imu {
                 ensure!(
-                    power.device != imu.device,
+                    power.endpoint.path() != imu.endpoint.path(),
                     "IMU and power UART must be distinct"
                 );
             }
@@ -303,15 +304,6 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
         eprintln!("Startup support active; waiting for commands to every motor.");
     }
     let mut guide = robot.guide;
-    let mut serial = config
-        .imu
-        .as_ref()
-        .map(|imu| ebimu::Serial::open(&imu.device, imu.rate_hz, config.temperature_c))
-        .transpose()?;
-    let mut power_serial = config
-        .power_board
-        .map(crate::power_board::Serial::open)
-        .transpose()?;
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -345,16 +337,28 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
             )
             .await
     });
+    let (mut interrupt, mut terminate) = {
+        let _entered = runtime.enter();
+        use tokio::signal::unix::{SignalKind, signal};
+        (
+            signal(SignalKind::interrupt())?,
+            signal(SignalKind::terminate())?,
+        )
+    };
     let signal_stop = stop_tx.clone();
     let signals = runtime.spawn(async move {
-        let mut interrupt =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
-        let mut terminate =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
         tokio::select! { _ = interrupt.recv() => {}, _ = terminate.recv() => {} }
         signal_stop.send_replace(true);
-        Ok::<_, std::io::Error>(())
     });
+    let mut serial = config
+        .imu
+        .as_ref()
+        .map(|imu| ebimu::Serial::open(&imu.endpoint, imu.rate_hz, config.temperature_c))
+        .transpose()?;
+    let mut power_serial = config
+        .power_board
+        .map(crate::power_board::Serial::open)
+        .transpose()?;
     let result = (|| -> Result<()> {
         let timestep = Duration::from_secs_f64(physics.simulation.model().opt.timestep);
         let pose_period = Duration::from_secs_f64(1. / config.pose.rate_hz);

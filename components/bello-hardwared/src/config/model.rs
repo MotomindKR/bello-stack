@@ -36,6 +36,8 @@ pub(crate) struct Config {
     #[serde(skip)]
     pub(crate) robot_description: PathBuf,
     #[serde(default)]
+    pub simulation: bool,
+    #[serde(default)]
     pub runtime: RuntimeConfig,
     #[serde(default)]
     pub grpc: GrpcConfig,
@@ -54,6 +56,8 @@ pub(crate) struct Config {
 #[serde(deny_unknown_fields)]
 pub(crate) struct DeploymentConfig {
     pub description: PathBuf,
+    #[serde(default)]
+    pub simulation: bool,
     #[serde(default)]
     pub runtime: RuntimeConfig,
     #[serde(default)]

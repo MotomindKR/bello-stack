@@ -255,6 +255,6 @@ mod tests {
             "name: imu_serial\nport: /dev/ttyUSB0\nbaud_rate: 0\ntimeout_ms: 100",
         )
         .unwrap();
-        assert!(SerialSpec::try_from(&config).is_err());
+        assert!(SerialSpec::resolve(&config, false).is_err());
     }
 }

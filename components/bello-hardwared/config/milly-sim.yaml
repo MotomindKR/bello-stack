@@ -1,4 +1,5 @@
 description: ../../../descriptions/milly/hardware.yaml
+simulation: true
 bus_transports:
   can0: { type: sim, daemon_port: 19100, simulator_port: 19101 }
 enabled_groups: [arm]

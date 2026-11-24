@@ -88,7 +88,7 @@ impl ResolvedTopology {
         let mut serial_devices = HashMap::new();
         let mut serial_ports = HashSet::new();
         for raw in &config.serial_devices {
-            let spec = SerialSpec::try_from(raw)?;
+            let spec = SerialSpec::resolve(raw, config.simulation)?;
             if !serial_ports.insert(spec.port.clone()) {
                 bail!("serial port {} is configured more than once", spec.port);
             }

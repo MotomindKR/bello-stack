@@ -1,12 +1,13 @@
 description: ../../../descriptions/bello/hardware.yaml
+simulation: true
 
 bus_transports:
   can0: { type: sim, daemon_port: 19100, simulator_port: 19101 }
   can1: { type: sim, daemon_port: 19102, simulator_port: 19103 }
 
 serial_ports:
-  imu_serial: pty:imu
-  power_board_serial: pty:power
+  imu_serial: /tmp/bello-sim/imu
+  power_board_serial: /tmp/bello-sim/power
 
 enabled_power_boards: [power_board]
 

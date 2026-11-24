@@ -1,15 +1,15 @@
-use crate::uart::Uart;
+use crate::uart::{Endpoint, Uart};
 use anyhow::{Result, ensure};
 use cog_protocol::{Profile, encode};
 use serde::Deserialize;
-use std::path::PathBuf;
 use std::time::Duration;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub name: String,
-    pub device: PathBuf,
+    #[serde(flatten)]
+    pub endpoint: Endpoint,
     pub battery_voltage_v: f32,
     pub battery_current_a: f32,
     pub battery_soc_percent: f32,
@@ -28,7 +28,7 @@ pub struct Config {
 impl Config {
     pub fn validate(&self) -> Result<()> {
         ensure!(
-            !self.name.trim().is_empty() && !self.device.as_os_str().is_empty(),
+            !self.name.trim().is_empty() && !self.endpoint.path().as_os_str().is_empty(),
             "empty power board name/device"
         );
         ensure!(
@@ -147,10 +147,10 @@ pub struct Serial {
 
 impl Serial {
     pub fn open(config: Config) -> Result<Self> {
-        let device = config.device.clone();
+        let endpoint = config.endpoint.clone();
         let encoder = Encoder::new(config)?;
         Ok(Self {
-            uart: Uart::open(&device, encoder)?,
+            uart: Uart::open(&endpoint, encoder)?,
         })
     }
     pub fn update(&mut self, now: Duration) -> Result<()> {
@@ -241,7 +241,7 @@ mod tests {
     fn real_pty_produces_valid_wire_data() {
         let pty = nix::pty::openpty(None, None).unwrap();
         let mut c = config();
-        c.device = nix::unistd::ttyname(&pty.slave).unwrap();
+        c.endpoint = Endpoint::Device(nix::unistd::ttyname(&pty.slave).unwrap());
         let mut serial = Serial::open(c).unwrap();
         let mut peer = std::fs::File::from(pty.master);
         nix::fcntl::fcntl(

@@ -11,7 +11,7 @@ use robstride_protocol::{MotorParams, active_report_frame, parse_feedback};
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{Read, Seek, Write};
-use std::os::fd::AsRawFd;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::process::{Child, Command};
 use std::time::{Duration, Instant};
@@ -42,8 +42,9 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
         .find(|m| &m.bus == first_bus)
         .unwrap();
     let params = MotorParams::for_model(&motor.model, motor.direction).unwrap();
-    let imu_endpoint = format!("imu-test-{}", std::process::id());
-    let power_endpoint = format!("power-test-{}", std::process::id());
+    let endpoints = tempfile::tempdir().unwrap();
+    let imu_link = endpoints.path().join("imu");
+    let power_link = endpoints.path().join("power");
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     drop(listener);
@@ -64,8 +65,8 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
     }
     let socket = &clients[first_bus];
     socket.set_nonblocking(true).unwrap();
-    yaml["imu"]["device"] = format!("pty:{imu_endpoint}").into();
-    yaml["power_board"]["device"] = format!("pty:{power_endpoint}").into();
+    yaml["imu"]["pty_link"] = serde_yaml::to_value(&imu_link).unwrap();
+    yaml["power_board"]["pty_link"] = serde_yaml::to_value(&power_link).unwrap();
     yaml["pose"]["listen"] = address.to_string().into();
     #[cfg(target_os = "linux")]
     let recording = tempfile::tempdir().unwrap();
@@ -121,17 +122,17 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
         .await
         .unwrap()
         .into_inner();
-    let attach = |name: &str| {
-        let (slave, control) = bello_sim_serial::connect(name, Duration::from_secs(2)).unwrap();
-        nix::fcntl::fcntl(
-            slave.as_raw_fd(),
-            nix::fcntl::FcntlArg::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
-        )
-        .unwrap();
-        (File::from(slave), control)
+    let open_serial = |link: &Path| {
+        assert!(link.is_symlink());
+        File::options()
+            .read(true)
+            .write(true)
+            .custom_flags(nix::libc::O_NOCTTY | nix::libc::O_NONBLOCK)
+            .open(link)
+            .unwrap()
     };
-    let (mut serial, _imu_connection) = attach(&imu_endpoint);
-    let (mut power_peer, _power_connection) = attach(&power_endpoint);
+    let mut serial = open_serial(&imu_link);
+    let mut power_peer = open_serial(&power_link);
     serial
         .write_all(b"<soc1><sof2><sog1><soa2><som0><sot0><sots1><sor5>")
         .unwrap();
@@ -231,6 +232,12 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
             let mut log = String::new();
             process_log.read_to_string(&mut log).unwrap();
             assert!(status.success(), "{log}");
+            for link in [&imu_link, &power_link] {
+                assert_eq!(
+                    link.symlink_metadata().unwrap_err().kind(),
+                    std::io::ErrorKind::NotFound
+                );
+            }
             #[cfg(target_os = "linux")]
             {
                 assert!(log.contains("llvmpipe"), "{log}");

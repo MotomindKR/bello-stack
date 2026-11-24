@@ -9,14 +9,14 @@ motor_kp_scale: 1.0
 motor_kd_scale: 1.0
 imu:
   name: imu
-  device: pty:imu
+  pty_link: /tmp/bello-sim/imu
   rate_hz: 200
   orientation_std_radians: 0.005
   acceleration_std_mps2: 0.1
   seed: 0
 power_board:
   name: power_board
-  device: pty:power
+  pty_link: /tmp/bello-sim/power
   battery_voltage_v: 48.0
   battery_current_a: 2.0
   battery_soc_percent: 75.0
