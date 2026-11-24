@@ -55,6 +55,13 @@ pub async fn queued_feedback_keeps_its_age(
         .await?;
     require_state(lease.enable().await?, GroupState::Damped)?;
 
+    let before_pause = Instant::now();
+    let captured_before_pause = client
+        .grpc_client()
+        .get_state_frame(GetStateFrameRequest::default())
+        .await?
+        .into_inner()
+        .captured_monotonic_ns;
     daemon.suspend()?;
     emulator.stop();
     send_feedback([1, 2].map(|motor_id| {
@@ -72,6 +79,7 @@ pub async fn queued_feedback_keeps_its_age(
             MotorParams::for_model("ROBSTRIDE_03", 1).unwrap(),
         )
     }))?;
+    let latest_possible_send_ns = captured_before_pause + before_pause.elapsed().as_nanos() as u64;
     let feedback_timeout = Duration::from_millis(super::config::FEEDBACK_TIMEOUT_MS);
     sleep(feedback_timeout * 3).await;
     daemon.resume()?;
@@ -91,9 +99,19 @@ pub async fn queued_feedback_keeps_its_age(
                         motor.motor_name,
                         Duration::from_nanos(motor.sample_age_ns),
                     );
+                    assert!(
+                        motor.sample_monotonic_ns <= latest_possible_send_ns,
+                        "queued feedback timestamp was later than the last send"
+                    );
                 }
                 if frame.groups[0].state == GroupState::Fault as i32 {
                     assert_eq!(frame.groups[0].cause, GroupCause::StaleFeedback as i32);
+                    let ages: Vec<_> = frame
+                        .motors
+                        .iter()
+                        .map(|motor| Duration::from_nanos(motor.sample_age_ns))
+                        .collect();
+                    println!("Queued motor sample ages {ages:?}, group fault StaleFeedback");
                     return Ok(());
                 }
             }

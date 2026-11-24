@@ -1,5 +1,5 @@
 use std::io;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use bello_sim_can::SimSocket;
@@ -22,6 +22,8 @@ impl FrameWriter for SimSocket {
 }
 
 impl BlockingSocket for SimSocket {
+    type Writer = Self;
+
     fn open_pair(spec: &BusSpec) -> Result<(Self, Self)> {
         let BusTransportConfig::Sim(bus) = &spec.transport else {
             unreachable!("sim CAN supervisor requires a sim transport")
@@ -34,11 +36,11 @@ impl BlockingSocket for SimSocket {
     }
 
     fn receive(&self, bus: &BusName) -> io::Result<Option<ReceivedFrame>> {
-        let frame = self.recv()?;
+        let (frame, received) = self.recv_timestamped()?;
         Ok(Some(ReceivedFrame {
             bus: bus.clone(),
             frame: frame.into(),
-            received: Instant::now(),
+            received,
         }))
     }
 }

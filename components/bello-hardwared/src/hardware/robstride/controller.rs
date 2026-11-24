@@ -409,7 +409,7 @@ impl MotorController {
 
         if let Some((cause, detail)) = fault {
             self.mark_fault(cause, detail);
-        } else {
+        } else if received.elapsed() < self.feedback_timeout {
             let warning =
                 (value.temperature >= self.spec.health.temperature_warning_c).then(|| {
                     format!(
@@ -418,6 +418,8 @@ impl MotorController {
                     )
                 });
             self.mark_online(warning.as_deref());
+        } else {
+            self.check_feedback_watchdog();
         }
     }
 
