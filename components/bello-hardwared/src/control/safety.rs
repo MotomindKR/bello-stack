@@ -20,16 +20,12 @@ pub(super) fn stop<'a>(
     motors: impl IntoIterator<Item = &'a MotorController>,
     clear_fault: bool,
 ) -> Result<(), String> {
-    let motors = motors.into_iter().collect::<Vec<_>>();
     let mut batches = BTreeMap::<BusName, BusBatch>::new();
-    for motor in &motors {
+    for motor in motors {
+        motor.stop_expecting_operating_feedback();
         batch_for(&mut batches, motor).push(motor.safety_stop_frame(clear_fault));
     }
-    let result = deliver(batches);
-    for motor in motors {
-        motor.mark_stopped();
-    }
-    result
+    deliver(batches)
 }
 
 fn batch_for<'a>(

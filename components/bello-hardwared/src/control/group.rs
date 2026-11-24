@@ -578,12 +578,26 @@ impl GroupController {
         while Instant::now() < deadline {
             self.check_enable_interrupted()
                 .map_err(EnableFailure::into_detail)?;
-            if self
+            // Keep the checked feedback and latches stable until the whole group passes recovery.
+            if let Some(mut recovery) = self
                 .motors
                 .iter()
-                .all(|motor| motor.controller.recovery_ready())
+                .map(|motor| motor.controller.recovery_feedback())
+                .collect::<Option<Vec<_>>>()
             {
-                self.validate_mechanical_feedback()?;
+                let feedback = self
+                    .motors
+                    .iter()
+                    .zip(&recovery)
+                    .map(|(motor, sample)| (motor.controller.spec.name.clone(), sample.feedback))
+                    .collect();
+                self.spec
+                    .mechanical
+                    .validate_feedback_positions(&feedback)
+                    .map_err(|violation| violation.detail)?;
+                for motor in &mut recovery {
+                    motor.clear_latched_fault();
+                }
                 return Ok(());
             }
             thread::sleep(Duration::from_millis(5));
@@ -591,7 +605,7 @@ impl GroupController {
         let unavailable = self
             .motors
             .iter()
-            .filter(|motor| !motor.controller.recovery_ready())
+            .filter(|motor| motor.controller.recovery_feedback().is_none())
             .map(|motor| {
                 let status = motor.controller.status();
                 format!(
@@ -709,26 +723,16 @@ impl GroupController {
         }
         let state = self.fsm.state();
         if matches!(state, GroupState::Damped | GroupState::Running)
-            && let Some((name, status, fault)) = self.motors.iter().find_map(|motor| {
-                let status = motor.controller.status();
-                (!status.state.is_online()).then(|| {
-                    (
-                        motor.controller.spec.name.clone(),
-                        status,
-                        motor.controller.fault(),
-                    )
-                })
+            && let Some((name, fault)) = self.motors.iter().find_map(|motor| {
+                motor
+                    .controller
+                    .control_fault()
+                    .map(|fault| (&motor.controller.spec.name, fault))
             })
         {
-            let cause = fault.as_ref().map_or(FaultCause::Communication, |fault| {
-                self.motor_fault_cause(fault.cause)
-            });
-            let detail = fault
-                .as_ref()
-                .map_or(status.detail.as_str(), |fault| fault.detail.as_str());
             self.enter_fault(
-                cause,
-                format!("motor {name} unavailable: {} ({})", status.state, detail),
+                self.motor_fault_cause(fault.cause),
+                format!("motor {name} unavailable: {}", fault.detail),
             );
             self.update_snapshot(jitter_us);
             return;
