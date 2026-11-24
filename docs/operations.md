@@ -106,7 +106,7 @@ the repository root. The Linux Nix shell supplies the library; on macOS, point
 `libmujoco.dylib`.
 
 ```sh
-cargo run -p bello-mujoco -- run --config components/bello-mujoco/config/emulator_milly.yaml
+cargo run -p bello-sim -- run --config components/bello-sim/config/emulator_milly.yaml
 cargo run -p bello-hardwared -- --config components/bello-hardwared/config/milly-sim.yaml
 ```
 
@@ -157,7 +157,7 @@ The [Linux SocketCAN tests](development.md#host-vcan-integration-test) capture f
 
 ## Bello and Bello Mini emulation
 
-Follow the [native MuJoCo runtime instructions](../components/bello-mujoco/README.md)
+Follow the [native MuJoCo runtime instructions](../components/bello-sim/README.md)
 to start `emulator_bello.yaml`
 or `emulator_mini.yaml`. The simulator provides the IMU and power-board serial ports to hardwared automatically on Linux and macOS. Start MuJoCo first, then hardwared under the same user. After restarting MuJoCo, restart hardwared to open the new PTYs.
 For Bello, run hardwared and the pose estimator in

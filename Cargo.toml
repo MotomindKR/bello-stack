@@ -9,7 +9,7 @@ members = [
   "components/bello-hardware-e2e",
   "components/bello-hardwared",
   "components/bello-pose-api",
-  "components/bello-mujoco",
+  "components/bello-sim",
   "components/bello-robot-description",
   "components/bello-sim-can",
   "components/bello-state-estimatord",

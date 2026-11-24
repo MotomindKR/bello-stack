@@ -1,14 +1,14 @@
-# Native MuJoCo runtime
+# bello-sim
 
-Headless robot physics for hardware-in-the-loop testing. Run the following
+The native simulator runs headless MuJoCo physics for hardware-in-the-loop testing. Run the following
 commands from the `bello-stack` root in the Linux Nix shell. If building outside
 Nix, set `MUJOCO_DYNAMIC_LINK_DIR` and the loader path to the matching MuJoCo library.
 
 ## Validate and run a model
 
 ```sh
-cargo run -p bello-mujoco -- check --config components/bello-mujoco/config/bello_mini.yaml
-cargo run -p bello-mujoco -- run --config components/bello-mujoco/config/emulator_mini.yaml
+cargo run -p bello-sim -- check --config components/bello-sim/config/bello_mini.yaml
+cargo run -p bello-sim -- run --config components/bello-sim/config/emulator_mini.yaml
 ```
 
 The shipped profiles use [loopback UDP for CAN](../../docs/operations.md#simulate-can-without-socketcan).
@@ -39,7 +39,7 @@ fixture held. Stopping or disabling motors after release does not reapply it.
 The process integration test uses UDP and pseudo-terminals. On Linux it also checks video output with software Mesa and ffmpeg.
 
 ```sh
-cargo test -p bello-mujoco --test simulation
+cargo test -p bello-sim --test simulation
 ```
 
 ## Milly physics
@@ -49,8 +49,8 @@ Pair it with [hardwared's simulation profile](../bello-hardwared/config/milly-si
 Gravity acts on the arm while motors are disabled.
 
 ```sh
-cargo run -p bello-mujoco -- check --config components/bello-mujoco/config/milly.yaml
-cargo run -p bello-mujoco -- run --config components/bello-mujoco/config/emulator_milly.yaml
+cargo run -p bello-sim -- check --config components/bello-sim/config/milly.yaml
+cargo run -p bello-sim -- run --config components/bello-sim/config/emulator_milly.yaml
 ```
 
 To update the arm's collision geometry, edit the [primitive definitions](../../descriptions/milly/collision-primitives.json)
@@ -68,9 +68,9 @@ A camera failure interrupts the stream while physics continues.
 Preview the cameras without CAN devices:
 
 ```sh
-cargo run -p bello-mujoco --example camera_preview -- preview \
-  --model-config components/bello-mujoco/config/bello_mini_torso.yaml \
-  --camera-config components/bello-mujoco/config/cameras_mini_torso.yaml
+cargo run -p bello-sim --example camera_preview -- preview \
+  --model-config components/bello-sim/config/bello_mini_torso.yaml \
+  --camera-config components/bello-sim/config/cameras_mini_torso.yaml
 ```
 
 ## Software video
@@ -108,9 +108,9 @@ and poses. Re-render with the same executable (change the output path in
 `video.json` if its previous video exists):
 
 ```bash
-cargo run --locked -p bello-mujoco -- \
+cargo run --locked -p bello-sim -- \
   render --recording outputs/emulator.recording
 
-cargo test --locked -p bello-mujoco \
+cargo test --locked -p bello-sim \
   --test video -- --ignored
 ```

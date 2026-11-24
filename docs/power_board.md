@@ -114,7 +114,7 @@ required when using host-controlled damping as an operational stop.
 
 ## Native emulation
 
-[bello-mujoco](../components/bello-mujoco/) publishes synthetic AGX readings on
+[bello-sim](../components/bello-sim/) publishes synthetic AGX readings on
 the power UART. See the [operations guide](operations.md) for virtual-device setup.
 
 Use masks to test warning

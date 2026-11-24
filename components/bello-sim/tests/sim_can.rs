@@ -1,5 +1,5 @@
 use anyhow::{Result, ensure};
-use bello_mujoco::runtime::{Config, run};
+use bello_sim::runtime::{Config, run};
 mod support;
 use robstride_emulator::config::CanInterface;
 use robstride_protocol::{

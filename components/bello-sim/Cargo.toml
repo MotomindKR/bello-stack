@@ -1,5 +1,5 @@
 [package]
-name = "bello-mujoco"
+name = "bello-sim"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

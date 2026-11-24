@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bello_mujoco::model::{ModelConfig, build};
+use bello_sim::model::{ModelConfig, build};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -40,7 +40,7 @@ enum Command {
 fn main() -> Result<()> {
     let (config, export_physics) = match Args::parse().command {
         Command::Cameras { model, config } => {
-            return bello_mujoco::cameras::render(&model, &config);
+            return bello_sim::cameras::render(&model, &config);
         }
         Command::Render { recording } => {
             // The renderer starts here before any threads or graphics libraries.
@@ -49,7 +49,7 @@ fn main() -> Result<()> {
                 std::env::set_var("GALLIUM_DRIVER", "llvmpipe");
                 std::env::set_var("LP_NUM_THREADS", "2");
             }
-            return bello_mujoco::video::render(&recording);
+            return bello_sim::video::render(&recording);
         }
         Command::Check {
             config,
@@ -68,10 +68,7 @@ fn main() -> Result<()> {
                     Ok(std::time::Duration::try_from_secs_f64(seconds)?)
                 })
                 .transpose()?;
-            return bello_mujoco::runtime::run(
-                bello_mujoco::runtime::Config::load(&config)?,
-                duration,
-            );
+            return bello_sim::runtime::run(bello_sim::runtime::Config::load(&config)?, duration);
         }
     };
     let robot = build(&ModelConfig::load(&config)?, export_physics.as_deref())?;

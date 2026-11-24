@@ -8,7 +8,7 @@ Bello Stack lets a Rust or Python application read a robot's sensors and command
 flowchart LR
     app["Your application<br/>Rust or Python client"] <-->|"gRPC commands and telemetry"| daemon["bello-hardwared"]
     daemon <-->|"CAN and serial"| robot["Physical motors and sensors"]
-    daemon <-->|"Loopback UDP and simulated serial"| sim["bello-mujoco"]
+    daemon <-->|"Loopback UDP and simulated serial"| sim["bello-sim"]
 ```
 
 Your application chooses the motion. The daemon owns the devices, checks commands against the robot's limits, and applies the configured response to faults. Clients can read telemetry without taking control. To command a motor group, such as an arm, a client acquires an exclusive lease for that group. In simulation, MuJoCo advances the physics and returns motor and sensor feedback through the same device interfaces.
@@ -33,6 +33,6 @@ The daemon loads the deployment and its robot description, prints `configuration
 | --- | --- |
 | Write a controller or telemetry tool | [Python client](components/bello-hardware-python/README.md), [Rust client](components/bello-hardware-client/README.md), and [hardware API](docs/api.md) |
 | Bring up a physical robot | [Hardware setup](docs/operations.md#physical-startup), [desktop builds and USB adapters](docs/desktop.md), and [control and safety](docs/control-and-safety.md) |
-| Test a controller without a robot | [MuJoCo physics simulation](components/bello-mujoco/README.md) or [Robstride fault injection](components/robstride-emulator/README.md#fault-scenarios) |
+| Test a controller without a robot | [MuJoCo physics simulation](components/bello-sim/README.md) or [Robstride fault injection](components/robstride-emulator/README.md#fault-scenarios) |
 | Add or adapt a robot | [Robot descriptions](descriptions) and [configuration reference](docs/configuration.md) |
-| Estimate pose or use simulated cameras | [Encoder and IMU pose estimator](components/bello-state-estimatord/README.md) and [MuJoCo camera streams](components/bello-mujoco/README.md#live-camera-streams) |
+| Estimate pose or use simulated cameras | [Encoder and IMU pose estimator](components/bello-state-estimatord/README.md) and [MuJoCo camera streams](components/bello-sim/README.md#live-camera-streams) |

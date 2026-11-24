@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::Command;
 
 fn render(directory: &Path) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_bello-mujoco"))
+    Command::new(env!("CARGO_BIN_EXE_bello-sim"))
         .args(["render", "--recording"])
         .arg(directory)
         .output()

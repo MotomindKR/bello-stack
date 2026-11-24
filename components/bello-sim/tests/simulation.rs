@@ -2,11 +2,11 @@
 
 mod support;
 
-use bello_mujoco::{
+use bello_pose_api::{WatchPoseRequest, pose_service_client::PoseServiceClient};
+use bello_sim::{
     model::{Hardware, ModelConfig},
     runtime::Config,
 };
-use bello_pose_api::{WatchPoseRequest, pose_service_client::PoseServiceClient};
 use robstride_protocol::{MotorParams, active_report_frame, parse_feedback};
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -90,7 +90,7 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
     let mut process_log = tempfile::tempfile().unwrap();
     drop(simulator_ports);
     let mut process = Process(
-        Command::new(env!("CARGO_BIN_EXE_bello-mujoco"))
+        Command::new(env!("CARGO_BIN_EXE_bello-sim"))
             .args(["run", "--config"])
             .arg(file.path())
             .stdin(File::from(operator.slave))
