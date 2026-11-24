@@ -385,10 +385,13 @@ impl MotorController {
     }
 
     pub(super) fn check_feedback_watchdog(&self) {
+        self.check_feedback_age(&mut self.feedback.write());
+    }
+
+    fn check_feedback_age(&self, state: &mut FeedbackState) {
         if !self.bus.status().state.is_online() {
             return;
         }
-        let mut state = self.feedback.write();
         let Some(operating) = &state.operating else {
             return;
         };
@@ -398,7 +401,7 @@ impl MotorController {
         };
         if stale_for >= self.feedback_timeout {
             self.mark_fault(
-                &mut state,
+                state,
                 MotorFault {
                     cause: MotorFaultCause::StaleFeedback,
                     detail: format!(
@@ -414,12 +417,12 @@ impl MotorController {
         let published_velocity = self.velocity_filter.lock().apply(value.velocity, received);
         {
             let mut state = self.feedback.write();
-            self.update_health(&mut state, value, received);
             state.latest = Some(TimedFeedback {
                 value,
                 published_velocity,
                 received,
             });
+            self.update_health(&mut state, value, received);
         }
         self.telemetry.send(TelemetryPayload::Motor(MotorTelemetry {
             group: self.group.clone(),
@@ -457,6 +460,8 @@ impl MotorController {
                 state.latched_fault.get_or_insert_with(|| fault.clone());
             }
             self.mark_fault(state, fault);
+        } else if received.elapsed() >= self.feedback_timeout {
+            self.check_feedback_age(state);
         } else {
             if let Some(operating) = operating {
                 operating.confirmed = true;

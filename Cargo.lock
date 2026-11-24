@@ -262,6 +262,7 @@ dependencies = [
  "bello-hardware-api",
  "bello-hardware-client",
  "bello-hardwared",
+ "bello-sim-can",
  "nix 0.29.0",
  "rcgen",
  "robstride-emulator",
@@ -365,8 +366,10 @@ dependencies = [
 name = "bello-sim-can"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "robstride-protocol",
  "serde",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

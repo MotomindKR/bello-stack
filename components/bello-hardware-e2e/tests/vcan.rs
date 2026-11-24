@@ -28,6 +28,47 @@ use tokio::sync::mpsc;
 use tokio::time::{Instant, sleep, timeout};
 use tokio_stream::wrappers::ReceiverStream;
 
+#[tokio::test]
+#[ignore = "requires an isolated host vcan interface"]
+async fn queued_socketcan_feedback_keeps_its_age() -> Result<()> {
+    let interface = selected_interface()?;
+    require_vcan(&interface)?;
+    let directory = tempfile::tempdir()?;
+    let hardware_config = directory.path().join("hardwared.yaml");
+    let emulator_config = directory.path().join("emulator.yaml");
+    let address = available_loopback_address()?;
+    support::config::write_hardwared_with_control_rate(
+        &hardware_config,
+        &interface,
+        address,
+        250.0,
+    )?;
+    fs::write(&emulator_config, support::config::emulator(&interface))?;
+    let mut daemon = ManagedProcess::spawn(
+        "hardwared",
+        env!("CARGO_BIN_EXE_hardwared-e2e-fixture"),
+        [&hardware_config],
+    )?;
+    let mut emulator = ManagedProcess::spawn(
+        "emulator",
+        env!("CARGO_BIN_EXE_robstride-emulator-e2e-fixture"),
+        [&emulator_config],
+    )?;
+    support::scenario::queued_feedback_keeps_its_age(
+        &format!("http://{address}"),
+        &mut daemon,
+        &mut emulator,
+        |frames| {
+            let sender = CanSocket::open(&interface)?;
+            for frame in frames {
+                write_frame(&sender, frame)?;
+            }
+            Ok(())
+        },
+    )
+    .await
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires an isolated host vcan interface"]
 async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<()> {

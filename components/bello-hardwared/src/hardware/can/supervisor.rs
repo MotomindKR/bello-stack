@@ -59,7 +59,7 @@ pub(super) fn run(
     match &spec.transport {
         BusTransportConfig::Socketcan { .. } => {
             #[cfg(target_os = "linux")]
-            blocking::run::<::socketcan::CanSocket>(spec, queues, frames, lifecycle, shutdown);
+            blocking::run::<socketcan::SocketCanReader>(spec, queues, frames, lifecycle, shutdown);
             #[cfg(not(target_os = "linux"))]
             {
                 lifecycle.enter_fault(
