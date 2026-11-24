@@ -60,7 +60,7 @@ simulation: true
 buses:
   - { name: can, transport: { type: sim, daemon_port: 1, simulator_port: 2 } }
 motors:
-  - { name: motor, coordinate: direct_joint, bus: can, id: 1, model: ROBSTRIDE_03,
+  - { name: motor, coordinate: direct_joint, bus: can, id: 1, model: RS_03,
       limits: { position_min: -1, position_max: 1 },
       health: { safe_position_min: -1, safe_position_max: 1 } }
 motor_groups:
