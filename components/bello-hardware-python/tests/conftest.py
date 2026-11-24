@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -106,6 +106,8 @@ class FakeHardware:
         self.disable_count = 0
         self.reject_next = False
         self.command_delay = 0.0
+        self.command_ack_gate: threading.Event | None = None
+        self.before_start_control: Callable[[], None] | None = None
         self.renew_failure: grpc.StatusCode | None = None
         self.enable_failure: grpc.StatusCode | None = None
         self.start_failure: grpc.StatusCode | None = None
@@ -156,6 +158,8 @@ class FakeHardware:
 
     def StartControl(self, request: Any, context: Any) -> proto.StartControlResponse:
         del request
+        if self.before_start_control is not None:
+            self.before_start_control()
         with self.lock:
             self.command_count += 1
             self.state = proto.GROUP_STATE_RUNNING
@@ -189,6 +193,8 @@ class FakeHardware:
     ) -> Iterator[proto.StreamCommandsResponse]:
         del context
         for request in requests:
+            if self.command_ack_gate is not None:
+                self.command_ack_gate.wait(2.0)
             if self.command_delay:
                 time.sleep(self.command_delay)
             with self.lock:
