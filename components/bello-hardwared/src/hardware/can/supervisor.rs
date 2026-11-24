@@ -395,16 +395,17 @@ fn receive_prioritized(
             .values()
             .filter_map(|control| control.next_tick(now).map(|due| (due, control.clone())))
             .min_by_key(|(due, _)| *due);
-        let mut timeout = Duration::from_millis(20);
-        if let Some((due, control)) = earliest {
-            if let Some(batch) = control.take_due(now) {
-                return Some(Outbound::Periodic(control, batch));
+        let idle_timeout = Duration::from_millis(20);
+        let timeout = match earliest {
+            Some((due, control)) if due <= now => {
+                if let Some(batch) = control.take_due(now) {
+                    return Some(Outbound::Periodic(control, batch));
+                }
+                continue;
             }
-            // A revoked/stalled slot has no next tick. Avoid spinning on it.
-            if control.next_tick(now).is_some() {
-                timeout = timeout.min(due.saturating_duration_since(now));
-            }
-        }
+            Some((due, _)) => idle_timeout.min(due.duration_since(now)),
+            None => idle_timeout,
+        };
         select_biased! {
             recv(queues.safety) -> batch => return batch.ok().map(Outbound::Priority),
             recv(queues.configuration) -> batch => return batch.ok().map(Outbound::Priority),
