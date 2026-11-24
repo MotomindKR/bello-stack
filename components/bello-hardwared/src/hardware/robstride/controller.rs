@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::{Mutex, RwLock, RwLockWriteGuard};
 use robstride_protocol::{
     ControlCommand, active_report_frame, control_frame, enable_frame, param_write_u8_frame,
     stop_frame,
@@ -99,6 +99,30 @@ pub(crate) struct TimedFeedback {
     pub(crate) received: Instant,
 }
 
+struct OperatingFeedback {
+    since: Instant,
+    confirmed: bool,
+}
+
+#[derive(Default)]
+struct FeedbackState {
+    latest: Option<TimedFeedback>,
+    operating: Option<OperatingFeedback>,
+    current_fault: Option<MotorFault>,
+    latched_fault: Option<MotorFault>,
+}
+
+pub(crate) struct MotorRecovery<'a> {
+    state: RwLockWriteGuard<'a, FeedbackState>,
+    pub(crate) feedback: Feedback,
+}
+
+impl MotorRecovery<'_> {
+    pub(crate) fn clear_latched_fault(&mut self) {
+        self.state.latched_fault = None;
+    }
+}
+
 pub(super) struct FeedbackProcessingConfig {
     pub(super) timeout: Duration,
     pub(super) velocity_filter: MotorVelocityFilterConfig,
@@ -110,13 +134,11 @@ pub(crate) struct MotorController {
     pub(crate) group: GroupName,
     bus: BusHandle,
     control_batcher: Arc<ControlBatcher>,
-    feedback: Arc<RwLock<Option<TimedFeedback>>>,
+    feedback: Arc<RwLock<FeedbackState>>,
     velocity_filter: Arc<Mutex<MotorVelocityFilter>>,
-    feedback_expected_since: Arc<RwLock<Option<Instant>>>,
     monitoring_request: Arc<Mutex<Option<(u64, Instant)>>>,
     periodic_reporting: Arc<Mutex<bool>>,
     thermal_health: Arc<Mutex<ThermalHealth>>,
-    fault: Arc<RwLock<Option<MotorFault>>>,
     feedback_timeout: Duration,
     lifecycle: DeviceLifecycle,
     telemetry: Telemetry,
@@ -147,16 +169,14 @@ impl MotorController {
             group,
             bus,
             control_batcher,
-            feedback: Arc::new(RwLock::new(None)),
+            feedback: Arc::new(RwLock::new(FeedbackState::default())),
             velocity_filter: Arc::new(Mutex::new(MotorVelocityFilter::new(
                 feedback_processing.velocity_filter.cutoff_hz,
                 feedback_processing.timeout,
             ))),
-            feedback_expected_since: Arc::new(RwLock::new(None)),
             monitoring_request: Arc::new(Mutex::new(None)),
             periodic_reporting: Arc::new(Mutex::new(true)),
             thermal_health: Arc::new(Mutex::new(ThermalHealth::default())),
-            fault: Arc::new(RwLock::new(None)),
             feedback_timeout: feedback_processing.timeout,
             lifecycle,
             telemetry,
@@ -171,40 +191,64 @@ impl MotorController {
     }
 
     pub(crate) fn feedback(&self) -> Option<TimedFeedback> {
-        *self.feedback.read()
+        self.feedback.read().latest
     }
 
-    pub(crate) fn fault(&self) -> Option<MotorFault> {
-        self.fault.read().clone()
+    pub(crate) fn control_fault(&self) -> Option<MotorFault> {
+        let state = self.feedback.read();
+        if let Some(fault) = state
+            .latched_fault
+            .as_ref()
+            .or(state.current_fault.as_ref())
+        {
+            return Some(fault.clone());
+        }
+        let status = self.lifecycle.status();
+        (!status.state.is_online()).then(|| MotorFault {
+            cause: MotorFaultCause::Communication,
+            detail: format!("{} ({})", status.state, status.detail),
+        })
     }
 
     pub(crate) fn feedback_ready(&self) -> bool {
-        let Some(expected_since) = *self.feedback_expected_since.read() else {
+        let state = self.feedback.read();
+        let Some(operating) = &state.operating else {
             return false;
         };
-        self.lifecycle.state().is_online()
-            && self.feedback.read().is_some_and(|feedback| {
-                feedback.received >= expected_since
+        operating.confirmed
+            && state.latched_fault.is_none()
+            && self.lifecycle.state().is_online()
+            && state.latest.is_some_and(|feedback| {
+                feedback.received >= operating.since
                     && feedback.received.elapsed() <= self.feedback_timeout
             })
     }
 
-    pub(crate) fn recovery_ready(&self) -> bool {
-        self.bus.status().state.is_online()
-            && self.lifecycle.state().is_online()
-            && self.fault.read().is_none()
-            && self
-                .feedback
-                .read()
-                .is_some_and(|feedback| feedback.received.elapsed() <= self.feedback_timeout)
+    pub(crate) fn recovery_feedback(&self) -> Option<MotorRecovery<'_>> {
+        let state = self.feedback.write();
+        let latest = state.latest?;
+        if !self.bus.status().state.is_online()
+            || !self.lifecycle.state().is_online()
+            || state.current_fault.is_some()
+            || latest.received.elapsed() > self.feedback_timeout
+        {
+            return None;
+        }
+        Some(MotorRecovery {
+            state,
+            feedback: latest.value,
+        })
     }
 
     pub(crate) fn configure_enable(&self) -> Result<(), BusError> {
         *self.periodic_reporting.lock() = true;
         *self.monitoring_request.lock() = None;
-        *self.feedback.write() = None;
+        {
+            let mut state = self.feedback.write();
+            state.latest = None;
+            state.operating = None;
+        }
         self.velocity_filter.lock().reset();
-        *self.feedback_expected_since.write() = None;
         self.bus.enqueue_configuration_batch(vec![
             param_write_u8_frame(
                 self.bus.spec.host_id,
@@ -216,8 +260,13 @@ impl MotorController {
             active_report_frame(self.bus.spec.host_id, self.spec.address.id, true).into(),
             enable_frame(self.bus.spec.host_id, self.spec.address.id).into(),
         ])?;
-        self.prepare_feedback_wait();
-        *self.feedback_expected_since.write() = Some(Instant::now());
+        let mut state = self.feedback.write();
+        self.lifecycle
+            .await_feedback("motor enabled; waiting for fresh operating feedback");
+        state.operating = Some(OperatingFeedback {
+            since: Instant::now(),
+            confirmed: false,
+        });
         Ok(())
     }
 
@@ -267,26 +316,17 @@ impl MotorController {
         self.bus.submit_safety_batch(frames)
     }
 
-    pub(crate) fn mark_stopped(&self) {
-        *self.feedback_expected_since.write() = None;
+    pub(crate) fn stop_expecting_operating_feedback(&self) {
+        self.feedback.write().operating = None;
     }
 
     pub(super) fn accepts_feedback_target(&self, target: u8) -> bool {
         target == self.bus.spec.host_id
     }
 
-    fn mark_fault(&self, cause: MotorFaultCause, detail: impl Into<String>) {
-        let detail = detail.into();
-        *self.fault.write() = Some(MotorFault {
-            cause,
-            detail: detail.clone(),
-        });
-        self.lifecycle.enter_fault(detail);
-    }
-
-    fn prepare_feedback_wait(&self) {
-        self.lifecycle
-            .await_feedback("motor enabled; waiting for fresh operating feedback");
+    fn mark_fault(&self, state: &mut FeedbackState, fault: MotorFault) {
+        self.lifecycle.enter_fault(fault.detail.clone());
+        state.current_fault = Some(fault);
     }
 
     pub(super) fn sync_bus(&self) {
@@ -299,8 +339,7 @@ impl MotorController {
                 return;
             }
             let feedback_is_fresh = self
-                .feedback
-                .read()
+                .feedback()
                 .is_some_and(|feedback| feedback.received.elapsed() <= self.feedback_timeout);
             let mut monitoring_request = self.monitoring_request.lock();
             let request_generation_is_current = monitoring_request
@@ -314,7 +353,7 @@ impl MotorController {
             if request_is_current {
                 return;
             }
-            let operating_feedback_expected = self.feedback_expected_since.read().is_some();
+            let operating_feedback_expected = self.feedback.read().operating.is_some();
             if !operating_feedback_expected {
                 self.lifecycle.await_feedback(format!(
                     "requesting active feedback on CAN bus {}",
@@ -337,7 +376,8 @@ impl MotorController {
             "CAN bus {} unavailable: {} ({})",
             self.bus.spec.name, bus.state, bus.detail
         );
-        *self.fault.write() = Some(MotorFault {
+        let mut state = self.feedback.write();
+        state.current_fault = Some(MotorFault {
             cause: MotorFaultCause::Communication,
             detail: detail.clone(),
         });
@@ -345,36 +385,45 @@ impl MotorController {
     }
 
     pub(super) fn check_feedback_watchdog(&self) {
+        self.check_feedback_age(&mut self.feedback.write());
+    }
+
+    fn check_feedback_age(&self, state: &mut FeedbackState) {
         if !self.bus.status().state.is_online() {
             return;
         }
-        let Some(expected_since) = *self.feedback_expected_since.read() else {
+        let Some(operating) = &state.operating else {
             return;
         };
-        let feedback = *self.feedback.read();
-        let stale_for = match feedback {
-            Some(feedback) if feedback.received >= expected_since => feedback.received.elapsed(),
-            _ => expected_since.elapsed(),
+        let stale_for = match state.latest {
+            Some(feedback) if feedback.received >= operating.since => feedback.received.elapsed(),
+            _ => operating.since.elapsed(),
         };
         if stale_for >= self.feedback_timeout {
             self.mark_fault(
-                MotorFaultCause::StaleFeedback,
-                format!(
-                    "no fresh motor feedback within {} ms",
-                    self.feedback_timeout.as_millis()
-                ),
+                state,
+                MotorFault {
+                    cause: MotorFaultCause::StaleFeedback,
+                    detail: format!(
+                        "no fresh motor feedback within {} ms",
+                        self.feedback_timeout.as_millis()
+                    ),
+                },
             );
         }
     }
 
     pub(super) fn record_received_feedback(&self, value: Feedback, received: Instant) {
         let published_velocity = self.velocity_filter.lock().apply(value.velocity, received);
-        *self.feedback.write() = Some(TimedFeedback {
-            value,
-            published_velocity,
-            received,
-        });
-        self.update_health(value, received);
+        {
+            let mut state = self.feedback.write();
+            state.latest = Some(TimedFeedback {
+                value,
+                published_velocity,
+                received,
+            });
+            self.update_health(&mut state, value, received);
+        }
         self.telemetry.send(TelemetryPayload::Motor(MotorTelemetry {
             group: self.group.clone(),
             motor: self.spec.name.clone(),
@@ -388,7 +437,7 @@ impl MotorController {
         }));
     }
 
-    fn update_health(&self, value: Feedback, received: Instant) {
+    fn update_health(&self, state: &mut FeedbackState, value: Feedback, received: Instant) {
         let thermal_fault = self.thermal_health.lock().fault_detail(
             value.temperature,
             self.spec.health.maximum_temperature_c,
@@ -396,37 +445,37 @@ impl MotorController {
             Duration::from_millis(self.spec.health.temperature_recovery_duration_ms),
             received,
         );
-        let expecting_operating_feedback = self
-            .feedback_expected_since
-            .read()
-            .is_some_and(|expected| received >= expected);
-        let fault = classify_feedback(
-            value,
-            &self.spec,
-            expecting_operating_feedback,
-            thermal_fault,
-        );
+        let operating = state
+            .operating
+            .as_mut()
+            .filter(|operating| received >= operating.since);
+        let fault = classify_feedback(value, &self.spec, operating.is_some(), thermal_fault);
 
         if let Some((cause, detail)) = fault {
-            self.mark_fault(cause, detail);
-        } else if received.elapsed() < self.feedback_timeout {
-            let warning =
-                (value.temperature >= self.spec.health.temperature_warning_c).then(|| {
-                    format!(
-                        "temperature warning: {:.1} C is at or above {:.1} C",
-                        value.temperature, self.spec.health.temperature_warning_c
-                    )
-                });
-            self.mark_online(warning.as_deref());
+            let fault = MotorFault { cause, detail };
+            // A non-running mode can precede the first operating sample after enable.
+            if operating.is_some_and(|operating| {
+                cause != MotorFaultCause::ModeStatus || operating.confirmed
+            }) {
+                state.latched_fault.get_or_insert_with(|| fault.clone());
+            }
+            self.mark_fault(state, fault);
+        } else if received.elapsed() >= self.feedback_timeout {
+            self.check_feedback_age(state);
         } else {
-            self.check_feedback_watchdog();
+            if let Some(operating) = operating {
+                operating.confirmed = true;
+            }
+            state.current_fault = None;
+            if value.temperature >= self.spec.health.temperature_warning_c {
+                self.lifecycle.mark_online(format!(
+                    "temperature warning: {:.1} C is at or above {:.1} C",
+                    value.temperature, self.spec.health.temperature_warning_c
+                ));
+            } else {
+                self.lifecycle.mark_online("healthy motor feedback");
+            }
         }
-    }
-
-    fn mark_online(&self, warning: Option<&str>) {
-        *self.fault.write() = None;
-        let detail = warning.unwrap_or("healthy motor feedback");
-        self.lifecycle.mark_online(detail);
     }
 }
 
