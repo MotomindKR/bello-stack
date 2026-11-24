@@ -215,18 +215,17 @@ impl ControlSession {
     }
 
     /// Submits one complete frame and waits until the daemon accepts or rejects it.
+    /// Cancelling an in-flight send closes the stream and leaves the session `Uncertain`.
     pub async fn send(&mut self, frame: CommandFrame) -> Result<(), Error> {
         self.require_state(ControlState::Running, "send a command")?;
         let commands = frame.into_commands(self.group.name())?;
-        if let Err(error) = self.check_renewal() {
-            self.command_stream.take();
-            self.state = ControlState::Uncertain;
-            return Err(error);
-        }
         match self.send_and_confirm(commands).await {
-            Ok(()) => Ok(()),
+            Ok(stream) => {
+                self.command_stream = Some(stream);
+                self.state = ControlState::Running;
+                Ok(())
+            }
             Err(error) => {
-                self.command_stream.take();
                 self.state = if matches!(
                     &error,
                     Error::RejectedCommand {
@@ -258,6 +257,7 @@ impl ControlSession {
 
     /// Disables a ready, running, or damped group and returns to `Ready`.
     /// Running control goes directly to Idle, without inserting damping commands.
+    /// The session is `Uncertain` until the daemon confirms `Idle`.
     pub async fn disable(&mut self) -> Result<(), Error> {
         if !matches!(
             self.state,
@@ -266,6 +266,7 @@ impl ControlSession {
             return Err(self.invalid_state("disable"));
         }
         self.command_stream.take();
+        self.state = ControlState::Uncertain;
         let actual = GroupState::from_wire(self.lease.disable().await?);
         self.expect_state("disable", GroupState::Idle, actual)?;
         self.state = ControlState::Ready;
@@ -401,15 +402,11 @@ impl ControlSession {
     async fn send_and_confirm(
         &mut self,
         commands: Vec<bello_hardware_api::MotorCommand>,
-    ) -> Result<(), Error> {
+    ) -> Result<CommandStream, Error> {
+        let stream = self.command_stream.take();
         self.check_renewal()?;
-        if self.command_stream.is_none() {
-            return Err(self.invalid_state("send a command"));
-        }
-        let stream = self
-            .command_stream
-            .as_mut()
-            .expect("command stream presence was checked above");
+        let mut stream = stream.ok_or_else(|| self.invalid_state("send a command"))?;
+        self.state = ControlState::Uncertain;
         let sequence = stream.send(self.options.command_validity, commands).await?;
         let group = self.group.name().to_owned();
         let timeout = self.options.acknowledgement_timeout;
@@ -449,7 +446,8 @@ impl ControlSession {
                 state: GroupState::from_wire(acknowledgement.state),
             });
         }
-        self.check_renewal()
+        self.check_renewal()?;
+        Ok(stream)
     }
 
     async fn rollback_start(&mut self, primary: Error) -> Error {
