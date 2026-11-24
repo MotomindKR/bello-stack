@@ -1,13 +1,32 @@
 # Desktop builds
 
-`bello-hardwared` and its protocol and client libraries support
-Linux, macOS, and Windows. GS-USB is available on all three; SocketCAN is compiled
-only on Linux. A SocketCAN deployment is rejected by `--check` and startup on
-other operating systems before any hardware is opened.
+## Component compatibility
 
-The standalone motor emulator and loopback CAN transport also build on all three
-platforms. The MuJoCo simulator runs on Linux and macOS. A Windows client can
-connect over TCP gRPC to hardwared running alongside MuJoCo on either system.
+The columns refer to the host running each component. A Windows controller can
+use TCP gRPC to access hardwared and a simulator running together on Linux or macOS.
+
+**CI** means the component's tests run in GitHub Actions. **Tested** means
+its tests passed locally on that platform. **Unverified** means native support
+has yet to be confirmed. **Unsupported** means the implementation requires an OS
+feature unavailable on that platform. The CI hosts are Linux x86-64, macOS ARM64,
+and Windows x86-64. [Linux workflow](../.github/workflows/ci.yml) · [Desktop workflow](../.github/workflows/desktop.yml)
+
+| Component | Linux | macOS | Windows | Scope |
+| --- | --- | --- | --- | --- |
+| [bello-hardwared](../components/bello-hardwared) | CI | CI | CI | Device daemon. GS-USB, serial and UDP on all three. SocketCAN requires Linux. |
+| [bello-hardware-client](../components/bello-hardware-client) | CI | CI | CI | Rust gRPC client. Use TCP or TLS on Windows. |
+| [bello-hardware-python](../components/bello-hardware-python) | CI | Tested | Unverified | Python 3.10+ gRPC client. The installable package is `bello-hardware`. |
+| [bello-sim](../components/bello-sim) | CI | Tested | Unsupported | MuJoCo physics and simulated devices. Offline video recording requires Linux. |
+| [robstride-emulator](../components/robstride-emulator) | CI | CI | CI | Standalone motor emulator over UDP. The vCAN backend requires Linux. |
+| [bello-state-estimatord](../components/bello-state-estimatord) | CI | Tested | Unverified | Estimates pose from encoder and IMU readings served by hardwared. |
+| [bello-hardware-api](../components/bello-hardware-api) | CI | CI | CI | Hardware gRPC service definitions and Rust bindings. |
+| [bello-pose-api](../components/bello-pose-api) | CI | CI | CI | Pose gRPC service definitions and Rust bindings. |
+| [bello-camera-api](../components/bello-camera-api) | CI | Tested | Unsupported | Camera gRPC bindings and frame streams. The Rust crate requires Unix sockets. |
+| [bello-robot-description](../components/bello-robot-description) | CI | CI | CI | Loads robot models from URDF. |
+| [bello-sim-can](../components/bello-sim-can) | CI | CI | CI | Loopback UDP transport for simulated CAN frames. |
+| [cog-protocol](../components/cog-protocol) | CI | CI | CI | Power-board serial protocol. |
+| [robstride-protocol](../components/robstride-protocol) | CI | CI | CI | Motor CAN protocol. |
+| [bello-hardware-e2e](../components/bello-hardware-e2e) | CI | Tested | Unsupported | Process tests use Unix signals. UDP and gRPC cases run on macOS. vCAN cases require Linux. |
 
 ## Native executables
 
