@@ -5,6 +5,10 @@ Linux, macOS, and Windows. GS-USB is available on all three; SocketCAN is compil
 only on Linux. A SocketCAN deployment is rejected by `--check` and startup on
 other operating systems before any hardware is opened.
 
+The standalone motor emulator and loopback CAN transport also build on all three
+platforms. The MuJoCo simulator runs on Linux and macOS. A Windows client can
+connect over TCP gRPC to hardwared running alongside MuJoCo on either system.
+
 ## Native executables
 
 The Desktop GitHub Actions workflow builds and tests the portable components on

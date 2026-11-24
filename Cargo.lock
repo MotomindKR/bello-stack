@@ -284,6 +284,7 @@ dependencies = [
  "bello-hardware-api",
  "bello-robot-description",
  "bello-sim-can",
+ "bello-sim-serial",
  "clap",
  "cog-protocol",
  "crossbeam-channel",
@@ -316,6 +317,7 @@ dependencies = [
  "bello-pose-api",
  "bello-robot-description",
  "bello-sim-can",
+ "bello-sim-serial",
  "clap",
  "cog-protocol",
  "futures-core",
@@ -367,6 +369,14 @@ version = "0.1.0"
 dependencies = [
  "robstride-protocol",
  "serde",
+]
+
+[[package]]
+name = "bello-sim-serial"
+version = "0.1.0"
+dependencies = [
+ "nix 0.29.0",
+ "rustix",
 ]
 
 [[package]]

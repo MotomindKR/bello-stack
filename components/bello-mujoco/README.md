@@ -12,8 +12,11 @@ cargo run -p bello-mujoco -- run --config components/bello-mujoco/config/emulato
 ```
 
 The shipped profiles use [loopback UDP for CAN](../../docs/operations.md#simulate-can-without-socketcan).
-For models with IMU or power-board serial devices, supply the paired UARTs in the
-[emulator profile](config/). To use Linux SocketCAN instead, set each logical bus
+On Linux and macOS, MuJoCo supplies a fresh pseudo-terminal for each simulated IMU
+and power board when hardwared connects. Run both processes as the same user.
+Their profiles use matching names such as `pty:imu` and `pty:power`. Give each
+stack its own names when running multiple instances. An explicit serial device
+path still opens an externally provisioned port. To use Linux SocketCAN instead, set each logical bus
 in a local runtime profile to its vCAN interface (for example, `bus_interfaces: {can0: vcan0}`). Use `check --export-physics PATH`
 to inspect the compiled MJCF. Loading a URDF directly with `Simulation::load`
 skips actuator transmissions. For the fixed-base Mini Torso, pair the [emulator](config/emulator_mini_torso.yaml)

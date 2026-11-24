@@ -159,7 +159,7 @@ The [Linux SocketCAN tests](development.md#host-vcan-integration-test) capture f
 
 Follow the [native MuJoCo runtime instructions](../components/bello-mujoco/README.md)
 to start `emulator_bello.yaml`
-or `emulator_mini.yaml`. These profiles need paired UARTs for the IMU and power board.
+or `emulator_mini.yaml`. The simulator provides the IMU and power-board serial ports to hardwared automatically on Linux and macOS. Run both processes as the same user.
 For Bello, run hardwared and the pose estimator in
 separate terminals:
 

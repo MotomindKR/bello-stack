@@ -65,21 +65,48 @@ pub(super) fn run(
     lifecycle.shutdown("serial supervisor stopped");
 }
 
-fn open_port(spec: &SerialSpec) -> Result<Box<dyn SerialPort>> {
-    serialport::new(&spec.port, spec.baud_rate)
+struct OpenedPort {
+    serial: Box<dyn SerialPort>,
+    #[cfg(unix)]
+    _simulator: Option<std::os::unix::net::UnixStream>,
+}
+
+fn open_port(spec: &SerialSpec) -> Result<OpenedPort> {
+    #[cfg(unix)]
+    if let Some(name) = spec.port.strip_prefix("pty:") {
+        use std::os::fd::{FromRawFd, IntoRawFd};
+
+        let handshake_timeout = Duration::from_secs(1);
+        let (slave, simulator) = bello_sim_serial::connect(name, handshake_timeout)
+            .with_context(|| format!("connecting to simulated serial port {}", spec.port))?;
+        // The new slave is already in raw mode. Adopting it leaves its baud rate alone.
+        let mut serial = unsafe { serialport::TTYPort::from_raw_fd(slave.into_raw_fd()) };
+        serial.set_timeout(spec.timeout)?;
+        return Ok(OpenedPort {
+            serial: Box::new(serial),
+            _simulator: Some(simulator),
+        });
+    }
+    let serial = serialport::new(&spec.port, spec.baud_rate)
         .timeout(spec.timeout)
         .open()
-        .with_context(|| format!("opening serial device {} ({})", spec.name, spec.port))
+        .with_context(|| format!("opening serial device {} ({})", spec.name, spec.port))?;
+    Ok(OpenedPort {
+        serial,
+        #[cfg(unix)]
+        _simulator: None,
+    })
 }
 
 fn run_session(
-    reader: Box<dyn SerialPort>,
+    port: OpenedPort,
     outbound: &Receiver<OutboundBytes>,
     chunks: &Sender<SerialChunk>,
     reconnect: &Receiver<String>,
     stop: &Arc<AtomicBool>,
     name: &SerialDeviceName,
 ) -> Result<(), String> {
+    let reader = port.serial;
     let writer = reader.try_clone().map_err(|error| error.to_string())?;
     let session_stop = Arc::new(AtomicBool::new(false));
     let (failure_tx, failure_rx) = bounded::<String>(2);

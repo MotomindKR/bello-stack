@@ -1,4 +1,4 @@
-use crate::transport::Uart;
+use crate::uart::Uart;
 use anyhow::{Result, ensure};
 use cog_protocol::{Profile, encode};
 use serde::Deserialize;
@@ -54,6 +54,7 @@ impl Config {
     }
 }
 
+#[derive(Clone)]
 pub struct Encoder {
     config: Config,
     sequence: u8,
@@ -141,24 +142,20 @@ impl Encoder {
 }
 
 pub struct Serial {
-    uart: Uart,
-    encoder: Encoder,
+    uart: Uart<Encoder>,
 }
 
 impl Serial {
     pub fn open(config: Config) -> Result<Self> {
-        config.validate()?;
-        let uart = Uart::open(&config.device)?;
+        let device = config.device.clone();
+        let encoder = Encoder::new(config)?;
         Ok(Self {
-            uart,
-            encoder: Encoder::new(config)?,
+            uart: Uart::open(&device, encoder)?,
         })
     }
     pub fn update(&mut self, now: Duration) -> Result<()> {
-        let mut buffer = [0; 4096];
-        let count = self.uart.read(&mut buffer)?;
         self.uart
-            .write(&self.encoder.update(now, &buffer[..count])?)
+            .update(|encoder, input| encoder.update(now, input))
     }
 }
 
@@ -257,6 +254,12 @@ mod tests {
         let mut bytes = [0; 4096];
         let count = peer.read(&mut bytes).unwrap();
         assert_eq!(decode(bytes[..count].to_vec()).len(), 7);
-        assert!(serial.encoder.host_valid(Duration::ZERO));
+        serial
+            .uart
+            .update(|encoder, _| {
+                assert!(encoder.host_valid(Duration::ZERO));
+                Ok(Vec::new())
+            })
+            .unwrap();
     }
 }

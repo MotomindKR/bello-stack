@@ -5,8 +5,8 @@ bus_transports:
   can1: { type: sim, daemon_port: 19102, simulator_port: 19103 }
 
 serial_ports:
-  imu_serial: /dev/ttyIMU
-  power_board_serial: /dev/ttyPOWER
+  imu_serial: pty:imu
+  power_board_serial: pty:power
 
 enabled_power_boards: [power_board]
 

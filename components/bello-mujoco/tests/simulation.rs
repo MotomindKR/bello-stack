@@ -42,22 +42,8 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
         .find(|m| &m.bus == first_bus)
         .unwrap();
     let params = MotorParams::for_model(&motor.model, motor.direction).unwrap();
-    let pty = nix::pty::openpty(None, None).unwrap();
-    let device = nix::unistd::ttyname(&pty.slave).unwrap();
-    let power_pty = nix::pty::openpty(None, None).unwrap();
-    let power_device = nix::unistd::ttyname(&power_pty.slave).unwrap();
-    let mut power_peer = File::from(power_pty.master);
-    nix::fcntl::fcntl(
-        power_peer.as_raw_fd(),
-        nix::fcntl::FcntlArg::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
-    )
-    .unwrap();
-    let mut serial = File::from(pty.master);
-    nix::fcntl::fcntl(
-        serial.as_raw_fd(),
-        nix::fcntl::FcntlArg::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
-    )
-    .unwrap();
+    let imu_endpoint = format!("imu-test-{}", std::process::id());
+    let power_endpoint = format!("power-test-{}", std::process::id());
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     drop(listener);
@@ -78,8 +64,8 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
     }
     let socket = &clients[first_bus];
     socket.set_nonblocking(true).unwrap();
-    yaml["imu"]["device"] = device.to_string_lossy().into_owned().into();
-    yaml["power_board"]["device"] = power_device.to_string_lossy().into_owned().into();
+    yaml["imu"]["device"] = format!("pty:{imu_endpoint}").into();
+    yaml["power_board"]["device"] = format!("pty:{power_endpoint}").into();
     yaml["pose"]["listen"] = address.to_string().into();
     #[cfg(target_os = "linux")]
     let recording = tempfile::tempdir().unwrap();
@@ -135,6 +121,17 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
         .await
         .unwrap()
         .into_inner();
+    let attach = |name: &str| {
+        let (slave, control) = bello_sim_serial::connect(name, Duration::from_secs(2)).unwrap();
+        nix::fcntl::fcntl(
+            slave.as_raw_fd(),
+            nix::fcntl::FcntlArg::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
+        )
+        .unwrap();
+        (File::from(slave), control)
+    };
+    let (mut serial, _imu_connection) = attach(&imu_endpoint);
+    let (mut power_peer, _power_connection) = attach(&power_endpoint);
     serial
         .write_all(b"<soc1><sof2><sog1><soa2><som0><sot0><sots1><sor5>")
         .unwrap();

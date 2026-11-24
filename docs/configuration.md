@@ -196,6 +196,10 @@ Serial names and mapped physical ports must be unique. `baud_rate` must be posit
 and `timeout_ms` is in `1..=500`. The timeout bounds a write from queueing
 through completion; it is also the OS read timeout.
 
+For an IMU or power board hosted by MuJoCo, use the same `pty:<name>` on both
+sides, such as `pty:imu`. Each new connection gets a raw PTY descriptor. Physical
+ports use the baud rate in the hardware description.
+
 Each serial device belongs to exactly one IMU or power board.
 
 `source_frame` names the URDF link whose axes match the parsed EBIMU sample.

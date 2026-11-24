@@ -1,6 +1,6 @@
 //! EBIMU UART encoding. Physics samples stay in the physical sensor frame.
 use crate::Simulation;
-use crate::transport::Uart;
+use crate::uart::Uart;
 use anyhow::{Result, ensure};
 use nalgebra::{Quaternion, UnitQuaternion, Vector3};
 use std::path::Path;
@@ -34,6 +34,7 @@ impl Sample {
     }
 }
 
+#[derive(Clone)]
 pub struct Encoder {
     interval_ms: u16,
     ascii: bool,
@@ -269,22 +270,18 @@ impl Encoder {
 }
 
 pub struct Serial {
-    uart: Uart,
-    encoder: Encoder,
+    uart: Uart<Encoder>,
 }
 
 impl Serial {
     pub fn open(path: &Path, rate: f64, temperature: f64) -> Result<Self> {
         Ok(Self {
-            uart: Uart::open(path)?,
-            encoder: Encoder::new(rate, temperature)?,
+            uart: Uart::open(path, Encoder::new(rate, temperature)?)?,
         })
     }
     pub fn update(&mut self, sample: &Sample) -> Result<()> {
-        let mut buffer = [0; 4096];
-        let count = self.uart.read(&mut buffer)?;
         self.uart
-            .write(&self.encoder.update(sample, &buffer[..count]))
+            .update(|encoder, input| Ok(encoder.update(sample, input)))
     }
 }
 
@@ -356,6 +353,77 @@ mod tests {
         assert_eq!(encoder.update(&sample, b"<sor0>"), b"<ok>");
         assert!(encoder.update(&sample, b"").is_empty());
         assert!(!encoder.update(&sample, b"*").is_empty());
+    }
+
+    #[test]
+    fn stalled_serial_client_can_reconnect_to_a_fresh_imu() {
+        use std::io::ErrorKind;
+        use std::time::{Duration, Instant};
+
+        let name = format!("imu-stall-{}", std::process::id());
+        let mut serial = Serial::open(Path::new(&format!("pty:{name}")), 200., 25.).unwrap();
+        let mut sample = sample();
+        let attach = |serial: &mut Serial, sample: &Sample| {
+            std::thread::scope(|scope| {
+                let client =
+                    scope.spawn(|| bello_sim_serial::connect(&name, Duration::from_secs(2)));
+                while !client.is_finished() {
+                    serial.update(sample).unwrap();
+                    std::thread::yield_now();
+                }
+                let (slave, control) = client.join().unwrap().unwrap();
+                nix::fcntl::fcntl(
+                    slave.as_raw_fd(),
+                    nix::fcntl::FcntlArg::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
+                )
+                .unwrap();
+                (File::from(slave), control)
+            })
+        };
+        let (mut stalled, mut control) = attach(&mut serial, &sample);
+        stalled.write_all(b"<soc2>").unwrap();
+        serial.update(&sample).unwrap();
+        sample.time += 0.01;
+        serial.update(&sample).unwrap();
+        let mut bytes = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !bytes.windows(2).any(|word| word == [0x55, 0x55]) {
+            assert!(
+                Instant::now() < deadline,
+                "IMU did not switch to binary mode"
+            );
+            sample.time += 0.01;
+            serial.update(&sample).unwrap();
+            if let Err(e) = stalled.read_to_end(&mut bytes) {
+                assert_eq!(e.kind(), ErrorKind::WouldBlock);
+            }
+        }
+        control.set_nonblocking(true).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            assert!(
+                Instant::now() < deadline,
+                "stalled reader was not disconnected"
+            );
+            sample.time += 0.01;
+            serial.update(&sample).unwrap();
+            match control.read(&mut [0]) {
+                Ok(0) => break,
+                Err(e) if e.kind() == ErrorKind::WouldBlock => {}
+                result => panic!("unexpected control read: {result:?}"),
+            }
+        }
+        let (mut restarted, _control) = attach(&mut serial, &sample);
+        sample.time += 0.01;
+        serial.update(&sample).unwrap();
+        let mut pfd = [nix::poll::PollFd::new(
+            std::os::fd::AsFd::as_fd(&restarted),
+            nix::poll::PollFlags::POLLIN,
+        )];
+        assert_eq!(nix::poll::poll(&mut pfd, 2000u16).unwrap(), 1);
+        let mut first = [0];
+        restarted.read_exact(&mut first).unwrap();
+        assert_eq!(first, *b"*", "new IMU session must start in ASCII mode");
     }
 
     #[test]

@@ -25,6 +25,12 @@ impl TryFrom<&SerialDeviceConfig> for SerialSpec {
         if config.port.is_empty() {
             bail!("serial_devices.{}.port must be non-empty", config.name);
         }
+        if let Some(name) = config.port.strip_prefix("pty:") {
+            #[cfg(unix)]
+            bello_sim_serial::validate_name(name)?;
+            #[cfg(not(unix))]
+            bail!("simulated serial port pty:{name} requires Unix");
+        }
         if config.baud_rate == 0 {
             bail!("serial_devices.{}.baud_rate must be positive", config.name);
         }

@@ -32,6 +32,9 @@ tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
 uuid = { workspace = true, features = ["v4"] }
 
+[target.'cfg(unix)'.dependencies]
+bello-sim-serial.workspace = true
+
 [target.'cfg(target_os = "linux")'.dependencies]
 nix.workspace = true
 socketcan.workspace = true
