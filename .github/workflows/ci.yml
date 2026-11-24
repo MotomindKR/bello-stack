@@ -35,6 +35,7 @@ jobs:
       - name: Python client
         working-directory: components/bello-hardware-python
         run: |
+          nix develop --command uv lock --check
           nix develop --command ruff format --check .
           nix develop --command ruff check .
           nix develop --command mypy src/bello_hardware tests
