@@ -76,7 +76,7 @@ pub async fn queued_feedback_keeps_its_age(
                 torque: 0.0,
                 temperature: 25.0,
             },
-            MotorParams::for_model("ROBSTRIDE_03", 1).unwrap(),
+            MotorParams::for_model("RS_03", 1).unwrap(),
         )
     }))?;
     let latest_possible_send_ns = captured_before_pause + before_pause.elapsed().as_nanos() as u64;
