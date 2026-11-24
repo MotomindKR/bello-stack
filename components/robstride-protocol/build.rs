@@ -64,9 +64,7 @@ fn main() {
     for name in catalog.models.keys() {
         generated.push_str(&format!("    {name:?},\n"));
     }
-    generated.push_str(
-        "];\n\npub fn lookup_model(model: &str) -> Option<(&'static str, ModelLimits)> {\n",
-    );
+    generated.push_str("];\n\npub fn model_limits(model: &str) -> Option<ModelLimits> {\n");
     generated.push_str("    match model {\n");
     for (name, limits) in &catalog.models {
         validate(name, limits);
@@ -81,10 +79,8 @@ fn main() {
                 )
             },
         );
-        let suffix = name.strip_prefix("RS_").expect("expected RS model name");
-        let legacy_name = format!("ROBSTRIDE_{suffix}");
         generated.push_str(&format!(
-            "        {name:?} | {legacy_name:?} => Some(({name:?}, ModelLimits {{ position_min: {:?}, position_max: {:?}, velocity_min: {:?}, velocity_max: {:?}, torque_min: {:?}, torque_max: {:?}, kp_min: {:?}, kp_max: {:?}, kd_min: {:?}, kd_max: {:?}, hardware: {hardware} }})),\n",
+            "        {name:?} => Some(ModelLimits {{ position_min: {:?}, position_max: {:?}, velocity_min: {:?}, velocity_max: {:?}, torque_min: {:?}, torque_max: {:?}, kp_min: {:?}, kp_max: {:?}, kd_min: {:?}, kd_max: {:?}, hardware: {hardware} }}),\n",
             limits.position[0],
             limits.position[1],
             limits.velocity[0],

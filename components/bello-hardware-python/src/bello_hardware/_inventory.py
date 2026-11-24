@@ -206,10 +206,7 @@ class Inventory:
             addresses.add(address)
             if not item.model.strip():
                 raise InventoryError(f"motor {item.name!r} has no model")
-            model = item.model
-            if model.startswith("ROBSTRIDE_"):
-                model = "RS_" + model.removeprefix("ROBSTRIDE_")
-            if model not in _SUPPORTED_ROBSTRIDE_MODELS:
+            if item.model not in _SUPPORTED_ROBSTRIDE_MODELS:
                 raise InventoryError(
                     f"motor {item.name!r} has unsupported Robstride model {item.model!r}"
                 )
@@ -240,7 +237,7 @@ class Inventory:
                 item.group,
                 item.address.bus,
                 item.address.id,
-                model,
+                item.model,
                 item.direction,
                 limits,
                 _optional_status(item, "status"),

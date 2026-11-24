@@ -24,10 +24,6 @@ pub struct ModelLimits {
 
 include!(concat!(env!("OUT_DIR"), "/model_catalog.rs"));
 
-pub fn model_limits(model: &str) -> Option<ModelLimits> {
-    lookup_model(model).map(|(_, limits)| limits)
-}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MotorParams {
     pub position_min: f64,
@@ -90,8 +86,7 @@ mod tests {
         assert!(model_limits("unknown").is_none());
         for model in MODEL_NAMES {
             let legacy = model.replace("RS_", "ROBSTRIDE_");
-            assert_eq!(lookup_model(&legacy), lookup_model(model));
-            assert_eq!(lookup_model(&legacy).unwrap().0, *model);
+            assert!(model_limits(&legacy).is_none());
             let limits = model_limits(model).unwrap();
             assert_eq!(limits.kp_min, 0.0);
             assert_eq!(limits.kd_min, 0.0);

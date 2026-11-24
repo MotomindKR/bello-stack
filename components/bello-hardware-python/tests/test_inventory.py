@@ -150,10 +150,14 @@ def test_inventory_exposes_imu_frame_contract(
     assert inventory.imus[0].output_frame == "imu_link"
 
 
-@pytest.mark.parametrize("name", ["RS_03", "ROBSTRIDE_03"])
-def test_inventory_uses_short_motor_model_names(
-    inventory_response: proto.ListHardwareResponse, name: str
+@pytest.mark.parametrize("index", range(7))
+def test_inventory_requires_short_motor_model_names(
+    inventory_response: proto.ListHardwareResponse, index: int
 ) -> None:
-    inventory_response.motors[0].model = name
+    model = f"RS_{index:02d}"
+    inventory_response.motors[0].model = model
+    assert Inventory(inventory_response).motors[0].model == model
 
-    assert Inventory(inventory_response).motors[0].model == "RS_03"
+    inventory_response.motors[0].model = f"ROBSTRIDE_{index:02d}"
+    with pytest.raises(InventoryError, match="unsupported Robstride model"):
+        Inventory(inventory_response)

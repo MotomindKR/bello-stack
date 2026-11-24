@@ -10,5 +10,5 @@ pub use codec::{
 pub use frame::{Frame, frame_target, is_control_frame};
 pub use model::{
     CONTROL_POSITION_MAX, CONTROL_POSITION_MIN, CONTROL_POSITION_SPAN, MAX_MOTOR_ID, MODEL_NAMES,
-    ModelHardware, ModelLimits, MotorParams, lookup_model, model_limits,
+    ModelHardware, ModelLimits, MotorParams, model_limits,
 };

@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 use robstride_protocol::{
     CONTROL_POSITION_MAX, CONTROL_POSITION_MIN, CONTROL_POSITION_SPAN, MAX_MOTOR_ID, ModelLimits,
-    MotorParams, lookup_model,
+    MotorParams, model_limits,
 };
 
 use crate::config::{MotorCommandPolicy, MotorConfig, MotorHealth};
@@ -57,7 +57,7 @@ impl TryFrom<&MotorConfig> for MotorSpec {
         if !matches!(config.direction, -1 | 1) {
             bail!("motors.{}.direction must be -1 or 1", config.name);
         }
-        let (name, model) = lookup_model(&config.model)
+        let model = model_limits(&config.model)
             .ok_or_else(|| anyhow::anyhow!("unsupported Robstride model {}", config.model))?;
         validate_limits(config, model)?;
         validate_health(config)?;
@@ -73,7 +73,7 @@ impl TryFrom<&MotorConfig> for MotorSpec {
                 bus: BusName::from(config.bus.as_str()),
                 id: config.id,
             },
-            model: name.to_owned(),
+            model: config.model.clone(),
             limits,
             health: config.health.clone(),
             command_policy: config.command_policy.clone(),

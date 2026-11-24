@@ -304,7 +304,8 @@ larger side.
 Use `RS_00` through `RS_06` for the motor model. The
 [model catalog](../descriptions/motors/models.yaml) lists each model's velocity,
 torque, `kp`, and `kd` ranges. Inventory reports the short model names.
-Update the Python client before upgrading the daemon if you use them together.
+When upgrading, change existing profiles to these IDs and update the daemon and
+Python client together.
 
 Temperature handling has separate warning, fault, and recovery thresholds.
 The warning must be below the fault threshold. After a temperature fault, the
