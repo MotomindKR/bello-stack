@@ -230,7 +230,7 @@ mod tests {
         let yaml = r#"
 interface: vcan0
 actuators:
-  - { id: 1, model: ROBSTRIDE_03 }
+  - { id: 1, model: RS_03 }
 events:
   - at_ms: 10
     actuator_id: 1

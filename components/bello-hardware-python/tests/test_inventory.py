@@ -148,3 +148,12 @@ def test_inventory_exposes_imu_frame_contract(
 
     assert inventory.imus[0].source_frame == "imu_sensor_link"
     assert inventory.imus[0].output_frame == "imu_link"
+
+
+@pytest.mark.parametrize("name", ["RS_03", "ROBSTRIDE_03"])
+def test_inventory_uses_short_motor_model_names(
+    inventory_response: proto.ListHardwareResponse, name: str
+) -> None:
+    inventory_response.motors[0].model = name
+
+    assert Inventory(inventory_response).motors[0].model == "RS_03"

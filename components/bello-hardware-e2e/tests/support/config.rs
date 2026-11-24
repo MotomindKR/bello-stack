@@ -219,13 +219,13 @@ motors:
     coordinate: e2e_joint_1
     bus: e2e_can
     id: 1
-    model: ROBSTRIDE_03
+    model: RS_03
     direction: 1
   - name: e2e_motor_2
     coordinate: e2e_joint_2
     bus: e2e_can
     id: 2
-    model: ROBSTRIDE_03
+    model: RS_03
     direction: -1
 
 motor_groups:
@@ -260,8 +260,8 @@ dynamics:
   idle_velocity_decay_hz: 20.0
 
 actuators:
-  - {{ id: 1, model: ROBSTRIDE_03, direction: 1, initial_position: 0.0 }}
-  - {{ id: 2, model: ROBSTRIDE_03, direction: -1, initial_position: 0.0 }}
+  - {{ id: 1, model: RS_03, direction: 1, initial_position: 0.0 }}
+  - {{ id: 2, model: RS_03, direction: -1, initial_position: 0.0 }}
 
 events: []
 "#

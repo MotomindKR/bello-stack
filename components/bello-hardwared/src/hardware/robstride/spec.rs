@@ -1,7 +1,7 @@
 use anyhow::{Result, bail};
 use robstride_protocol::{
     CONTROL_POSITION_MAX, CONTROL_POSITION_MIN, CONTROL_POSITION_SPAN, MAX_MOTOR_ID, ModelLimits,
-    MotorParams, model_limits,
+    MotorParams, lookup_model,
 };
 
 use crate::config::{MotorCommandPolicy, MotorConfig, MotorHealth};
@@ -57,7 +57,7 @@ impl TryFrom<&MotorConfig> for MotorSpec {
         if !matches!(config.direction, -1 | 1) {
             bail!("motors.{}.direction must be -1 or 1", config.name);
         }
-        let model = model_limits(&config.model)
+        let (name, model) = lookup_model(&config.model)
             .ok_or_else(|| anyhow::anyhow!("unsupported Robstride model {}", config.model))?;
         validate_limits(config, model)?;
         validate_health(config)?;
@@ -73,7 +73,7 @@ impl TryFrom<&MotorConfig> for MotorSpec {
                 bus: BusName::from(config.bus.as_str()),
                 id: config.id,
             },
-            model: config.model.clone(),
+            model: name.to_owned(),
             limits,
             health: config.health.clone(),
             command_policy: config.command_policy.clone(),
@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn rejects_motor_id_outside_protocol_range() {
         let config: MotorConfig = serde_yaml::from_str(
-            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 128\nmodel: ROBSTRIDE_03",
+            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 128\nmodel: RS_03",
         )
         .unwrap();
         assert!(MotorSpec::try_from(&config).is_err());
@@ -250,7 +250,7 @@ mod tests {
     #[test]
     fn rejects_temperature_recovery_without_hysteresis() {
         let config: MotorConfig = serde_yaml::from_str(
-            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\nhealth: { maximum_temperature_c: 80.0, temperature_recovery_c: 80.0 }",
+            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: RS_03\nhealth: { maximum_temperature_c: 80.0, temperature_recovery_c: 80.0 }",
         )
         .unwrap();
         assert!(MotorSpec::try_from(&config).is_err());
@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn rejects_warning_at_fault_threshold() {
         let config: MotorConfig = serde_yaml::from_str(
-            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\nhealth: { temperature_warning_c: 80.0, maximum_temperature_c: 80.0 }",
+            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: RS_03\nhealth: { temperature_warning_c: 80.0, maximum_temperature_c: 80.0 }",
         )
         .unwrap();
         assert!(MotorSpec::try_from(&config).is_err());
@@ -268,7 +268,7 @@ mod tests {
     #[test]
     fn rejects_safe_position_narrower_than_command_limits() {
         let config: MotorConfig = serde_yaml::from_str(
-            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\nlimits: { position_min: -1.0, position_max: 1.0 }\nhealth: { safe_position_min: -0.5, safe_position_max: 0.5 }",
+            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: RS_03\nlimits: { position_min: -1.0, position_max: 1.0 }\nhealth: { safe_position_min: -0.5, safe_position_max: 0.5 }",
         )
         .unwrap();
         assert!(MotorSpec::try_from(&config).is_err());
@@ -277,7 +277,7 @@ mod tests {
     #[test]
     fn rejects_safe_position_outside_protocol_range() {
         let config: MotorConfig = serde_yaml::from_str(
-            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\nhealth: { safe_position_min: -13.0, safe_position_max: 13.0 }",
+            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: RS_03\nhealth: { safe_position_min: -13.0, safe_position_max: 13.0 }",
         )
         .unwrap();
         assert!(MotorSpec::try_from(&config).is_err());
@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn accepts_configured_feedback_position_tolerance() {
         let config: MotorConfig = serde_yaml::from_str(
-            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\nhealth: { feedback_position_tolerance: 0.4 }",
+            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: RS_03\nhealth: { feedback_position_tolerance: 0.4 }",
         )
         .unwrap();
         let spec = MotorSpec::try_from(&config).unwrap();
@@ -297,7 +297,7 @@ mod tests {
     fn rejects_feedback_position_tolerance_outside_guardrail() {
         for tolerance in [0.0, 0.5] {
             let yaml = format!(
-                "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\nhealth: {{ feedback_position_tolerance: {tolerance} }}"
+                "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: RS_03\nhealth: {{ feedback_position_tolerance: {tolerance} }}"
             );
             let config: MotorConfig = serde_yaml::from_str(&yaml).unwrap();
             assert!(MotorSpec::try_from(&config).is_err());
@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn damping_response_requires_nonzero_gain() {
         let config: MotorConfig = serde_yaml::from_str(
-            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\nfault_damping_kd: 0.0",
+            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: RS_03\nfault_damping_kd: 0.0",
         )
         .unwrap();
         assert!(MotorSpec::try_from(&config).is_err());
@@ -316,7 +316,7 @@ mod tests {
     #[test]
     fn accepts_damping_gain_above_protocol_range() {
         let config: MotorConfig = serde_yaml::from_str(
-            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\nfault_damping_kd: 200.0",
+            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: RS_03\nfault_damping_kd: 200.0",
         )
         .unwrap();
         let spec = MotorSpec::try_from(&config).unwrap();
@@ -327,7 +327,7 @@ mod tests {
     fn rejects_unsupported_warning_policy_combinations() {
         for policy in ["limit: warn", "position_step: warn"] {
             let yaml = format!(
-                "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\ncommand_policy: {{ {policy} }}"
+                "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: RS_03\ncommand_policy: {{ {policy} }}"
             );
             assert!(serde_yaml::from_str::<MotorConfig>(&yaml).is_err());
         }
@@ -337,12 +337,12 @@ mod tests {
     fn rejects_limit_overrides_above_model_capabilities() {
         for (field, value) in [("velocity_abs", 20.1), ("torque_abs", 60.1)] {
             let yaml = format!(
-                "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03\nlimits: {{ {field}: {value} }}"
+                "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: RS_03\nlimits: {{ {field}: {value} }}"
             );
             let config: MotorConfig = serde_yaml::from_str(&yaml).unwrap();
             let error = MotorSpec::try_from(&config).unwrap_err().to_string();
             assert!(
-                error.contains("exceeds") && error.contains("ROBSTRIDE_03"),
+                error.contains("exceeds") && error.contains("RS_03"),
                 "{error}"
             );
         }
@@ -351,7 +351,7 @@ mod tests {
     #[test]
     fn optional_absolute_caps_preserve_asymmetric_model_ranges() {
         let mut config: MotorConfig = serde_yaml::from_str(
-            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: ROBSTRIDE_03",
+            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: RS_03",
         )
         .unwrap();
         let model = ModelLimits {

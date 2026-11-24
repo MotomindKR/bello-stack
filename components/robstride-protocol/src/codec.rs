@@ -219,7 +219,7 @@ mod tests {
     use super::*;
 
     fn params() -> MotorParams {
-        MotorParams::for_model("ROBSTRIDE_03", -1).expect("known model")
+        MotorParams::for_model("RS_03", -1).expect("known model")
     }
 
     #[test]

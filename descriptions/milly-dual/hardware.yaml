@@ -17,7 +17,7 @@ motors:
     coordinate: left_joint_1
     bus: can0
     id: 1
-    model: ROBSTRIDE_06
+    model: RS_06
     direction: 1
     limits: &joint_1_limits { position_min: -2.62, position_max: 2.62, velocity_abs: 20.0, torque_abs: 30.0 }
     health: &joint_1_health
@@ -37,7 +37,7 @@ motors:
     coordinate: left_joint_2
     bus: can0
     id: 2
-    model: ROBSTRIDE_03
+    model: RS_03
     direction: -1
     limits: &joint_2_limits { position_min: 0.0, position_max: 3.14, velocity_abs: 20.0, torque_abs: 30.0 }
     health: &joint_2_health
@@ -54,7 +54,7 @@ motors:
     coordinate: left_joint_3
     bus: can0
     id: 3
-    model: ROBSTRIDE_06
+    model: RS_06
     direction: -1
     limits: &joint_3_limits { position_min: 0.0, position_max: 2.97, velocity_abs: 20.0, torque_abs: 30.0 }
     health: &joint_3_health
@@ -71,7 +71,7 @@ motors:
     coordinate: left_joint_4
     bus: can0
     id: 4
-    model: ROBSTRIDE_00
+    model: RS_00
     direction: 1
     limits: &joint_4_limits { position_min: -1.70, position_max: 1.70, velocity_abs: 20.0, torque_abs: 14.0 }
     health: &joint_4_health
@@ -88,7 +88,7 @@ motors:
     coordinate: left_joint_5
     bus: can0
     id: 5
-    model: ROBSTRIDE_00
+    model: RS_00
     direction: -1
     limits: &joint_5_limits { position_min: -1.72, position_max: 1.77, velocity_abs: 20.0, torque_abs: 14.0 }
     health: &joint_5_health
@@ -105,7 +105,7 @@ motors:
     coordinate: left_joint_6
     bus: can0
     id: 6
-    model: ROBSTRIDE_05
+    model: RS_05
     direction: 1
     limits: &joint_6_limits { position_min: -1.5, position_max: 1.5, velocity_abs: 20.0, torque_abs: 5.5 }
     health: &joint_6_health
@@ -122,7 +122,7 @@ motors:
     coordinate: left_gripper
     bus: can0
     id: 7
-    model: ROBSTRIDE_05
+    model: RS_05
     direction: -1
     limits: &gripper_limits { position_min: -2.3, position_max: 0.0, velocity_abs: 20.0, torque_abs: 5.5 }
     health: &gripper_health
@@ -135,13 +135,13 @@ motors:
     command_policy: *command_policy
     fault_damping_kd: 5.0
 
-  - { name: right_joint_1, coordinate: right_joint_1, bus: can1, id: 1, model: ROBSTRIDE_06, direction: 1, limits: *joint_1_limits, health: *joint_1_health, command_policy: *command_policy, fault_damping_kd: 10.0 }
-  - { name: right_joint_2, coordinate: right_joint_2, bus: can1, id: 2, model: ROBSTRIDE_03, direction: -1, limits: *joint_2_limits, health: *joint_2_health, command_policy: *command_policy, fault_damping_kd: 20.0 }
-  - { name: right_joint_3, coordinate: right_joint_3, bus: can1, id: 3, model: ROBSTRIDE_06, direction: -1, limits: *joint_3_limits, health: *joint_3_health, command_policy: *command_policy, fault_damping_kd: 20.0 }
-  - { name: right_joint_4, coordinate: right_joint_4, bus: can1, id: 4, model: ROBSTRIDE_00, direction: 1, limits: *joint_4_limits, health: *joint_4_health, command_policy: *command_policy, fault_damping_kd: 10.0 }
-  - { name: right_joint_5, coordinate: right_joint_5, bus: can1, id: 5, model: ROBSTRIDE_00, direction: -1, limits: *joint_5_limits, health: *joint_5_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
-  - { name: right_joint_6, coordinate: right_joint_6, bus: can1, id: 6, model: ROBSTRIDE_05, direction: 1, limits: *joint_6_limits, health: *joint_6_health, command_policy: *command_policy, fault_damping_kd: 10.0 }
-  - { name: right_gripper, coordinate: right_gripper, bus: can1, id: 7, model: ROBSTRIDE_05, direction: -1, limits: *gripper_limits, health: *gripper_health, command_policy: *command_policy, fault_damping_kd: 5.0 }
+  - { name: right_joint_1, coordinate: right_joint_1, bus: can1, id: 1, model: RS_06, direction: 1, limits: *joint_1_limits, health: *joint_1_health, command_policy: *command_policy, fault_damping_kd: 10.0 }
+  - { name: right_joint_2, coordinate: right_joint_2, bus: can1, id: 2, model: RS_03, direction: -1, limits: *joint_2_limits, health: *joint_2_health, command_policy: *command_policy, fault_damping_kd: 20.0 }
+  - { name: right_joint_3, coordinate: right_joint_3, bus: can1, id: 3, model: RS_06, direction: -1, limits: *joint_3_limits, health: *joint_3_health, command_policy: *command_policy, fault_damping_kd: 20.0 }
+  - { name: right_joint_4, coordinate: right_joint_4, bus: can1, id: 4, model: RS_00, direction: 1, limits: *joint_4_limits, health: *joint_4_health, command_policy: *command_policy, fault_damping_kd: 10.0 }
+  - { name: right_joint_5, coordinate: right_joint_5, bus: can1, id: 5, model: RS_00, direction: -1, limits: *joint_5_limits, health: *joint_5_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
+  - { name: right_joint_6, coordinate: right_joint_6, bus: can1, id: 6, model: RS_05, direction: 1, limits: *joint_6_limits, health: *joint_6_health, command_policy: *command_policy, fault_damping_kd: 10.0 }
+  - { name: right_gripper, coordinate: right_gripper, bus: can1, id: 7, model: RS_05, direction: -1, limits: *gripper_limits, health: *gripper_health, command_policy: *command_policy, fault_damping_kd: 5.0 }
 
 motor_groups:
   - name: dual_arm

@@ -54,7 +54,7 @@ motors:
     coordinate: waist_yaw_joint
     bus: can1
     id: 51
-    model: ROBSTRIDE_03
+    model: RS_03
     direction: -1
     health: &motor_health
       safe_position_min: -12.57
@@ -69,33 +69,33 @@ motors:
       limit: reject
       position_step: reject
     fault_damping_kd: 15.0
-  - { name: waist_roll_motor, coordinate: waist_roll_joint, bus: can0, id: 52, model: ROBSTRIDE_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
-  - { name: left_hip_pitch_motor, coordinate: left_hip_pitch_joint, bus: can0, id: 61, model: ROBSTRIDE_04, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 40.0 }
-  - { name: left_hip_roll_motor, coordinate: left_hip_roll_joint, bus: can0, id: 62, model: ROBSTRIDE_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
-  - { name: left_hip_yaw_motor, coordinate: left_hip_yaw_joint, bus: can0, id: 63, model: ROBSTRIDE_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
-  - { name: left_knee_motor, coordinate: left_knee_joint, bus: can0, id: 64, model: ROBSTRIDE_04, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 40.0 }
-  - { name: left_ankle_motor_1, coordinate: left_ankle_motor_1, bus: can0, id: 65, model: ROBSTRIDE_02, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
-  - { name: left_ankle_motor_2, coordinate: left_ankle_motor_2, bus: can0, id: 66, model: ROBSTRIDE_02, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
-  - { name: right_hip_pitch_motor, coordinate: right_hip_pitch_joint, bus: can1, id: 71, model: ROBSTRIDE_04, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 40.0 }
-  - { name: right_hip_roll_motor, coordinate: right_hip_roll_joint, bus: can1, id: 72, model: ROBSTRIDE_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
-  - { name: right_hip_yaw_motor, coordinate: right_hip_yaw_joint, bus: can1, id: 73, model: ROBSTRIDE_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
-  - { name: right_knee_motor, coordinate: right_knee_joint, bus: can1, id: 74, model: ROBSTRIDE_04, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 40.0 }
-  - { name: right_ankle_motor_1, coordinate: right_ankle_motor_1, bus: can1, id: 75, model: ROBSTRIDE_02, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
-  - { name: right_ankle_motor_2, coordinate: right_ankle_motor_2, bus: can1, id: 76, model: ROBSTRIDE_02, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
-  - { name: left_shoulder_pitch_motor, coordinate: left_shoulder_pitch_joint, bus: can2, id: 31, model: ROBSTRIDE_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
-  - { name: left_shoulder_roll_motor, coordinate: left_shoulder_roll_joint, bus: can2, id: 32, model: ROBSTRIDE_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
-  - { name: left_shoulder_yaw_motor, coordinate: left_shoulder_yaw_joint, bus: can2, id: 33, model: ROBSTRIDE_06, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 3.6 }
-  - { name: left_elbow_pitch_motor, coordinate: left_elbow_pitch_joint, bus: can2, id: 34, model: ROBSTRIDE_06, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 3.6 }
-  - { name: left_wrist_yaw_motor, coordinate: left_wrist_yaw_joint, bus: can2, id: 35, model: ROBSTRIDE_00, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
-  - { name: left_wrist_pitch_motor, coordinate: left_wrist_pitch_joint, bus: can2, id: 36, model: ROBSTRIDE_00, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
-  - { name: left_wrist_roll_motor, coordinate: left_wrist_roll_joint, bus: can2, id: 37, model: ROBSTRIDE_00, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
-  - { name: right_shoulder_pitch_motor, coordinate: right_shoulder_pitch_joint, bus: can3, id: 41, model: ROBSTRIDE_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
-  - { name: right_shoulder_roll_motor, coordinate: right_shoulder_roll_joint, bus: can3, id: 42, model: ROBSTRIDE_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
-  - { name: right_shoulder_yaw_motor, coordinate: right_shoulder_yaw_joint, bus: can3, id: 43, model: ROBSTRIDE_06, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 3.6 }
-  - { name: right_elbow_pitch_motor, coordinate: right_elbow_pitch_joint, bus: can3, id: 44, model: ROBSTRIDE_06, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 3.6 }
-  - { name: right_wrist_yaw_motor, coordinate: right_wrist_yaw_joint, bus: can3, id: 45, model: ROBSTRIDE_00, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
-  - { name: right_wrist_pitch_motor, coordinate: right_wrist_pitch_joint, bus: can3, id: 46, model: ROBSTRIDE_00, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
-  - { name: right_wrist_roll_motor, coordinate: right_wrist_roll_joint, bus: can3, id: 47, model: ROBSTRIDE_00, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
+  - { name: waist_roll_motor, coordinate: waist_roll_joint, bus: can0, id: 52, model: RS_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
+  - { name: left_hip_pitch_motor, coordinate: left_hip_pitch_joint, bus: can0, id: 61, model: RS_04, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 40.0 }
+  - { name: left_hip_roll_motor, coordinate: left_hip_roll_joint, bus: can0, id: 62, model: RS_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
+  - { name: left_hip_yaw_motor, coordinate: left_hip_yaw_joint, bus: can0, id: 63, model: RS_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
+  - { name: left_knee_motor, coordinate: left_knee_joint, bus: can0, id: 64, model: RS_04, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 40.0 }
+  - { name: left_ankle_motor_1, coordinate: left_ankle_motor_1, bus: can0, id: 65, model: RS_02, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
+  - { name: left_ankle_motor_2, coordinate: left_ankle_motor_2, bus: can0, id: 66, model: RS_02, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
+  - { name: right_hip_pitch_motor, coordinate: right_hip_pitch_joint, bus: can1, id: 71, model: RS_04, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 40.0 }
+  - { name: right_hip_roll_motor, coordinate: right_hip_roll_joint, bus: can1, id: 72, model: RS_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
+  - { name: right_hip_yaw_motor, coordinate: right_hip_yaw_joint, bus: can1, id: 73, model: RS_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
+  - { name: right_knee_motor, coordinate: right_knee_joint, bus: can1, id: 74, model: RS_04, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 40.0 }
+  - { name: right_ankle_motor_1, coordinate: right_ankle_motor_1, bus: can1, id: 75, model: RS_02, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
+  - { name: right_ankle_motor_2, coordinate: right_ankle_motor_2, bus: can1, id: 76, model: RS_02, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.0 }
+  - { name: left_shoulder_pitch_motor, coordinate: left_shoulder_pitch_joint, bus: can2, id: 31, model: RS_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
+  - { name: left_shoulder_roll_motor, coordinate: left_shoulder_roll_joint, bus: can2, id: 32, model: RS_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
+  - { name: left_shoulder_yaw_motor, coordinate: left_shoulder_yaw_joint, bus: can2, id: 33, model: RS_06, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 3.6 }
+  - { name: left_elbow_pitch_motor, coordinate: left_elbow_pitch_joint, bus: can2, id: 34, model: RS_06, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 3.6 }
+  - { name: left_wrist_yaw_motor, coordinate: left_wrist_yaw_joint, bus: can2, id: 35, model: RS_00, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
+  - { name: left_wrist_pitch_motor, coordinate: left_wrist_pitch_joint, bus: can2, id: 36, model: RS_00, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
+  - { name: left_wrist_roll_motor, coordinate: left_wrist_roll_joint, bus: can2, id: 37, model: RS_00, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
+  - { name: right_shoulder_pitch_motor, coordinate: right_shoulder_pitch_joint, bus: can3, id: 41, model: RS_03, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
+  - { name: right_shoulder_roll_motor, coordinate: right_shoulder_roll_joint, bus: can3, id: 42, model: RS_03, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 15.0 }
+  - { name: right_shoulder_yaw_motor, coordinate: right_shoulder_yaw_joint, bus: can3, id: 43, model: RS_06, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 3.6 }
+  - { name: right_elbow_pitch_motor, coordinate: right_elbow_pitch_joint, bus: can3, id: 44, model: RS_06, direction: -1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 3.6 }
+  - { name: right_wrist_yaw_motor, coordinate: right_wrist_yaw_joint, bus: can3, id: 45, model: RS_00, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
+  - { name: right_wrist_pitch_motor, coordinate: right_wrist_pitch_joint, bus: can3, id: 46, model: RS_00, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
+  - { name: right_wrist_roll_motor, coordinate: right_wrist_roll_joint, bus: can3, id: 47, model: RS_00, direction: 1, health: *motor_health, command_policy: *command_policy, fault_damping_kd: 2.1 }
 
 motor_groups:
   - name: lower_body

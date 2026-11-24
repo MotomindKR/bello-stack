@@ -25,7 +25,7 @@ def valid_inventory_response() -> proto.ListHardwareResponse:
                 coordinate="hip",
                 group="leg",
                 address=proto.MotorAddress(bus="main", id=1),
-                model="ROBSTRIDE_03",
+                model="RS_03",
                 direction=1,
                 limits=proto.MotorLimits(
                     position_min=-12.57,
@@ -45,7 +45,7 @@ def valid_inventory_response() -> proto.ListHardwareResponse:
                 coordinate="knee",
                 group="leg",
                 address=proto.MotorAddress(bus="main", id=2),
-                model="ROBSTRIDE_03",
+                model="RS_03",
                 direction=1,
                 limits=proto.MotorLimits(
                     position_min=-12.57,

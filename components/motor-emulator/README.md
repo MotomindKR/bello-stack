@@ -1,21 +1,21 @@
-# Robstride emulator
+# Motor emulator
 
-`robstride-emulator` simulates Robstride motors and protocol faults. For rigid-body
+The emulator simulates CAN motors and protocol faults. For rigid-body
 physics, use [bello-sim](../bello-sim/).
 
 ## Run
 
-The default [Milly profile](config/milly.yaml) uses loopback UDP. Start the emulator
-and hardwared in separate terminals:
+The default [Milly profile](config/milly.yaml) uses loopback UDP. Run these commands
+from the repository root in separate terminals:
 
 ```sh
-cargo run -p robstride-emulator
+cargo run --manifest-path components/motor-emulator/Cargo.toml
 cargo run -p bello-hardwared -- --config components/bello-hardwared/config/milly-sim.yaml
 ```
 
 Use `--config PATH` to load another profile and `--check` to validate it. For
-Linux SocketCAN tools, bring up `vcan0` and select `config/milly-vcan.yaml`
-in both components.
+Linux SocketCAN tools, follow the [vCAN setup](../../docs/operations.md#virtual-can-and-emulator)
+to select matching profiles for both components.
 
 ## Fault scenarios
 

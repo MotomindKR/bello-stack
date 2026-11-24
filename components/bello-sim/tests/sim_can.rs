@@ -22,7 +22,7 @@ fn motor_follows_position_commands_over_sim_can() -> Result<()> {
     config.pose.listen.set_port(0);
     drop(simulator_port);
 
-    let params = MotorParams::for_model("ROBSTRIDE_06", 1).unwrap();
+    let params = MotorParams::for_model("RS_06", 1).unwrap();
     let physics = std::thread::spawn(move || run(config, Some(Duration::from_secs(1))));
     let mut target = 0.3;
     let mut reversed = false;

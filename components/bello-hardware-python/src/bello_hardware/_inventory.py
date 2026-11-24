@@ -24,13 +24,13 @@ _MAX_CAN_ID = 0xFF
 _MAX_ROBSTRIDE_MOTOR_ID = 127
 _SUPPORTED_ROBSTRIDE_MODELS = frozenset(
     {
-        "ROBSTRIDE_00",
-        "ROBSTRIDE_01",
-        "ROBSTRIDE_02",
-        "ROBSTRIDE_03",
-        "ROBSTRIDE_04",
-        "ROBSTRIDE_05",
-        "ROBSTRIDE_06",
+        "RS_00",
+        "RS_01",
+        "RS_02",
+        "RS_03",
+        "RS_04",
+        "RS_05",
+        "RS_06",
     }
 )
 
@@ -206,7 +206,10 @@ class Inventory:
             addresses.add(address)
             if not item.model.strip():
                 raise InventoryError(f"motor {item.name!r} has no model")
-            if item.model not in _SUPPORTED_ROBSTRIDE_MODELS:
+            model = item.model
+            if model.startswith("ROBSTRIDE_"):
+                model = "RS_" + model.removeprefix("ROBSTRIDE_")
+            if model not in _SUPPORTED_ROBSTRIDE_MODELS:
                 raise InventoryError(
                     f"motor {item.name!r} has unsupported Robstride model {item.model!r}"
                 )
@@ -237,7 +240,7 @@ class Inventory:
                 item.group,
                 item.address.bus,
                 item.address.id,
-                item.model,
+                model,
                 item.direction,
                 limits,
                 _optional_status(item, "status"),
