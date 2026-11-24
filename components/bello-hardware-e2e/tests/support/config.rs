@@ -7,6 +7,8 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use serde_yaml::Value;
 
+pub const FEEDBACK_TIMEOUT_MS: u64 = 100;
+
 pub struct CanonicalLowerBodyFixture {
     pub motor_names: Vec<String>,
 }
@@ -233,7 +235,7 @@ motor_groups:
     motors: [e2e_motor_1, e2e_motor_2]
     control_rate_hz: {control_rate_hz}
     command_timeout_ms: 200
-    feedback_timeout_ms: 100
+    feedback_timeout_ms: {FEEDBACK_TIMEOUT_MS}
     enable_timeout_ms: 500
     enable_retries: 2
     fault_policy:

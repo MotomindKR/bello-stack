@@ -2,12 +2,15 @@ use std::{env, path::PathBuf, process::Command, time::Duration};
 
 use anyhow::{Context, Result, anyhow, bail};
 use bello_hardware_client::raw::proto::watch_telemetry_response::Payload;
-use bello_hardware_client::raw::proto::{DeviceState, GroupCause, GroupState, MotorCommand};
+use bello_hardware_client::raw::proto::{
+    DeviceState, GetStateFrameRequest, GroupCause, GroupState, MotorCommand,
+};
 use bello_hardware_client::raw::{
     CommandStreamOptions, CommandValidity, EnumValue, GroupLease, HardwareClient, LeaseDuration,
     TelemetryFilter, TelemetryStream,
 };
 use bello_hardware_client::{CommandFrame, ControlOptions, CoordinateTarget, Robot};
+use robstride_protocol::{Feedback, Frame, MotorParams, feedback_frame};
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, sleep, timeout};
 
@@ -36,6 +39,87 @@ pub async fn connect(
             Err(error) => return Err(error).context("connecting to hardwared gRPC service"),
         }
     }
+}
+
+pub async fn queued_feedback_keeps_its_age(
+    endpoint: &str,
+    daemon: &mut ManagedProcess,
+    emulator: &mut ManagedProcess,
+    send_feedback: impl FnOnce([Frame; 2]) -> Result<()>,
+) -> Result<()> {
+    let deadline = Duration::from_secs(5);
+    let client = connect(endpoint, deadline, daemon, emulator).await?;
+    wait_for_motors_online(&client, deadline, daemon, emulator).await?;
+    let lease = client
+        .acquire_lease(GROUP, "queued-feedback", LeaseDuration::For(deadline * 2))
+        .await?;
+    require_state(lease.enable().await?, GroupState::Damped)?;
+
+    let before_pause = Instant::now();
+    let captured_before_pause = client
+        .grpc_client()
+        .get_state_frame(GetStateFrameRequest::default())
+        .await?
+        .into_inner()
+        .captured_monotonic_ns;
+    daemon.suspend()?;
+    emulator.stop();
+    send_feedback([1, 2].map(|motor_id| {
+        feedback_frame(
+            253,
+            Feedback {
+                motor_id,
+                mode_status: 2,
+                fault_bits: 0,
+                position: 0.25,
+                velocity: 0.0,
+                torque: 0.0,
+                temperature: 25.0,
+            },
+            MotorParams::for_model("RS_03", 1).unwrap(),
+        )
+    }))?;
+    let latest_possible_send_ns = captured_before_pause + before_pause.elapsed().as_nanos() as u64;
+    let feedback_timeout = Duration::from_millis(super::config::FEEDBACK_TIMEOUT_MS);
+    sleep(feedback_timeout * 3).await;
+    daemon.resume()?;
+
+    timeout(deadline, async {
+        loop {
+            let frame = client
+                .grpc_client()
+                .get_state_frame(GetStateFrameRequest::default())
+                .await?
+                .into_inner();
+            if frame.motors.len() == 2 && frame.motors.iter().all(|m| m.position.abs() > 0.2) {
+                for motor in &frame.motors {
+                    assert!(
+                        Duration::from_nanos(motor.sample_age_ns) >= feedback_timeout,
+                        "queued feedback appeared fresh: {} age {:?}, timeout {feedback_timeout:?}",
+                        motor.motor_name,
+                        Duration::from_nanos(motor.sample_age_ns),
+                    );
+                    assert!(
+                        motor.sample_monotonic_ns <= latest_possible_send_ns,
+                        "queued feedback timestamp was later than the last send"
+                    );
+                }
+                if frame.groups[0].state == GroupState::Fault as i32 {
+                    assert_eq!(frame.groups[0].cause, GroupCause::StaleFeedback as i32);
+                    let ages: Vec<_> = frame
+                        .motors
+                        .iter()
+                        .map(|motor| Duration::from_nanos(motor.sample_age_ns))
+                        .collect();
+                    println!("Queued motor sample ages {ages:?}, group fault StaleFeedback");
+                    return Ok(());
+                }
+            }
+            sleep(Duration::from_millis(2)).await;
+        }
+    })
+    .await
+    .context("waiting for queued samples and the stale-feedback watchdog")?
 }
 
 pub async fn run(

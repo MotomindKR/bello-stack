@@ -13,8 +13,10 @@ use super::{
 use crate::domain::BusName;
 use crate::hardware::lifecycle::DeviceLifecycle;
 
-pub(super) trait BlockingSocket: FrameWriter + Sized + Send + 'static {
-    fn open_pair(spec: &BusSpec) -> Result<(Self, Self)>;
+pub(super) trait BlockingSocket: Sized + Send + 'static {
+    type Writer: FrameWriter + Send + 'static;
+
+    fn open_pair(spec: &BusSpec) -> Result<(Self::Writer, Self)>;
     fn receive(&self, bus: &BusName) -> io::Result<Option<ReceivedFrame>>;
 }
 
@@ -55,7 +57,7 @@ pub(super) fn run<S: BlockingSocket>(
 }
 
 fn run_session<S: BlockingSocket>(
-    writer: S,
+    writer: S::Writer,
     reader: S,
     spec: &BusSpec,
     queues: &BusTxQueues,
@@ -144,7 +146,9 @@ fn run_rx<S: BlockingSocket>(
             Err(error)
                 if matches!(
                     error.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    std::io::ErrorKind::WouldBlock
+                        | std::io::ErrorKind::TimedOut
+                        | std::io::ErrorKind::Interrupted
                 ) =>
             {
                 continue;
