@@ -12,7 +12,7 @@ use bello_hardware_client::raw::{
     CommandStreamOptions, CommandValidity, EnumValue, HardwareClient, LeaseDuration, LeaseStatus,
     TelemetryFilter,
 };
-use bello_hardware_client::{ControlOptions, CoordinateTarget, Error, Robot};
+use bello_hardware_client::{ControlOptions, ControlState, CoordinateTarget, Error, Robot};
 use tokio::net::TcpListener;
 use tokio::sync::{Notify, oneshot};
 use tokio_stream::Stream;
@@ -39,6 +39,7 @@ struct FakeSettings {
     fail_renew: AtomicBool,
     fail_start: AtomicBool,
     reject_commands: AtomicBool,
+    next_acknowledgement_pause: Mutex<Option<AcknowledgementPause>>,
     fail_release: AtomicBool,
     faulted: AtomicBool,
     released_damped: AtomicBool,
@@ -56,12 +57,18 @@ impl Default for FakeHardware {
                 fail_renew: AtomicBool::new(false),
                 fail_start: AtomicBool::new(false),
                 reject_commands: AtomicBool::new(false),
+                next_acknowledgement_pause: Mutex::new(None),
                 fail_release: AtomicBool::new(false),
                 faulted: AtomicBool::new(false),
                 released_damped: AtomicBool::new(false),
             }),
         }
     }
+}
+
+struct AcknowledgementPause {
+    received: oneshot::Sender<()>,
+    resume: oneshot::Receiver<()>,
 }
 
 #[derive(Default)]
@@ -437,6 +444,11 @@ impl HardwareService for FakeHardware {
                     .expect("fake state mutex poisoned")
                     .commands
                     .push(command.clone());
+                let pause = settings.next_acknowledgement_pause.lock().unwrap().take();
+                if let Some(pause) = pause {
+                    let _ = pause.received.send(());
+                    let _ = pause.resume.await;
+                }
                 let lease_lost = command
                     .commands
                     .iter()
@@ -1364,6 +1376,66 @@ async fn ergonomic_control_never_retries_after_a_rejected_running_command() {
 }
 
 #[tokio::test]
+async fn cancelled_send_blocks_commands_until_control_is_restarted() {
+    let server = FakeServer::start().await;
+    let robot = Robot::connect(&server.endpoint).await.unwrap();
+    let group = robot.group(GROUP).unwrap();
+    let mut control = group
+        .control_with(
+            ControlOptions::new("cancelled-send").acknowledgement_timeout(Duration::from_secs(10)),
+        )
+        .await
+        .unwrap();
+    let frame = group
+        .frame()
+        .coordinate("coordinate_a", CoordinateTarget::damping(0.0))
+        .unwrap()
+        .build()
+        .unwrap();
+    control.start(frame.clone()).await.unwrap();
+
+    let (received, command_received) = oneshot::channel();
+    let (resume_acknowledgement, resume) = oneshot::channel();
+    *server.settings.next_acknowledgement_pause.lock().unwrap() =
+        Some(AcknowledgementPause { received, resume });
+    {
+        let send = control.send(frame.clone());
+        tokio::pin!(send);
+        tokio::select! {
+            result = &mut send => panic!("send finished before cancellation: {result:?}"),
+            received = tokio::time::timeout(Duration::from_secs(5), command_received) => {
+                received.expect("server received command before timeout").unwrap();
+            }
+        }
+    }
+    let state_after_cancel = control.state();
+    let _ = resume_acknowledgement.send(());
+
+    let result = control.send(frame.clone()).await;
+    assert!(
+        matches!(result, Err(Error::InvalidSessionState { .. })),
+        "{result:?}"
+    );
+    assert_eq!(state_after_cancel, ControlState::Uncertain);
+
+    control.stop().await.unwrap();
+    control.resume(frame.clone()).await.unwrap();
+    control.send(frame).await.unwrap();
+    assert_eq!(control.state(), ControlState::Running);
+    control.shutdown().await.unwrap();
+    let sequences: Vec<_> = server
+        .state
+        .lock()
+        .unwrap()
+        .commands
+        .iter()
+        .map(|command| command.sequence)
+        .collect();
+    assert_eq!(sequences, [1, 2]);
+    server.stop().await;
+}
+
+#[tokio::test]
 async fn ergonomic_resume_rolls_an_ambiguous_start_back_to_damped() {
     let server = FakeServer::start().await;
     let robot = Robot::connect(server.endpoint.clone())
@@ -1390,6 +1462,35 @@ async fn ergonomic_resume_rolls_an_ambiguous_start_back_to_damped() {
     assert_eq!(control.state(), bello_hardware_client::ControlState::Damped);
 
     control.shutdown().await.expect("shutdown damped control");
+    server.stop().await;
+}
+
+#[tokio::test]
+async fn rejected_disable_leaves_running_control_uncertain() {
+    let server = FakeServer::start().await;
+    let robot = Robot::connect(&server.endpoint).await.unwrap();
+    let group = robot.group(GROUP).unwrap();
+    let mut control = group.control("rejected-disable").await.unwrap();
+    let frame = group
+        .frame()
+        .coordinate("coordinate_a", CoordinateTarget::damping(0.0))
+        .unwrap()
+        .build()
+        .unwrap();
+    control.start(frame.clone()).await.unwrap();
+    server.settings.faulted.store(true, Ordering::Relaxed);
+
+    let error = control.disable().await.unwrap_err();
+    assert_eq!(
+        error.rpc_status().unwrap().code(),
+        tonic::Code::FailedPrecondition
+    );
+    assert_eq!(control.state(), ControlState::Uncertain);
+    assert!(matches!(
+        control.send(frame).await,
+        Err(Error::InvalidSessionState { .. })
+    ));
+    control.release().await.unwrap();
     server.stop().await;
 }
 
