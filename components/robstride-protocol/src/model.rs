@@ -70,27 +70,23 @@ mod tests {
         assert_eq!(
             MODEL_NAMES,
             [
-                "ROBSTRIDE_00",
-                "ROBSTRIDE_01",
-                "ROBSTRIDE_02",
-                "ROBSTRIDE_03",
-                "ROBSTRIDE_04",
-                "ROBSTRIDE_05",
-                "ROBSTRIDE_06",
+                "RS_00", "RS_01", "RS_02", "RS_03", "RS_04", "RS_05", "RS_06",
             ]
         );
-        assert_eq!(model_limits("ROBSTRIDE_04").unwrap().torque_max, 120.0);
+        assert_eq!(model_limits("RS_04").unwrap().torque_max, 120.0);
         assert_eq!(
-            model_limits("ROBSTRIDE_04")
+            model_limits("RS_04")
                 .unwrap()
                 .hardware
                 .unwrap()
                 .peak_phase_current,
             90.0
         );
-        assert!(model_limits("ROBSTRIDE_01").unwrap().hardware.is_none());
+        assert!(model_limits("RS_01").unwrap().hardware.is_none());
         assert!(model_limits("unknown").is_none());
         for model in MODEL_NAMES {
+            let legacy = model.replace("RS_", "ROBSTRIDE_");
+            assert!(model_limits(&legacy).is_none());
             let limits = model_limits(model).unwrap();
             assert_eq!(limits.kp_min, 0.0);
             assert_eq!(limits.kd_min, 0.0);

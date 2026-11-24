@@ -15,14 +15,14 @@ generation, kinematics, and robot behavior remain outside the daemon.
 | Configuration | YAML decoding, local specification validation, cross-device topology validation | Runtime recovery |
 | Control | Group state, command timing, motion safety policy, fault reaction | CAN framing or sockets |
 | CAN and serial transports | Physical sessions, queues, deadlines, reconnect | Motor or IMU meaning |
-| Robstride and EBIMU devices | Protocol configuration, feedback parsing, device health | Group ownership or client sessions |
+| CAN motors and EBIMU sensors | Protocol configuration, feedback parsing, device health | Group ownership or client sessions |
 | Telemetry | Timestamped in-process event fan-out | Durable storage or backpressure on producers |
 | Hardware clients | Application-side channels, lease renewal, command sequencing, and telemetry access | Automatic motion recovery, server safety policy, or hardware ownership |
 
 The assembly boundary is [`app/daemon.rs`](../components/bello-hardwared/src/app/daemon.rs).
 The API receives an `Arc<HardwareDaemon>` and calls its methods rather than
 reaching through to transport workers. Group control receives cloned
-`MotorController` handles and does not construct Robstride frames. Sensor code
+`MotorController` handles and does not construct motor protocol frames. Sensor code
 receives a `SerialHandle` and does not open a port itself.
 
 ## Startup assembly
@@ -51,7 +51,7 @@ supervisor reconnecting rather than failing process assembly.
 If assembly fails partway through, already-created managers are dropped and
 join their workers. The production daemon has no in-process simulation branch;
 hardware-free actuator testing uses the separate
-[`robstride-emulator`](../components/robstride-emulator) process over vCAN.
+[motor emulator](../components/motor-emulator) process over vCAN.
 
 ## Ownership and execution model
 
@@ -67,7 +67,7 @@ isolates bus I/O but does not make it hard real-time.
 | CAN supervisor | One persistent thread per bus | Open/reopen SocketCAN or GS-USB sessions and own reconnect state |
 | SocketCAN session workers | One TX and one RX thread while a bus session is open | Priority batches, periodic latest-target clocks, and frame reception |
 | GS-USB session | One dedicated Tokio runtime and TX thread per connected bus | USB actor, priority batches, periodic latest-target clocks, and async reception |
-| Robstride feedback worker | One shared thread | Route received frames by `(bus, motor id)` and scan motor health |
+| Motor feedback worker | One shared thread | Route received frames by `(bus, motor id)` and scan motor health |
 | Serial supervisor | One persistent thread per serial device | Open/reopen the port and own reconnect state |
 | Serial session workers | One writer and one reader thread while a session is open | Deadline-bound writes and byte-chunk reception |
 | IMU worker | One thread per IMU | Configure EBIMU, frame and parse samples, detect stale input |
@@ -81,7 +81,7 @@ Worker creation and joining live in
 [`control/group_worker.rs`](../components/bello-hardwared/src/control/group_worker.rs),
 [`hardware/can/mod.rs`](../components/bello-hardwared/src/hardware/can/mod.rs),
 [`hardware/serial/mod.rs`](../components/bello-hardwared/src/hardware/serial/mod.rs),
-[`hardware/robstride/manager.rs`](../components/bello-hardwared/src/hardware/robstride/manager.rs),
+`manager.rs` in the [hardware modules](../components/bello-hardwared/src/hardware),
 and [`hardware/imu/mod.rs`](../components/bello-hardwared/src/hardware/imu/mod.rs).
 
 ### Communication primitives
@@ -97,7 +97,7 @@ The code uses different channel semantics deliberately:
   do not lose work.
 - CAN uses separate bounded safety, configuration, and control queues per bus.
   Safety has highest receive priority, followed by configuration and control.
-- Received CAN frames share one bounded queue consumed by the Robstride
+- Received CAN frames share one bounded queue consumed by the motor
   feedback dispatcher.
 - Serial uses bounded outbound and received-chunk queues. The IMU consumes the
   chunks; the supervisor drains stale chunks when replacing a transport
@@ -122,7 +122,7 @@ gRPC command stream
   -> group latest-value mailbox
   -> group worker validates age, sequence, completeness, and motor policy
   -> accepted command updates the latest targets and performs safety checks
-  -> on_update: Robstride ControlBatcher -> bounded CAN control queue
+  -> on_update: ControlBatcher -> bounded CAN control queue
   -> periodic: encode once -> latest-target slot per group per bus
   -> selected CAN transport TX worker (owns periodic repeat clocks)
 ```
@@ -135,7 +135,7 @@ The detailed timing and safety rules are in
 [`api/grpc/command_stream.rs`](../components/bello-hardwared/src/api/grpc/command_stream.rs),
 [`app/daemon.rs`](../components/bello-hardwared/src/app/daemon.rs),
 [`control/group.rs`](../components/bello-hardwared/src/control/group.rs), and
-[`hardware/robstride/controller.rs`](../components/bello-hardwared/src/hardware/robstride/controller.rs).
+`controller.rs` in the [hardware modules](../components/bello-hardwared/src/hardware).
 
 With the default `on_update` transmission mode, accepted commands enqueue
 batches immediately and a group refresh deadline retransmits the latest command
@@ -157,7 +157,7 @@ and [`hardware/can/periodic.rs`](../components/bello-hardwared/src/hardware/can/
 ```text
 selected CAN transport RX worker
   -> timestamped raw frame queue
-  -> shared Robstride feedback dispatcher
+  -> shared motor feedback dispatcher
   -> controller selected by (bus, motor id)
   -> protocol decode and motor health classification
   -> per-motor latest feedback and lifecycle state
@@ -168,8 +168,7 @@ selected CAN transport RX worker
 Feedback is retained per motor as the latest timestamped sample; it is not
 averaged. Every decoded sample also produces a motor telemetry event. The group
 reads device status rather than consuming the telemetry stream. See
-[`hardware/robstride/manager.rs`](../components/bello-hardwared/src/hardware/robstride/manager.rs)
-and [`hardware/robstride/controller.rs`](../components/bello-hardwared/src/hardware/robstride/controller.rs).
+`manager.rs` and `controller.rs` in the [hardware modules](../components/bello-hardwared/src/hardware).
 
 The Mini deployment transmits at 300 Hz with periodic reporting disabled while
 Running, so command replies supply its feedback. Reporting is restored when
@@ -258,7 +257,7 @@ reaction stays alive:
 3. The server and telemetry-stream shutdown watch then close. Each telemetry
    stream drains already-queued selected events; tonic receives up to two
    seconds to complete this graceful drain before it is forced closed.
-4. The watchdog is joined and dropping the daemon stops the IMU, Robstride,
+4. The watchdog is joined and dropping the daemon stops the IMU, motor,
    CAN, and serial workers. Their terminal transport/device states occur after
    gRPC closes and therefore are not guaranteed to reach remote observers.
 

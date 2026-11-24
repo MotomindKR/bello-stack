@@ -8,12 +8,12 @@ dynamics:
 
 actuators:
   - id: 1
-    model: ROBSTRIDE_03
+    model: RS_03
     direction: 1
     initial_position: 0.0
     initial_temperature_c: 25.0
   - id: 2
-    model: ROBSTRIDE_03
+    model: RS_03
     direction: -1
     initial_position: 0.0
     initial_temperature_c: 25.0

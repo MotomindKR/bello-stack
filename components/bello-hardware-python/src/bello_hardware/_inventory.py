@@ -24,13 +24,13 @@ _MAX_CAN_ID = 0xFF
 _MAX_ROBSTRIDE_MOTOR_ID = 127
 _SUPPORTED_ROBSTRIDE_MODELS = frozenset(
     {
-        "ROBSTRIDE_00",
-        "ROBSTRIDE_01",
-        "ROBSTRIDE_02",
-        "ROBSTRIDE_03",
-        "ROBSTRIDE_04",
-        "ROBSTRIDE_05",
-        "ROBSTRIDE_06",
+        "RS_00",
+        "RS_01",
+        "RS_02",
+        "RS_03",
+        "RS_04",
+        "RS_05",
+        "RS_06",
     }
 )
 

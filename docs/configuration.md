@@ -281,7 +281,7 @@ and the utilization check in
 `bus` must name a declared logical bus. The `(bus, id)` address is unique, and a motor
 ID cannot equal that bus's `host_id`. `direction` is `1` or `-1`.
 
-The selected Robstride `model` supplies protocol velocity, torque, and gain
+The selected motor `model` supplies protocol velocity, torque, and gain
 encoding ranges. The URDF supplies the robot-coordinate position, velocity,
 and effort envelope. Hardwared intersects the position, velocity, and scalar
 feedforward-torque sources, and optional `limits` may only narrow those
@@ -301,10 +301,11 @@ before it is exposed in robot coordinates. `velocity_abs` and `torque_abs`
 then intersect each side independently, so an absolute cap may narrow only the
 larger side.
 
-Supported model names are `ROBSTRIDE_00` through `ROBSTRIDE_06`. Their
-different velocity, torque, `kp`, and `kd` capabilities are defined centrally
-in
-[`descriptions/robstride/models.yaml`](../descriptions/robstride/models.yaml).
+Use `RS_00` through `RS_06` for the motor model. The
+[model catalog](../descriptions/motors/models.yaml) lists each model's velocity,
+torque, `kp`, and `kd` ranges. Inventory reports the short model names.
+When upgrading, change existing profiles to these IDs and update the daemon and
+Python client together.
 
 Temperature handling has separate warning, fault, and recovery thresholds.
 The warning must be below the fault threshold. After a temperature fault, the
@@ -317,11 +318,11 @@ Scalar `limit` and `position_step` policy behavior values are `reject` and
 velocity, and feedforward torque. Clients must constrain their requests before
 submission, including coupled-joint bounds and maximum position steps.
 Finite `kp` and `kd` values are passed through without a hardwared gain guard;
-the Robstride Type-1 encoder saturates them to the model's representable range.
+the Type-1 encoder saturates them to the model's representable range.
 
 The fault damping gain must be finite and positive. Hardwared sends the
 configured value without torque-envelope evaluation or group-wide scaling; the
-Robstride Type-1 encoder applies only its physical gain encoding range.
+Type-1 encoder applies only its physical gain encoding range.
 `maximum_position_step` compares the first target of a lease generation
 with fresh measured feedback and subsequent targets with the previously
 accepted target.

@@ -375,7 +375,7 @@ mod tests {
             dynamics: DynamicsConfig::default(),
             actuators: vec![ActuatorConfig {
                 id: 1,
-                model: "ROBSTRIDE_03".into(),
+                model: "RS_03".into(),
                 direction: 1,
                 initial_position: 0.0,
                 initial_temperature_c: 25.0,
@@ -387,7 +387,7 @@ mod tests {
     #[test]
     fn enabled_actuator_tracks_commands_and_reports_feedback() {
         let mut emulator = Emulator::new(config(Vec::new())).unwrap();
-        let params = MotorParams::for_model("ROBSTRIDE_03", 1).unwrap();
+        let params = MotorParams::for_model("RS_03", 1).unwrap();
         emulator.handle(active_report_frame(0xfd, 1, true));
         emulator.handle(param_write_u8_frame(
             0xfd,
@@ -432,7 +432,7 @@ mod tests {
             },
         ];
         let mut emulator = Emulator::new(config(events)).unwrap();
-        let params = MotorParams::for_model("ROBSTRIDE_03", 1).unwrap();
+        let params = MotorParams::for_model("RS_03", 1).unwrap();
         emulator.handle(active_report_frame(0xfd, 1, true));
         emulator.handle(param_write_u8_frame(
             0xfd,
@@ -471,7 +471,7 @@ mod tests {
     #[test]
     fn enabled_actuator_only_reports_running_after_impedance_mode_is_selected() {
         let mut emulator = Emulator::new(config(Vec::new())).unwrap();
-        let params = MotorParams::for_model("ROBSTRIDE_03", 1).unwrap();
+        let params = MotorParams::for_model("RS_03", 1).unwrap();
         emulator.handle(active_report_frame(0xfd, 1, true));
         emulator.handle(param_write_u8_frame(0xfd, 1, RUN_MODE_INDEX, 1));
         emulator.handle(enable_frame(0xfd, 1));
@@ -499,7 +499,7 @@ mod tests {
     #[test]
     fn command_replies_continue_with_periodic_reporting_disabled() {
         let mut emulator = Emulator::new(config(Vec::new())).unwrap();
-        let params = MotorParams::for_model("ROBSTRIDE_03", 1).unwrap();
+        let params = MotorParams::for_model("RS_03", 1).unwrap();
         emulator.handle(param_write_u8_frame(
             0xfd,
             1,

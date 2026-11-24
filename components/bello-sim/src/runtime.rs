@@ -515,7 +515,7 @@ mod tests {
             actuators: (1..=2)
                 .map(|id| ActuatorConfig {
                     id,
-                    model: "ROBSTRIDE_03".into(),
+                    model: "RS_03".into(),
                     direction: 1,
                     initial_position: 0.,
                     initial_temperature_c: 25.,
@@ -554,7 +554,7 @@ mod tests {
         let now = Instant::now();
         let delay = Duration::from_millis(10);
         let command = control_frame(
-            MotorParams::for_model("ROBSTRIDE_03", 1).unwrap(),
+            MotorParams::for_model("RS_03", 1).unwrap(),
             ControlCommand {
                 motor_id: 1,
                 torque: 2.,

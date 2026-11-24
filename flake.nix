@@ -38,6 +38,7 @@
                 pytest
               ]))
               ruff
+              uv
             ] ++ pkgs.lib.optionals isLinux (with pkgs; [
               can-utils
               ffmpeg

@@ -93,7 +93,7 @@ RUST_LOG=info cargo run -p bello-state-estimatord -- \
 The process binds gRPC before opening hardware, so address conflicts fail
 without partially starting devices. Wait for the `Bello hardware daemon ready`
 log, then use `ListHardware` and health telemetry to inspect the buses, serial
-devices, and IMUs. A Robstride motor may remain `CONNECTING` until `EnableGroup`
+devices, and IMUs. A motor may remain `CONNECTING` until `EnableGroup`
 turns on active feedback, so motor readiness is established by the enable
 operation rather than being a prerequisite for acquiring a lease. The API
 workflow is in [`api.md`](api.md#normal-control-workflow).
@@ -118,8 +118,8 @@ Use vCAN for tests that need SocketCAN tools such as `candump`. Use physical CAN
 for bus arbitration, electrical faults, or wire timing measurements.
 
 To run the standalone motor emulator with the same daemon profile, start
-`cargo run -p robstride-emulator` in place of MuJoCo. Its
-[events](../components/robstride-emulator/README.md#fault-scenarios) can inject
+`cargo run --manifest-path components/motor-emulator/Cargo.toml` in place of MuJoCo. Its
+[events](../components/motor-emulator/README.md#fault-scenarios) can inject
 actuator faults and delayed feedback.
 
 ## Virtual CAN and emulator
@@ -136,7 +136,7 @@ sudo ip link set dev vcan0 up
 Run the matching SocketCAN profiles in separate terminals:
 
 ```sh
-cargo run -p robstride-emulator -- --config components/robstride-emulator/config/milly-vcan.yaml
+cargo run --manifest-path components/motor-emulator/Cargo.toml -- --config components/motor-emulator/config/milly-vcan.yaml
 cargo run -p bello-hardwared -- --config components/bello-hardwared/config/milly-vcan.yaml
 ```
 
@@ -292,6 +292,6 @@ Common failure checks:
   subscriber throughput. A lag event reports the exact dropped count; control
   continues independently.
 
-Set `RUST_LOG` for more detail, for example
-`RUST_LOG=bello_hardwared=debug,robstride_emulator=debug`. Avoid debug logging on
+Use `RUST_LOG=bello_hardwared=debug` for daemon diagnostics. For emulator
+diagnostics, set `RUST_LOG=debug` in the emulator terminal. Avoid debug logging on
 a production control path until its timing impact has been evaluated.

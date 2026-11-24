@@ -100,10 +100,9 @@ mod tests {
     use crate::config::MotorConfig;
 
     fn motor_spec() -> MotorSpec {
-        let config: MotorConfig = serde_yaml::from_str(
-            "name: motor\ncoordinate: joint\nbus: can\nid: 1\nmodel: ROBSTRIDE_03",
-        )
-        .unwrap();
+        let config: MotorConfig =
+            serde_yaml::from_str("name: motor\ncoordinate: joint\nbus: can\nid: 1\nmodel: RS_03")
+                .unwrap();
         MotorSpec::try_from(&config).unwrap()
     }
 

@@ -408,11 +408,11 @@ buses:
   - { name: first, transport: { type: socketcan, interface: vcan0 } }
   - { name: second, transport: { type: socketcan, interface: vcan1 } }
 motors:
-  - { name: direct, coordinate: direct_joint, bus: first, id: 1, model: ROBSTRIDE_03 }
-  - { name: diff_a, coordinate: diff_a, bus: first, id: 2, model: ROBSTRIDE_03, health: { feedback_position_tolerance: 0.125 } }
-  - { name: diff_b, coordinate: diff_b, bus: second, id: 2, model: ROBSTRIDE_03, health: { feedback_position_tolerance: 0.125 } }
-  - { name: drive_a, coordinate: parallel_a, bus: first, id: 3, model: ROBSTRIDE_03 }
-  - { name: drive_b, coordinate: parallel_b, bus: first, id: 4, model: ROBSTRIDE_03 }
+  - { name: direct, coordinate: direct_joint, bus: first, id: 1, model: RS_03 }
+  - { name: diff_a, coordinate: diff_a, bus: first, id: 2, model: RS_03, health: { feedback_position_tolerance: 0.125 } }
+  - { name: diff_b, coordinate: diff_b, bus: second, id: 2, model: RS_03, health: { feedback_position_tolerance: 0.125 } }
+  - { name: drive_a, coordinate: parallel_a, bus: first, id: 3, model: RS_03 }
+  - { name: drive_b, coordinate: parallel_b, bus: first, id: 4, model: RS_03 }
 motor_groups:
   - { name: direct, motors: [direct] }
   - { name: differential, motors: [diff_a, diff_b] }
