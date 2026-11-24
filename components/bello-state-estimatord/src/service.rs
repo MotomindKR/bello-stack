@@ -31,6 +31,7 @@ struct StampedPose {
     pose: PoseEstimate,
     angular_velocity_local: Vector3<f64>,
     produced: Instant,
+    imu_age: Duration,
     source_age: Duration,
     sample_monotonic_ns: u64,
 }
@@ -40,7 +41,7 @@ struct PoseServer {
     reference_frame: Arc<str>,
     tracked_frame: Arc<str>,
     poses: watch::Receiver<Option<StampedPose>>,
-    maximum_age: Duration,
+    maximum_imu_age: Duration,
 }
 
 #[tonic::async_trait]
@@ -67,14 +68,14 @@ impl PoseService for PoseServer {
         let reference_frame = self.reference_frame.clone();
         let tracked_frame = self.tracked_frame.clone();
         let mut poses = self.poses.clone();
-        let maximum_age = self.maximum_age;
+        let maximum_imu_age = self.maximum_imu_age;
         let stream = async_stream::try_stream! {
             let mut last_sequence = None;
             loop {
                 let current = poses.borrow_and_update().clone();
                 if let Some(sample) = current
                     && last_sequence != Some(sample.sequence)
-                    && sample.source_age.saturating_add(sample.produced.elapsed()) <= maximum_age
+                    && sample.imu_age.saturating_add(sample.produced.elapsed()) <= maximum_imu_age
                 {
                     last_sequence = Some(sample.sequence);
                     yield response_for(&reference_frame, &tracked_frame, sample);
@@ -99,7 +100,7 @@ pub async fn run(path: &Path) -> anyhow::Result<()> {
         reference_frame: Arc::from(config.reference_frame.as_str()),
         tracked_frame: Arc::from(config.tracked_frame.as_str()),
         poses: pose_receiver,
-        maximum_age: config.imu_stale(),
+        maximum_imu_age: config.imu_stale(),
     };
     let (server_shutdown, server_shutdown_receiver) = oneshot::channel();
     let mut server = tokio::spawn(async move {
@@ -465,6 +466,10 @@ async fn consume_hardware(
                 pose.linear_velocity,
                 angular_velocity,
             );
+            let motor_age = Duration::from_nanos(
+                imu.monotonic_ns
+                    .saturating_sub(coordinates.oldest_source_ns),
+            );
             *sequence = sequence.saturating_add(1);
             poses.send_replace(Some(StampedPose {
                 sequence: *sequence,
@@ -475,7 +480,8 @@ async fn consume_hardware(
                 },
                 angular_velocity_local: tracked.angular_velocity_local,
                 produced: Instant::now(),
-                source_age: imu.sample_age,
+                imu_age: imu.sample_age,
+                source_age: imu.sample_age.max(motor_age),
                 sample_monotonic_ns: imu_source_ns,
             }));
         }
@@ -582,7 +588,7 @@ mod tests {
             reference_frame: Arc::from("odom"),
             tracked_frame: Arc::from("pelvis"),
             poses: receiver,
-            maximum_age: Duration::from_secs(1),
+            maximum_imu_age: Duration::from_secs(1),
         };
         let wrong = server
             .watch_pose(Request::new(WatchPoseRequest {
@@ -603,6 +609,7 @@ mod tests {
             },
             angular_velocity_local: Vector3::new(0.4, 0.5, 0.6),
             produced: Instant::now(),
+            imu_age: Duration::from_millis(4),
             source_age: Duration::from_millis(4),
             sample_monotonic_ns: 123_456,
         }));

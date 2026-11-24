@@ -327,26 +327,28 @@ async fn watch_pose_reports_age_of_oldest_encoder_used() {
         .kinematic_model("pelvis", "left", "right")
         .unwrap();
     let (poses, receiver) = watch::channel(None);
+    let mut filter = ContactFilter::new(&config);
+    let mut sequence = 0;
     consume_hardware(
         Robot::connect(endpoint).await.unwrap(),
         &config,
         &model,
         &ImuFrameTransform::new(nalgebra::Isometry3::identity()),
         &poses,
-        &mut ContactFilter::new(&config),
-        &mut 0,
+        &mut filter,
+        &mut sequence,
     )
     .await
     .unwrap();
     drop(poses);
 
-    let server_pose = PoseServer {
+    let pose_server = PoseServer {
         reference_frame: Arc::from("odom"),
         tracked_frame: Arc::from("pelvis"),
         poses: receiver,
-        maximum_age: config.imu_stale(),
+        maximum_imu_age: config.imu_stale(),
     };
-    let mut stream = server_pose
+    let mut stream = pose_server
         .watch_pose(Request::new(WatchPoseRequest {
             reference_frame: "odom".into(),
             tracked_frame: "pelvis".into(),
@@ -396,6 +398,7 @@ async fn new_subscribers_never_receive_cached_stale_pose() {
         },
         angular_velocity_local: Vector3::zeros(),
         produced: Instant::now(),
+        imu_age: Duration::from_secs(1),
         source_age: Duration::from_secs(1),
         sample_monotonic_ns: 1,
     }));
@@ -403,7 +406,7 @@ async fn new_subscribers_never_receive_cached_stale_pose() {
         reference_frame: Arc::from("odom"),
         tracked_frame: Arc::from("pelvis"),
         poses: receiver,
-        maximum_age: Duration::from_millis(100),
+        maximum_imu_age: Duration::from_millis(100),
     };
     let mut stream = server
         .watch_pose(Request::new(WatchPoseRequest {
@@ -420,6 +423,7 @@ async fn new_subscribers_never_receive_cached_stale_pose() {
     );
     let mut fresh = sender.borrow().clone().unwrap();
     fresh.sequence = 2;
+    fresh.imu_age = Duration::ZERO;
     fresh.source_age = Duration::ZERO;
     fresh.produced = Instant::now();
     sender.send_replace(Some(fresh));
