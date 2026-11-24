@@ -196,6 +196,16 @@ Serial names and mapped physical ports must be unique. `baud_rate` must be posit
 and `timeout_ms` is in `1..=500`. The timeout bounds a write from queueing
 through completion; it is also the OS read timeout.
 
+Set `simulation: true` once at the top of a simulated deployment. It applies to
+all serial ports and defaults to `false`. Each entry in `serial_ports` is a
+device path. On macOS, simulation opens those paths at baud zero to skip the
+hardware speed ioctl. Other opens use the baud rate from the hardware
+description. CAN transport selection stays in `bus_transports`.
+
+Start MuJoCo before hardwared. If the simulator exits, restart MuJoCo before
+restarting hardwared. The daemon stops using a disconnected simulated serial
+port because the OS can reassign its PTY path. Physical serial ports retry.
+
 Each serial device belongs to exactly one IMU or power board.
 
 `source_frame` names the URDF link whose axes match the parsed EBIMU sample.

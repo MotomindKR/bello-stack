@@ -1,5 +1,5 @@
 [package]
-name = "bello-mujoco"
+name = "bello-sim"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -23,7 +23,7 @@ xmltree = "0.12"
 nalgebra.workspace = true
 rand = "0.9"
 rand_distr = "0.5"
-nix = { workspace = true, features = ["term", "poll", "fs", "signal", "sched"] }
+nix = { workspace = true, features = ["term", "poll", "fs", "signal", "sched", "user"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "signal", "sync", "net", "time"] }
 tokio-stream = { workspace = true, features = ["net", "sync"] }
 tonic.workspace = true

@@ -1,4 +1,5 @@
 description: ../../../descriptions/bello_mini_torso/hardware.yaml
+simulation: true
 
 bus_transports:
   can0: { type: sim, daemon_port: 19100, simulator_port: 19101 }
@@ -7,8 +8,8 @@ bus_transports:
   can3: { type: sim, daemon_port: 19106, simulator_port: 19107 }
 
 serial_ports:
-  imu_serial: /dev/ttyIMU
-  power_board_serial: /dev/ttyPOWER
+  imu_serial: /tmp/bello-sim/imu
+  power_board_serial: /tmp/bello-sim/power
 
 enabled_power_boards: [power_board]
 

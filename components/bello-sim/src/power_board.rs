@@ -1,15 +1,15 @@
-use crate::transport::Uart;
+use crate::uart::{Endpoint, Uart};
 use anyhow::{Result, ensure};
 use cog_protocol::{Profile, encode};
 use serde::Deserialize;
-use std::path::PathBuf;
 use std::time::Duration;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub name: String,
-    pub device: PathBuf,
+    #[serde(flatten)]
+    pub endpoint: Endpoint,
     pub battery_voltage_v: f32,
     pub battery_current_a: f32,
     pub battery_soc_percent: f32,
@@ -28,7 +28,7 @@ pub struct Config {
 impl Config {
     pub fn validate(&self) -> Result<()> {
         ensure!(
-            !self.name.trim().is_empty() && !self.device.as_os_str().is_empty(),
+            !self.name.trim().is_empty() && !self.endpoint.path().as_os_str().is_empty(),
             "empty power board name/device"
         );
         ensure!(
@@ -54,6 +54,7 @@ impl Config {
     }
 }
 
+#[derive(Clone)]
 pub struct Encoder {
     config: Config,
     sequence: u8,
@@ -141,24 +142,20 @@ impl Encoder {
 }
 
 pub struct Serial {
-    uart: Uart,
-    encoder: Encoder,
+    uart: Uart<Encoder>,
 }
 
 impl Serial {
     pub fn open(config: Config) -> Result<Self> {
-        config.validate()?;
-        let uart = Uart::open(&config.device)?;
+        let endpoint = config.endpoint.clone();
+        let encoder = Encoder::new(config)?;
         Ok(Self {
-            uart,
-            encoder: Encoder::new(config)?,
+            uart: Uart::open(&endpoint, encoder)?,
         })
     }
     pub fn update(&mut self, now: Duration) -> Result<()> {
-        let mut buffer = [0; 4096];
-        let count = self.uart.read(&mut buffer)?;
         self.uart
-            .write(&self.encoder.update(now, &buffer[..count])?)
+            .update(|encoder, input| encoder.update(now, input))
     }
 }
 
@@ -244,7 +241,7 @@ mod tests {
     fn real_pty_produces_valid_wire_data() {
         let pty = nix::pty::openpty(None, None).unwrap();
         let mut c = config();
-        c.device = nix::unistd::ttyname(&pty.slave).unwrap();
+        c.endpoint = Endpoint::Device(nix::unistd::ttyname(&pty.slave).unwrap());
         let mut serial = Serial::open(c).unwrap();
         let mut peer = std::fs::File::from(pty.master);
         nix::fcntl::fcntl(
@@ -257,6 +254,12 @@ mod tests {
         let mut bytes = [0; 4096];
         let count = peer.read(&mut bytes).unwrap();
         assert_eq!(decode(bytes[..count].to_vec()).len(), 7);
-        assert!(serial.encoder.host_valid(Duration::ZERO));
+        serial
+            .uart
+            .update(|encoder, _| {
+                assert!(encoder.host_valid(Duration::ZERO));
+                Ok(Vec::new())
+            })
+            .unwrap();
     }
 }

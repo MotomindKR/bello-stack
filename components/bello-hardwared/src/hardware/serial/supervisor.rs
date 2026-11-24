@@ -25,40 +25,42 @@ pub(super) fn run(
     let mut failures = 0_u32;
     lifecycle.mark_connecting(format!("opening serial port {}", spec.port));
     while !stop.load(Ordering::Acquire) {
-        match open_port(&spec) {
+        let detail = match open_port(&spec) {
             Ok(port) => {
                 failures = 0;
-                // Reconnect requests raised against the previous transport
-                // generation are satisfied by this newly opened session.
                 while reconnect.try_recv().is_ok() {}
                 lifecycle.mark_online(format!("serial port {} online", spec.port));
-                if let Err(detail) =
-                    run_session(port, &outbound, &chunks, &reconnect, &stop, &spec.name)
-                {
-                    if stop.load(Ordering::Acquire) {
-                        break;
-                    }
-                    prepare_reconnect(
-                        &spec,
-                        &outbound,
-                        &chunk_queue,
-                        &lifecycle,
-                        &stop,
-                        &mut failures,
-                        detail,
-                    );
+                match run_session(port, &outbound, &chunks, &reconnect, &stop, &spec.name) {
+                    Ok(()) => break,
+                    Err(detail) => detail,
                 }
             }
-            Err(error) => prepare_reconnect(
-                &spec,
-                &outbound,
-                &chunk_queue,
-                &lifecycle,
-                &stop,
-                &mut failures,
-                error.to_string(),
-            ),
+            Err(error) => format!("{error:#}"),
+        };
+        if stop.load(Ordering::Acquire) {
+            break;
         }
+        if spec.simulation {
+            let detail = format!(
+                "simulated serial port {} unavailable: {detail}; start the simulator, then restart hardwared",
+                spec.port
+            );
+            lifecycle.enter_fault(detail.clone());
+            warn!(device=%spec.name, %detail, "simulated serial transport stopped");
+            reject_outbound(&outbound, &detail);
+            clear_chunks(&chunk_queue);
+            return;
+        }
+        reject_outbound(&outbound, &detail);
+        clear_chunks(&chunk_queue);
+        failures = failures.saturating_add(1);
+        let delay = spec.reconnect.delay(failures);
+        lifecycle.begin_reconnect(format!("{detail}; retrying in {} ms", delay.as_millis()));
+        warn!(device=%spec.name, %detail, delay_ms=delay.as_millis(), "serial reconnect scheduled");
+        if wait_for_stop(&stop, delay) {
+            break;
+        }
+        lifecycle.mark_connecting(format!("reopening serial port {}", spec.port));
     }
     reject_outbound(&outbound, "serial supervisor stopped");
     clear_chunks(&chunk_queue);
@@ -66,7 +68,13 @@ pub(super) fn run(
 }
 
 fn open_port(spec: &SerialSpec) -> Result<Box<dyn SerialPort>> {
-    serialport::new(&spec.port, spec.baud_rate)
+    // macOS PTYs reject IOSSIOSPEED. Zero tells serialport to keep the current speed.
+    let baud_rate = if cfg!(target_os = "macos") && spec.simulation {
+        0
+    } else {
+        spec.baud_rate
+    };
+    serialport::new(&spec.port, baud_rate)
         .timeout(spec.timeout)
         .open()
         .with_context(|| format!("opening serial device {} ({})", spec.name, spec.port))
@@ -206,30 +214,6 @@ fn run_reader(
                 break;
             }
         }
-    }
-}
-
-fn prepare_reconnect(
-    spec: &SerialSpec,
-    outbound: &Receiver<OutboundBytes>,
-    chunks: &Receiver<SerialChunk>,
-    lifecycle: &DeviceLifecycle,
-    stop: &AtomicBool,
-    failures: &mut u32,
-    detail: String,
-) {
-    reject_outbound(outbound, &detail);
-    clear_chunks(chunks);
-    if stop.load(Ordering::Acquire) {
-        lifecycle.enter_fault(detail);
-        return;
-    }
-    *failures = failures.saturating_add(1);
-    let delay = spec.reconnect.delay(*failures);
-    lifecycle.begin_reconnect(format!("{detail}; retrying in {} ms", delay.as_millis()));
-    warn!(device=%spec.name, %detail, delay_ms=delay.as_millis(), "serial reconnect scheduled");
-    if !wait_for_stop(stop, delay) {
-        lifecycle.mark_connecting(format!("reopening serial port {}", spec.port));
     }
 }
 

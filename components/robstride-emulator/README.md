@@ -1,7 +1,7 @@
 # Robstride emulator
 
 `robstride-emulator` simulates Robstride motors and protocol faults. For rigid-body
-physics, use [bello-mujoco](../bello-mujoco/).
+physics, use [bello-sim](../bello-sim/).
 
 ## Run
 

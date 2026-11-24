@@ -12,13 +12,12 @@ pub(crate) struct SerialSpec {
     pub(crate) port: String,
     pub(crate) baud_rate: u32,
     pub(crate) timeout: Duration,
+    pub(super) simulation: bool,
     pub(super) reconnect: ReconnectPolicy,
 }
 
-impl TryFrom<&SerialDeviceConfig> for SerialSpec {
-    type Error = anyhow::Error;
-
-    fn try_from(config: &SerialDeviceConfig) -> Result<Self> {
+impl SerialSpec {
+    pub(crate) fn resolve(config: &SerialDeviceConfig, simulation: bool) -> Result<Self> {
         if config.name.is_empty() {
             bail!("serial_devices[].name must be non-empty");
         }
@@ -35,6 +34,7 @@ impl TryFrom<&SerialDeviceConfig> for SerialSpec {
             );
         }
         Ok(Self {
+            simulation,
             name: SerialDeviceName::from(config.name.as_str()),
             port: config.port.clone(),
             baud_rate: config.baud_rate,

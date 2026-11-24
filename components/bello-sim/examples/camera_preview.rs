@@ -1,6 +1,6 @@
 //! Read-only camera commissioning fixture: no CAN, controller or actuator commands.
 use anyhow::Result;
-use bello_mujoco::{cameras, model};
+use bello_sim::{cameras, model};
 use clap::{Parser, Subcommand};
 use std::{
     path::PathBuf,

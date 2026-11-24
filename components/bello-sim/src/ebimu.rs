@@ -1,9 +1,8 @@
 //! EBIMU UART encoding. Physics samples stay in the physical sensor frame.
 use crate::Simulation;
-use crate::transport::Uart;
+use crate::uart::{Endpoint, Uart};
 use anyhow::{Result, ensure};
 use nalgebra::{Quaternion, UnitQuaternion, Vector3};
-use std::path::Path;
 
 const GRAVITY: f64 = 9.80665;
 
@@ -34,6 +33,7 @@ impl Sample {
     }
 }
 
+#[derive(Clone)]
 pub struct Encoder {
     interval_ms: u16,
     ascii: bool,
@@ -269,22 +269,18 @@ impl Encoder {
 }
 
 pub struct Serial {
-    uart: Uart,
-    encoder: Encoder,
+    uart: Uart<Encoder>,
 }
 
 impl Serial {
-    pub fn open(path: &Path, rate: f64, temperature: f64) -> Result<Self> {
+    pub fn open(endpoint: &Endpoint, rate: f64, temperature: f64) -> Result<Self> {
         Ok(Self {
-            uart: Uart::open(path)?,
-            encoder: Encoder::new(rate, temperature)?,
+            uart: Uart::open(endpoint, Encoder::new(rate, temperature)?)?,
         })
     }
     pub fn update(&mut self, sample: &Sample) -> Result<()> {
-        let mut buffer = [0; 4096];
-        let count = self.uart.read(&mut buffer)?;
         self.uart
-            .write(&self.encoder.update(sample, &buffer[..count]))
+            .update(|encoder, input| Ok(encoder.update(sample, input)))
     }
 }
 
@@ -359,10 +355,73 @@ mod tests {
     }
 
     #[test]
+    fn stalled_serial_client_can_reconnect_to_a_fresh_imu() {
+        use std::io::ErrorKind;
+        use std::os::unix::fs::OpenOptionsExt;
+        use std::time::{Duration, Instant};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("imu");
+        let mut serial = Serial::open(&Endpoint::PtyLink(path.clone()), 200., 25.).unwrap();
+        let mut sample = sample();
+        let attach = || {
+            File::options()
+                .read(true)
+                .write(true)
+                .custom_flags(nix::libc::O_NONBLOCK | nix::libc::O_NOCTTY)
+                .open(&path)
+                .unwrap()
+        };
+        let first_target = std::fs::read_link(&path).unwrap();
+        let mut stalled = attach();
+        serial.update(&sample).unwrap();
+        stalled.write_all(b"<soc2>").unwrap();
+        serial.update(&sample).unwrap();
+        sample.time += 0.01;
+        serial.update(&sample).unwrap();
+        let mut bytes = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !bytes.windows(2).any(|word| word == [0x55, 0x55]) {
+            assert!(
+                Instant::now() < deadline,
+                "IMU did not switch to binary mode"
+            );
+            sample.time += 0.01;
+            serial.update(&sample).unwrap();
+            if let Err(e) = stalled.read_to_end(&mut bytes) {
+                assert_eq!(e.kind(), ErrorKind::WouldBlock);
+            }
+        }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            assert!(
+                Instant::now() < deadline,
+                "stalled reader was not disconnected"
+            );
+            sample.time += 0.01;
+            serial.update(&sample).unwrap();
+            if std::fs::read_link(&path).unwrap() != first_target {
+                break;
+            }
+        }
+        let mut restarted = attach();
+        sample.time += 0.01;
+        serial.update(&sample).unwrap();
+        let mut pfd = [nix::poll::PollFd::new(
+            std::os::fd::AsFd::as_fd(&restarted),
+            nix::poll::PollFlags::POLLIN,
+        )];
+        assert_eq!(nix::poll::poll(&mut pfd, 2000u16).unwrap(), 1);
+        let mut first = [0];
+        restarted.read_exact(&mut first).unwrap();
+        assert_eq!(first, *b"*", "new IMU session must start in ASCII mode");
+    }
+
+    #[test]
     fn serial_processes_fragmented_commands_on_a_real_pty() {
         let pty = nix::pty::openpty(None, None).unwrap();
         let path = nix::unistd::ttyname(&pty.slave).unwrap();
-        let mut serial = Serial::open(&path, 200., 25.).unwrap();
+        let mut serial = Serial::open(&Endpoint::Device(path), 200., 25.).unwrap();
         let mut peer = File::from(pty.master);
         nix::fcntl::fcntl(
             peer.as_raw_fd(),

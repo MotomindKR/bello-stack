@@ -18,6 +18,7 @@ pub mod power_board;
 pub mod robstride;
 pub mod runtime;
 mod transport;
+pub mod uart;
 pub mod video;
 
 pub use mujoco_rs::mujoco_c as ffi;

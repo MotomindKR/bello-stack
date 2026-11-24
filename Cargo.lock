@@ -307,7 +307,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "bello-mujoco"
+name = "bello-pose-api"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+]
+
+[[package]]
+name = "bello-robot-description"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "nalgebra",
+ "roxmltree",
+ "tempfile",
+]
+
+[[package]]
+name = "bello-sim"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -339,26 +359,6 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "xmltree",
-]
-
-[[package]]
-name = "bello-pose-api"
-version = "0.1.0"
-dependencies = [
- "prost",
- "tonic",
- "tonic-prost",
- "tonic-prost-build",
-]
-
-[[package]]
-name = "bello-robot-description"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "nalgebra",
- "roxmltree",
- "tempfile",
 ]
 
 [[package]]
