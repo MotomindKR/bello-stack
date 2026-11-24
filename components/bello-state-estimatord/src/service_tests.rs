@@ -8,6 +8,8 @@ use tokio_stream::StreamExt;
 struct Hardware {
     mode: Arc<AtomicUsize>,
     inventories: Arc<AtomicUsize>,
+    inventory: p::ListHardwareResponse,
+    telemetry: Option<Vec<p::WatchTelemetryResponse>>,
 }
 
 #[tonic::async_trait]
@@ -36,7 +38,7 @@ impl HardwareService for Hardware {
                 output_frame: "pelvis".into(),
                 ..Default::default()
             }],
-            ..Default::default()
+            ..self.inventory.clone()
         }))
     }
 
@@ -44,6 +46,11 @@ impl HardwareService for Hardware {
         &self,
         _: Request<p::WatchTelemetryRequest>,
     ) -> Result<Response<Self::WatchTelemetryStream>, Status> {
+        if let Some(telemetry) = &self.telemetry {
+            return Ok(Response::new(Box::pin(tokio_stream::iter(
+                telemetry.clone().into_iter().map(Ok),
+            ))));
+        }
         let mode = self.mode.clone();
         Ok(Response::new(Box::pin(async_stream::try_stream! {
             let mut timestamp = 100_000_000;
@@ -221,6 +228,145 @@ ground_height_m: 0
         .unwrap();
     server.abort();
     let _ = server.await;
+}
+
+#[tokio::test]
+async fn watch_pose_reports_age_of_oldest_encoder_used() {
+    use p::watch_telemetry_response::Payload;
+
+    let motor = |event_ms, feedback_age_ms| p::WatchTelemetryResponse {
+        monotonic_ns: event_ms * 1_000_000_u64,
+        payload: Some(Payload::Motor(p::MotorTelemetry {
+            group: "legs".into(),
+            motor_name: "motor".into(),
+            feedback_age_ms,
+            ..Default::default()
+        })),
+    };
+    let imu = |event_ms, sample_age_ms| p::WatchTelemetryResponse {
+        monotonic_ns: event_ms * 1_000_000_u64,
+        payload: Some(Payload::Imu(p::ImuTelemetry {
+            imu_name: "imu".into(),
+            orientation: Some(p::Quaternion {
+                w: 1.0,
+                ..Default::default()
+            }),
+            angular_velocity: Some(p::Vector3::default()),
+            linear_acceleration: Some(p::Vector3 {
+                z: 9.81,
+                ..Default::default()
+            }),
+            sample_age_ms,
+            ..Default::default()
+        })),
+    };
+    let address = p::MotorAddress {
+        bus: "bus".into(),
+        id: 1,
+    };
+    let hardware = Hardware {
+        inventory: p::ListHardwareResponse {
+            buses: vec![p::BusInfo {
+                name: "bus".into(),
+                transport: "test".into(),
+                ..Default::default()
+            }],
+            groups: vec![p::GroupInfo {
+                name: "legs".into(),
+                control_rate_hz: 100.0,
+                motors: vec![address.clone()],
+                ..Default::default()
+            }],
+            motors: vec![p::MotorInfo {
+                name: "motor".into(),
+                coordinate: "left_joint".into(),
+                group: "legs".into(),
+                address: Some(address),
+                limits: Some(p::MotorLimits {
+                    position_min: -1.0,
+                    position_max: 1.0,
+                    velocity_min: -1.0,
+                    velocity_max: 1.0,
+                    torque_min: -1.0,
+                    torque_max: 1.0,
+                    kp_max: 1.0,
+                    kd_max: 1.0,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
+        telemetry: Some(vec![
+            motor(110, 10),
+            motor(400, 0),
+            imu(420, 30),
+            imu(700, 260),
+        ]),
+        ..Default::default()
+    };
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(
+        tonic::transport::Server::builder()
+            .add_service(HardwareServiceServer::new(hardware))
+            .serve_with_incoming(TcpListenerStream::new(listener)),
+    );
+    let urdf = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(urdf.path(), r#"<robot name="synthetic"><link name="pelvis"/>
+        <link name="left"><collision><geometry><box size=".1 .1 .02"/></geometry></collision></link>
+        <link name="right"><collision><geometry><box size=".1 .1 .02"/></geometry></collision></link>
+        <joint name="left_joint" type="revolute"><parent link="pelvis"/><child link="left"/><origin xyz="0 .1 -.8"/><limit lower="-1" upper="1" effort="1" velocity="1"/></joint>
+        <joint name="right_fixed" type="fixed"><parent link="pelvis"/><child link="right"/><origin xyz="0 -.1 -.8"/></joint></robot>"#).unwrap();
+    let config: EstimatorConfig = serde_yaml::from_str(&format!(
+        "urdf: {}\nhardware_endpoint: {endpoint}\nlisten: 127.0.0.1:0\nimu_frame: pelvis\nplanar: true\nground_height_m: 0\nimu_stale_ms: 250\nmotor_stale_ms: 300\n",
+        urdf.path().display(),
+    )).unwrap();
+    let description = RobotDescription::load(urdf.path()).unwrap();
+    let model = description
+        .kinematic_model("pelvis", "left", "right")
+        .unwrap();
+    let (poses, receiver) = watch::channel(None);
+    consume_hardware(
+        Robot::connect(endpoint).await.unwrap(),
+        &config,
+        &model,
+        &ImuFrameTransform::new(nalgebra::Isometry3::identity()),
+        &poses,
+        &mut ContactFilter::new(&config),
+        &mut 0,
+    )
+    .await
+    .unwrap();
+    drop(poses);
+
+    let server_pose = PoseServer {
+        reference_frame: Arc::from("odom"),
+        tracked_frame: Arc::from("pelvis"),
+        poses: receiver,
+        maximum_age: config.imu_stale(),
+    };
+    let mut stream = server_pose
+        .watch_pose(Request::new(WatchPoseRequest {
+            reference_frame: "odom".into(),
+            tracked_frame: "pelvis".into(),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+    let response = stream
+        .next()
+        .await
+        .expect("fresh inputs should publish a pose")
+        .unwrap();
+    assert_eq!(response.sequence, 1);
+    assert_eq!(response.sample_monotonic_ns, 390_000_000);
+    assert!(
+        response.sample_age_ms >= 320,
+        "published age was {} ms",
+        response.sample_age_ms
+    );
+    server.abort();
 }
 
 #[test]

@@ -164,12 +164,30 @@ mod tests {
         history.observe("joint", 200_000_000, Duration::ZERO, 0.2, 3.0);
 
         let sample = history
-            .sample_at(&["joint".into()], 150_000_000, Duration::from_millis(60))
+            .sample_at(&["joint".into()], 140_000_000, Duration::from_millis(60))
             .unwrap();
         let joint = &sample.values["joint"];
-        assert!((joint.position - 0.1).abs() < 1.0e-12);
-        assert!((joint.velocity - 2.0).abs() < 1.0e-12);
-        assert_eq!(sample.maximum_offset, Duration::from_millis(50));
+        assert!((joint.position - 0.08).abs() < 1.0e-12);
+        assert!((joint.velocity - 1.8).abs() < 1.0e-12);
+        assert_eq!(sample.maximum_offset, Duration::from_millis(60));
+    }
+
+    #[test]
+    fn extrapolates_from_the_only_fresh_bracket_endpoint() {
+        let mut history = CoordinateHistory::default();
+        history.observe("joint", 100_000_000, Duration::ZERO, 0.4, 2.0);
+        history.observe("joint", 220_000_000, Duration::ZERO, 1.0, 3.0);
+
+        let names = ["joint".into()];
+        let limit = Duration::from_millis(50);
+        for (target, position, velocity) in [(110_000_000, 0.42, 2.0), (210_000_000, 0.97, 3.0)] {
+            let sample = history.sample_at(&names, target, limit).unwrap();
+            let joint = &sample.values["joint"];
+            assert!((joint.position - position).abs() < 1.0e-12, "{joint:?}");
+            assert_eq!(joint.velocity, velocity);
+            assert_eq!(sample.maximum_offset, Duration::from_millis(10));
+        }
+        assert!(history.sample_at(&names, 160_000_000, limit).is_none());
     }
 
     #[test]
