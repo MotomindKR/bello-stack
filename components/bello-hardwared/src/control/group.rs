@@ -1082,3 +1082,7 @@ mod tests {
         assert!(schedule.should_retransmit(start + Duration::from_millis(50)));
     }
 }
+
+#[cfg(test)]
+#[path = "group/fault_tests.rs"]
+mod fault_tests;
