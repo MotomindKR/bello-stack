@@ -28,10 +28,8 @@ impl SerialSpec {
             port: config.port.clone(),
             baud_rate: config.baud_rate,
             timeout: Duration::from_millis(config.timeout_ms),
-            reconnect: ReconnectPolicy::try_from((
-                &config.reconnect,
-                "serial_devices[].reconnect",
-            ))?,
+            reconnect: ReconnectPolicy::try_from(&config.reconnect)
+                .with_context(|| format!("serial_devices.{}.reconnect", config.name))?,
         })
     }
 }

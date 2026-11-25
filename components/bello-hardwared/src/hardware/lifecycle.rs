@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use garde::Validate;
 use parking_lot::RwLock;
 
@@ -308,13 +308,13 @@ impl ReconnectPolicy {
     }
 }
 
-impl TryFrom<(&ReconnectConfig, &str)> for ReconnectPolicy {
+impl TryFrom<&ReconnectConfig> for ReconnectPolicy {
     type Error = anyhow::Error;
 
-    fn try_from((config, path): (&ReconnectConfig, &str)) -> Result<Self> {
-        config.validate().with_context(|| path.to_owned())?;
+    fn try_from(config: &ReconnectConfig) -> Result<Self> {
+        config.validate()?;
         if config.maximum_delay_ms < config.initial_delay_ms {
-            bail!("{path}.maximum_delay_ms must be >= initial_delay_ms");
+            bail!("maximum_delay_ms must be >= initial_delay_ms");
         }
         Ok(Self {
             initial_delay: Duration::from_millis(config.initial_delay_ms),

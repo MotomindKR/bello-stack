@@ -69,7 +69,8 @@ impl TryFrom<&BusConfig> for BusSpec {
             host_id: config.host_id,
             bitrate: config.bitrate,
             maximum_utilization: config.maximum_utilization,
-            reconnect: ReconnectPolicy::try_from((&config.reconnect, "buses[].reconnect"))?,
+            reconnect: ReconnectPolicy::try_from(&config.reconnect)
+                .with_context(|| format!("buses.{}.reconnect", config.name))?,
         })
     }
 }
