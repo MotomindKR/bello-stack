@@ -587,22 +587,22 @@ class MotorConfigurationServiceStub:
         self.PrepareMotorConfiguration = channel.unary_unary(
                 '/bello.hardware.v1.MotorConfigurationService/PrepareMotorConfiguration',
                 request_serializer=hardware__pb2.PrepareMotorConfigurationRequest.SerializeToString,
-                response_deserializer=hardware__pb2.MotorConfiguration.FromString,
+                response_deserializer=hardware__pb2.PrepareMotorConfigurationResponse.FromString,
                 _registered_method=True)
         self.CommitMotorConfiguration = channel.unary_unary(
                 '/bello.hardware.v1.MotorConfigurationService/CommitMotorConfiguration',
-                request_serializer=hardware__pb2.MotorConfigurationId.SerializeToString,
-                response_deserializer=hardware__pb2.MotorConfiguration.FromString,
+                request_serializer=hardware__pb2.CommitMotorConfigurationRequest.SerializeToString,
+                response_deserializer=hardware__pb2.CommitMotorConfigurationResponse.FromString,
                 _registered_method=True)
         self.GetMotorConfiguration = channel.unary_unary(
                 '/bello.hardware.v1.MotorConfigurationService/GetMotorConfiguration',
-                request_serializer=hardware__pb2.MotorConfigurationId.SerializeToString,
-                response_deserializer=hardware__pb2.MotorConfiguration.FromString,
+                request_serializer=hardware__pb2.GetMotorConfigurationRequest.SerializeToString,
+                response_deserializer=hardware__pb2.GetMotorConfigurationResponse.FromString,
                 _registered_method=True)
         self.CancelMotorConfiguration = channel.unary_unary(
                 '/bello.hardware.v1.MotorConfigurationService/CancelMotorConfiguration',
-                request_serializer=hardware__pb2.MotorConfigurationId.SerializeToString,
-                response_deserializer=hardware__pb2.MotorConfiguration.FromString,
+                request_serializer=hardware__pb2.CancelMotorConfigurationRequest.SerializeToString,
+                response_deserializer=hardware__pb2.CancelMotorConfigurationResponse.FromString,
                 _registered_method=True)
 
 
@@ -640,22 +640,22 @@ def add_MotorConfigurationServiceServicer_to_server(servicer, server):
             'PrepareMotorConfiguration': grpc.unary_unary_rpc_method_handler(
                     servicer.PrepareMotorConfiguration,
                     request_deserializer=hardware__pb2.PrepareMotorConfigurationRequest.FromString,
-                    response_serializer=hardware__pb2.MotorConfiguration.SerializeToString,
+                    response_serializer=hardware__pb2.PrepareMotorConfigurationResponse.SerializeToString,
             ),
             'CommitMotorConfiguration': grpc.unary_unary_rpc_method_handler(
                     servicer.CommitMotorConfiguration,
-                    request_deserializer=hardware__pb2.MotorConfigurationId.FromString,
-                    response_serializer=hardware__pb2.MotorConfiguration.SerializeToString,
+                    request_deserializer=hardware__pb2.CommitMotorConfigurationRequest.FromString,
+                    response_serializer=hardware__pb2.CommitMotorConfigurationResponse.SerializeToString,
             ),
             'GetMotorConfiguration': grpc.unary_unary_rpc_method_handler(
                     servicer.GetMotorConfiguration,
-                    request_deserializer=hardware__pb2.MotorConfigurationId.FromString,
-                    response_serializer=hardware__pb2.MotorConfiguration.SerializeToString,
+                    request_deserializer=hardware__pb2.GetMotorConfigurationRequest.FromString,
+                    response_serializer=hardware__pb2.GetMotorConfigurationResponse.SerializeToString,
             ),
             'CancelMotorConfiguration': grpc.unary_unary_rpc_method_handler(
                     servicer.CancelMotorConfiguration,
-                    request_deserializer=hardware__pb2.MotorConfigurationId.FromString,
-                    response_serializer=hardware__pb2.MotorConfiguration.SerializeToString,
+                    request_deserializer=hardware__pb2.CancelMotorConfigurationRequest.FromString,
+                    response_serializer=hardware__pb2.CancelMotorConfigurationResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -685,7 +685,7 @@ class MotorConfigurationService:
             target,
             '/bello.hardware.v1.MotorConfigurationService/PrepareMotorConfiguration',
             hardware__pb2.PrepareMotorConfigurationRequest.SerializeToString,
-            hardware__pb2.MotorConfiguration.FromString,
+            hardware__pb2.PrepareMotorConfigurationResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -711,8 +711,8 @@ class MotorConfigurationService:
             request,
             target,
             '/bello.hardware.v1.MotorConfigurationService/CommitMotorConfiguration',
-            hardware__pb2.MotorConfigurationId.SerializeToString,
-            hardware__pb2.MotorConfiguration.FromString,
+            hardware__pb2.CommitMotorConfigurationRequest.SerializeToString,
+            hardware__pb2.CommitMotorConfigurationResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -738,8 +738,8 @@ class MotorConfigurationService:
             request,
             target,
             '/bello.hardware.v1.MotorConfigurationService/GetMotorConfiguration',
-            hardware__pb2.MotorConfigurationId.SerializeToString,
-            hardware__pb2.MotorConfiguration.FromString,
+            hardware__pb2.GetMotorConfigurationRequest.SerializeToString,
+            hardware__pb2.GetMotorConfigurationResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -765,8 +765,8 @@ class MotorConfigurationService:
             request,
             target,
             '/bello.hardware.v1.MotorConfigurationService/CancelMotorConfiguration',
-            hardware__pb2.MotorConfigurationId.SerializeToString,
-            hardware__pb2.MotorConfiguration.FromString,
+            hardware__pb2.CancelMotorConfigurationRequest.SerializeToString,
+            hardware__pb2.CancelMotorConfigurationResponse.FromString,
             options,
             channel_credentials,
             insecure,

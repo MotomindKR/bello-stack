@@ -179,13 +179,39 @@ class PrepareMotorConfigurationRequest(_message.Message):
     kind: MotorConfigurationKind
     def __init__(self, motor: _Optional[str] = ..., kind: _Optional[_Union[MotorConfigurationKind, str]] = ...) -> None: ...
 
-class MotorConfigurationId(_message.Message):
+class PrepareMotorConfigurationResponse(_message.Message):
     __slots__ = ("id",)
     ID_FIELD_NUMBER: _ClassVar[int]
     id: str
     def __init__(self, id: _Optional[str] = ...) -> None: ...
 
-class MotorConfiguration(_message.Message):
+class CommitMotorConfigurationRequest(_message.Message):
+    __slots__ = ("id",)
+    ID_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    def __init__(self, id: _Optional[str] = ...) -> None: ...
+
+class CommitMotorConfigurationResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class CancelMotorConfigurationRequest(_message.Message):
+    __slots__ = ("id",)
+    ID_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    def __init__(self, id: _Optional[str] = ...) -> None: ...
+
+class CancelMotorConfigurationResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class GetMotorConfigurationRequest(_message.Message):
+    __slots__ = ("id",)
+    ID_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    def __init__(self, id: _Optional[str] = ...) -> None: ...
+
+class GetMotorConfigurationResponse(_message.Message):
     __slots__ = ("id", "motor", "kind", "phase", "motor_uuid", "current_version", "target_version", "progress_percent", "detail", "reviewed_position_rad")
     ID_FIELD_NUMBER: _ClassVar[int]
     MOTOR_FIELD_NUMBER: _ClassVar[int]

@@ -20,10 +20,10 @@ service HardwareService {
 
 // Inspect and maintain stopped RobStride motors under an exclusive CAN bus reservation.
 service MotorConfigurationService {
-  rpc PrepareMotorConfiguration(PrepareMotorConfigurationRequest) returns (MotorConfiguration);
-  rpc CommitMotorConfiguration(MotorConfigurationId) returns (MotorConfiguration);
-  rpc GetMotorConfiguration(MotorConfigurationId) returns (MotorConfiguration);
-  rpc CancelMotorConfiguration(MotorConfigurationId) returns (MotorConfiguration);
+  rpc PrepareMotorConfiguration(PrepareMotorConfigurationRequest) returns (PrepareMotorConfigurationResponse);
+  rpc CommitMotorConfiguration(CommitMotorConfigurationRequest) returns (CommitMotorConfigurationResponse);
+  rpc GetMotorConfiguration(GetMotorConfigurationRequest) returns (GetMotorConfigurationResponse);
+  rpc CancelMotorConfiguration(CancelMotorConfigurationRequest) returns (CancelMotorConfigurationResponse);
 }
 
 enum MotorConfigurationKind {
@@ -48,11 +48,27 @@ message PrepareMotorConfigurationRequest {
   MotorConfigurationKind kind = 2;
 }
 
-message MotorConfigurationId {
+message PrepareMotorConfigurationResponse {
   string id = 1;
 }
 
-message MotorConfiguration {
+message CommitMotorConfigurationRequest {
+  string id = 1;
+}
+
+message CommitMotorConfigurationResponse {}
+
+message CancelMotorConfigurationRequest {
+  string id = 1;
+}
+
+message CancelMotorConfigurationResponse {}
+
+message GetMotorConfigurationRequest {
+  string id = 1;
+}
+
+message GetMotorConfigurationResponse {
   string id = 1;
   string motor = 2;
   MotorConfigurationKind kind = 3;

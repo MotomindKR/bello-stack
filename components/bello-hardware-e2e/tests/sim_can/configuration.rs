@@ -1,19 +1,23 @@
 use super::*;
 use bello_hardware_api::motor_configuration_service_client::MotorConfigurationServiceClient;
 use bello_hardware_api::{
-    MotorConfiguration, MotorConfigurationId, MotorConfigurationKind as Kind,
+    CancelMotorConfigurationRequest, CommitMotorConfigurationRequest, GetMotorConfigurationRequest,
+    GetMotorConfigurationResponse, MotorConfigurationKind as Kind,
     MotorConfigurationPhase as Phase, PrepareMotorConfigurationRequest,
 };
 use tonic::transport::Channel;
 
 async fn wait_phase(
     api: &mut MotorConfigurationServiceClient<Channel>,
-    id: &MotorConfigurationId,
+    id: &str,
     wanted: Phase,
-) -> Result<MotorConfiguration> {
+) -> Result<GetMotorConfigurationResponse> {
     timeout(Duration::from_secs(15), async {
         loop {
-            let job = api.get_motor_configuration(id.clone()).await?.into_inner();
+            let job = api
+                .get_motor_configuration(GetMotorConfigurationRequest { id: id.into() })
+                .await?
+                .into_inner();
             if job.phase() == wanted {
                 return Ok(job);
             }
@@ -110,13 +114,11 @@ async fn re_zero_and_update_with_another_group_on_the_bus() -> Result<()> {
         (Kind::Firmware, false),
         (Kind::Zero, true),
     ] {
-        let id = MotorConfigurationId {
-            id: api
-                .prepare_motor_configuration(request(kind))
-                .await?
-                .into_inner()
-                .id,
-        };
+        let id = api
+            .prepare_motor_configuration(request(kind))
+            .await?
+            .into_inner()
+            .id;
         let reviewed = wait_phase(&mut api, &id, Phase::Ready).await?;
         assert!(
             client
@@ -137,7 +139,8 @@ async fn re_zero_and_update_with_another_group_on_the_bus() -> Result<()> {
         }
         assert_eq!(reviewed.motor_uuid, uuid);
         if cancel {
-            api.cancel_motor_configuration(id.clone()).await?;
+            api.cancel_motor_configuration(CancelMotorConfigurationRequest { id: id.clone() })
+                .await?;
             wait_phase(&mut api, &id, Phase::Cancelled).await?;
             if reviewed.current_version == "0.3.0.1" {
                 wait_for_frame(&client, |f| position_is(f, 0.4)).await?;
@@ -145,10 +148,12 @@ async fn re_zero_and_update_with_another_group_on_the_bus() -> Result<()> {
                 assert_eq!(reviewed.current_version, "0.3.0.2");
             }
         } else {
-            api.commit_motor_configuration(id.clone()).await?;
+            api.commit_motor_configuration(CommitMotorConfigurationRequest { id: id.clone() })
+                .await?;
             drop(api);
             api = MotorConfigurationServiceClient::connect(endpoint.clone()).await?;
-            api.commit_motor_configuration(id.clone()).await?;
+            api.commit_motor_configuration(CommitMotorConfigurationRequest { id: id.clone() })
+                .await?;
             let job = wait_phase(&mut api, &id, Phase::Succeeded).await?;
             if kind == Kind::Firmware {
                 assert_eq!(job.current_version, "0.3.0.1");

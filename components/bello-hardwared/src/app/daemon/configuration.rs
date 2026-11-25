@@ -5,7 +5,8 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, ensure};
 use bello_hardware_api::{
-    MotorConfiguration, MotorConfigurationKind as Kind, MotorConfigurationPhase as Phase,
+    GetMotorConfigurationResponse as OperationStatus, MotorConfigurationKind as Kind,
+    MotorConfigurationPhase as Phase,
 };
 use parking_lot::{Condvar, Mutex};
 use tonic::Status;
@@ -21,7 +22,7 @@ use crate::maintenance;
 const REVIEW_TIMEOUT: Duration = Duration::from_secs(120);
 
 struct Job {
-    status: MotorConfiguration,
+    status: OperationStatus,
     groups: Vec<GroupName>,
     working: bool,
     cancel: bool,
@@ -67,7 +68,7 @@ impl HardwareDaemon {
         self: &Arc<Self>,
         motor: String,
         kind: Kind,
-    ) -> Result<MotorConfiguration, Status> {
+    ) -> Result<String, Status> {
         if kind == Kind::Unspecified {
             return Err(Status::invalid_argument("specify zero or firmware"));
         }
@@ -107,7 +108,7 @@ impl HardwareDaemon {
                 )));
             }
         }
-        let status = MotorConfiguration {
+        let status = OperationStatus {
             id: uuid::Uuid::new_v4().to_string(),
             motor,
             kind: kind as i32,
@@ -134,10 +135,10 @@ impl HardwareDaemon {
             jobs.remove(&status.id);
             return Err(Status::unavailable(e.to_string()));
         }
-        Ok(status)
+        Ok(status.id)
     }
 
-    pub(crate) fn configuration_status(&self, id: &str) -> Result<MotorConfiguration, Status> {
+    pub(crate) fn configuration_status(&self, id: &str) -> Result<OperationStatus, Status> {
         self.configuration
             .jobs
             .lock()
@@ -146,11 +147,7 @@ impl HardwareDaemon {
             .ok_or_else(|| Status::not_found("unknown configuration id"))
     }
 
-    pub(crate) fn configuration_decision(
-        &self,
-        id: &str,
-        commit: bool,
-    ) -> Result<MotorConfiguration, Status> {
+    pub(crate) fn configuration_decision(&self, id: &str, commit: bool) -> Result<(), Status> {
         let _gate = self.lease_gate.lock();
         let mut jobs = self.configuration.jobs.lock();
         let job = jobs
@@ -179,7 +176,7 @@ impl HardwareDaemon {
             }
         }
         self.configuration.changed.notify_all();
-        Ok(job.status.clone())
+        Ok(())
     }
 
     fn configuration_worker(&self, id: &str, name: MotorName) {
