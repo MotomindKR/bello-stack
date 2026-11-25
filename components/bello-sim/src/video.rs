@@ -1,7 +1,7 @@
 //! Bounded pose capture; software rasterization runs in a separate process after shutdown.
+use crate::finite;
 use crate::{Simulation, model};
 use anyhow::{Context, Result, ensure};
-use bello_config::finite;
 use mujoco_rs::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::io::{BufWriter, Write};

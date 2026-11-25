@@ -8,7 +8,6 @@ publish.workspace = true
 description = "Monolithic Robstride and EBIMU hardware daemon"
 
 [dependencies]
-bello-config.workspace = true
 garde.workspace = true
 cog-protocol.workspace = true
 anyhow.workspace = true

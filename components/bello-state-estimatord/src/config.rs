@@ -4,9 +4,15 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, bail};
-use bello_config::finite;
 use garde::Validate;
 use serde::Deserialize;
+
+fn finite(value: &f64, _: &()) -> garde::Result {
+    if !value.is_finite() {
+        return Err(garde::Error::new("must be finite"));
+    }
+    Ok(())
+}
 
 #[derive(Clone, Debug, Deserialize, Validate)]
 #[garde(allow_unvalidated)]

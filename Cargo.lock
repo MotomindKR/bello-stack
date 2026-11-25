@@ -233,13 +233,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bello-config"
-version = "0.1.0"
-dependencies = [
- "garde",
-]
-
-[[package]]
 name = "bello-hardware-api"
 version = "0.1.0"
 dependencies = [
@@ -289,7 +282,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-stream",
- "bello-config",
  "bello-hardware-api",
  "bello-robot-description",
  "bello-sim-can",
@@ -344,7 +336,6 @@ dependencies = [
  "anyhow",
  "async-stream",
  "bello-camera-api",
- "bello-config",
  "bello-pose-api",
  "bello-robot-description",
  "bello-sim-can",
@@ -390,7 +381,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-stream",
- "bello-config",
  "bello-hardware-client",
  "bello-pose-api",
  "bello-robot-description",
@@ -1880,7 +1870,6 @@ name = "robstride-emulator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bello-config",
  "bello-sim-can",
  "clap",
  "garde",
