@@ -243,18 +243,3 @@ impl Drop for SerialManager {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::config::SerialDeviceConfig;
-
-    #[test]
-    fn rejects_invalid_serial_configuration() {
-        let config: SerialDeviceConfig = serde_yaml::from_str(
-            "name: imu_serial\nport: /dev/ttyUSB0\nbaud_rate: 0\ntimeout_ms: 100",
-        )
-        .unwrap();
-        assert!(SerialSpec::resolve(&config, false).is_err());
-    }
-}

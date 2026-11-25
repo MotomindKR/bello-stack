@@ -1,22 +1,32 @@
+use crate::finite;
 use crate::uart::{Endpoint, Uart};
 use anyhow::{Result, ensure};
 use cog_protocol::{Profile, encode};
 use serde::Deserialize;
 use std::time::Duration;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, garde::Validate)]
+#[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub name: String,
     #[serde(flatten)]
     pub endpoint: Endpoint,
+    #[garde(custom(finite))]
     pub battery_voltage_v: f32,
+    #[garde(custom(finite))]
     pub battery_current_a: f32,
+    #[garde(custom(finite), range(min = 0.0, max = 100.0))]
     pub battery_soc_percent: f32,
+    #[garde(custom(finite))]
     pub motor_voltage_v: f32,
+    #[garde(custom(finite))]
     pub motor_current_a: f32,
+    #[garde(custom(finite))]
     pub temperature_c: f32,
+    #[garde(custom(finite))]
     pub pressure_pa: f32,
+    #[garde(inner(custom(finite)))]
     pub local_rails: [f32; 6],
     pub gpi_bits: u32,
     pub info_bits: u32,
@@ -31,25 +41,7 @@ impl Config {
             !self.name.trim().is_empty() && !self.endpoint.path().as_os_str().is_empty(),
             "empty power board name/device"
         );
-        ensure!(
-            [
-                self.battery_voltage_v,
-                self.battery_current_a,
-                self.battery_soc_percent,
-                self.motor_voltage_v,
-                self.motor_current_a,
-                self.temperature_c,
-                self.pressure_pa
-            ]
-            .iter()
-            .chain(self.local_rails.iter())
-            .all(|v| v.is_finite()),
-            "nonfinite power board fixture"
-        );
-        ensure!(
-            (0. ..=100.).contains(&self.battery_soc_percent),
-            "invalid battery percentage"
-        );
+        garde::Validate::validate(self)?;
         Ok(())
     }
 }

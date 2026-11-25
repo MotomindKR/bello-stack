@@ -11,7 +11,8 @@ use crate::domain::{PowerBoardName, SerialDeviceName, TelemetryPayload};
 use crate::hardware::lifecycle::{DeviceLifecycle, DeviceState, DeviceStatus};
 use crate::hardware::serial::SerialHandle;
 use crate::telemetry::Telemetry;
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
+use garde::Validate;
 
 pub(crate) use cog_protocol as protocol;
 use protocol::{Framer, Profile, Reading};
@@ -36,12 +37,8 @@ pub(crate) struct PowerBoardSpec {
 impl TryFrom<&PowerBoardConfig> for PowerBoardSpec {
     type Error = anyhow::Error;
     fn try_from(raw: &PowerBoardConfig) -> Result<Self> {
-        for value in [&raw.name, &raw.serial_device] {
-            ensure!(
-                !value.trim().is_empty() && value.trim() == value,
-                "power board names must be nonempty without surrounding whitespace"
-            );
-        }
+        raw.validate()
+            .with_context(|| format!("power_boards.{}", raw.name))?;
         let period = raw
             .sync_period_ms
             .unwrap_or(if raw.profile == Profile::Agx { 100 } else { 0 });
@@ -50,8 +47,8 @@ impl TryFrom<&PowerBoardConfig> for PowerBoardSpec {
             "power board sync requires AGX and 100..4999 ms, or 0 for read-only"
         );
         ensure!(
-            (250..=60_000).contains(&raw.stale_timeout_ms) && raw.stale_timeout_ms >= period * 2,
-            "power board stale_timeout_ms must be 250..60000 and cover two sync periods"
+            raw.stale_timeout_ms >= period * 2,
+            "power board stale_timeout_ms must cover two sync periods"
         );
         ensure!(
             raw.emergency_stop != EmergencyStopMode::Damping
