@@ -12,7 +12,7 @@ Use the same [physical deployment](../../components/bello-hardwared/config/milly
 
 ## Simulation
 
-Run these commands in separate terminals to start the fixed-hand model with two calibrated camera streams and the matching loopback arm and gimbal deployment. Finger motion is outside this model.
+Run these commands in separate terminals to start the fixed-hand model with one calibrated, left-first 3200 × 1200 stereo stream and the matching loopback arm and gimbal deployment. Finger motion is outside this model.
 
 ```sh
 cargo run -p bello-sim -- run --config components/bello-sim/config/emulator_milly_7dof_o6_gimbal.yaml
