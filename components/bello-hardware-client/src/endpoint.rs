@@ -114,6 +114,11 @@ impl ConnectOptions {
         HardwareClient::connect_with(self).await
     }
 
+    /// Validates the connection options without opening a connection.
+    pub fn validate(self) -> Result<(), Error> {
+        self.into_endpoint().map(|_| ())
+    }
+
     pub(crate) fn into_endpoint(self) -> Result<Endpoint, Error> {
         if self.endpoint.trim() != self.endpoint {
             return Err(Error::InvalidArgument(
