@@ -12,6 +12,9 @@ mod lower_body;
 #[path = "sim_can/configuration.rs"]
 mod configuration;
 
+#[path = "sim_can/model_identity.rs"]
+mod model_identity;
+
 use std::fs;
 use std::net::TcpListener;
 use std::time::Duration;
@@ -159,6 +162,13 @@ fn spawn_pair() -> Result<(tempfile::TempDir, String, ManagedProcess, ManagedPro
 fn spawn_pair_on_ports(
     ports: &str,
 ) -> Result<(tempfile::TempDir, String, ManagedProcess, ManagedProcess)> {
+    spawn_pair_with_transports(ports, ports)
+}
+
+fn spawn_pair_with_transports(
+    ports: &str,
+    emulator_ports: &str,
+) -> Result<(tempfile::TempDir, String, ManagedProcess, ManagedProcess)> {
     let directory = tempfile::tempdir()?;
     let deployment = directory.path().join("hardwared.yaml");
     let emulator_config = directory.path().join("emulator.yaml");
@@ -171,7 +181,7 @@ fn spawn_pair_on_ports(
     )?;
     fs::write(
         &emulator_config,
-        support::config::emulator(&format!("{{ {ports} }}")),
+        support::config::emulator(&format!("{{ {emulator_ports} }}")),
     )?;
     let daemon = ManagedProcess::spawn(
         "hardwared",

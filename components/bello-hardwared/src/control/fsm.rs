@@ -76,7 +76,7 @@ impl GroupFsm {
             message,
         }
     }
-    fn reject(&self, message: impl Into<String>) -> Transition {
+    pub(super) fn reject(&self, message: impl Into<String>) -> Transition {
         Transition {
             ok: false,
             to: self.state,

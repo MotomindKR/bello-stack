@@ -85,8 +85,11 @@ runtime:
     assert!(first_bus.clone().reserve_maintenance().is_err());
     assert!(motors.feedback(&first_name).is_none());
     assert!(matches!(
-        first_motor.configure_enable(),
-        Err(BusError::Maintenance { .. })
+        first_motor
+            .configure_enable()
+            .unwrap_err()
+            .downcast_ref::<BusError>(),
+        Some(BusError::Maintenance { .. })
     ));
     assert!(matches!(
         first_bus.submit_safety_batch(vec![CanFrame {

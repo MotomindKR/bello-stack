@@ -311,7 +311,7 @@ motor_config() {
 motor_config PrepareMotorConfiguration '{"motor":"joint_1","kind":"MOTOR_CONFIGURATION_KIND_ZERO"}'
 ```
 
-To read installed firmware without preparing an operation, call `HardwareService/ListHardware`. Each motor reports `firmwareVersion` once it answers a version query while stopped. The field is absent when the version is unknown, feedback is stale, or the bus is reserved for maintenance.
+To read installed firmware without preparing an operation, call `HardwareService/ListHardware`. At startup and after a reconnect, hardwared queries each motor and checks the reported firmware family against its configured model. Each motor reports `firmwareVersion` when it answers. A missing or mismatched identity keeps its group idle and appears in the motor status detail. Other verified groups can enable normally. The field is absent when the version is unknown, feedback is stale, or the bus is reserved for maintenance.
 
 ```sh
 grpcurl -plaintext -import-path components/bello-hardware-api/proto \

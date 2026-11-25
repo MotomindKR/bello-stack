@@ -115,6 +115,27 @@ motor_groups:
             break;
         }
     }
+    send(
+        &simulator,
+        params,
+        Feedback {
+            mode_status: 0,
+            ..healthy
+        },
+    );
+    let query = robstride_protocol::firmware_version_request(0xfd, 1);
+    while simulator.recv().unwrap() != query {}
+    simulator
+        .send(robstride_protocol::Frame {
+            id: (2 << 24) | (1 << 8) | 0xfd,
+            data: [0, 0xc4, 0x56, 0, 3, 0, 1, 0],
+        })
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while motor.verified_model_window().is_err() {
+        assert!(Instant::now() < deadline, "motor model was not verified");
+        thread::sleep(Duration::from_millis(2));
+    }
     enable_with_feedback(&mut group, &simulator, params, healthy);
     group.control_tick(0, false);
     assert_eq!(snapshot.read().state, GroupState::Damped);

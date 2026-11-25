@@ -105,6 +105,13 @@ impl BusAccess {
 
     pub(super) fn disconnected(&self, detail: &str) {
         let mut state = self.state.lock();
+        if state.connected && matches!(state.traffic, Traffic::Ordinary(_)) {
+            state.generation.0 += 1;
+            state.traffic = Traffic::Ordinary(FeedbackWindow {
+                since: Some(Instant::now()),
+                generation: state.generation,
+            });
+        }
         state.connected = false;
         state.received_count = None;
         if let Traffic::Maintenance(reservation) = &mut state.traffic
