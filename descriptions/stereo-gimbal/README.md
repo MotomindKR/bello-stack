@@ -2,9 +2,13 @@
 
 Three joints drive yaw, pitch, and roll. At zero the mounting frame points X forward, Y left, and Z up.
 
+![Stereo camera gimbal exterior from two angles](images/stereo-gimbal.png)
+
 [URDF](urdf/stereo-gimbal.urdf) · [Hardware inventory](hardware.yaml)
 
-![Stereo camera gimbal, front and rear views of the visual mesh and collision geometry with joint axes](images/stereo-gimbal.png)
+**Collision geometry and joint axes**
+
+![Stereo camera gimbal collision shapes and movable joint axes from the same two angles](images/stereo-gimbal-collision.png)
 
 The camera housing intersects the rear yaw support at pitch +90° combined with roll ±90°. Check [coupled clearance](clearance-check.json) and cable travel on the installed assembly.
 

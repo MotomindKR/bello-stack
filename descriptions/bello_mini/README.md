@@ -2,8 +2,12 @@
 
 Humanoid with a two-axis waist and differential ankle transmissions.
 
-[URDF](urdf/bello_mini.urdf) · [Hardware inventory](hardware.yaml)
+![Bello Mini exterior from two angles](images/bello_mini.png)
 
-![Bello Mini, front and rear views of the visual mesh and collision geometry with joint axes](images/bello_mini.png)
+[URDF](urdf/bello_mini.urdf) · [Hardware inventory](hardware.yaml) · [Stereo lens detail](images/stereo-lenses.png)
+
+**Collision geometry and joint axes**
+
+![Bello Mini collision shapes and movable joint axes from the same two angles](images/bello_mini-collision.png)
 
 See the [motor topology and calibration notes](motor_topology.yaml) before using the hardware profile.

@@ -1,9 +1,18 @@
 # Milly arm
 
-Six-axis arm with a parallel gripper and wrist camera.
+Six-axis arm with a wrist camera and a parallel gripper. Its carriages, finger mounts, and blue pads are shared with the [seven-axis arm](../milly-7dof/README.md#single-arm).
+
+![Milly arm exterior from two angles](images/milly.png)
 
 [URDF](urdf/milly.urdf) · [Hardware inventory](hardware.yaml)
 
-![Milly arm, front and rear views of the visual mesh and collision geometry with joint axes](images/milly.png)
+**Collision geometry and joint axes**
 
-The [gripper motion detail](images/gripper-motion.gif) shows the finger linkage.
+![Milly arm collision shapes and movable joint axes from the same two angles](images/milly-collision.png)
+
+<details>
+<summary>Gripper linkage in motion</summary>
+
+![Milly’s parallel gripper opening and closing](images/gripper-motion.gif)
+
+</details>

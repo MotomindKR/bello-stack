@@ -1380,7 +1380,7 @@
       "name": "finger_1_carriage",
       "link": "finger_1",
       "color": "metal",
-      "mesh": "meshes/visual/gripper/finger_1_carriage.stl",
+      "mesh": "../milly/meshes/visual/gripper/finger_1_carriage.stl",
       "mesh_sha256": "41355e62ed2b9dd0053c27e9fba482c6fb3d642984c05f22ef05d3636080376b",
       "triangles": 45342,
       "link_from_cad": [
@@ -1420,7 +1420,7 @@
       "name": "finger_1_mount",
       "link": "finger_1",
       "color": "dark",
-      "mesh": "meshes/visual/gripper/finger_1_mount.stl",
+      "mesh": "../milly/meshes/visual/gripper/finger_1_mount.stl",
       "mesh_sha256": "5b6e5ca17033c1ac245ed349e77550f6a882f204f1d436d832397d3f3542571f",
       "triangles": 9156,
       "link_from_cad": [
@@ -1472,7 +1472,7 @@
       "name": "finger_1_soft_pad",
       "link": "finger_1",
       "color": "blue",
-      "mesh": "meshes/visual/gripper/finger_1_soft_pad.stl",
+      "mesh": "../milly/meshes/visual/gripper/finger_1_soft_pad.stl",
       "mesh_sha256": "51a655d06b4d59c14e9283f45d9bd2018a51beb65dbf3f8613104e370c5c6864",
       "triangles": 4616,
       "link_from_cad": [
@@ -1512,7 +1512,7 @@
       "name": "finger_2_carriage",
       "link": "finger_2",
       "color": "metal",
-      "mesh": "meshes/visual/gripper/finger_2_carriage.stl",
+      "mesh": "../milly/meshes/visual/gripper/finger_2_carriage.stl",
       "mesh_sha256": "e81711a284dfca76c1be140e199058d2bfad09490db491de663d6025f2d1399b",
       "triangles": 45344,
       "link_from_cad": [
@@ -1552,7 +1552,7 @@
       "name": "finger_2_mount",
       "link": "finger_2",
       "color": "dark",
-      "mesh": "meshes/visual/gripper/finger_2_mount.stl",
+      "mesh": "../milly/meshes/visual/gripper/finger_2_mount.stl",
       "mesh_sha256": "11fc2e59bd1378d0bd92100b7298db9b4c434d98f3a8338c0328b350ca6cbe5c",
       "triangles": 9156,
       "link_from_cad": [
@@ -1604,7 +1604,7 @@
       "name": "finger_2_soft_pad",
       "link": "finger_2",
       "color": "blue",
-      "mesh": "meshes/visual/gripper/finger_2_soft_pad.stl",
+      "mesh": "../milly/meshes/visual/gripper/finger_2_soft_pad.stl",
       "mesh_sha256": "8c96e5d331c5d742bb44859b80e0d0590f7990cb942d3be318ba9fe0e2d2ac11",
       "triangles": 4616,
       "link_from_cad": [
