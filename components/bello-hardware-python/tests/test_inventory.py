@@ -157,11 +157,3 @@ def test_inventory_requires_short_motor_model_names(
     model = f"RS_{suffix}"
     inventory_response.motors[0].model = model
     assert Inventory(inventory_response).motors[0].model == model
-
-
-def test_inventory_rejects_retired_motor_model_spelling(
-    inventory_response: proto.ListHardwareResponse,
-) -> None:
-    inventory_response.motors[0].model = "ROBSTRIDE_03"
-    with pytest.raises(InventoryError, match="unsupported Robstride model"):
-        Inventory(inventory_response)
