@@ -1,9 +1,17 @@
 # Stereo camera gimbal
 
-The three RS_05 motors drive yaw (+Z), pitch (+Y) and roll (+X) on can0 IDs 11, 12 and 13. Each has ±90° of individual travel and direction −1. Encoder zeros and cable clearance require commissioning. [Hardware inventory](hardware.yaml)
+Three joints drive yaw, pitch, and roll. At zero the mounting frame points X forward, Y left, and Z up.
 
-At zero, the standalone mounting frame has X forward, Y left and Z up. The ELP-3DGS1200P01-H120 lens front planes are 59.2 mm apart in CAD. The optical frames use Z forward, X image-right and Y image-down. Visual meshes come from the supplied gimbal STEP assembly. [Mesh provenance](visual-assets.json)
+[URDF](urdf/stereo-gimbal.urdf) · [Hardware inventory](hardware.yaml)
 
-The camera case intersects the rear yaw support at pitch +90° and roll ±90° in the checked CAD poses. Individual joint bounds alone allow these combinations. The 132 mm sphere in the optional proxy covers the moving exterior across joint travel. The fixed yaw stator, base plate and support retain their own collisions. Use the detailed geometry for internal collisions and check cables separately. [Clearance measurements](clearance-check.json) · [Proxy definition](safety-envelope.json) · [Detailed collision primitives](collision-primitives.json)
+![Stereo camera gimbal, front and rear views of the visual mesh and collision geometry with joint axes](images/stereo-gimbal.png)
 
-The standalone URDF supplies kinematics. The [dual-arm fixture](../milly-7dof-gimbal/) supplies its mounting pose. Provisional gimbal inertias for MuJoCo live in the simulator profile.
+The camera housing intersects the rear yaw support at pitch +90° combined with roll ±90°. Check [coupled clearance](clearance-check.json) and cable travel on the installed assembly.
+
+## Collision envelope
+
+The optional 132 mm radius sphere encloses the moving gimbal. Keep the fixed base, yaw stator, and support collisions when using it. This proxy has no visual geometry or movable joints.
+
+[Proxy URDF](urdf/gimbal-safety-envelope.urdf) · [Envelope definition](safety-envelope.json) · [Detailed collisions](collision-primitives.json)
+
+![Front and rear views of the spherical gimbal collision envelope](images/gimbal-safety-envelope.png)

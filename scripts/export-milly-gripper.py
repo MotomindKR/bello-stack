@@ -334,7 +334,7 @@ def main():
     if args.check:
         check(output, linkage)
     if args.preview:
-        render_preview(output, description / "previews/gripper-motion.gif")
+        render_preview(output, description / "images/gripper-motion.gif")
 
 
 def render_preview(path, output):
