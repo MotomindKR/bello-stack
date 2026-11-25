@@ -33,7 +33,8 @@ struct Hardware {
 
 fn main() {
     let catalog_path =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../descriptions/motors/models.yaml");
+        PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("Cargo sets CARGO_MANIFEST_DIR"))
+            .join("../../descriptions/motors/models.yaml");
     println!("cargo:rerun-if-changed={}", catalog_path.display());
     let text = fs::read_to_string(&catalog_path)
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", catalog_path.display()));
