@@ -1,6 +1,7 @@
 //! Bounded pose capture; software rasterization runs in a separate process after shutdown.
 use crate::{Simulation, model};
 use anyhow::{Context, Result, ensure};
+use bello_config::{finite, positive};
 use mujoco_rs::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::io::{BufWriter, Write};
@@ -12,45 +13,46 @@ use std::time::Duration;
 #[cfg(target_os = "linux")]
 mod software;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, garde::Validate)]
+#[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub output: PathBuf,
+    #[garde(range(min = 2, max = 1920))]
     pub width: u32,
+    #[garde(range(min = 2, max = 1080))]
     pub height: u32,
+    #[garde(range(min = 1, max = 120))]
     pub fps: u32,
+    #[garde(custom(positive))]
     pub max_seconds: f64,
+    #[garde(custom(positive))]
     pub render_timeout_seconds: f64,
+    #[garde(dive)]
     pub camera: Camera,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct Camera {
+    #[garde(length(min = 1))]
     pub body: String,
+    #[garde(custom(positive))]
     pub distance_m: f64,
+    #[garde(custom(finite))]
     pub azimuth_degrees: f64,
+    #[garde(custom(finite))]
     pub elevation_degrees: f64,
+    #[garde(inner(custom(finite)))]
     pub lookat_offset_m: [f64; 3],
 }
 
 impl Config {
     fn validate(&self, nq: usize) -> Result<usize> {
+        garde::Validate::validate(self)?;
         ensure!(
-            (2..=1920).contains(&self.width)
-                && self.width.is_multiple_of(2)
-                && (2..=1080).contains(&self.height)
-                && self.height.is_multiple_of(2)
-                && (1..=120).contains(&self.fps),
-            "video needs even dimensions up to 1920x1080 and 1..120 fps"
-        );
-        ensure!(
-            self.max_seconds.is_finite() && self.max_seconds > 0.,
-            "invalid video duration"
-        );
-        ensure!(
-            self.render_timeout_seconds.is_finite() && self.render_timeout_seconds > 0.,
-            "invalid render timeout"
+            self.width.is_multiple_of(2) && self.height.is_multiple_of(2),
+            "video dimensions must be even"
         );
         Duration::try_from_secs_f64(self.render_timeout_seconds)?;
         let frames = (self.max_seconds * f64::from(self.fps)).ceil();
@@ -60,15 +62,6 @@ impl Config {
                 && frames >= 1.
                 && frames * nq as f64 * 8. <= 64. * 1024. * 1024.,
             "video pose buffer exceeds 64 MiB"
-        );
-        ensure!(
-            !self.camera.body.is_empty()
-                && self.camera.distance_m.is_finite()
-                && self.camera.distance_m > 0.
-                && self.camera.azimuth_degrees.is_finite()
-                && self.camera.elevation_degrees.is_finite()
-                && self.camera.lookat_offset_m.iter().all(|x| x.is_finite()),
-            "invalid video camera"
         );
         ensure!(
             self.output.extension().is_some_and(|x| x == "mp4"),

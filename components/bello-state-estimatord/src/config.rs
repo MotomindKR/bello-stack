@@ -4,52 +4,76 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, bail};
+use bello_config::{finite, nonnegative, positive, trimmed_name};
+use garde::Validate;
 use serde::Deserialize;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Validate)]
+#[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
 pub struct EstimatorConfig {
     pub urdf: PathBuf,
+    #[garde(custom(trimmed_name))]
     pub hardware_endpoint: String,
     pub listen: SocketAddr,
     #[serde(default = "default_imu")]
+    #[garde(custom(trimmed_name))]
     pub imu: String,
+    #[garde(custom(trimmed_name))]
     pub imu_frame: String,
     #[serde(default = "default_reference_frame")]
+    #[garde(custom(trimmed_name))]
     pub reference_frame: String,
     #[serde(default = "default_base")]
+    #[garde(custom(trimmed_name))]
     pub tracked_frame: String,
     pub planar: bool,
+    #[garde(custom(finite))]
     pub ground_height_m: f64,
     #[serde(default = "default_left_foot")]
+    #[garde(custom(trimmed_name))]
     pub left_foot: String,
     #[serde(default = "default_right_foot")]
+    #[garde(custom(trimmed_name))]
     pub right_foot: String,
     #[serde(default = "default_imu_stale_ms")]
+    #[garde(range(min = 1))]
     pub imu_stale_ms: u64,
     #[serde(default = "default_motor_stale_ms")]
+    #[garde(range(min = 1))]
     pub motor_stale_ms: u64,
     #[serde(default = "default_orientation_lpf_cutoff_hz")]
+    #[garde(custom(positive))]
     pub orientation_lpf_cutoff_hz: f64,
     #[serde(default = "default_gyro_lpf_cutoff_hz")]
+    #[garde(custom(positive))]
     pub gyro_lpf_cutoff_hz: f64,
     #[serde(default = "default_acceleration_lpf_cutoff_hz")]
+    #[garde(custom(positive))]
     pub acceleration_lpf_cutoff_hz: f64,
     #[serde(default = "default_contact_height_full")]
+    #[garde(custom(nonnegative))]
     pub contact_height_full_m: f64,
     #[serde(default = "default_contact_height_zero")]
+    #[garde(custom(nonnegative))]
     pub contact_height_zero_m: f64,
     #[serde(default = "default_contact_motion_full")]
+    #[garde(custom(nonnegative))]
     pub contact_motion_full_mps: f64,
     #[serde(default = "default_contact_motion_zero")]
+    #[garde(custom(nonnegative))]
     pub contact_motion_zero_mps: f64,
     #[serde(default = "default_contact_world_speed_full")]
+    #[garde(custom(nonnegative))]
     pub contact_world_speed_full_mps: f64,
     #[serde(default = "default_contact_world_speed_zero")]
+    #[garde(custom(nonnegative))]
     pub contact_world_speed_zero_mps: f64,
     #[serde(default = "default_contact_probability_rise_ms")]
+    #[garde(range(min = 1))]
     pub contact_probability_rise_ms: u64,
     #[serde(default = "default_contact_probability_fall_ms")]
+    #[garde(range(min = 1))]
     pub contact_probability_fall_ms: u64,
 }
 
@@ -66,59 +90,7 @@ impl EstimatorConfig {
         if !value.urdf.is_file() {
             bail!("URDF does not exist: {}", value.urdf.display());
         }
-        for (name, text) in [
-            ("hardware_endpoint", value.hardware_endpoint.as_str()),
-            ("imu", value.imu.as_str()),
-            ("imu_frame", value.imu_frame.as_str()),
-            ("reference_frame", value.reference_frame.as_str()),
-            ("tracked_frame", value.tracked_frame.as_str()),
-            ("left_foot", value.left_foot.as_str()),
-            ("right_foot", value.right_foot.as_str()),
-        ] {
-            if text.trim().is_empty() || text.trim() != text {
-                bail!("{name} must be non-empty without surrounding whitespace");
-            }
-        }
-        if value.imu_stale_ms == 0
-            || value.motor_stale_ms == 0
-            || value.contact_probability_rise_ms == 0
-            || value.contact_probability_fall_ms == 0
-        {
-            bail!("freshness limits and contact probability time constants must be positive");
-        }
-        for (name, number) in [
-            ("contact_height_full_m", value.contact_height_full_m),
-            ("contact_height_zero_m", value.contact_height_zero_m),
-            ("contact_motion_full_mps", value.contact_motion_full_mps),
-            ("contact_motion_zero_mps", value.contact_motion_zero_mps),
-            (
-                "contact_world_speed_full_mps",
-                value.contact_world_speed_full_mps,
-            ),
-            (
-                "contact_world_speed_zero_mps",
-                value.contact_world_speed_zero_mps,
-            ),
-        ] {
-            if !number.is_finite() || number < 0.0 {
-                bail!("{name} must be nonnegative and finite");
-            }
-        }
-        if !value.ground_height_m.is_finite() {
-            bail!("ground_height_m must be finite");
-        }
-        for (name, cutoff) in [
-            ("orientation_lpf_cutoff_hz", value.orientation_lpf_cutoff_hz),
-            ("gyro_lpf_cutoff_hz", value.gyro_lpf_cutoff_hz),
-            (
-                "acceleration_lpf_cutoff_hz",
-                value.acceleration_lpf_cutoff_hz,
-            ),
-        ] {
-            if !cutoff.is_finite() || cutoff <= 0.0 {
-                bail!("{name} must be positive and finite");
-            }
-        }
+        value.validate()?;
         if value.contact_height_full_m >= value.contact_height_zero_m
             || value.contact_motion_full_mps >= value.contact_motion_zero_mps
             || value.contact_world_speed_full_mps >= value.contact_world_speed_zero_mps

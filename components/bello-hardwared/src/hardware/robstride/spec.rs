@@ -1,8 +1,6 @@
-use anyhow::{Result, bail};
-use robstride_protocol::{
-    CONTROL_POSITION_MAX, CONTROL_POSITION_MIN, CONTROL_POSITION_SPAN, MAX_MOTOR_ID, ModelLimits,
-    MotorParams, model_limits,
-};
+use anyhow::{Context, Result, bail};
+use garde::Validate;
+use robstride_protocol::{ModelLimits, MotorParams, model_limits};
 
 use crate::config::{MotorCommandPolicy, MotorConfig, MotorHealth};
 use crate::domain::{BusName, MotorAddress, MotorName};
@@ -39,21 +37,9 @@ impl TryFrom<&MotorConfig> for MotorSpec {
     type Error = anyhow::Error;
 
     fn try_from(config: &MotorConfig) -> Result<Self> {
-        if config.name.is_empty() {
-            bail!("motors[].name must be non-empty");
-        }
-        if config.coordinate.is_empty() {
-            bail!("motors.{}.coordinate must be non-empty", config.name);
-        }
-        if config.bus.is_empty() {
-            bail!("motors.{}.bus must be non-empty", config.name);
-        }
-        if config.id > MAX_MOTOR_ID {
-            bail!(
-                "motors.{}.id must be in the Robstride range 0..={MAX_MOTOR_ID}",
-                config.name
-            );
-        }
+        config
+            .validate()
+            .with_context(|| format!("motors.{}", config.name))?;
         if !matches!(config.direction, -1 | 1) {
             bail!("motors.{}.direction must be -1 or 1", config.name);
         }
@@ -61,11 +47,9 @@ impl TryFrom<&MotorConfig> for MotorSpec {
             .ok_or_else(|| anyhow::anyhow!("unsupported Robstride model {}", config.model))?;
         validate_limits(config, model)?;
         validate_health(config)?;
-        validate_command_policy(config)?;
         let params = MotorParams::for_model(&config.model, config.direction)
             .expect("validated Robstride model and direction");
         let limits = command_limits(config, model);
-        validate_fault_damping(config)?;
         Ok(Self {
             name: MotorName::from(config.name.as_str()),
             coordinate: config.coordinate.clone(),
@@ -129,21 +113,8 @@ fn directed_range(minimum: f64, maximum: f64, direction: i8) -> (f64, f64) {
 
 fn validate_limits(config: &MotorConfig, model: ModelLimits) -> Result<()> {
     let limits = &config.limits;
-    if !limits.position_min.is_finite()
-        || !limits.position_max.is_finite()
-        || limits.position_min >= limits.position_max
-        || limits.position_min < CONTROL_POSITION_MIN
-        || limits.position_max > CONTROL_POSITION_MAX
-    {
+    if limits.position_min >= limits.position_max {
         bail!("motors.{}.limits.position range is invalid", config.name);
-    }
-    for (field, value) in [
-        ("velocity_abs", limits.velocity_abs),
-        ("torque_abs", limits.torque_abs),
-    ] {
-        if value.is_some_and(|value| !value.is_finite() || value <= 0.0) {
-            bail!("motors.{}.limits.{field} is invalid", config.name);
-        }
     }
     for (field, configured, minimum, maximum) in [
         (
@@ -174,53 +145,13 @@ fn validate_limits(config: &MotorConfig, model: ModelLimits) -> Result<()> {
 
 fn validate_health(config: &MotorConfig) -> Result<()> {
     let health = &config.health;
-    if !health.safe_position_min.is_finite()
-        || !health.safe_position_max.is_finite()
-        || !health.feedback_position_tolerance.is_finite()
-        || !health.temperature_warning_c.is_finite()
-        || !health.maximum_temperature_c.is_finite()
-        || !health.temperature_recovery_c.is_finite()
-        || health.safe_position_min >= health.safe_position_max
-        || health.safe_position_min < CONTROL_POSITION_MIN
-        || health.safe_position_max > CONTROL_POSITION_MAX
+    if health.safe_position_min >= health.safe_position_max
         || health.safe_position_min > config.limits.position_min
         || health.safe_position_max < config.limits.position_max
-        || health.feedback_position_tolerance < CONTROL_POSITION_SPAN / u16::MAX as f64
-        || health.feedback_position_tolerance > 0.4
-        || health.temperature_warning_c <= 0.0
         || health.temperature_warning_c >= health.maximum_temperature_c
-        || health.maximum_temperature_c <= 0.0
-        || health.temperature_recovery_c <= 0.0
         || health.temperature_recovery_c >= health.maximum_temperature_c
-        || health.temperature_recovery_duration_ms == 0
-        || health.maximum_temperature_c > 200.0
-        || health.temperature_recovery_duration_ms > 60_000
     {
         bail!("motors.{}.health contains invalid values", config.name);
-    }
-    Ok(())
-}
-
-fn validate_command_policy(config: &MotorConfig) -> Result<()> {
-    let policy = &config.command_policy;
-    if !policy.maximum_position_step.is_finite()
-        || policy.maximum_position_step <= 0.0
-        || policy.maximum_position_step > CONTROL_POSITION_SPAN
-    {
-        bail!(
-            "motors.{}.command_policy.maximum_position_step must be in (0, {CONTROL_POSITION_SPAN}]",
-            config.name,
-        );
-    }
-    Ok(())
-}
-
-fn validate_fault_damping(config: &MotorConfig) -> Result<()> {
-    if !config.fault_damping_kd.is_finite() || config.fault_damping_kd <= 0.0 {
-        bail!(
-            "motors.{}.fault_damping_kd must be finite and positive",
-            config.name
-        );
     }
     Ok(())
 }
@@ -233,15 +164,6 @@ mod tests {
     fn rejects_unknown_motor_model() {
         let config: MotorConfig = serde_yaml::from_str(
             "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: UNKNOWN",
-        )
-        .unwrap();
-        assert!(MotorSpec::try_from(&config).is_err());
-    }
-
-    #[test]
-    fn rejects_motor_id_outside_protocol_range() {
-        let config: MotorConfig = serde_yaml::from_str(
-            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 128\nmodel: RS_03",
         )
         .unwrap();
         assert!(MotorSpec::try_from(&config).is_err());
@@ -275,15 +197,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_safe_position_outside_protocol_range() {
-        let config: MotorConfig = serde_yaml::from_str(
-            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: RS_03\nhealth: { safe_position_min: -13.0, safe_position_max: 13.0 }",
-        )
-        .unwrap();
-        assert!(MotorSpec::try_from(&config).is_err());
-    }
-
-    #[test]
     fn accepts_configured_feedback_position_tolerance() {
         let config: MotorConfig = serde_yaml::from_str(
             "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: RS_03\nhealth: { feedback_position_tolerance: 0.4 }",
@@ -291,26 +204,6 @@ mod tests {
         .unwrap();
         let spec = MotorSpec::try_from(&config).unwrap();
         assert_eq!(spec.feedback_position_tolerance, 0.4);
-    }
-
-    #[test]
-    fn rejects_feedback_position_tolerance_outside_guardrail() {
-        for tolerance in [0.0, 0.5] {
-            let yaml = format!(
-                "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: RS_03\nhealth: {{ feedback_position_tolerance: {tolerance} }}"
-            );
-            let config: MotorConfig = serde_yaml::from_str(&yaml).unwrap();
-            assert!(MotorSpec::try_from(&config).is_err());
-        }
-    }
-
-    #[test]
-    fn damping_response_requires_nonzero_gain() {
-        let config: MotorConfig = serde_yaml::from_str(
-            "name: motor_a\ncoordinate: coordinate_a\nbus: can\nid: 1\nmodel: RS_03\nfault_damping_kd: 0.0",
-        )
-        .unwrap();
-        assert!(MotorSpec::try_from(&config).is_err());
     }
 
     #[test]

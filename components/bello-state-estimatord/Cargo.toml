@@ -7,6 +7,8 @@ license-file.workspace = true
 publish.workspace = true
 
 [dependencies]
+bello-config.workspace = true
+garde.workspace = true
 anyhow.workspace = true
 async-stream.workspace = true
 bello-hardware-client.workspace = true

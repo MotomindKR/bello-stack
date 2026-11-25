@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
+use bello_config::{finite, nonnegative, positive};
 use bello_sim_can::SimBus;
 use robstride_protocol::{MAX_MOTOR_ID, MotorParams};
 use serde::Deserialize;
@@ -33,18 +34,23 @@ impl std::fmt::Display for CanInterface {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, garde::Validate)]
+#[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub interface: CanInterface,
     #[serde(default = "default_host_id")]
     pub host_id: u8,
     #[serde(default = "default_feedback_rate")]
+    #[garde(custom(finite), range(min = 1.0, max = 2_000.0))]
     pub feedback_rate_hz: f64,
     #[serde(default)]
+    #[garde(dive)]
     pub dynamics: DynamicsConfig,
+    #[garde(dive, length(min = 1))]
     pub actuators: Vec<ActuatorConfig>,
     #[serde(default)]
+    #[garde(dive)]
     pub events: Vec<ScheduledEvent>,
 }
 
@@ -56,10 +62,12 @@ fn default_feedback_rate() -> f64 {
     500.0
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, garde::Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct DynamicsConfig {
+    #[garde(custom(positive))]
     pub position_response_hz: f64,
+    #[garde(custom(positive))]
     pub idle_velocity_decay_hz: f64,
 }
 
@@ -72,9 +80,11 @@ impl Default for DynamicsConfig {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, garde::Validate)]
+#[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
 pub struct ActuatorConfig {
+    #[garde(range(max = MAX_MOTOR_ID))]
     pub id: u8,
     pub model: String,
     #[serde(default = "default_direction")]
@@ -82,6 +92,7 @@ pub struct ActuatorConfig {
     #[serde(default)]
     pub initial_position: f64,
     #[serde(default = "default_temperature")]
+    #[garde(custom(nonnegative))]
     pub initial_temperature_c: f64,
 }
 
@@ -93,24 +104,44 @@ fn default_temperature() -> f64 {
     25.0
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, garde::Validate)]
+#[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
 pub struct ScheduledEvent {
     pub at_ms: u64,
     pub actuator_id: u8,
+    #[garde(dive)]
     pub action: FaultAction,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, garde::Validate)]
+#[garde(allow_unvalidated)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum FaultAction {
-    DropFeedback { enabled: bool },
-    SetFeedbackDelay { delay_ms: u64 },
-    SetFeedbackJitter { jitter_ms: u64 },
-    SetFaultBits { value: u16 },
-    SetTemperature { celsius: f64 },
+    DropFeedback {
+        enabled: bool,
+    },
+    SetFeedbackDelay {
+        #[garde(range(max = 60_000))]
+        delay_ms: u64,
+    },
+    SetFeedbackJitter {
+        #[garde(range(max = 60_000))]
+        jitter_ms: u64,
+    },
+    SetFaultBits {
+        #[garde(range(max = 0x3f))]
+        value: u16,
+    },
+    SetTemperature {
+        #[garde(custom(nonnegative))]
+        celsius: f64,
+    },
     ClearTemperature,
-    SetModeStatus { value: u8 },
+    SetModeStatus {
+        #[garde(range(max = 3))]
+        value: u8,
+    },
     ClearModeStatus,
 }
 
@@ -130,27 +161,9 @@ impl Config {
 
     pub fn validate(&self) -> Result<()> {
         self.interface.validate()?;
-        if !self.feedback_rate_hz.is_finite() || !(1.0..=2_000.0).contains(&self.feedback_rate_hz) {
-            bail!("feedback_rate_hz must be in 1..=2000");
-        }
-        if !self.dynamics.position_response_hz.is_finite()
-            || self.dynamics.position_response_hz <= 0.0
-            || !self.dynamics.idle_velocity_decay_hz.is_finite()
-            || self.dynamics.idle_velocity_decay_hz <= 0.0
-        {
-            bail!("dynamics rates must be finite and positive");
-        }
-        if self.actuators.is_empty() {
-            bail!("at least one actuator is required");
-        }
+        garde::Validate::validate(self)?;
         let mut ids = HashSet::new();
         for actuator in &self.actuators {
-            if actuator.id > MAX_MOTOR_ID {
-                bail!(
-                    "actuator id {} must be in the Robstride range 0..={MAX_MOTOR_ID}",
-                    actuator.id
-                );
-            }
             if !ids.insert(actuator.id) {
                 bail!("duplicate actuator id {}", actuator.id);
             }
@@ -172,9 +185,6 @@ impl Config {
             {
                 bail!("actuator {} initial_position is invalid", actuator.id);
             }
-            if !actuator.initial_temperature_c.is_finite() || actuator.initial_temperature_c < 0.0 {
-                bail!("actuator {} initial_temperature_c is invalid", actuator.id);
-            }
         }
         for event in &self.events {
             if !ids.contains(&event.actuator_id) {
@@ -183,26 +193,6 @@ impl Config {
                     event.at_ms,
                     event.actuator_id
                 );
-            }
-            match &event.action {
-                FaultAction::SetFeedbackDelay { delay_ms }
-                | FaultAction::SetFeedbackJitter {
-                    jitter_ms: delay_ms,
-                } if *delay_ms > 60_000 => {
-                    bail!("feedback delay and jitter must not exceed 60000 ms");
-                }
-                FaultAction::SetFaultBits { value } if *value > 0x3f => {
-                    bail!("fault bits must fit the Robstride 6-bit feedback field");
-                }
-                FaultAction::SetTemperature { celsius }
-                    if !celsius.is_finite() || *celsius < 0.0 =>
-                {
-                    bail!("event temperature must be finite and non-negative");
-                }
-                FaultAction::SetModeStatus { value } if *value > 3 => {
-                    bail!("mode status must fit the Robstride 2-bit feedback field");
-                }
-                _ => {}
             }
         }
         Ok(())

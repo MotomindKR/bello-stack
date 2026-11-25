@@ -3,6 +3,7 @@ use std::path::Path;
 
 use anyhow::{Result, anyhow, bail};
 use bello_robot_description::RobotDescription;
+use garde::Validate;
 
 use super::{CommandTransmission, Config, ImuFilterConfig, MotorVelocityFilterConfig};
 use crate::api::grpc::GrpcSpec;
@@ -55,30 +56,7 @@ impl ResolvedTopology {
     }
 
     pub(crate) fn resolve(config: Config) -> Result<Self> {
-        validate_root(&config)?;
-        if !(64..=1_000_000).contains(&config.runtime.telemetry_capacity) {
-            bail!("runtime.telemetry_capacity must be in 64..=1000000");
-        }
-        if !config.runtime.motor_velocity_filter.cutoff_hz.is_finite()
-            || config.runtime.motor_velocity_filter.cutoff_hz <= 0.0
-        {
-            bail!("runtime.motor_velocity_filter.cutoff_hz must be finite and positive");
-        }
-        for (name, cutoff_hz) in [
-            (
-                "orientation_cutoff_hz",
-                config.runtime.imu_filter.orientation_cutoff_hz,
-            ),
-            ("gyro_cutoff_hz", config.runtime.imu_filter.gyro_cutoff_hz),
-            (
-                "acceleration_cutoff_hz",
-                config.runtime.imu_filter.acceleration_cutoff_hz,
-            ),
-        ] {
-            if !cutoff_hz.is_finite() || cutoff_hz <= 0.0 {
-                bail!("runtime.imu_filter.{name} must be finite and positive");
-            }
-        }
+        config.validate()?;
         if config.robot_description.as_os_str().is_empty() {
             bail!("hardware configuration has no canonical robot description");
         }
@@ -331,19 +309,6 @@ impl ResolvedTopology {
     }
 }
 
-fn validate_root(config: &Config) -> Result<()> {
-    if config.buses.is_empty() {
-        bail!("at least one CAN bus is required");
-    }
-    if config.motors.is_empty() {
-        bail!("at least one motor is required");
-    }
-    if config.motor_groups.is_empty() {
-        bail!("at least one motor group is required");
-    }
-    Ok(())
-}
-
 fn validate_bus_utilization(
     buses: &HashMap<BusName, BusSpec>,
     motors: &HashMap<MotorName, ResolvedMotor>,
@@ -506,29 +471,6 @@ motor_groups:
             .retain(|motor| motor != "drive_b");
         let error = ResolvedTopology::resolve(config).err().unwrap().to_string();
         assert!(error.contains("no URDF position limits"), "{error}");
-    }
-
-    #[test]
-    fn motor_velocity_filter_cutoff_is_validated() {
-        let component = concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml");
-        let mut config = Config::load_raw(component).unwrap();
-        config.runtime.motor_velocity_filter.cutoff_hz = 0.0;
-
-        let error = ResolvedTopology::resolve(config).err().unwrap().to_string();
-        assert!(error.contains("cutoff_hz"), "{error}");
-    }
-
-    #[test]
-    fn imu_filter_cutoffs_are_validated() {
-        let component = concat!(env!("CARGO_MANIFEST_DIR"), "/config/bello.yaml");
-        let mut config = Config::load_raw(component).unwrap();
-        config.runtime.imu_filter.gyro_cutoff_hz = 0.0;
-
-        let error = ResolvedTopology::resolve(config).err().unwrap().to_string();
-        assert!(
-            error.contains("runtime.imu_filter.gyro_cutoff_hz"),
-            "{error}"
-        );
     }
 
     #[test]

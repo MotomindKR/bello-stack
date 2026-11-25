@@ -1,6 +1,8 @@
 //! Single-threaded physics with bounded transport queues; async work owns no model.
 use crate::{ebimu, guide, model, pose, robstride::RobstrideSimulation, transport::CanEndpoint};
 use anyhow::{Context, Result, ensure};
+use bello_config::{finite, nonnegative};
+use garde::Validate;
 use nalgebra::{UnitQuaternion, Vector3};
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use rand::{SeedableRng, rngs::StdRng};
@@ -20,21 +22,27 @@ use tokio::sync::watch;
 
 const MAX_QUEUE: usize = 8192;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
+#[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub model: PathBuf,
     pub bus_interfaces: BTreeMap<String, CanInterface>,
     pub feedback_rate_hz: f64,
     pub temperature_c: f64,
+    #[garde(custom(finite), range(min = 0.0, max = 1.0))]
     pub command_latency_seconds: f64,
+    #[garde(custom(nonnegative))]
     pub motor_kp_scale: f64,
+    #[garde(custom(nonnegative))]
     pub motor_kd_scale: f64,
     /// Simulation fixture: hold the initial pose until every motor is commanded once.
     #[serde(default)]
     pub startup_hold_until_commanded: bool,
+    #[garde(dive)]
     pub imu: Option<ImuConfig>,
     pub power_board: Option<crate::power_board::Config>,
+    #[garde(dive)]
     pub pose: PoseConfig,
     pub torso_guide: Option<guide::Config>,
     pub fault_events: BTreeMap<String, Vec<ScheduledEvent>>,
@@ -42,24 +50,30 @@ pub struct Config {
     pub cameras: Option<PathBuf>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
+#[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
 pub struct ImuConfig {
     pub name: String,
     #[serde(flatten)]
     pub endpoint: crate::uart::Endpoint,
     pub rate_hz: f64,
+    #[garde(custom(nonnegative))]
     pub orientation_std_radians: f64,
+    #[garde(custom(nonnegative))]
     pub acceleration_std_mps2: f64,
     pub seed: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Validate)]
+#[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
 pub struct PoseConfig {
     pub listen: SocketAddr,
+    #[garde(length(min = 1))]
     pub reference_frame: String,
     pub tracked_frame: String,
+    #[garde(custom(finite), range(min = 1.0, max = 1000.0))]
     pub rate_hz: f64,
 }
 
@@ -87,27 +101,7 @@ impl Config {
                 );
             }
         }
-        ensure!(
-            config.command_latency_seconds.is_finite() && config.command_latency_seconds >= 0.,
-            "invalid latency"
-        );
-        if let Some(imu) = &config.imu {
-            for value in [imu.orientation_std_radians, imu.acceleration_std_mps2] {
-                ensure!(value.is_finite() && value >= 0., "invalid IMU noise");
-            }
-        }
-        ensure!(
-            config.command_latency_seconds <= 1.,
-            "command latency exceeds one second"
-        );
-        ensure!(
-            config.pose.rate_hz.is_finite() && (1. ..=1000.).contains(&config.pose.rate_hz),
-            "invalid pose rate"
-        );
-        ensure!(
-            !config.pose.reference_frame.is_empty(),
-            "empty pose reference frame"
-        );
+        config.validate()?;
         let mut devices = BTreeSet::new();
         let mut ports = BTreeSet::new();
         for interface in config.bus_interfaces.values() {
@@ -125,9 +119,6 @@ impl Config {
                     }
                 }
             }
-        }
-        for gain in [config.motor_kp_scale, config.motor_kd_scale] {
-            ensure!(gain.is_finite() && gain >= 0., "invalid motor gain scale");
         }
         ensure!(
             config

@@ -3,7 +3,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
+use garde::Validate;
 use parking_lot::RwLock;
 
 use crate::config::ReconnectConfig;
@@ -311,14 +312,9 @@ impl TryFrom<(&ReconnectConfig, &str)> for ReconnectPolicy {
     type Error = anyhow::Error;
 
     fn try_from((config, path): (&ReconnectConfig, &str)) -> Result<Self> {
-        if config.initial_delay_ms == 0 {
-            bail!("{path}.initial_delay_ms must be positive");
-        }
+        config.validate().with_context(|| path.to_owned())?;
         if config.maximum_delay_ms < config.initial_delay_ms {
             bail!("{path}.maximum_delay_ms must be >= initial_delay_ms");
-        }
-        if config.maximum_delay_ms > 60_000 {
-            bail!("{path}.maximum_delay_ms must not exceed 60000");
         }
         Ok(Self {
             initial_delay: Duration::from_millis(config.initial_delay_ms),

@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
+use garde::Validate;
 use tonic::transport::{Certificate, Identity, Server, ServerTlsConfig};
 
 use crate::config::{GrpcConfig, GrpcListenConfig, GrpcTlsConfig};
@@ -77,14 +78,9 @@ impl TryFrom<&GrpcConfig> for GrpcSpec {
     type Error = anyhow::Error;
 
     fn try_from(config: &GrpcConfig) -> Result<Self> {
-        if !(20..=60_000).contains(&config.default_lease_ms)
-            || config.default_lease_ms > config.maximum_lease_ms
-            || config.maximum_lease_ms > 300_000
-        {
-            bail!("grpc lease durations must satisfy 20 <= default <= maximum <= 300000 ms");
-        }
-        if config.listen.is_empty() {
-            bail!("grpc.listen must contain at least one listener");
+        config.validate().context("grpc")?;
+        if config.default_lease_ms > config.maximum_lease_ms {
+            bail!("grpc.default_lease_ms must not exceed maximum_lease_ms");
         }
         let mut listen = Vec::with_capacity(config.listen.len());
         for configured in &config.listen {
