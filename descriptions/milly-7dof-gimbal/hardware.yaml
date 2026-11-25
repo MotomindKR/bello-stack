@@ -474,8 +474,9 @@ motor_groups:
   - right_joint_6
   - right_joint_7
   - right_gripper
-  control_rate_hz: 100.0
-  command_refresh_rate_hz: 100.0
+  control_rate_hz: 200.0
+  command_refresh_rate_hz: 200.0
+  command_transmission: periodic
   command_timeout_ms: 100
   feedback_timeout_ms: 250
   enable_timeout_ms: 500
