@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use bello_robot_description::RobotDescription;
 use garde::Validate;
 
@@ -60,7 +60,13 @@ impl ResolvedTopology {
         if config.robot_description.as_os_str().is_empty() {
             bail!("hardware configuration has no canonical robot description");
         }
-        let robot_description = RobotDescription::load(&config.robot_description)?;
+        let robot_description =
+            RobotDescription::load(&config.robot_description).with_context(|| {
+                format!(
+                    "invalid robot description {}",
+                    config.robot_description.display()
+                )
+            })?;
         let grpc = GrpcSpec::try_from(&config.grpc)?;
 
         let mut serial_devices = HashMap::new();
@@ -181,18 +187,15 @@ impl ResolvedTopology {
 
         let mut motor_specs = HashMap::new();
         let mut addresses = HashSet::<MotorAddress>::new();
+        let mut coordinates = HashSet::new();
         for raw in &config.motors {
             let mut spec = MotorSpec::try_from(raw)?;
             apply_coordinate_limits(&robot_description, &mut spec)?;
-            let bus = buses.get(&spec.address.bus).ok_or_else(|| {
-                anyhow!(
-                    "motor {} refers to unknown bus {}",
-                    spec.name,
-                    spec.address.bus
-                )
-            })?;
-            if spec.address.id == bus.host_id {
-                bail!("motor {} id conflicts with bus host_id", spec.name);
+            if !coordinates.insert(raw.coordinate.as_str()) {
+                bail!(
+                    "coordinate {} is assigned to more than one motor",
+                    raw.coordinate
+                );
             }
             if !addresses.insert(spec.address.clone()) {
                 bail!(
@@ -205,14 +208,6 @@ impl ResolvedTopology {
                 bail!("duplicate motor name {}", raw.name);
             }
         }
-        let used_buses: HashSet<_> = motor_specs
-            .values()
-            .map(|motor| &motor.address.bus)
-            .collect();
-        if let Some(unused) = buses.keys().find(|name| !used_buses.contains(name)) {
-            bail!("CAN bus {unused} has no motors");
-        }
-
         let mut groups = HashMap::new();
         let mut membership = HashMap::<MotorName, GroupName>::new();
         for raw in &config.motor_groups {
@@ -236,16 +231,29 @@ impl ResolvedTopology {
             }
         }
 
-        let motors = motor_specs
-            .into_iter()
-            .map(|(name, spec)| {
-                let group = membership
-                    .get(&name)
-                    .cloned()
-                    .ok_or_else(|| anyhow!("motor {name} does not belong to a group"))?;
-                Ok((name, ResolvedMotor { spec, group }))
-            })
-            .collect::<Result<_>>()?;
+        groups.retain(|name, _| !config.disabled_groups.contains(name.as_str()));
+        let mut motors = HashMap::new();
+        let mut used_buses = HashSet::new();
+        for (name, spec) in motor_specs {
+            let group = membership
+                .remove(&name)
+                .ok_or_else(|| anyhow!("motor {name} does not belong to a group"))?;
+            if !groups.contains_key(&group) {
+                continue;
+            }
+            let bus = &spec.address.bus;
+            let binding = buses.get(bus).ok_or_else(|| {
+                anyhow!("missing transport for CAN bus {bus} used by motor {name}")
+            })?;
+            if spec.address.id == binding.host_id {
+                bail!("motor {name} id conflicts with bus host_id");
+            }
+            used_buses.insert(bus.clone());
+            motors.insert(name, ResolvedMotor { spec, group });
+        }
+        if let Some(unused) = buses.keys().find(|name| !used_buses.contains(*name)) {
+            bail!("CAN bus {unused} has no motors in the enabled groups");
+        }
 
         validate_bus_utilization(&buses, &motors, &groups)?;
         Ok(Self {
@@ -404,6 +412,25 @@ motor_groups:
             .iter()
             .map(|name| (name.clone(), Feedback::default()))
             .collect()
+    }
+
+    #[test]
+    fn disabled_groups_need_no_bus_binding_and_publish_no_motors() {
+        let mut config = transmission_config();
+        config
+            .disabled_groups
+            .extend(["differential".into(), "parallel".into()]);
+        config.buses.retain(|bus| bus.name == "first");
+        let topology = ResolvedTopology::resolve(config).unwrap();
+
+        assert_eq!(
+            topology.groups.keys().collect::<Vec<_>>(),
+            [&GroupName::from("direct")]
+        );
+        assert_eq!(
+            topology.motors.keys().collect::<Vec<_>>(),
+            [&MotorName::from("direct")]
+        );
     }
 
     #[test]
