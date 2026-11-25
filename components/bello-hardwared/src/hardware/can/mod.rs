@@ -261,8 +261,15 @@ impl BusHandle {
         window: FeedbackWindow,
         frames: Vec<CanFrame>,
     ) -> Result<(), BusError> {
-        self.submit_priority_batch(PriorityBatchKind::Configuration, Some(window), frames)?
-            .wait()
+        self.submit_configuration_batch(window, frames)?.wait()
+    }
+
+    pub(crate) fn submit_configuration_batch(
+        &self,
+        window: FeedbackWindow,
+        frames: Vec<CanFrame>,
+    ) -> Result<PendingBatch, BusError> {
+        self.submit_priority_batch(PriorityBatchKind::Configuration, Some(window), frames)
     }
 
     pub(crate) fn submit_safety_batch(

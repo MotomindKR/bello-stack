@@ -18,7 +18,6 @@ mod stationary;
 
 const IDENTITY: u8 = 0;
 const FEEDBACK: u8 = 2;
-const STOP: u8 = 4;
 const SET_ZERO: u8 = 6;
 const FAULT: u8 = 21;
 const REPLY_TIMEOUT: Duration = Duration::from_millis(200);
@@ -238,7 +237,7 @@ impl<'a> Link<'a> {
                     (frame.id >> 24 == u32::from(FEEDBACK)
                         && (frame.id >> 8) as u8 == id
                         && frame.id as u8 == self.host
-                        && !frame.data.starts_with(&[0, 0xc4, 0x56]))
+                        && robstride_protocol::firmware_version_reply(&frame).is_none())
                     .then_some((frame.id >> 16) as u8)
                 })?
                 .with_context(|| format!("motor {id} did not confirm stopped mode"))?;
@@ -315,13 +314,18 @@ impl<'a> Link<'a> {
     }
 
     fn version(&self) -> Result<Option<Version>> {
-        self.send(STOP, self.host.into(), [0, 0xc4, 0, 0, 0, 0, 0, 0])?;
+        self.wire
+            .send(robstride_protocol::firmware_version_request(
+                self.host, self.id,
+            ))?;
         self.wait_for(REPLY_TIMEOUT, |frame| self.version_reply(frame))
     }
 
     fn version_reply(&self, frame: Frame) -> Option<Version> {
-        (self.is_reply(frame, FEEDBACK) && frame.data[..3] == [0, 0xc4, 0x56])
-            .then(|| Version(frame.data[3..7].try_into().expect("four version bytes")))
+        if !self.is_reply(frame, FEEDBACK) {
+            return None;
+        }
+        robstride_protocol::firmware_version_reply(&frame).map(Version)
     }
 
     fn stationary(&self) -> Result<Feedback> {
@@ -331,7 +335,7 @@ impl<'a> Link<'a> {
         while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
             self.wire.send(stop_frame(self.host, self.id, false))?;
             let feedback = self.wait_for(remaining.min(Duration::from_millis(100)), |frame| {
-                (self.is_reply(frame, FEEDBACK) && self.version_reply(frame).is_none())
+                self.is_reply(frame, FEEDBACK)
                     .then(|| parse_feedback(&frame, params))
                     .flatten()
             })?;

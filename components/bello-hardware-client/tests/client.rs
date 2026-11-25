@@ -146,6 +146,7 @@ impl HardwareService for FakeHardware {
                     id: 1,
                 }),
                 model: "test_motor".into(),
+                firmware_version: None,
                 direction: 1,
                 status: Some(DeviceStatus {
                     state: DeviceState::Online as i32,

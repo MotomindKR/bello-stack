@@ -311,7 +311,16 @@ motor_config() {
 motor_config PrepareMotorConfiguration '{"motor":"joint_1","kind":"MOTOR_CONFIGURATION_KIND_ZERO"}'
 ```
 
-Use the returned ID in `GetMotorConfiguration`. At `READY`, review the motor UUID and shaft angle. Commit sets the motor's current position to zero. For firmware, prepare with `MOTOR_CONFIGURATION_KIND_FIRMWARE` and review the installed and target versions. The server caches the setup tool’s pinned release catalog and verifies the image digest for the detected motor family. The simulated CAN transport uses a small fixture image and the emulator keeps its calibration and firmware version in memory.
+To read installed firmware without preparing an operation, call `HardwareService/ListHardware`. Each motor reports `firmwareVersion` once it answers a version query while stopped. The field is absent when the version is unknown, feedback is stale, or the bus is reserved for maintenance.
+
+```sh
+grpcurl -plaintext -import-path components/bello-hardware-api/proto \
+  -proto bello/hardware/v1/hardware.proto 127.0.0.1:50051 \
+  bello.hardware.v1.HardwareService/ListHardware |
+  jq '.motors[] | {name, firmwareVersion}'
+```
+
+Use the returned ID in `GetMotorConfiguration`. At `READY`, review the motor UUID and shaft angle. Commit sets the motor's current position to zero. For firmware, prepare with `MOTOR_CONFIGURATION_KIND_FIRMWARE` and review the installed and target versions. Hardwared embeds the RobStride images listed in the [setup tool catalog](https://github.com/MotomindKR/motor-setup-tool/blob/3437f89e0969b394fc729ec5945d29065eef6985/src/firmware_catalog.json). The build verifies their SHA-256 hashes. A weekly CI job checks the vendor release for changes. Firmware updates work offline. The simulated CAN transport uses a small fixture image and the emulator keeps its calibration and firmware version in memory.
 
 ```sh
 motor_config GetMotorConfiguration '{"id":"<operation ID>"}'

@@ -116,6 +116,7 @@ class Motor:
     direction: int
     limits: MotorLimits
     status: DeviceStatus | None
+    firmware_version: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -316,7 +316,7 @@ class MotorLimits(_message.Message):
     def __init__(self, position_min: _Optional[float] = ..., position_max: _Optional[float] = ..., velocity_min: _Optional[float] = ..., velocity_max: _Optional[float] = ..., torque_min: _Optional[float] = ..., torque_max: _Optional[float] = ..., kp_min: _Optional[float] = ..., kp_max: _Optional[float] = ..., kd_min: _Optional[float] = ..., kd_max: _Optional[float] = ...) -> None: ...
 
 class MotorInfo(_message.Message):
-    __slots__ = ("name", "coordinate", "group", "address", "model", "direction", "status", "limits")
+    __slots__ = ("name", "coordinate", "group", "address", "model", "direction", "status", "limits", "firmware_version")
     NAME_FIELD_NUMBER: _ClassVar[int]
     COORDINATE_FIELD_NUMBER: _ClassVar[int]
     GROUP_FIELD_NUMBER: _ClassVar[int]
@@ -325,6 +325,7 @@ class MotorInfo(_message.Message):
     DIRECTION_FIELD_NUMBER: _ClassVar[int]
     STATUS_FIELD_NUMBER: _ClassVar[int]
     LIMITS_FIELD_NUMBER: _ClassVar[int]
+    FIRMWARE_VERSION_FIELD_NUMBER: _ClassVar[int]
     name: str
     coordinate: str
     group: str
@@ -333,7 +334,8 @@ class MotorInfo(_message.Message):
     direction: int
     status: DeviceStatus
     limits: MotorLimits
-    def __init__(self, name: _Optional[str] = ..., coordinate: _Optional[str] = ..., group: _Optional[str] = ..., address: _Optional[_Union[MotorAddress, _Mapping]] = ..., model: _Optional[str] = ..., direction: _Optional[int] = ..., status: _Optional[_Union[DeviceStatus, _Mapping]] = ..., limits: _Optional[_Union[MotorLimits, _Mapping]] = ...) -> None: ...
+    firmware_version: str
+    def __init__(self, name: _Optional[str] = ..., coordinate: _Optional[str] = ..., group: _Optional[str] = ..., address: _Optional[_Union[MotorAddress, _Mapping]] = ..., model: _Optional[str] = ..., direction: _Optional[int] = ..., status: _Optional[_Union[DeviceStatus, _Mapping]] = ..., limits: _Optional[_Union[MotorLimits, _Mapping]] = ..., firmware_version: _Optional[str] = ...) -> None: ...
 
 class GroupInfo(_message.Message):
     __slots__ = ("name", "control_rate_hz", "state", "motors")

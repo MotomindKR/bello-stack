@@ -216,6 +216,7 @@ message MotorInfo {
   int32 direction = 6;
   DeviceStatus status = 7;
   MotorLimits limits = 8;
+  optional string firmware_version = 9;
 }
 
 message GroupInfo {

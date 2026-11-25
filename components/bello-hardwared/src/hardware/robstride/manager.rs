@@ -175,7 +175,9 @@ fn route_feedback(controllers: &HashMap<MotorAddress, MotorController>, received
     if !controller.accepts_feedback_target(frame_target(&frame)) {
         return;
     }
-    if let Some(feedback) = parse_feedback(&frame, controller.spec.params) {
+    if let Some(version) = robstride_protocol::firmware_version_reply(&frame) {
+        controller.record_version(version, received.received);
+    } else if let Some(feedback) = parse_feedback(&frame, controller.spec.params) {
         controller.record_received_feedback(feedback, received.received);
     }
 }

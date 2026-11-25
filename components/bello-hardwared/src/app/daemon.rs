@@ -159,6 +159,10 @@ impl HardwareDaemon {
         self.motor_workers.status(name)
     }
 
+    pub(crate) fn motor_firmware_version(&self, name: &MotorName) -> Option<String> {
+        self.motor_workers.controller(name).ok()?.firmware_version()
+    }
+
     pub(crate) fn motor_feedback(&self, name: &MotorName) -> Option<TimedFeedback> {
         self.motor_workers.feedback(name)
     }

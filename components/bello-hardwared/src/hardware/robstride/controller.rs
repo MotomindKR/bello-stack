@@ -106,10 +106,18 @@ struct OperatingFeedback {
     confirmed: bool,
 }
 
+#[derive(Default)]
+struct FirmwareDiscovery {
+    bus_transition: u64,
+    requested: Option<Instant>,
+    version: Option<[u8; 4]>,
+}
+
 struct FeedbackState {
     window: FeedbackWindow,
     filter: MotorVelocityFilter,
     latest: Option<TimedFeedback>,
+    firmware: FirmwareDiscovery,
     operating: Option<OperatingFeedback>,
     current_fault: Option<MotorFault>,
     latched_fault: Option<MotorFault>,
@@ -120,6 +128,7 @@ impl FeedbackState {
         if self.window != window {
             self.window = window;
             self.latest = None;
+            self.firmware = FirmwareDiscovery::default();
             self.operating = None;
             self.filter.reset();
         }
@@ -195,6 +204,7 @@ impl MotorController {
                     feedback_processing.timeout,
                 ),
                 latest: None,
+                firmware: FirmwareDiscovery::default(),
                 operating: None,
                 current_fault: None,
                 latched_fault: None,
@@ -213,6 +223,73 @@ impl MotorController {
     }
     pub(crate) fn status(&self) -> DeviceStatus {
         self.lifecycle.status()
+    }
+
+    pub(crate) fn firmware_version(&self) -> Option<String> {
+        let state = self.feedback.read();
+        let [a, b, c, d] = state.firmware.version?;
+        let bus = self.bus.status();
+        (self.bus.feedback_window() == Some(state.window)
+            && bus.state.is_online()
+            && bus.transition_count == state.firmware.bus_transition
+            && state
+                .latest
+                .is_some_and(|sample| sample.received.elapsed() <= self.feedback_timeout))
+        .then(|| format!("{a}.{b}.{c}.{d}"))
+    }
+
+    pub(super) fn record_version(&self, version: [u8; 4], received: Instant) {
+        let mut state = self.feedback.write();
+        if self.bus.feedback_window() == Some(state.window)
+            && state.window.accepts(received)
+            && self.bus.status().transition_count == state.firmware.bus_transition
+            && state.firmware.requested.is_some_and(|request| {
+                received
+                    .checked_duration_since(request)
+                    .is_some_and(|age| age <= Duration::from_millis(200))
+            })
+        {
+            state.firmware.version = Some(version);
+            state.firmware.requested = None;
+        }
+    }
+
+    fn probe_stopped_motor(&self, window: FeedbackWindow, bus_transition: u64) {
+        {
+            let mut state = self.feedback.write();
+            if state.firmware.bus_transition != bus_transition {
+                state.firmware = FirmwareDiscovery {
+                    bus_transition,
+                    ..Default::default()
+                };
+            }
+            if state.window != window
+                || state.firmware.version.is_some()
+                || state.operating.is_some()
+                || !state.latest.is_some_and(|sample| {
+                    sample.value.mode_status == 0
+                        && sample.received.elapsed() <= self.feedback_timeout
+                })
+                || state
+                    .firmware
+                    .requested
+                    .is_some_and(|request| request.elapsed() < Duration::from_secs(5))
+            {
+                return;
+            }
+            state.firmware.requested = Some(Instant::now());
+        }
+        // Discovery is optional. Normal feedback and motor health do not depend on a reply.
+        let _ = self.bus.submit_configuration_batch(
+            window,
+            vec![
+                robstride_protocol::firmware_version_request(
+                    self.bus.spec.host_id,
+                    self.spec.address.id,
+                )
+                .into(),
+            ],
+        );
     }
 
     pub(crate) fn feedback(&self) -> Option<TimedFeedback> {
@@ -405,6 +482,7 @@ impl MotorController {
             if !*periodic_reporting {
                 return;
             }
+            self.probe_stopped_motor(window, bus.transition_count);
             let feedback_is_fresh = self
                 .feedback()
                 .is_some_and(|feedback| feedback.received.elapsed() <= self.feedback_timeout);
@@ -449,6 +527,7 @@ impl MotorController {
             self.bus.spec.name, bus.state, bus.detail
         );
         let mut state = self.feedback.write();
+        state.firmware = FirmwareDiscovery::default();
         state.current_fault = Some(MotorFault {
             cause: MotorFaultCause::Communication,
             detail: detail.clone(),
@@ -497,6 +576,11 @@ impl MotorController {
                 return;
             };
             state.refresh(window);
+            if state.latest.is_some_and(|previous| {
+                received.saturating_duration_since(previous.received) > self.feedback_timeout
+            }) {
+                state.firmware = FirmwareDiscovery::default();
+            }
             let published_velocity = state.filter.apply(value.velocity, received);
             state.latest = Some(TimedFeedback {
                 value,

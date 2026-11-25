@@ -33,6 +33,7 @@ pub fn list(daemon: &HardwareDaemon) -> ListHardwareResponse {
                 id: motor.spec.address.id as u32,
             }),
             model: motor.spec.model.clone(),
+            firmware_version: daemon.motor_firmware_version(&motor.spec.name),
             direction: motor.spec.params.direction as i32,
             status: daemon
                 .motor_status(&motor.spec.name)

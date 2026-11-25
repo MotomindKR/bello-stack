@@ -34,6 +34,26 @@ async fn wait_phase(
     .await?
 }
 
+async fn wait_for_versions(client: &HardwareClient, target: &str) -> Result<()> {
+    timeout(Duration::from_secs(8), async {
+        loop {
+            let inventory = client.inventory().await?;
+            let version = |name| {
+                inventory
+                    .motors
+                    .iter()
+                    .find(|motor| motor.name == name)
+                    .and_then(|motor| motor.firmware_version.as_deref())
+            };
+            if version("e2e_motor_1") == Some(target) && version("e2e_motor_2") == Some("0.3.0.1") {
+                return anyhow::Ok(());
+            }
+            sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await?
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn re_zero_and_update_with_another_group_on_the_bus() -> Result<()> {
     let [ports] = sim::available_ports()?;
@@ -92,6 +112,7 @@ async fn re_zero_and_update_with_another_group_on_the_bus() -> Result<()> {
             .any(|m| m.motor_name == "e2e_motor_1" && (m.position - position).abs() < 0.02)
     };
     wait_for_frame(&client, |f| position_is(f, 0.4)).await?;
+    wait_for_versions(&client, "0.3.0.1").await?;
     let mut peer_lease = client
         .acquire_lease(
             "peer",
@@ -156,6 +177,7 @@ async fn re_zero_and_update_with_another_group_on_the_bus() -> Result<()> {
                 .await?;
             let job = wait_phase(&mut api, &id, Phase::Succeeded).await?;
             if kind == Kind::Firmware {
+                wait_for_versions(&client, "0.3.0.2").await?;
                 assert_eq!(job.current_version, "0.3.0.1");
                 assert_eq!(job.target_version.as_deref(), Some("0.3.0.2"));
             }

@@ -137,6 +137,7 @@ pub struct Motor {
     pub(crate) bus: String,
     pub(crate) id: u32,
     pub(crate) model: String,
+    pub(crate) firmware_version: Option<String>,
     pub(crate) direction: i32,
     pub(crate) limits: MotorLimits,
     pub(crate) initial_status: Option<DeviceStatus>,
@@ -161,6 +162,10 @@ impl Motor {
 
     pub fn id(&self) -> u32 {
         self.id
+    }
+
+    pub fn firmware_version(&self) -> Option<&str> {
+        self.firmware_version.as_deref()
     }
 
     pub fn model(&self) -> &str {
@@ -409,6 +414,7 @@ impl Inventory {
                 bus: address.bus,
                 id: address.id,
                 model: motor.model,
+                firmware_version: motor.firmware_version,
                 direction: motor.direction,
                 limits,
                 initial_status: motor.status.map(Into::into),
@@ -580,6 +586,7 @@ mod tests {
                     id: 1,
                 }),
                 model: "RS_03".into(),
+                firmware_version: None,
                 direction: 1,
                 status: None,
                 limits: Some(proto::MotorLimits {
