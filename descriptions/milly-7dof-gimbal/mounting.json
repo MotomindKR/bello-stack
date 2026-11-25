@@ -1,0 +1,156 @@
+{
+  "units": "m/rad",
+  "root": "dual_milly_base",
+  "arm_base_spacing_m": 0.45,
+  "left_base": {
+    "xyz": [
+      0,
+      -0.225,
+      0
+    ],
+    "rpy": [
+      0,
+      0,
+      1.5707963267948966
+    ]
+  },
+  "right_base": {
+    "xyz": [
+      0,
+      0.225,
+      0
+    ],
+    "rpy": [
+      0,
+      0,
+      1.5707963267948966
+    ]
+  },
+  "gimbal_base": {
+    "xyz": [
+      0.0875,
+      0,
+      0.43
+    ],
+    "rpy": [
+      0,
+      0,
+      3.141592653589793
+    ]
+  },
+  "source": "User corrected the rear offset to 50 mm behind the J1 axes (+X, with forward -X). The 60 x 60 x 430 mm support, gimbal base and safety envelope move together 10 mm rearward from the previous 40 mm offset. Arm spacing remains 450 mm and arm mounting poses are retained.",
+  "removed": "Legacy centre D405, keepout and support post; arm-mounted wrist cameras remain.",
+  "control": {
+    "dual_arm": "16 coordinates across can0 IDs 1..8 and can1 IDs 1..8",
+    "gimbal": "3 coordinates on can0 IDs 11/12/13"
+  },
+  "shared_assets": [
+    "../milly-7dof",
+    "../stereo-gimbal",
+    "../milly"
+  ],
+  "physical_mounting_plates": {
+    "left_centre_xyz_m": [
+      0.045,
+      -0.225,
+      0.004
+    ],
+    "right_centre_xyz_m": [
+      0.045,
+      0.225,
+      0.004
+    ],
+    "gimbal_centre_xyz_m": [
+      0.0875,
+      0,
+      0.43
+    ],
+    "reference": "Centres on the underside mounting planes. Arm plates are at z=0.004 m. Gimbal plate centre is (0.0875, 0, 0.430) m, 50 mm behind the J1 axes at x=0.0375 m and 426 mm above the arm plates. Yaw pi faces the camera toward -X. Level stereo optical centre is z=0.611 m, 607 mm above the arm mounting planes."
+  },
+  "gimbal_height_above_arm_mounts_m": 0.426,
+  "stereo_view_direction_at_zero": [
+    -1,
+    0,
+    0
+  ],
+  "gimbal_support": {
+    "link": "gimbal_support_link",
+    "frame": "dual_milly_base",
+    "geometry": {
+      "type": "box",
+      "size": [
+        0.06,
+        0.06,
+        0.43
+      ],
+      "xyz": [
+        0.0875,
+        0,
+        0.215
+      ],
+      "rpy": [
+        0,
+        0,
+        0
+      ]
+    },
+    "ground_z_m": 0,
+    "top_z_m": 0.43,
+    "note": "Provisional 60 mm square support. Visual and matching primitive collision only; no inertial parameters."
+  },
+  "gimbal_safety_envelope": {
+    "definition": "../stereo-gimbal/safety-envelope.json",
+    "frame": "gimbal_base_link",
+    "centre_in_root_m": [
+      0.0875,
+      0.0,
+      0.604
+    ],
+    "radius_m": 0.132,
+    "support_handling": "Retain fixed gimbal base plate/yaw stator primitives and separate support pole box."
+  },
+  "ground": {
+    "link": "ground_link",
+    "frame": "dual_milly_base",
+    "geometry": {
+      "type": "box",
+      "size": [
+        2,
+        2,
+        0.02
+      ],
+      "xyz": [
+        0,
+        0,
+        -0.01
+      ],
+      "rpy": [
+        0,
+        0,
+        0
+      ]
+    },
+    "top_z_m": 0,
+    "bottom_z_m": -0.02,
+    "note": "Fixed workcell ground with matching visual and primitive collision; no inertial parameters."
+  },
+  "stereo_optical_height_above_arm_mounts_at_zero_m": 0.607,
+  "arm_joint_1_axes": {
+    "left_xyz_m": [
+      0.0375,
+      -0.225,
+      0.072
+    ],
+    "right_xyz_m": [
+      0.0375,
+      0.225,
+      0.072
+    ],
+    "gimbal_base_rear_offset_m": 0.05,
+    "rear_direction_in_root": [
+      1,
+      0,
+      0
+    ]
+  }
+}

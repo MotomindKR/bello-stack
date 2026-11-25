@@ -28,6 +28,9 @@ message Frame {
   // Original V4L2 flags; zero for simulated images.
   uint32 flags = 6;
   optional uint64 simulation_time_ns = 7;
+  // Per-exposure state. Simulation supplies world_from_optical and joint positions
+  // from the exact qpos snapshot that produced this frame, never command targets.
+  string metadata_json = 8;
 }
 message WatchFramesResponse {
   Frame frame = 1;

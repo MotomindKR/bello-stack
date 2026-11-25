@@ -1,0 +1,10 @@
+description: ../../../descriptions/milly-7dof/hardware.yaml
+
+grpc:
+  listen:
+    - { type: tcp, address: 0.0.0.0:50051 }
+
+bus_transports:
+  can0: { type: socketcan, interface: can0 }
+
+enabled_groups: [arm]

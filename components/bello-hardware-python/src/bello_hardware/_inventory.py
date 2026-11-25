@@ -31,6 +31,7 @@ _SUPPORTED_ROBSTRIDE_MODELS = frozenset(
         "RS_04",
         "RS_05",
         "RS_06",
+        "RS_10P",
     }
 )
 

@@ -37,6 +37,8 @@ validated boundary types live beside the subsystem that consumes them, and
 cross-object checks live in
 [`config/resolved.rs`](../components/bello-hardwared/src/config/resolved.rs).
 
+The [seven-axis Milly](../descriptions/milly-7dof/) and [dual stereo fixture](../descriptions/milly-7dof-gimbal/) have physical, loopback simulation and vCAN deployments.
+
 ## Document structure
 
 Unknown fields are rejected at every YAML object boundary. This catches

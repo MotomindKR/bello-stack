@@ -114,3 +114,16 @@ cargo run --locked -p bello-sim -- \
 cargo test --locked -p bello-sim \
   --test video -- --ignored
 ```
+
+## Dual Milly stereo
+
+Start the dual 7-DOF fixture and its two calibrated views with the following commands in separate terminals. The simulator holds the initial pose until the motors receive commands.
+
+```sh
+cargo run -p bello-sim -- run --config components/bello-sim/config/emulator_milly_7dof_gimbal.yaml
+cargo run -p bello-hardwared -- --config components/bello-hardwared/config/milly-7dof-gimbal-sim.yaml
+```
+
+The camera service publishes left and right 1600 × 1200 JPEGs at `/tmp/bello-milly-stereo.sock`. Both eyes use one simulation snapshot. Each frame carries its capture time, joint positions and world optical pose in `metadata_json`. The camera profile uses measured per-eye intrinsics, OpenCV fisheye coefficients and the inverse stereo extrinsics to place the right sensor relative to the left. The left optical centre is anchored half the measured baseline from the CAD midpoint. The ELP calibration comes from `bello-vr-telepresence/config/stereo.json` at revision `bded0439` (SHA-256 `f86832f946c464d0300e0463b04a67cd0b0d6687cde2fc89569c94b585059ab3`). [Stereo camera profile](config/cameras_milly_stereo.yaml)
+
+To configure another camera, set the dimensions and specify each optical pose as XYZ in metres followed by a WXYZ quaternion. Supply fx, fy, cx and cy in sensor pixels. Omit the four fisheye coefficients for pinhole projection. The model profile holds provisional auxiliary inertias for the gimbal and gripper linkages. [Simulation model](config/milly_7dof_gimbal.yaml)

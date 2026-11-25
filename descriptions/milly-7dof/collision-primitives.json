@@ -1,0 +1,288 @@
+{
+  "units": "m",
+  "description": "Primitive-only exterior contact envelopes in single-arm URDF frames. link_2 has a shoulder cylinder and roll housing box; link_3 has one rotating upper-arm box. The J4 fork side boxes are omitted by user request; the elbow motor cylinder on link_4 is 90 mm long to cover the full elbow width. Each wrist camera has only its camera housing box, with no stalk or mount collider. Each undeformed soft-finger assembly uses one box; no compliant contact model or new inertia is supplied. Both dual arms use the same shapes. Approximate contact envelopes. The inherited link_1 shoulder motor cylinder is omitted: it duplicated the coaxial, same-radius 96 mm shoulder-case cylinder on link_2, whose envelope is invariant under J2 rotation.",
+  "shapes": [
+    {
+      "link": "base_link",
+      "name": "base_link_base_shell",
+      "type": "cylinder",
+      "xyz": [
+        0.0,
+        -0.045,
+        0.0405
+      ],
+      "rpy": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "radius": 0.059,
+      "length": 0.073
+    },
+    {
+      "link": "base_link",
+      "name": "base_link_base_connector",
+      "type": "box",
+      "xyz": [
+        0.0,
+        -0.1092,
+        0.034
+      ],
+      "rpy": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        0.03,
+        0.0294,
+        0.034
+      ]
+    },
+    {
+      "link": "link_2",
+      "name": "link_2_shoulder_case",
+      "type": "cylinder",
+      "xyz": [
+        0.0,
+        0.0,
+        0.097892511
+      ],
+      "rpy": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "radius": 0.054,
+      "length": 0.096
+    },
+    {
+      "link": "link_2",
+      "name": "link_2_roll_housing",
+      "type": "box",
+      "xyz": [
+        -0.0888,
+        0.0,
+        0.097892511
+      ],
+      "rpy": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        0.0976,
+        0.065,
+        0.096
+      ]
+    },
+    {
+      "link": "link_4",
+      "name": "link_4_elbow_motor",
+      "type": "cylinder",
+      "xyz": [
+        0.0,
+        0.0,
+        0.028
+      ],
+      "rpy": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "radius": 0.045,
+      "length": 0.09
+    },
+    {
+      "link": "link_4",
+      "name": "link_4_forearm_case",
+      "type": "box",
+      "xyz": [
+        -0.026176,
+        -0.098697,
+        0.028
+      ],
+      "rpy": [
+        1.57079632679,
+        0.0,
+        -0.523598775598
+      ],
+      "size": [
+        0.057,
+        0.057,
+        0.12913
+      ]
+    },
+    {
+      "link": "link_5",
+      "name": "link_5_wrist_roll",
+      "type": "cylinder",
+      "xyz": [
+        0.0,
+        0.0,
+        -0.016
+      ],
+      "rpy": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "radius": 0.03275,
+      "length": 0.124
+    },
+    {
+      "link": "link_6",
+      "name": "link_6_wrist_round_case",
+      "type": "cylinder",
+      "xyz": [
+        -0.017,
+        0.0,
+        0.0235
+      ],
+      "rpy": [
+        1.57079632679,
+        0.0,
+        0.0
+      ],
+      "radius": 0.046,
+      "length": 0.06
+    },
+    {
+      "link": "link_6",
+      "name": "link_6_wrist_rear_case",
+      "type": "box",
+      "xyz": [
+        -0.0675,
+        0.0,
+        0.0235
+      ],
+      "rpy": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        0.065,
+        0.06,
+        0.067
+      ]
+    },
+    {
+      "link": "link_3",
+      "name": "link_3_upper_arm_body",
+      "type": "box",
+      "xyz": [
+        -0.1826,
+        -0.004905,
+        0.0
+      ],
+      "rpy": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        0.1265,
+        0.07482,
+        0.075
+      ]
+    },
+    {
+      "link": "gripper_base",
+      "name": "gripper_base_motor_housing",
+      "type": "cylinder",
+      "xyz": [
+        0.0,
+        0.0,
+        -0.03325
+      ],
+      "rpy": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "radius": 0.024,
+      "length": 0.044
+    },
+    {
+      "link": "gripper_base",
+      "name": "gripper_base_rail_assembly",
+      "type": "box",
+      "xyz": [
+        0.0,
+        0.0,
+        -0.00185
+      ],
+      "rpy": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        0.154,
+        0.019,
+        0.0188
+      ]
+    },
+    {
+      "link": "finger_1",
+      "name": "finger_1_jaw_envelope",
+      "type": "box",
+      "xyz": [
+        -0.010405920148,
+        0.00374664989338,
+        0.0473436923167
+      ],
+      "rpy": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        0.0323231735229,
+        0.0286577315598,
+        0.0862878729542
+      ]
+    },
+    {
+      "link": "finger_2",
+      "name": "finger_2_jaw_envelope",
+      "type": "box",
+      "xyz": [
+        0.0104058712018,
+        -0.00374623976387,
+        0.0473436920027
+      ],
+      "rpy": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        0.0323231773376,
+        0.028657668116,
+        0.0862878724207
+      ]
+    },
+    {
+      "link": "camera_link",
+      "name": "camera_link_camera_housing",
+      "type": "box",
+      "xyz": [
+        -0.01125,
+        0.0,
+        0.0
+      ],
+      "rpy": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        0.0255,
+        0.045,
+        0.045
+      ]
+    }
+  ]
+}

@@ -70,7 +70,7 @@ mod tests {
         assert_eq!(
             MODEL_NAMES,
             [
-                "RS_00", "RS_01", "RS_02", "RS_03", "RS_04", "RS_05", "RS_06",
+                "RS_00", "RS_01", "RS_02", "RS_03", "RS_04", "RS_05", "RS_06", "RS_10P",
             ]
         );
         assert_eq!(model_limits("RS_04").unwrap().torque_max, 120.0);

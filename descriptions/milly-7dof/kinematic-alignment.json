@@ -1,0 +1,24 @@
+{
+  "coordinate": "joint_7 (each arm)",
+  "reference": "link_6",
+  "nominal_shaft_axis": [
+    1,
+    0,
+    0
+  ],
+  "point_on_shaft_m": [
+    -0.068805556,
+    0.0,
+    0.0235
+  ],
+  "source": "23 mm motor and 30 mm wrist-cover cylindrical faces, cross-checked between the 6-DOF and 7-DOF STEP assemblies.",
+  "previous_origin_m": [
+    -0.068805556,
+    -0.0019338747,
+    0.023565267
+  ],
+  "previous_axis_offset_mm": 1.934975745736646,
+  "payload_frame": "link_7 remains the original payload/inertia frame, fixed to link_7_rotor. All existing link poses are preserved at joint_7=0; nonzero J7 motion uses the corrected shaft line.",
+  "source_6dof_sha256": "dec06437d1785fb4f75cf56fc3306d4bf5ed0d29e5a6da4ed5e61a4a62fa753f",
+  "source_7dof_sha256": "6e1c9937388fddd1f1f73b7dbbdb62402267c39aa77c835aa695c78f28abcb64"
+}

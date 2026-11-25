@@ -1,0 +1,39 @@
+{
+  "source_sha256": "aa016f58329188274fbf2032a41e9e52aa4c86037b7fc4b07e3cc19a3fc258cf",
+  "method": "OpenCascade Boolean intersection of the moving camera rear/front cases (COMPOUND solids 0 and 8) with yaw-frame solid 5. Yaw=0; the result is yaw-invariant because both stages share yaw motion.",
+  "units": "mm3",
+  "cases": [
+    {
+      "pitch_deg": 0,
+      "roll_deg": 0,
+      "camera_case_vs_yaw_frame_intersection_mm3": 0.0
+    },
+    {
+      "pitch_deg": 90,
+      "roll_deg": 0,
+      "camera_case_vs_yaw_frame_intersection_mm3": 0.0
+    },
+    {
+      "pitch_deg": 0,
+      "roll_deg": 90,
+      "camera_case_vs_yaw_frame_intersection_mm3": 0.0
+    },
+    {
+      "pitch_deg": 90,
+      "roll_deg": 90,
+      "camera_case_vs_yaw_frame_intersection_mm3": 2879.59352050805
+    },
+    {
+      "pitch_deg": 90,
+      "roll_deg": -90,
+      "camera_case_vs_yaw_frame_intersection_mm3": 2879.594228950874
+    },
+    {
+      "pitch_deg": -90,
+      "roll_deg": 90,
+      "camera_case_vs_yaw_frame_intersection_mm3": 0.0
+    }
+  ],
+  "limitation": "Selected pair and poses only; no complete robot self-collision or cable check. Independent +/-90 degree bounds do not enforce a collision-free coupled workspace.",
+  "finding": "Pitch +90 degrees with roll +/-90 degrees intersects the rear yaw support. Coupled motion constraints or a bracket revision are required before full-range head tracking."
+}
