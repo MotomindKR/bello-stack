@@ -12,6 +12,6 @@ Each model page pairs exterior views with the URDF collision shapes and movable 
 
 In the collision views, each dot marks a joint origin and its line points along the positive axis. Orange marks rotation and blue marks translation.
 
-The Milly previews show shoulder and elbow pitch at 1.15 rad with the other joints at zero. The workcell previews omit the ground plate to show the arm and gimbal mounts.
+The Milly previews show shoulder and elbow pitch at 1.15 rad. For the parallel grippers on Milly and Mini Torso, the drive is at −1.10 rad. The URDF’s `bello:slider_crank` linkage sets the rod angles and finger positions. The workcell previews omit the ground plate to show the arm and gimbal mounts.
 
 [Hardware and simulator deployment configuration](../docs/configuration.md)
