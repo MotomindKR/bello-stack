@@ -44,6 +44,11 @@ pub(crate) enum GroupQueueError {
 }
 
 pub(super) enum LifecycleRequest {
+    Configuration {
+        to: GroupState,
+        detail: String,
+        reply: oneshot::Sender<Transition>,
+    },
     Operation {
         action: LifecycleAction,
         lease_generation: u64,
@@ -85,6 +90,21 @@ impl GroupHandle {
 
     pub(crate) fn emergency_pending(&self) -> bool {
         self.emergency_pending.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn configure(&self, to: GroupState, detail: &str) -> anyhow::Result<()> {
+        let (reply, result) = oneshot::channel();
+        self.lifecycle_tx
+            .send(LifecycleRequest::Configuration {
+                to,
+                detail: detail.into(),
+                reply,
+            })
+            .map_err(|_| GroupQueueError::Stopped)?;
+        let _ = self.wake_tx.try_send(());
+        let result = result.blocking_recv()?;
+        anyhow::ensure!(result.ok, "{}", result.message);
+        Ok(())
     }
 
     pub(crate) fn activate_lease(&self, generation: u64) {

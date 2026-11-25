@@ -39,8 +39,7 @@ pub(super) fn run(
         let result = runtime.block_on(async {
             let socket = connect(&spec).await?;
             failures = 0;
-            lifecycle.mark_online(format!("{} online", spec.transport.label()));
-            run_session(socket, &spec, &queues, &frames, &shutdown).await
+            run_session(socket, &spec, &queues, &frames, &shutdown, &lifecycle).await
         });
         if shutdown.load(Ordering::Acquire) {
             break;
@@ -92,6 +91,23 @@ impl FrameWriter for UsbWriter {
             .block_on(self.sender.send(wire))
             .map_err(|error| WriteFailure::fatal(format!("GS-USB write failed: {error}")))
     }
+
+    fn fence_writes(&self) -> Result<(), String> {
+        let deadline = Instant::now() + TRANSFER_TIMEOUT;
+        loop {
+            let stats = self.sender.stats();
+            if stats.usb_errors != 0 {
+                return Err("GS-USB failed before the maintenance transmit fence".into());
+            }
+            if stats.tx_writes == stats.tx_echoes {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err("GS-USB transmit confirmations timed out before maintenance".into());
+            }
+            thread::sleep(Duration::from_micros(200));
+        }
+    }
 }
 
 fn encode_frame(frame: CanFrame) -> Result<UsbFrame, String> {
@@ -127,6 +143,7 @@ async fn run_session(
     queues: &BusTxQueues,
     frames: &Sender<ReceivedFrame>,
     shutdown: &Arc<AtomicBool>,
+    lifecycle: &DeviceLifecycle,
 ) -> Result<(), String> {
     let (sender, mut receiver) = socket.split();
     let session_stop = Arc::new(AtomicBool::new(false));
@@ -152,7 +169,13 @@ async fn run_session(
             )
         })
         .map_err(|error| error.to_string())?;
+    let counters = sender.clone();
+    queues
+        .access
+        .connected(Some(Box::new(move || counters.stats().rx_frames)));
+    lifecycle.mark_online(format!("{} online", spec.transport.label()));
     let mut ticker = tokio::time::interval(Duration::from_millis(20));
+    let mut sequence = 0;
     let result = loop {
         tokio::select! {
             _ = ticker.tick() => {
@@ -174,14 +197,22 @@ async fn run_session(
                 }
             }
             event = receiver.recv_event() => {
+                let stats = receiver.stats();
+                if stats.rx_dropped != 0 || stats.malformed_frames != 0 || stats.usb_errors != 0 {
+                    break Err("GS-USB receive unavailable or frames lost".into());
+                }
                 match event {
                     Ok(Some(ReceiveEvent::Frame(received))) => {
+                        sequence += 1;
                         let Some(frame) = decode_frame(&spec.name, received.frame) else {
+                            if let Err(detail) = queues.access.reject_unrepresentable_frame(Instant::now(), Some(sequence)) {
+                                break Err(detail);
+                            }
                             warn!(bus=%spec.name, "discarding unsupported GS-USB CAN frame");
                             continue;
                         };
-                        if frames.try_send(frame).is_err() {
-                            break Err("CAN receive queue is full".into());
+                        if let Err(detail) = queues.access.route(frame, frames, Some(sequence)) {
+                            break Err(detail);
                         }
                     }
                     Ok(Some(ReceiveEvent::ErrorFrame { can_id, .. })) => {
@@ -196,6 +227,12 @@ async fn run_session(
             }
         }
     };
+    queues.access.disconnected(
+        result
+            .as_ref()
+            .err()
+            .map_or("GS-USB session stopped", String::as_str),
+    );
     session_stop.store(true, Ordering::Release);
     let joined = tokio::task::spawn_blocking(move || tx.join()).await;
     let _ = tokio::time::timeout(Duration::from_secs(1), sender.close()).await;

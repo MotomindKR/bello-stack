@@ -7,6 +7,7 @@ use crossbeam_channel::{Receiver, Sender, select_biased};
 use tracing::{error, warn};
 
 use super::PeriodicControl;
+use super::maintenance::{MaintenanceRequest, MaintenanceWork};
 use super::periodic::PeriodicBatch;
 use super::{
     BatchFailure, BusSpec, BusTxQueues, CanFrame, ControlBatch, PriorityBatch, PriorityBatchKind,
@@ -16,6 +17,7 @@ use crate::config::BusTransportConfig;
 use crate::hardware::lifecycle::{DeviceLifecycle, wait_for_stop};
 
 enum Outbound {
+    Maintenance(MaintenanceRequest),
     Control(ControlBatch),
     Priority(PriorityBatch),
     Periodic(PeriodicControl, Arc<PeriodicBatch>),
@@ -29,6 +31,7 @@ mod usb;
 
 trait FrameWriter {
     fn write_frame(&self, frame: CanFrame) -> Result<(), WriteFailure>;
+    fn fence_writes(&self) -> Result<(), String>;
 }
 
 #[derive(Debug)]
@@ -84,7 +87,57 @@ fn run_tx<W: FrameWriter>(
     failure: &Sender<String>,
 ) {
     while let Some(outbound) = receive_prioritized(queues, shutdown, session_stop) {
+        let generation = queues.access.ordinary_generation();
         match outbound {
+            Outbound::Maintenance(request) => {
+                let result = match queues.access.check_request(&request) {
+                    Ok(()) => match request.work {
+                        MaintenanceWork::Fence => {
+                            purge_control(&queues.control);
+                            for queue in [&queues.safety, &queues.configuration] {
+                                while let Ok(batch) = queue.try_recv() {
+                                    let _ = batch.completion.send(Err(BatchFailure::Maintenance));
+                                }
+                            }
+                            writer
+                                .fence_writes()
+                                .map(|()| queues.access.activate(request.generation))
+                        }
+                        MaintenanceWork::Write(frame) => write_with_backpressure(
+                            frame,
+                            Instant::now() + spec.priority_batch_lifetime(1),
+                            &mut None,
+                            |_| queues.access.check_request(&request).is_ok(),
+                            |frame| writer.write_frame(frame),
+                        )
+                        .and_then(|written| {
+                            if written {
+                                writer.fence_writes()
+                            } else {
+                                queues.access.check_request(&request)
+                            }
+                        }),
+                    },
+                    Err(detail) => {
+                        let _ = request.completion.send(Err(detail));
+                        continue;
+                    }
+                };
+                if let Err(detail) = &result {
+                    queues.access.disconnected(detail);
+                    let _ = failure.try_send(detail.clone());
+                }
+                let failed = result.is_err();
+                let _ = request.completion.send(result);
+                if failed {
+                    break;
+                }
+            }
+            Outbound::Periodic(_, ref batch) if Some(batch.bus_generation) != generation => {}
+            Outbound::Control(ref batch) if Some(batch.generation) != generation => {}
+            Outbound::Priority(batch) if Some(batch.generation) != generation => {
+                let _ = batch.completion.send(Err(BatchFailure::Maintenance));
+            }
             Outbound::Periodic(control, batch) => {
                 match transmit_periodic_batch(spec, &control, &batch, |frame| {
                     writer.write_frame(frame)
@@ -94,6 +147,7 @@ fn run_tx<W: FrameWriter>(
                     Err(detail) => {
                         control.transport_failed(&detail);
                         error!(bus=%spec.name, %detail, "periodic CAN batch became indeterminate");
+                        queues.access.disconnected(&detail);
                         let _ = failure.try_send(detail);
                         break;
                     }
@@ -106,6 +160,7 @@ fn run_tx<W: FrameWriter>(
                 }
                 Err(detail) => {
                     error!(bus=%spec.name, %detail, "CAN control batch became indeterminate");
+                    queues.access.disconnected(&detail);
                     let _ = failure.try_send(detail);
                     break;
                 }
@@ -125,6 +180,7 @@ fn run_tx<W: FrameWriter>(
                 let _ = batch.completion.send(result);
                 if let Some(detail) = failed {
                     error!(bus=%spec.name, %detail, "CAN priority batch failed");
+                    queues.access.disconnected(&detail);
                     let _ = failure.try_send(detail);
                     break;
                 }
@@ -360,6 +416,10 @@ fn prepare_reconnect(
 }
 
 fn reject_queued(queues: &BusTxQueues, reason: &str) {
+    queues.access.disconnected(reason);
+    while let Ok(request) = queues.maintenance.try_recv() {
+        let _ = request.completion.send(Err(reason.into()));
+    }
     for control in queues.periodic.lock().values() {
         control.transport_failed(reason);
     }
@@ -381,6 +441,9 @@ fn receive_prioritized(
     loop {
         if shutdown.load(Ordering::Acquire) || session_stop.load(Ordering::Acquire) {
             return None;
+        }
+        if let Ok(request) = queues.maintenance.try_recv() {
+            return Some(Outbound::Maintenance(request));
         }
         if let Ok(batch) = queues.safety.try_recv() {
             return Some(Outbound::Priority(batch));
@@ -407,6 +470,7 @@ fn receive_prioritized(
             None => idle_timeout,
         };
         select_biased! {
+            recv(queues.maintenance) -> request => return request.ok().map(Outbound::Maintenance),
             recv(queues.safety) -> batch => return batch.ok().map(Outbound::Priority),
             recv(queues.configuration) -> batch => return batch.ok().map(Outbound::Priority),
             recv(queues.control) -> batch => return batch.ok().map(Outbound::Control),
@@ -424,6 +488,7 @@ mod tests {
 
     use crossbeam_channel::bounded;
 
+    use super::super::{BusAccess, BusGeneration};
     use super::*;
     use crate::domain::GroupName;
 
@@ -435,6 +500,173 @@ mod tests {
         BusSpec::try_from(&config).unwrap()
     }
 
+    #[test]
+    fn maintenance_waits_for_inflight_write_and_transport_confirmation() {
+        use super::super::{BusError, BusHandle};
+        use crate::hardware::lifecycle::DeviceState;
+        use crate::telemetry::Telemetry;
+        use std::cell::Cell;
+
+        struct TestWriter {
+            observed: Sender<u32>,
+            finish_first_write: Receiver<()>,
+            fencing: Sender<()>,
+            finish_fence: Receiver<()>,
+            fence_started: Cell<bool>,
+        }
+
+        impl FrameWriter for TestWriter {
+            fn write_frame(&self, frame: CanFrame) -> Result<(), WriteFailure> {
+                self.observed.send(frame.id).unwrap();
+                if frame.id == 1 {
+                    self.finish_first_write
+                        .recv_timeout(Duration::from_secs(1))
+                        .unwrap();
+                }
+                Ok(())
+            }
+
+            fn fence_writes(&self) -> Result<(), String> {
+                if !self.fence_started.replace(true) {
+                    self.fencing.send(()).unwrap();
+                    self.finish_fence
+                        .recv_timeout(Duration::from_secs(1))
+                        .unwrap();
+                }
+                Ok(())
+            }
+        }
+
+        let spec = test_bus_spec();
+        let (configuration_tx, configuration) = bounded(2);
+        let (safety_tx, safety) = bounded(2);
+        let (control_tx, control) = bounded(2);
+        let (maintenance_tx, maintenance) = bounded(1);
+        let (wake_tx, wake) = bounded(1);
+        let access = Arc::new(BusAccess::default());
+        access.connected(None);
+        let periodic = Arc::new(parking_lot::Mutex::new(std::collections::BTreeMap::new()));
+        let bus = BusHandle {
+            lifecycle: DeviceLifecycle::new(
+                "test-can",
+                DeviceState::Online,
+                "test",
+                Telemetry::new(64),
+            ),
+            spec,
+            access: access.clone(),
+            maintenance_tx,
+            control_tx,
+            configuration_tx,
+            safety_tx,
+            periodic: periodic.clone(),
+            wake: wake_tx,
+        };
+        let queues = BusTxQueues {
+            access,
+            maintenance,
+            safety,
+            configuration,
+            control,
+            periodic,
+            wake,
+        };
+        let period = Duration::from_millis(20);
+        let timeout = Duration::from_secs(1);
+        let periodic = bus.periodic_control(
+            &GroupName::from("test"),
+            period,
+            Arc::new(AtomicU64::new(1)),
+            Arc::new(AtomicBool::new(false)),
+        );
+        let frame = |id| CanFrame { id, data: [0; 8] };
+        let (observed, wire) = bounded(8);
+        let (finish_first_write, first_write) = bounded(1);
+        let (fencing, fence) = bounded(1);
+        let (finish_fence, fence_release) = bounded(1);
+        let writer = TestWriter {
+            observed,
+            finish_first_write: first_write,
+            fencing,
+            finish_fence: fence_release,
+            fence_started: Cell::new(false),
+        };
+        let shutdown = AtomicBool::new(false);
+        let session_stop = AtomicBool::new(false);
+        let (failure, errors) = bounded(1);
+        struct StopOnDrop<'a>(&'a AtomicBool);
+        impl Drop for StopOnDrop<'_> {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::Release);
+            }
+        }
+        let (reserved_tx, reserved_rx) = bounded(1);
+        thread::scope(|scope| {
+            let _stop = StopOnDrop(&shutdown);
+            scope.spawn(|| {
+                run_tx(
+                    writer,
+                    &bus.spec,
+                    &queues,
+                    &shutdown,
+                    &session_stop,
+                    &failure,
+                )
+            });
+            let first = bus.submit_safety_batch(vec![frame(1)]).unwrap();
+            assert_eq!(wire.recv_timeout(timeout).unwrap(), 1);
+            let queued_safety = bus.submit_safety_batch(vec![frame(2)]).unwrap();
+            let queued_configuration = bus
+                .submit_priority_batch(
+                    PriorityBatchKind::Configuration,
+                    bus.feedback_window(),
+                    vec![frame(3)],
+                )
+                .unwrap();
+            let started = Instant::now();
+            bus.enqueue_control_batch(vec![frame(4)], started, started + timeout)
+                .unwrap();
+            periodic.publish(vec![frame(5)], started + timeout, 1);
+
+            scope.spawn(|| reserved_tx.send(bus.reserve_maintenance()).unwrap());
+            let deadline = Instant::now() + timeout;
+            while bus.feedback_window().is_some() {
+                assert!(Instant::now() < deadline);
+                thread::yield_now();
+            }
+            assert!(reserved_rx.is_empty());
+            assert!(fence.is_empty());
+
+            finish_first_write.send(()).unwrap();
+            first.wait().unwrap();
+            fence.recv_timeout(timeout).unwrap();
+            assert!(reserved_rx.is_empty());
+            assert!(matches!(
+                queued_safety.wait(),
+                Err(BusError::Maintenance { .. })
+            ));
+            assert!(matches!(
+                queued_configuration.wait(),
+                Err(BusError::Maintenance { .. })
+            ));
+            assert!(wire.is_empty());
+
+            finish_fence.send(()).unwrap();
+            let reserved = reserved_rx.recv_timeout(timeout).unwrap().unwrap();
+            reserved.send(frame(6).into()).unwrap();
+            assert_eq!(wire.recv_timeout(timeout).unwrap(), 6);
+            drop(reserved);
+
+            bus.submit_safety_batch(vec![frame(7)])
+                .unwrap()
+                .wait()
+                .unwrap();
+            assert_eq!(wire.recv_timeout(timeout).unwrap(), 7);
+            assert!(wire.is_empty());
+            assert!(errors.is_empty());
+        });
+    }
+
     fn periodic_fixture(valid_for: Duration) -> (BusSpec, PeriodicControl, Arc<PeriodicBatch>) {
         let spec = test_bus_spec();
         let control = PeriodicControl::new(
@@ -444,6 +676,7 @@ mod tests {
             Arc::new(AtomicU64::new(1)),
             Arc::new(AtomicBool::new(false)),
             bounded(1).0,
+            Arc::new(BusAccess::default()),
         );
         control.publish(
             vec![
@@ -635,6 +868,7 @@ mod tests {
             Arc::new(AtomicU64::new(1)),
             Arc::new(AtomicBool::new(false)),
             bounded(1).0,
+            Arc::new(BusAccess::default()),
         );
         second.publish(
             vec![CanFrame {
@@ -650,6 +884,7 @@ mod tests {
         let (done, _) = mpsc::sync_channel(1);
         safety_tx
             .send(PriorityBatch {
+                generation: BusGeneration::INITIAL,
                 kind: PriorityBatchKind::SafetyBarrier,
                 frames: Vec::new(),
                 expires_at: Instant::now() + Duration::from_secs(1),
@@ -657,6 +892,8 @@ mod tests {
             })
             .unwrap();
         let queues = BusTxQueues {
+            access: Arc::new(BusAccess::default()),
+            maintenance: crossbeam_channel::never(),
             safety,
             configuration: crossbeam_channel::never(),
             control: crossbeam_channel::never(),
@@ -692,6 +929,7 @@ mod tests {
                 Arc::new(AtomicU64::new(1)),
                 Arc::new(AtomicBool::new(false)),
                 wake_tx.clone(),
+                Arc::new(BusAccess::default()),
             );
             control.publish(vec![CanFrame { id, data: [0; 8] }], expires_at, 1);
             periodic.insert(group, control);
@@ -703,6 +941,7 @@ mod tests {
         let (control_tx, control) = bounded(1);
         control_tx
             .send(ControlBatch {
+                generation: BusGeneration::INITIAL,
                 frames: vec![CanFrame {
                     id: 3,
                     data: [0; 8],
@@ -711,6 +950,8 @@ mod tests {
             })
             .unwrap();
         let queues = BusTxQueues {
+            access: Arc::new(BusAccess::default()),
+            maintenance: crossbeam_channel::never(),
             safety: crossbeam_channel::never(),
             configuration: crossbeam_channel::never(),
             control,
@@ -745,6 +986,7 @@ mod tests {
         let (configuration_completion, configuration_result) = mpsc::sync_channel(1);
         control_tx
             .send(ControlBatch {
+                generation: BusGeneration::INITIAL,
                 frames: vec![CanFrame {
                     id: 1,
                     data: [0; 8],
@@ -754,6 +996,7 @@ mod tests {
             .unwrap();
         safety_tx
             .send(PriorityBatch {
+                generation: BusGeneration::INITIAL,
                 kind: PriorityBatchKind::SafetyBarrier,
                 frames: vec![CanFrame {
                     id: 2,
@@ -765,6 +1008,7 @@ mod tests {
             .unwrap();
         configuration_tx
             .send(PriorityBatch {
+                generation: BusGeneration::INITIAL,
                 kind: PriorityBatchKind::Configuration,
                 frames: vec![CanFrame {
                     id: 3,
@@ -775,6 +1019,8 @@ mod tests {
             })
             .unwrap();
         let queues = BusTxQueues {
+            access: Arc::new(BusAccess::default()),
+            maintenance: crossbeam_channel::never(),
             safety: safety_rx,
             configuration: configuration_rx,
             control: control_rx,
@@ -803,12 +1049,14 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(1);
         control_tx
             .send(ControlBatch {
+                generation: BusGeneration::INITIAL,
                 frames: Vec::new(),
                 expires_at: deadline,
             })
             .unwrap();
         configuration_tx
             .send(PriorityBatch {
+                generation: BusGeneration::INITIAL,
                 kind: PriorityBatchKind::Configuration,
                 frames: Vec::new(),
                 expires_at: deadline,
@@ -817,6 +1065,7 @@ mod tests {
             .unwrap();
         safety_tx
             .send(PriorityBatch {
+                generation: BusGeneration::INITIAL,
                 kind: PriorityBatchKind::SafetyBarrier,
                 frames: Vec::new(),
                 expires_at: deadline,
@@ -827,6 +1076,8 @@ mod tests {
         let shutdown = AtomicBool::new(false);
         let session_stop = AtomicBool::new(false);
         let queues = BusTxQueues {
+            access: Arc::new(BusAccess::default()),
+            maintenance: crossbeam_channel::never(),
             safety: safety_rx,
             configuration: configuration_rx,
             control: control_rx,
@@ -836,6 +1087,7 @@ mod tests {
         assert!(matches!(
             receive_prioritized(&queues, &shutdown, &session_stop),
             Some(Outbound::Priority(PriorityBatch {
+                generation: BusGeneration::INITIAL,
                 kind: PriorityBatchKind::SafetyBarrier,
                 ..
             }))
@@ -848,6 +1100,7 @@ mod tests {
         for id in [1, 2] {
             control_tx
                 .send(ControlBatch {
+                    generation: BusGeneration::INITIAL,
                     frames: vec![CanFrame { id, data: [0; 8] }],
                     expires_at: Instant::now() + Duration::from_secs(1),
                 })
@@ -864,6 +1117,7 @@ mod tests {
         let transmit = |frame_count: u32, write_time: Duration| {
             let now = std::cell::Cell::new(Instant::now());
             let batch = ControlBatch {
+                generation: BusGeneration::INITIAL,
                 frames: (1..=frame_count)
                     .map(|id| CanFrame { id, data: [0; 8] })
                     .collect(),

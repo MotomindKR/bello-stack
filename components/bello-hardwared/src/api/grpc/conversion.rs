@@ -86,6 +86,7 @@ pub fn group_state(value: GroupState) -> i32 {
         GroupState::Damped => proto::GroupState::Damped,
         GroupState::Running => proto::GroupState::Running,
         GroupState::Fault => proto::GroupState::Fault,
+        GroupState::Configuring => proto::GroupState::Configuring,
         GroupState::Shutdown => proto::GroupState::Shutdown,
     }) as i32
 }
@@ -146,6 +147,7 @@ pub fn group_cause(value: GroupCause) -> i32 {
         GroupCause::Transmission => proto::GroupCause::Transmission,
         GroupCause::LeaseLoss => proto::GroupCause::LeaseLoss,
         GroupCause::Exit => proto::GroupCause::Exit,
+        GroupCause::Configuration => proto::GroupCause::Configuration,
         GroupCause::Internal => proto::GroupCause::Internal,
     }) as i32
 }

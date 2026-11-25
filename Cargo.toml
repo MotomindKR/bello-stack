@@ -44,9 +44,11 @@ parking_lot = "0.12"
 prost = "0.14"
 nalgebra = "0.34"
 rcgen = "0.14"
+ring = "0.17"
 robstride-emulator = { path = "components/motor-emulator" }
 robstride-protocol = { path = "components/robstride-protocol" }
 serde = "1"
+serde_json = "1"
 serde_yaml = { package = "serde_yaml_ng", version = "0.10" }
 roxmltree = "0.21"
 serialport = { version = "4", default-features = false }
@@ -60,6 +62,7 @@ tonic-prost = "0.14"
 tonic-prost-build = "0.14"
 tracing = "0.1"
 tracing-subscriber = "0.3"
+ureq = { version = "3.4", default-features = false, features = ["rustls"] }
 uuid = "1"
 
 # The pure-Rust JPEG encoder is in the live stereo path. Unoptimized image code

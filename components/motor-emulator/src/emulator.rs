@@ -8,6 +8,7 @@ use robstride_protocol::{
 };
 
 use crate::config::{Config, DynamicsConfig, FaultAction, ScheduledEvent};
+use crate::maintenance::Maintenance;
 
 const RUN_MODE_INDEX: u16 = 0x7005;
 const IMPEDANCE_RUN_MODE: u8 = 0;
@@ -23,6 +24,7 @@ pub struct ScheduledFrame {
 
 #[derive(Clone, Copy, Debug)]
 pub struct MotorState {
+    /// Physical position in the same coordinate system as the initial position.
     pub position: f64,
     pub velocity: f64,
     pub torque: f64,
@@ -58,13 +60,15 @@ struct Actuator {
     enabled: bool,
     impedance_mode: bool,
     active_reporting: bool,
-    position: f64,
+    physical_position: f64,
+    zero_position: f64,
     velocity: f64,
     torque: f64,
     temperature: f64,
     command: Option<ControlCommand>,
     next_feedback: Duration,
     overrides: Overrides,
+    maintenance: Maintenance,
 }
 
 impl Actuator {
@@ -72,11 +76,11 @@ impl Actuator {
         let seconds = elapsed.as_secs_f64().min(0.1);
         if self.enabled {
             if let Some(command) = self.command {
-                let error = command.position - self.position;
+                let error = command.position - self.physical_position;
                 let desired_velocity = (error * dynamics.position_response_hz + command.velocity)
                     .clamp(self.params.velocity_min, self.params.velocity_max);
                 self.velocity = desired_velocity;
-                self.position = (self.position + self.velocity * seconds)
+                self.physical_position = (self.physical_position + self.velocity * seconds)
                     .clamp(self.params.position_min, self.params.position_max);
                 self.torque = (command.torque + command.kp * error
                     - command.kd * (self.velocity - command.velocity))
@@ -102,7 +106,7 @@ impl Actuator {
                 },
             ),
             fault_bits: self.overrides.fault_bits,
-            position: self.position,
+            position: self.physical_position - self.zero_position,
             velocity: self.velocity,
             torque: self.torque,
             temperature: self.overrides.temperature.unwrap_or(self.temperature),
@@ -137,13 +141,14 @@ pub struct Emulator {
     actuators: BTreeMap<u8, Actuator>,
     events: VecDeque<ScheduledEvent>,
     random_state: u64,
-    command_reports: Vec<u8>,
+    status_reports: Vec<u8>,
+    maintenance_replies: Vec<ScheduledFrame>,
 }
 
 impl Emulator {
     /// Clear active control without rewinding transport time or fault schedules.
     pub fn disarm(&mut self) {
-        self.command_reports.clear();
+        self.status_reports.clear();
         for actuator in self.actuators.values_mut() {
             actuator.enabled = false;
             actuator.command = None;
@@ -153,10 +158,13 @@ impl Emulator {
 
     pub fn new(config: Config) -> Result<Self> {
         config.validate()?;
+        let interface = config.interface.to_string();
         let mut actuators = BTreeMap::new();
         for config in config.actuators {
             let params = MotorParams::for_model(&config.model, config.direction)
                 .ok_or_else(|| anyhow!("unsupported Robstride model {}", config.model))?;
+            let maintenance = Maintenance::new(&config.model, &interface, config.id)
+                .ok_or_else(|| anyhow!("missing firmware family for {}", config.model))?;
             actuators.insert(
                 config.id,
                 Actuator {
@@ -165,13 +173,15 @@ impl Emulator {
                     enabled: false,
                     impedance_mode: false,
                     active_reporting: false,
-                    position: config.initial_position,
+                    physical_position: config.initial_position,
+                    zero_position: 0.0,
                     velocity: 0.0,
                     torque: 0.0,
                     temperature: config.initial_temperature_c,
                     command: None,
                     next_feedback: Duration::ZERO,
                     overrides: Overrides::default(),
+                    maintenance,
                 },
             );
         }
@@ -185,36 +195,59 @@ impl Emulator {
             actuators,
             events: events.into(),
             random_state: 0x4d595df4d0f33173,
-            command_reports: Vec::new(),
+            status_reports: Vec::new(),
+            maintenance_replies: Vec::new(),
         })
     }
 
     pub fn handle(&mut self, frame: Frame) {
         let motor_id = frame_target(&frame);
+        let field = (frame.id >> 8) as u16;
         let Some(actuator) = self.actuators.get_mut(&motor_id) else {
             return;
         };
-        if let Some(command) = parse_control(&frame, actuator.params) {
+        if let Some(mut command) = parse_control(&frame, actuator.params) {
             if actuator.enabled && actuator.impedance_mode {
+                command.position += actuator.zero_position;
                 actuator.command = Some(command);
-                self.command_reports.push(motor_id);
+                self.status_reports.push(motor_id);
             }
             return;
         }
+        if let Some(reply) =
+            actuator
+                .maintenance
+                .reply(self.host_id, motor_id, !actuator.enabled, frame)
+        {
+            self.maintenance_replies.push(ScheduledFrame {
+                delay: Duration::ZERO,
+                frame: reply,
+            });
+            return;
+        }
+        if frame.id >> 24 == 6
+            && field == u16::from(self.host_id)
+            && frame.data == [1, 0, 0, 0, 0, 0, 0, 0]
+            && !actuator.enabled
+            && !actuator.maintenance.updating()
+        {
+            actuator.zero_position = actuator.physical_position;
+            self.status_reports.push(motor_id);
+            return;
+        }
         match parse_request(&frame) {
-            Some(Request::Enable { host_id, .. }) if host_id == self.host_id => {
+            Some(Request::Enable { host_id, .. })
+                if host_id == self.host_id && !actuator.maintenance.updating() =>
+            {
                 actuator.enabled = true;
             }
-            Some(Request::Stop {
-                host_id,
-                clear_fault,
-                ..
-            }) if host_id == self.host_id => {
+            Some(Request::Stop { clear_fault, .. }) if field == u16::from(self.host_id) => {
                 actuator.enabled = false;
                 actuator.command = None;
                 if clear_fault {
                     actuator.overrides.fault_bits = 0;
                 }
+                self.status_reports.push(motor_id);
             }
             Some(Request::ActiveReport {
                 host_id, enabled, ..
@@ -244,6 +277,7 @@ impl Emulator {
         self.advance_feedback(elapsed)
     }
 
+    /// Return the active command in the physical coordinate system of `MotorState`.
     pub fn command(&self, motor_id: u8) -> Result<Option<ControlCommand>> {
         let actuator = self
             .actuators
@@ -267,7 +301,7 @@ impl Emulator {
             .actuators
             .get_mut(&motor_id)
             .ok_or_else(|| anyhow!("unknown motor {motor_id}"))?;
-        actuator.position = state.position;
+        actuator.physical_position = state.position;
         actuator.velocity = state.velocity;
         actuator.torque = state.torque;
         Ok(())
@@ -293,9 +327,9 @@ impl Emulator {
                 actuator.apply(event.action);
             }
         }
-        let mut due = Vec::new();
+        let mut due = std::mem::take(&mut self.maintenance_replies);
         let mut reports = Vec::new();
-        for motor_id in std::mem::take(&mut self.command_reports) {
+        for motor_id in std::mem::take(&mut self.status_reports) {
             if let Some(actuator) = self.actuators.get(&motor_id)
                 && !actuator.overrides.drop_feedback
             {

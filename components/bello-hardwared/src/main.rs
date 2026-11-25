@@ -13,6 +13,9 @@ struct Arguments {
     /// Parse and validate configuration, then exit without touching hardware.
     #[arg(long)]
     check: bool,
+    /// Verify the recorded motor identity and outcome after an interrupted write.
+    #[arg(long, conflicts_with = "check")]
+    verify_motor_configuration: bool,
 }
 
 #[tokio::main]
@@ -23,7 +26,9 @@ async fn main() -> Result<()> {
         )
         .init();
     let args = Arguments::parse();
-    if args.check {
+    if args.verify_motor_configuration {
+        bello_hardwared::verify_motor_configuration(args.config)
+    } else if args.check {
         bello_hardwared::check(args.config)
     } else {
         bello_hardwared::run(args.config).await

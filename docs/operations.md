@@ -295,3 +295,36 @@ Common failure checks:
 Use `RUST_LOG=bello_hardwared=debug` for daemon diagnostics. For emulator
 diagnostics, set `RUST_LOG=debug` in the emulator terminal. Avoid debug logging on
 a production control path until its timing impact has been evaluated.
+
+## Re-zero a motor or update its firmware
+
+Support the mechanism at its intended motor-zero pose before disabling torque. Disable and release every group sharing the target CAN bus. Stop other CAN tools and hand drivers on that bus. Hardwared keeps its adapter open throughout maintenance. A group spanning two buses stays unavailable for motion while either bus is reserved.
+
+Use `MotorConfigurationService` on a loopback TCP, Unix socket, or mutually authenticated TLS listener. For example, from the repository root with the Milly simulator running on localhost:
+
+```sh
+motor_config() {
+  grpcurl -plaintext -import-path components/bello-hardware-api/proto \
+    -proto bello/hardware/v1/hardware.proto -d "$2" 127.0.0.1:50051 \
+    "bello.hardware.v1.MotorConfigurationService/$1"
+}
+motor_config PrepareMotorConfiguration '{"motor":"joint_1","kind":"MOTOR_CONFIGURATION_KIND_ZERO"}'
+```
+
+Use the returned ID in `GetMotorConfiguration`. At `READY`, review the motor UUID and shaft angle. Commit sets the motor's current position to zero. For firmware, prepare with `MOTOR_CONFIGURATION_KIND_FIRMWARE` and review the installed and target versions. The server selects the pinned image for the detected motor family. The simulated CAN transport uses a small fixture image and the emulator keeps its calibration and firmware version in memory.
+
+```sh
+motor_config GetMotorConfiguration '{"id":"<operation ID>"}'
+motor_config CommitMotorConfiguration '{"id":"<operation ID>"}'
+motor_config GetMotorConfiguration '{"id":"<operation ID>"}'
+```
+
+A prepared operation expires after two minutes. Use `CancelMotorConfiguration` to release it earlier. After committing, poll the same ID until the result is terminal. Disconnecting the client leaves the write running. Check the group state before acquiring a new motion lease.
+
+If the result is `UNVERIFIED`, stop hardwared and leave the motor powered. Run the following command under the same service account and state directory. It checks the recorded UUID, firmware, and stopped feedback. Re-zero also requires a near-zero reading. It clears the pending write only after verification succeeds.
+
+```sh
+bello-hardwared --config <deployment.yaml> --verify-motor-configuration
+```
+
+Hardwared stores pending writes under `bello-hardwared` in `XDG_STATE_HOME`, `LOCALAPPDATA`, or `~/.local/state`. Restarting with another profile using the same transport still checks that record. If the motor cannot boot its application after an interrupted flash, use the vendor's bootloader recovery procedure before running verification again.

@@ -21,21 +21,22 @@ futures-core.workspace = true
 nalgebra.workspace = true
 gsusbio.workspace = true
 parking_lot.workspace = true
+ring.workspace = true
 robstride-protocol.workspace = true
 serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 serde_yaml.workspace = true
 serialport.workspace = true
+tempfile.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-stream = { workspace = true, features = ["net"] }
 tonic = { workspace = true, features = ["tls-ring", "transport"] }
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
+ureq.workspace = true
 uuid = { workspace = true, features = ["v4"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nix = { workspace = true, features = ["time"] }
 socketcan.workspace = true
-
-[dev-dependencies]
-tempfile.workspace = true

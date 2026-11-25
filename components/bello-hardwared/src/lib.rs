@@ -6,7 +6,8 @@ mod control;
 mod domain;
 mod hardware;
 mod lease;
+mod maintenance;
 mod mechanics;
 mod telemetry;
 
-pub use app::{check, run};
+pub use app::{check, run, verify_motor_configuration};

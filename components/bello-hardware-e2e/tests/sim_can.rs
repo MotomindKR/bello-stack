@@ -9,6 +9,9 @@ mod sim;
 #[path = "sim_can/lower_body.rs"]
 mod lower_body;
 
+#[path = "sim_can/configuration.rs"]
+mod configuration;
+
 use std::fs;
 use std::net::TcpListener;
 use std::time::Duration;
@@ -123,13 +126,15 @@ async fn wait_for_frame(
 ) -> Result<()> {
     timeout(Duration::from_secs(5), async {
         loop {
-            let frame = client
+            match client
                 .grpc_client()
                 .get_state_frame(GetStateFrameRequest::default())
-                .await?
-                .into_inner();
-            if ready(&frame) {
-                return anyhow::Ok(());
+                .await
+            {
+                Ok(frame) if ready(frame.get_ref()) => return anyhow::Ok(()),
+                Ok(_) => (),
+                Err(status) if status.code() == tonic::Code::FailedPrecondition => (),
+                Err(status) => return Err(status.into()),
             }
             sleep(Duration::from_millis(10)).await;
         }

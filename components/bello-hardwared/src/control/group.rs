@@ -286,7 +286,7 @@ impl GroupController {
                     tracing::error!(group=%self.spec.name, %error, "emergency damping failed in fault state");
                 }
             }
-            GroupState::Idle | GroupState::Shutdown => {}
+            GroupState::Idle | GroupState::Configuring | GroupState::Shutdown => {}
         }
         self.update_snapshot(0);
         self.emergency_pending.store(false, Ordering::Release);
@@ -304,6 +304,14 @@ impl GroupController {
 
     fn handle(&mut self, request: LifecycleRequest) {
         match request {
+            LifecycleRequest::Configuration { to, detail, reply } => {
+                let transition = self.fsm.configure(to, detail);
+                if transition.ok {
+                    self.clear_command_state();
+                    self.update_snapshot(0);
+                }
+                let _ = reply.send(transition);
+            }
             LifecycleRequest::Operation {
                 action,
                 lease_generation,

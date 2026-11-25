@@ -25,7 +25,12 @@ use crate::telemetry::Telemetry;
 
 const LEASE_WATCHDOG_PERIOD: Duration = Duration::from_millis(5);
 
+mod configuration;
+use configuration::ConfigurationJobs;
+
 pub struct HardwareDaemon {
+    configuration: Arc<ConfigurationJobs>,
+    state_directory: std::path::PathBuf,
     pub topology: ResolvedTopology,
     pub(crate) groups: HashMap<GroupName, GroupHandle>,
     leases: Arc<LeaseManager>,
@@ -43,7 +48,11 @@ pub struct HardwareDaemon {
 }
 
 impl HardwareDaemon {
-    pub fn start(topology: ResolvedTopology, telemetry: Telemetry) -> Result<Arc<Self>> {
+    pub fn start(
+        topology: ResolvedTopology,
+        telemetry: Telemetry,
+        state_directory: std::path::PathBuf,
+    ) -> Result<Arc<Self>> {
         let bus_workers = BusManager::start(&topology, telemetry.clone())?;
         let motor_workers = MotorManager::start(&topology, &bus_workers, telemetry.clone())?;
         let serial_workers = SerialManager::start(&topology, telemetry.clone())?;
@@ -75,6 +84,8 @@ impl HardwareDaemon {
             .power_boards()
             .any(|(_, board)| board.emergency_stop == EmergencyStopMode::Damping);
         let daemon = Arc::new(Self {
+            configuration: Arc::new(ConfigurationJobs::default()),
+            state_directory,
             topology,
             groups,
             leases: Arc::new(leases),
@@ -110,10 +121,12 @@ impl HardwareDaemon {
         let inhibited = self.emergency_blocked.clone();
         let leases = self.leases.clone();
         let groups = self.groups.clone();
+        let configuration = self.configuration.clone();
         Arc::new(move |blocked| {
             let _gate = gate.lock();
             inhibited.store(blocked, Ordering::Release);
             if blocked {
+                configuration.cancel_pending();
                 leases.revoke_all();
                 for group in groups.values() {
                     group.request_emergency_damping();
@@ -158,7 +171,8 @@ impl HardwareDaemon {
             return Err(LeaseError::Unavailable);
         }
         let _gate = self.lease_gate.lock();
-        if self.emergency_blocked.load(Ordering::Acquire)
+        if self.configuration.blocks(group)
+            || self.emergency_blocked.load(Ordering::Acquire)
             || self
                 .groups
                 .get(group)
@@ -315,9 +329,13 @@ impl HardwareDaemon {
     /// apply its configured exit response. CAN and motor workers remain alive
     /// until the daemon is dropped, so safety frames can still be delivered.
     pub fn shutdown(&self) {
-        if self.shutting_down.swap(true, Ordering::AcqRel) {
-            return;
+        {
+            let _gate = self.lease_gate.lock();
+            if self.shutting_down.swap(true, Ordering::AcqRel) {
+                return;
+            }
         }
+        self.configuration.drain();
         let workers = std::mem::take(&mut *self.group_workers.lock());
         for worker in &workers {
             worker.request_shutdown();
@@ -362,7 +380,9 @@ mod tests {
         }
         config.power_boards.clear();
         let topology = ResolvedTopology::resolve(config).unwrap();
-        let daemon = HardwareDaemon::start(topology, Telemetry::new(4096)).unwrap();
+        let daemon =
+            HardwareDaemon::start(topology, Telemetry::new(4096), std::path::PathBuf::new())
+                .unwrap();
         let leases = daemon
             .groups
             .keys()

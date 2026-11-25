@@ -3,6 +3,7 @@ pub enum GroupState {
     #[default]
     Idle,
     Damped,
+    Configuring,
     Running,
     Fault,
     Shutdown,
@@ -30,6 +31,7 @@ pub enum GroupCause {
     LeaseLoss,
     Exit,
     Internal,
+    Configuration,
 }
 
 #[derive(Clone, Debug)]
@@ -87,6 +89,16 @@ impl GroupFsm {
             ok: true,
             to: self.state,
             message: message.into(),
+        }
+    }
+
+    pub(super) fn configure(&mut self, to: GroupState, detail: String) -> Transition {
+        match (self.state, to) {
+            (GroupState::Idle, GroupState::Configuring)
+            | (GroupState::Configuring, GroupState::Idle | GroupState::Fault) => {
+                self.transition(to, GroupCause::Configuration, detail)
+            }
+            _ => self.reject("invalid motor configuration transition"),
         }
     }
 

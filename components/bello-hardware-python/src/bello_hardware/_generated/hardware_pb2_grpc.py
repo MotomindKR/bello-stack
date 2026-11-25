@@ -572,3 +572,207 @@ class HardwareService:
             timeout,
             metadata,
             _registered_method=True)
+
+
+class MotorConfigurationServiceStub:
+    """Inspect and maintain stopped RobStride motors under an exclusive CAN bus reservation.
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.PrepareMotorConfiguration = channel.unary_unary(
+                '/bello.hardware.v1.MotorConfigurationService/PrepareMotorConfiguration',
+                request_serializer=hardware__pb2.PrepareMotorConfigurationRequest.SerializeToString,
+                response_deserializer=hardware__pb2.MotorConfiguration.FromString,
+                _registered_method=True)
+        self.CommitMotorConfiguration = channel.unary_unary(
+                '/bello.hardware.v1.MotorConfigurationService/CommitMotorConfiguration',
+                request_serializer=hardware__pb2.MotorConfigurationId.SerializeToString,
+                response_deserializer=hardware__pb2.MotorConfiguration.FromString,
+                _registered_method=True)
+        self.GetMotorConfiguration = channel.unary_unary(
+                '/bello.hardware.v1.MotorConfigurationService/GetMotorConfiguration',
+                request_serializer=hardware__pb2.MotorConfigurationId.SerializeToString,
+                response_deserializer=hardware__pb2.MotorConfiguration.FromString,
+                _registered_method=True)
+        self.CancelMotorConfiguration = channel.unary_unary(
+                '/bello.hardware.v1.MotorConfigurationService/CancelMotorConfiguration',
+                request_serializer=hardware__pb2.MotorConfigurationId.SerializeToString,
+                response_deserializer=hardware__pb2.MotorConfiguration.FromString,
+                _registered_method=True)
+
+
+class MotorConfigurationServiceServicer:
+    """Inspect and maintain stopped RobStride motors under an exclusive CAN bus reservation.
+    """
+
+    def PrepareMotorConfiguration(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CommitMotorConfiguration(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetMotorConfiguration(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CancelMotorConfiguration(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_MotorConfigurationServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'PrepareMotorConfiguration': grpc.unary_unary_rpc_method_handler(
+                    servicer.PrepareMotorConfiguration,
+                    request_deserializer=hardware__pb2.PrepareMotorConfigurationRequest.FromString,
+                    response_serializer=hardware__pb2.MotorConfiguration.SerializeToString,
+            ),
+            'CommitMotorConfiguration': grpc.unary_unary_rpc_method_handler(
+                    servicer.CommitMotorConfiguration,
+                    request_deserializer=hardware__pb2.MotorConfigurationId.FromString,
+                    response_serializer=hardware__pb2.MotorConfiguration.SerializeToString,
+            ),
+            'GetMotorConfiguration': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetMotorConfiguration,
+                    request_deserializer=hardware__pb2.MotorConfigurationId.FromString,
+                    response_serializer=hardware__pb2.MotorConfiguration.SerializeToString,
+            ),
+            'CancelMotorConfiguration': grpc.unary_unary_rpc_method_handler(
+                    servicer.CancelMotorConfiguration,
+                    request_deserializer=hardware__pb2.MotorConfigurationId.FromString,
+                    response_serializer=hardware__pb2.MotorConfiguration.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'bello.hardware.v1.MotorConfigurationService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('bello.hardware.v1.MotorConfigurationService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class MotorConfigurationService:
+    """Inspect and maintain stopped RobStride motors under an exclusive CAN bus reservation.
+    """
+
+    @staticmethod
+    def PrepareMotorConfiguration(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bello.hardware.v1.MotorConfigurationService/PrepareMotorConfiguration',
+            hardware__pb2.PrepareMotorConfigurationRequest.SerializeToString,
+            hardware__pb2.MotorConfiguration.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CommitMotorConfiguration(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bello.hardware.v1.MotorConfigurationService/CommitMotorConfiguration',
+            hardware__pb2.MotorConfigurationId.SerializeToString,
+            hardware__pb2.MotorConfiguration.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetMotorConfiguration(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bello.hardware.v1.MotorConfigurationService/GetMotorConfiguration',
+            hardware__pb2.MotorConfigurationId.SerializeToString,
+            hardware__pb2.MotorConfiguration.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CancelMotorConfiguration(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/bello.hardware.v1.MotorConfigurationService/CancelMotorConfiguration',
+            hardware__pb2.MotorConfigurationId.SerializeToString,
+            hardware__pb2.MotorConfiguration.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

@@ -194,7 +194,7 @@ pub fn parse_request(frame: &Frame) -> Option<Request> {
     let motor_id = frame_target(frame);
     match CommType::from_id(frame.id)? {
         CommType::MotorEnable => Some(Request::Enable { host_id, motor_id }),
-        CommType::MotorStop => Some(Request::Stop {
+        CommType::MotorStop if frame.data[1..] == [0; 7] => Some(Request::Stop {
             host_id,
             motor_id,
             clear_fault: frame.data[0] != 0,
