@@ -53,9 +53,6 @@ cargo run -p bello-sim -- check --config components/bello-sim/config/milly.yaml
 cargo run -p bello-sim -- run --config components/bello-sim/config/emulator_milly.yaml
 ```
 
-To update the arm's collision geometry, edit the [primitive definitions](../../descriptions/milly/collision-primitives.json)
-and run `python scripts/milly_collisions.py`.
-
 ## Live camera streams
 
 Set `cameras` in the emulator profile to the path to a [camera configuration](config/cameras_mini_torso.yaml).
