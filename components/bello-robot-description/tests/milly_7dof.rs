@@ -41,19 +41,19 @@ fn assert_pose(actual: Isometry3<f64>, expected: Isometry3<f64>) {
 }
 
 #[test]
-fn zero_roll_preserves_legacy_arm_poses_and_gripper_closure() {
-    let mut legacy = Fixture::load("milly/urdf/milly.urdf");
+fn six_and_seven_axis_arms_match_when_upper_arm_roll_is_zero() {
+    let mut six_axis = Fixture::load("milly/urdf/milly.urdf");
     let mut arm = Fixture::load("milly-7dof/urdf/milly-7dof.urdf");
     for (i, angle) in [-0.4, 0.6, 1.2, -0.3, 0.2, 0.0].into_iter().enumerate() {
         let joint = i + 1;
         let shifted = if joint < 3 { joint } else { joint + 1 };
-        legacy.set(&format!("joint_{joint}"), angle);
+        six_axis.set(&format!("joint_{joint}"), angle);
         arm.set(&format!("joint_{shifted}"), angle);
     }
     for grip in [-2.1, -1.0, 0.0] {
-        legacy.set("gripper", grip);
+        six_axis.set("gripper", grip);
         arm.set("gripper", grip);
-        for link in legacy.robot.links() {
+        for link in six_axis.robot.links() {
             let shifted = match link.name.as_str() {
                 "link_3" => "link_4",
                 "link_4" => "link_5",
@@ -61,7 +61,7 @@ fn zero_roll_preserves_legacy_arm_poses_and_gripper_closure() {
                 "link_6" => "link_7",
                 other => other,
             };
-            assert_pose(arm.pose(shifted), legacy.pose(&link.name));
+            assert_pose(arm.pose(shifted), six_axis.pose(&link.name));
         }
     }
 }
