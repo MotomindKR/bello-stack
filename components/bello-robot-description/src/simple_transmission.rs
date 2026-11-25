@@ -5,7 +5,7 @@ use roxmltree::Node;
 
 use super::{
     CoordinateState, DifferentialTransmission, Joint, JointKind, JointState, child_number,
-    required_attribute,
+    required_attribute, transmission_type,
 };
 
 #[derive(Clone, Debug)]
@@ -61,12 +61,7 @@ pub(super) fn parse(
         if !names.insert(name) {
             bail!("duplicate transmission name {name:?}");
         }
-        let kind = node
-            .children()
-            .find(|n| n.has_tag_name("type") || n.has_tag_name("plugin"))
-            .and_then(|n| n.text())
-            .unwrap_or_default()
-            .trim();
+        let kind = transmission_type(node);
         if kind.ends_with("DifferentialTransmission") {
             continue;
         }
