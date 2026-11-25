@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use bello_config::{finite, positive, trimmed_name};
+use bello_config::finite;
 use garde::Validate;
 use robstride_protocol::{
     CONTROL_POSITION_MAX, CONTROL_POSITION_MIN, CONTROL_POSITION_SPAN, MAX_MOTOR_ID,
@@ -21,9 +21,9 @@ pub(crate) enum EmergencyStopMode {
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PowerBoardConfig {
-    #[garde(custom(trimmed_name))]
+    #[garde(length(min = 1))]
     pub name: String,
-    #[garde(custom(trimmed_name))]
+    #[garde(length(min = 1))]
     pub serial_device: String,
     pub profile: crate::hardware::power_board::protocol::Profile,
     pub sync_period_ms: Option<u64>,
@@ -149,7 +149,7 @@ impl Default for RuntimeConfig {
 #[derive(Clone, Copy, Debug, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct MotorVelocityFilterConfig {
-    #[garde(custom(positive))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub cutoff_hz: f64,
 }
 
@@ -162,11 +162,11 @@ impl Default for MotorVelocityFilterConfig {
 #[derive(Clone, Copy, Debug, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct ImuFilterConfig {
-    #[garde(custom(positive))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub orientation_cutoff_hz: f64,
-    #[garde(custom(positive))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub gyro_cutoff_hz: f64,
-    #[garde(custom(positive))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub acceleration_cutoff_hz: f64,
 }
 
@@ -249,7 +249,7 @@ pub struct BusConfig {
     #[garde(range(min = 10_000, max = 1_000_000))]
     pub bitrate: u32,
     #[serde(default = "default_bus_utilization")]
-    #[garde(custom(positive), range(max = 1.0))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up(), max = 1.0))]
     pub maximum_utilization: f64,
     #[serde(default)]
     pub reconnect: ReconnectConfig,
@@ -344,7 +344,7 @@ pub struct MotorConfig {
     #[garde(dive)]
     pub command_policy: MotorCommandPolicy,
     #[serde(default = "default_fault_damping_kd")]
-    #[garde(custom(positive))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub fault_damping_kd: f64,
 }
 fn default_direction() -> i8 {
@@ -358,9 +358,9 @@ pub struct MotorLimits {
     pub position_min: f64,
     #[garde(custom(finite), range(min = CONTROL_POSITION_MIN, max = CONTROL_POSITION_MAX))]
     pub position_max: f64,
-    #[garde(inner(custom(positive)))]
+    #[garde(inner(custom(finite), range(min = 0.0_f64.next_up())))]
     pub velocity_abs: Option<f64>,
-    #[garde(inner(custom(positive)))]
+    #[garde(inner(custom(finite), range(min = 0.0_f64.next_up())))]
     pub torque_abs: Option<f64>,
 }
 impl Default for MotorLimits {
@@ -383,11 +383,11 @@ pub struct MotorHealth {
     pub safe_position_max: f64,
     #[garde(custom(finite), range(min = CONTROL_POSITION_SPAN / u16::MAX as f64, max = 0.4))]
     pub feedback_position_tolerance: f64,
-    #[garde(custom(positive))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub temperature_warning_c: f64,
-    #[garde(custom(positive), range(max = 200.0))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up(), max = 200.0))]
     pub maximum_temperature_c: f64,
-    #[garde(custom(positive))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub temperature_recovery_c: f64,
     #[garde(range(min = 1, max = 60_000))]
     pub temperature_recovery_duration_ms: u64,
@@ -414,7 +414,7 @@ fn default_feedback_position_tolerance() -> f64 {
 #[garde(allow_unvalidated)]
 #[serde(default, deny_unknown_fields)]
 pub struct MotorCommandPolicy {
-    #[garde(custom(positive), range(max = CONTROL_POSITION_SPAN))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up(), max = CONTROL_POSITION_SPAN))]
     pub maximum_position_step: f64,
     pub limit: CommandBehavior,
     pub position_step: CommandBehavior,
@@ -484,7 +484,7 @@ pub struct GroupConfig {
     #[garde(length(min = 1))]
     pub motors: Vec<String>,
     #[serde(default = "default_parallel_feedback_position_tolerance")]
-    #[garde(custom(positive), range(max = 0.4))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up(), max = 0.4))]
     pub parallel_feedback_position_tolerance: f64,
     #[serde(default = "default_control_rate")]
     #[garde(custom(finite), range(min = 1.0, max = 2_000.0))]
@@ -561,9 +561,9 @@ pub struct ImuConfig {
     pub name: String,
     #[garde(length(min = 1))]
     pub serial_device: String,
-    #[garde(custom(trimmed_name))]
+    #[garde(length(min = 1))]
     pub source_frame: String,
-    #[garde(custom(trimmed_name))]
+    #[garde(length(min = 1))]
     pub output_frame: String,
     #[garde(range(min = 1, max = 60_000))]
     pub stale_timeout_ms: u64,
