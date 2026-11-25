@@ -1412,6 +1412,24 @@ mod tests {
     }
 
     #[test]
+    fn differential_type_whitespace_preserves_motor_mappings() {
+        let original = load_description_text(NON_UNIT_DIFFERENTIAL_URDF).unwrap();
+        let wrapped = NON_UNIT_DIFFERENTIAL_URDF.replace(
+            "<type>transmission_interface/DifferentialTransmission</type>",
+            "<type>\n  transmission_interface/DifferentialTransmission\n</type>",
+        );
+        let wrapped = load_description_text(&wrapped).unwrap();
+
+        assert_eq!(wrapped.motor_coordinates(), original.motor_coordinates());
+        for coordinate in original.motor_coordinates() {
+            let original = original.coordinate_mapping(coordinate).unwrap();
+            let wrapped = wrapped.coordinate_mapping(coordinate).unwrap();
+            assert_eq!(wrapped.coefficients, original.coefficients);
+            assert_eq!(wrapped.offset, original.offset);
+        }
+    }
+
+    #[test]
     fn differential_reductions_preserve_virtual_work_and_project_bounds() {
         let description = load_description_text(NON_UNIT_DIFFERENTIAL_URDF).unwrap();
         let model = description
