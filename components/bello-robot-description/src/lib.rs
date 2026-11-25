@@ -1342,7 +1342,9 @@ mod tests {
     <limit lower="-1" upper="1" effort="6" velocity="8"/>
   </joint>
   <transmission name="scaled">
-    <type>transmission_interface/DifferentialTransmission</type>
+    <type>
+      transmission_interface/DifferentialTransmission
+    </type>
     <actuator name="motor_a" role="actuator1">
       <mechanical_reduction>2</mechanical_reduction>
     </actuator>
@@ -1412,24 +1414,6 @@ mod tests {
             .unwrap();
         assert_eq!(torques[0], ("roll".into(), 10.0));
         assert_eq!(torques[1], ("pitch".into(), 2.0));
-    }
-
-    #[test]
-    fn differential_type_whitespace_preserves_motor_mappings() {
-        let original = load_description_text(NON_UNIT_DIFFERENTIAL_URDF).unwrap();
-        let wrapped = NON_UNIT_DIFFERENTIAL_URDF.replace(
-            "<type>transmission_interface/DifferentialTransmission</type>",
-            "<type>\n  transmission_interface/DifferentialTransmission\n</type>",
-        );
-        let wrapped = load_description_text(&wrapped).unwrap();
-
-        assert_eq!(wrapped.motor_coordinates(), original.motor_coordinates());
-        for coordinate in original.motor_coordinates() {
-            let original = original.coordinate_mapping(coordinate).unwrap();
-            let wrapped = wrapped.coordinate_mapping(coordinate).unwrap();
-            assert_eq!(wrapped.coefficients, original.coefficients);
-            assert_eq!(wrapped.offset, original.offset);
-        }
     }
 
     #[test]
