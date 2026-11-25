@@ -8,7 +8,6 @@ publish.workspace = true
 description = "Robstride actuator emulator for Bello integration testing"
 
 [dependencies]
-bello-config.workspace = true
 garde.workspace = true
 bello-sim-can.workspace = true
 anyhow.workspace = true

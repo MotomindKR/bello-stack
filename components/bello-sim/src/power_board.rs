@@ -1,6 +1,6 @@
+use crate::finite;
 use crate::uart::{Endpoint, Uart};
 use anyhow::{Result, ensure};
-use bello_config::finite;
 use cog_protocol::{Profile, encode};
 use serde::Deserialize;
 use std::time::Duration;

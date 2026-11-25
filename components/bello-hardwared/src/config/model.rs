@@ -2,12 +2,18 @@ use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use bello_config::finite;
 use garde::Validate;
 use robstride_protocol::{
     CONTROL_POSITION_MAX, CONTROL_POSITION_MIN, CONTROL_POSITION_SPAN, MAX_MOTOR_ID,
 };
 use serde::Deserialize;
+
+fn finite(value: &f64, _: &()) -> garde::Result {
+    if !value.is_finite() {
+        return Err(garde::Error::new("must be finite"));
+    }
+    Ok(())
+}
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

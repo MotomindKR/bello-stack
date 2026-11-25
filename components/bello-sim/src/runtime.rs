@@ -1,7 +1,7 @@
 //! Single-threaded physics with bounded transport queues; async work owns no model.
+use crate::finite;
 use crate::{ebimu, guide, model, pose, robstride::RobstrideSimulation, transport::CanEndpoint};
 use anyhow::{Context, Result, ensure};
-use bello_config::finite;
 use garde::Validate;
 use nalgebra::{UnitQuaternion, Vector3};
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};

@@ -23,6 +23,13 @@ pub mod video;
 
 pub use mujoco_rs::mujoco_c as ffi;
 
+fn finite<T: Copy + Into<f64>>(value: &T, _: &()) -> garde::Result {
+    if !(*value).into().is_finite() {
+        return Err(garde::Error::new("must be finite"));
+    }
+    Ok(())
+}
+
 pub struct Simulation {
     data: MjData<Box<MjModel>>,
     // Model/data access stays on one simulation thread.

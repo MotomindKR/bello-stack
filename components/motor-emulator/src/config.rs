@@ -3,10 +3,16 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
-use bello_config::finite;
 use bello_sim_can::SimBus;
 use robstride_protocol::{MAX_MOTOR_ID, MotorParams};
 use serde::Deserialize;
+
+fn finite(value: &f64, _: &()) -> garde::Result {
+    if !value.is_finite() {
+        return Err(garde::Error::new("must be finite"));
+    }
+    Ok(())
+}
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]

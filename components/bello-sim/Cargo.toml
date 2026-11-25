@@ -7,7 +7,6 @@ license-file.workspace = true
 publish.workspace = true
 
 [dependencies]
-bello-config.workspace = true
 garde.workspace = true
 bello-sim-can.workspace = true
 cog-protocol.workspace = true
