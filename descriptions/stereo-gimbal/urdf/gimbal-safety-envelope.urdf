@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="bello_stereo_gimbal_safety_envelope">
+  <!-- Optional coarse replacement for the moving gimbal assembly, not an
+       additional self-collision body. Mount at the real gimbal_base_link.
+       Retain the fixed base plate, yaw stator and support pole primitives.
+       See ../safety-envelope.json for coverage, clearance and exclusions. -->
+  <link name="gimbal_base_link">
+    <collision name="gimbal_safety_sphere">
+      <origin xyz="0 0 0.174" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.132" />
+      </geometry>
+    </collision>
+  </link>
+</robot>

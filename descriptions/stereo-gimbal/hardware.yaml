@@ -1,0 +1,80 @@
+# User-confirmed CAN0 IDs 11/12/13 and +/-90 degree travel.
+# User confirmed all three actuator directions are opposite to the URDF axes.
+# q_joint = -q_motor_raw, with zero alignment still to be calibrated.
+
+robot_description: urdf/stereo-gimbal.urdf
+
+logical_buses:
+  - name: can0
+    host_id: 0
+    bitrate: 1000000
+    maximum_utilization: 0.75
+    reconnect: { initial_delay_ms: 100, maximum_delay_ms: 5000 }
+
+motors:
+  - name: gimbal_yaw
+    coordinate: gimbal_yaw
+    bus: can0
+    id: 11
+    model: RS_05
+    direction: -1
+    limits: { position_min: -1.5707963267948966, position_max: 1.5707963267948966, velocity_abs: 0.2, torque_abs: 1.0 }
+    health:
+      safe_position_min: -1.5707963267948966
+      safe_position_max: 1.5707963267948966
+      temperature_warning_c: 60.0
+      maximum_temperature_c: 75.0
+      temperature_recovery_c: 70.0
+      temperature_recovery_duration_ms: 2000
+    command_policy: &command_policy
+      maximum_position_step: 0.1
+      limit: reject
+      position_step: fault
+    fault_damping_kd: 0.25
+  - name: gimbal_pitch
+    coordinate: gimbal_pitch
+    bus: can0
+    id: 12
+    model: RS_05
+    direction: -1
+    limits: { position_min: -1.5707963267948966, position_max: 1.5707963267948966, velocity_abs: 0.2, torque_abs: 1.0 }
+    health:
+      safe_position_min: -1.5707963267948966
+      safe_position_max: 1.5707963267948966
+      temperature_warning_c: 60.0
+      maximum_temperature_c: 75.0
+      temperature_recovery_c: 70.0
+      temperature_recovery_duration_ms: 2000
+    command_policy: *command_policy
+    fault_damping_kd: 0.25
+  - name: gimbal_roll
+    coordinate: gimbal_roll
+    bus: can0
+    id: 13
+    model: RS_05
+    direction: -1
+    limits: { position_min: -1.5707963267948966, position_max: 1.5707963267948966, velocity_abs: 0.2, torque_abs: 1.0 }
+    health:
+      safe_position_min: -1.5707963267948966
+      safe_position_max: 1.5707963267948966
+      temperature_warning_c: 60.0
+      maximum_temperature_c: 75.0
+      temperature_recovery_c: 70.0
+      temperature_recovery_duration_ms: 2000
+    command_policy: *command_policy
+    fault_damping_kd: 0.25
+
+motor_groups:
+  - name: gimbal
+    motors:
+    - gimbal_yaw
+    - gimbal_pitch
+    - gimbal_roll
+    control_rate_hz: 100.0
+    command_refresh_rate_hz: 100.0
+    command_timeout_ms: 100
+    feedback_timeout_ms: 250
+    enable_timeout_ms: 500
+    enable_retries: 3
+    fault_policy:
+      default: damping

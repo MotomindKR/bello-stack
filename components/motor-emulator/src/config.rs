@@ -210,6 +210,63 @@ mod tests {
     use super::*;
 
     #[test]
+    fn milly_emulators_match_the_hardware_inventory_on_each_bus() {
+        #[derive(Deserialize)]
+        struct Inventory {
+            logical_buses: Vec<Bus>,
+            motors: Vec<Motor>,
+        }
+        #[derive(Deserialize)]
+        struct Bus {
+            name: String,
+            host_id: u8,
+        }
+        #[derive(Deserialize)]
+        struct Motor {
+            id: u8,
+            model: String,
+            direction: i8,
+            bus: String,
+        }
+
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        for (profile, inventory) in [
+            ("milly-7dof", "milly-7dof/hardware.yaml"),
+            ("milly-7dof-dual", "milly-7dof/hardware-dual.yaml"),
+            ("milly-7dof-gimbal", "milly-7dof-gimbal/hardware.yaml"),
+            ("stereo-gimbal", "stereo-gimbal/hardware.yaml"),
+        ] {
+            let path = root.join("../../descriptions").join(inventory);
+            let inventory: Inventory =
+                serde_yaml::from_reader(fs::File::open(path).unwrap()).unwrap();
+            for bus in &inventory.logical_buses {
+                let stem = if inventory.logical_buses.len() == 1 {
+                    profile.to_owned()
+                } else {
+                    format!("{profile}-{}", bus.name)
+                };
+                let expected: std::collections::BTreeMap<_, _> = inventory
+                    .motors
+                    .iter()
+                    .filter(|m| m.bus == bus.name)
+                    .map(|m| (m.id, (m.model.as_str(), m.direction)))
+                    .collect();
+                for suffix in [".yaml", "-vcan.yaml"] {
+                    let path = root.join("config").join(format!("{stem}{suffix}"));
+                    let emulator = Config::load(&path).unwrap();
+                    assert_eq!(emulator.host_id, bus.host_id, "{}", path.display());
+                    let actual = emulator
+                        .actuators
+                        .iter()
+                        .map(|m| (m.id, (m.model.as_str(), m.direction)))
+                        .collect();
+                    assert_eq!(expected, actual, "{}", path.display());
+                }
+            }
+        }
+    }
+
+    #[test]
     fn bundled_configs_follow_the_strict_event_schema() {
         for yaml in [
             include_str!("../config/vcan.yaml"),

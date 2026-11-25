@@ -14,6 +14,26 @@ type Triangles = Vec<[[f32; 3]; 3]>;
 pub(crate) fn imported_spec(urdf: &Path, visuals: bool) -> Result<(MjSpec, tempfile::TempDir)> {
     let assets = tempfile::tempdir()?;
     let mut document = Element::parse(std::fs::File::open(urdf)?)?;
+    // URDF import discards visuals by default. This must be set before parsing,
+    // rather than on the resulting spec, where those geoms have already gone.
+    if visuals {
+        if document.get_child("mujoco").is_none() {
+            document
+                .children
+                .push(XMLNode::Element(Element::new("mujoco")));
+        }
+        let extension = document.get_mut_child("mujoco").unwrap();
+        if extension.get_child("compiler").is_none() {
+            extension
+                .children
+                .push(XMLNode::Element(Element::new("compiler")));
+        }
+        extension
+            .get_mut_child("compiler")
+            .unwrap()
+            .attributes
+            .insert("discardvisual".into(), "false".into());
+    }
     let root = urdf.parent().context("URDF has no parent")?;
     let mut cache = BTreeMap::<PathBuf, Vec<ColoredMesh>>::new();
     for link in document

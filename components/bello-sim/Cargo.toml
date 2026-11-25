@@ -11,7 +11,10 @@ garde.workspace = true
 bello-sim-can.workspace = true
 cog-protocol.workspace = true
 anyhow.workspace = true
-bello-camera-api = { path = "../bello-camera-api" }
+bello-camera-api = { path = "../bello-camera-api", features = ["gstreamer"] }
+gst = { package = "gstreamer", version = "0.25" }
+gst-app = { package = "gstreamer-app", version = "0.25" }
+rayon = "1"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 bello-robot-description.workspace = true
 clap = { workspace = true, features = ["derive"] }

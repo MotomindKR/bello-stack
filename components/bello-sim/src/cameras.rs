@@ -1,19 +1,20 @@
+mod config;
+pub use config::{Camera, Config};
 mod context;
+mod jpeg;
 mod projection;
 use crate::{Simulation, model};
 use anyhow::{Context, Result, ensure};
-use bello_camera_api::{FPS, Frames, HEIGHT, NAMES, WIDTH, monotonic_ns, proto};
-use image::codecs::jpeg::JpegEncoder;
+use bello_camera_api::{FPS, media::Publisher, monotonic_ns, proto};
 use mujoco_rs::prelude::*;
 use nalgebra::{Isometry3, Quaternion, Translation3, UnitQuaternion, Vector3};
-use serde::{Deserialize, Serialize};
 use std::{
     io,
     os::{
         fd::{FromRawFd, OwnedFd},
         unix::net::UnixDatagram,
     },
-    path::{Path, PathBuf},
+    path::Path,
     process::{Child, Command, Stdio},
     sync::{
         Arc,
@@ -22,57 +23,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Config {
-    pub socket: PathBuf,
-    pub cameras: [Camera; 3],
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Camera {
-    pub name: String,
-    pub link: String,
-    /// Optical frame: +X right, +Y down, +Z forward, expressed in the mount link.
-    pub camera_to_link: [f64; 7],
-    /// fx, fy, cx, cy in pixels. Pinhole rendering; distortion is not emulated.
-    pub intrinsics: [f64; 4],
-}
-impl Config {
-    pub fn load(path: &Path) -> Result<Self> {
-        let config: Self = serde_yaml::from_str(&std::fs::read_to_string(path)?)?;
-        config.validate()?;
-        Ok(config)
-    }
-    fn validate(&self) -> Result<()> {
-        ensure!(self.socket.is_absolute(), "camera socket must be absolute");
-        ensure!(
-            NAMES
-                .iter()
-                .all(|n| self.cameras.iter().filter(|c| c.name == *n).count() == 1),
-            "configure exactly three named cameras"
-        );
-        for c in &self.cameras {
-            ensure!(
-                !c.link.is_empty()
-                    && c.camera_to_link.iter().all(|v| v.is_finite())
-                    && (c.camera_to_link[3..].iter().map(|v| v * v).sum::<f64>() - 1.).abs() < 1e-5,
-                "invalid camera mount"
-            );
-            let [fx, fy, cx, cy] = c.intrinsics;
-            ensure!(
-                [fx, fy, cx, cy].iter().all(|v| v.is_finite())
-                    && fx > 0.
-                    && fy > 0.
-                    && (0. ..=f64::from(WIDTH)).contains(&cx)
-                    && (0. ..=f64::from(HEIGHT)).contains(&cy),
-                "invalid camera intrinsics"
-            );
-            projection::Projection::new(c.intrinsics)?;
-        }
-        Ok(())
-    }
-}
 const HEADER: usize = 40;
 const MAGIC: &[u8; 8] = b"BELLOCAM";
 pub struct Capture {
@@ -105,8 +55,12 @@ impl Capture {
                         == visual.data.model().id_to_name(MjtObj::mjOBJ_JOINT, i)),
             "camera visual model state layout differs from physics"
         );
-        for camera in &config.cameras {
-            visual.id(MjtObj::mjOBJ_BODY, &camera.link)?;
+        for lens in config
+            .cameras
+            .iter()
+            .flat_map(|camera| camera.views.lenses())
+        {
+            visual.id(MjtObj::mjOBJ_BODY, &lens.link)?;
         }
         let files = tempfile::tempdir()?;
         let model_path = files.path().join("model.mjb");
@@ -164,6 +118,34 @@ impl Capture {
             dropped: 0,
         })
     }
+    /// Poll only from the preview process, outside the physics sampling path.
+    pub fn check_running(&mut self) -> Result<()> {
+        if let Some(status) = self.child.try_wait()? {
+            anyhow::bail!("camera renderer exited early: {status}");
+        }
+        Ok(())
+    }
+
+    /// Queue a shutdown after the final snapshot so startup and render errors reach the caller.
+    pub fn finish_preview(mut self) -> Result<()> {
+        self.check_running()?;
+        self.socket.set_nonblocking(false)?;
+        self.socket
+            .set_write_timeout(Some(Duration::from_secs(5)))?;
+        self.socket
+            .send(&[])
+            .context("request camera renderer shutdown")?;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(status) = self.child.try_wait()? {
+                ensure!(status.success(), "camera renderer failed: {status}");
+                return Ok(());
+            }
+            ensure!(Instant::now() < deadline, "camera renderer did not finish");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     /// No rendering, waiting, serialization allocation or filesystem access in physics.
     pub fn sample(&mut self, source: &Simulation) {
         self.sample_data(&source.data);
@@ -213,6 +195,9 @@ impl Drop for Capture {
             "Camera snapshot attempts: {}, dropped: {}",
             self.sequence, self.dropped
         );
+        if self.child.try_wait().ok().flatten().is_some() {
+            return;
+        }
         let _ = nix::sys::signal::kill(
             nix::unistd::Pid::from_raw(self.child.id() as i32),
             nix::sys::signal::Signal::SIGTERM,
@@ -230,43 +215,115 @@ impl Drop for Capture {
     }
 }
 
+struct Eye {
+    id: usize,
+    mount_from_optical: Isometry3<f64>,
+    projection: projection::Projection,
+}
+impl Eye {
+    fn new(model: &MjModel, lens: &config::Lens, width: u32, height: u32) -> Result<Self> {
+        let id = model
+            .name_to_id(MjtObj::mjOBJ_BODY, &lens.link)
+            .context("camera mount missing")?;
+        let projection = match lens.fisheye {
+            Some(d) => projection::Projection::for_fisheye(width, height, lens.intrinsics, d),
+            None => projection::Projection::for_format(width, height, lens.intrinsics),
+        }?;
+        let t = lens.camera_to_link;
+        let mount_from_optical = Isometry3::from_parts(
+            Translation3::new(t[0], t[1], t[2]),
+            UnitQuaternion::new_normalize(Quaternion::new(t[3], t[4], t[5], t[6])),
+        );
+        Ok(Self {
+            id,
+            mount_from_optical,
+            projection,
+        })
+    }
+
+    fn render(
+        &self,
+        data: &MjData<&MjModel>,
+        scene: &mut MjvScene,
+        context: &MjrContext,
+        pixels: &mut Vec<u8>,
+    ) -> Result<image::RgbImage> {
+        let p = data.xpos()[self.id];
+        let q = data.xquat()[self.id];
+        let mount = Isometry3::from_parts(
+            Translation3::from(p),
+            UnitQuaternion::new_normalize(Quaternion::new(q[0], q[1], q[2], q[3])),
+        );
+        let optical = mount * self.mount_from_optical;
+        let forward = optical.rotation * Vector3::z();
+        let up = optical.rotation * (-Vector3::y());
+        let viewport = MjrRectangle::new(
+            0,
+            0,
+            self.projection.render_width as i32,
+            self.projection.render_height as i32,
+        );
+        // Only the two fixed-size camera records change; scene allocation invariants remain intact.
+        for view in &mut unsafe { scene.ffi_mut() }.camera {
+            view.pos = optical.translation.vector.map(|x| x as f32).into();
+            view.forward = forward.map(|x| x as f32).into();
+            view.up = up.map(|x| x as f32).into();
+            self.projection.apply_frustum(view);
+        }
+        scene.render(&viewport, context);
+        pixels.resize(
+            self.projection.render_width as usize * self.projection.render_height as usize * 3,
+            0,
+        );
+        context.read_pixels(Some(pixels), None, &viewport)?;
+        Ok(self.projection.sensor_image(pixels))
+    }
+}
+
 pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
     let config: Config = serde_json::from_slice(&std::fs::read(config_path)?)?;
     config.validate()?;
     Simulation::check_version()?;
     let mut model = MjModel::from_buffer(&std::fs::read(model_path)?)?;
+    model.vis_mut().quality.offsamples = config.offscreen_samples;
     let nq = model.nq() as usize;
     let nmocap = model.nmocap() as usize;
-    let ids = config
-        .cameras
-        .iter()
-        .map(|c| {
-            model
-                .name_to_id(MjtObj::mjOBJ_BODY, &c.link)
-                .context("camera mount missing")
-        })
-        .collect::<Result<Vec<_>>>()?;
     model.vis_mut().headlight.ambient = [0.35; 3];
     model.vis_mut().headlight.diffuse = [0.8; 3];
-    let visual_bodies: std::collections::BTreeSet<_> = (0..model.ngeom() as usize)
-        .filter(|&i| model.geom_contype()[i] == 0 && model.geom_conaffinity()[i] == 0)
-        .map(|i| model.geom_bodyid()[i])
-        .collect();
     for i in 0..model.ngeom() as usize {
         let collision = model.geom_contype()[i] != 0 || model.geom_conaffinity()[i] != 0;
-        model.geom_group_mut()[i] =
-            i32::from(!(collision && visual_bodies.contains(&model.geom_bodyid()[i])));
+        // Robot collision proxies are never scenery. Explicit scene fixtures
+        // and the generated floor remain visible even when contact-enabled.
+        let name = model.id_to_name(MjtObj::mjOBJ_GEOM, i).unwrap_or("");
+        let scenery = name == "floor" || name.starts_with("scene/");
+        model.geom_group_mut()[i] = i32::from(!collision || scenery);
     }
     let _gl = context::Context::new()?;
-    let projections = config
+    let views = config
         .cameras
         .iter()
-        .map(|c| projection::Projection::new(c.intrinsics))
+        .map(|camera| {
+            camera
+                .views
+                .lenses()
+                .map(|lens| Eye::new(&model, lens, config.width, config.height))
+                .collect::<Result<Vec<_>>>()
+        })
         .collect::<Result<Vec<_>>>()?;
     let mut context = unsafe { MjrContext::new(&model) };
     context.resize_offscreen(
-        projections.iter().map(|p| p.width).max().unwrap(),
-        projections.iter().map(|p| p.height).max().unwrap(),
+        views
+            .iter()
+            .flatten()
+            .map(|eye| eye.projection.render_width)
+            .max()
+            .unwrap(),
+        views
+            .iter()
+            .flatten()
+            .map(|eye| eye.projection.render_height)
+            .max()
+            .unwrap(),
     );
     context.offscreen();
     let mut scene = MjvScene::new(&model, model.ngeom() as usize + 1000);
@@ -279,16 +336,22 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
     let cameras = config
         .cameras
         .iter()
-        .map(|c| proto::Camera {
-            name: c.name.clone(),
-            width: WIDTH,
-            height: HEIGHT,
-            fps: FPS,
-            source: "mujoco".into(),
-            metadata_json: serde_json::to_string(c).unwrap(),
+        .map(|c| {
+            (
+                proto::Camera {
+                    name: c.name.clone(),
+                    width: config.width * c.views.lenses().count() as u32,
+                    height: config.height,
+                    fps: FPS,
+                    source: "mujoco".into(),
+                    metadata_json: c.metadata().to_string(),
+                },
+                c.views.layout(),
+            )
         })
         .collect();
-    let frames = Frames::new(cameras)?;
+    let publisher = Publisher::new(cameras)?;
+    let frames = publisher.frames();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -302,6 +365,17 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
             )
             .serve_with_incoming(tokio_stream::wrappers::UnixListenerStream::new(listener)),
     );
+    let tcp_server = config.listen.map(|address| {
+        runtime.spawn(
+            tonic::transport::Server::builder()
+                .add_service(
+                    proto::camera_source_service_server::CameraSourceServiceServer::new(
+                        frames.clone(),
+                    ),
+                )
+                .serve(address),
+        )
+    });
     let stop = Arc::new(AtomicBool::new(false));
     let stopping = stop.clone();
     runtime.spawn(async move {
@@ -317,15 +391,22 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
     let mut latest = [0; 8192];
     let mut data = model.try_make_data()?;
     let mut pixels = Vec::with_capacity(
-        projections
+        views
             .iter()
-            .map(|p| p.width as usize * p.height as usize * 3)
+            .flatten()
+            .map(|eye| {
+                eye.projection.render_width as usize * eye.projection.render_height as usize * 3
+            })
             .max()
             .unwrap(),
     );
+    let encoder = jpeg::Encoder::new()?;
     let mut last = Instant::now();
     while !stop.load(Ordering::Acquire) {
-        ensure!(!server.is_finished(), "camera frame service stopped");
+        ensure!(
+            !server.is_finished() && tcp_server.as_ref().is_none_or(|s| !s.is_finished()),
+            "camera frame service stopped"
+        );
         let size = match input.recv(&mut latest) {
             Ok(size) => size,
             Err(e)
@@ -342,8 +423,15 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
             }
             Err(e) => return Err(e.into()),
         };
+        if size == 0 {
+            break;
+        }
         input.set_nonblocking(true)?;
         while let Ok(n) = input.recv(&mut packet) {
+            if n == 0 {
+                stop.store(true, Ordering::Release);
+                break;
+            }
             ensure!(n == size, "snapshot shape changed");
             latest[..n].copy_from_slice(&packet[..n]);
         }
@@ -392,42 +480,18 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
         // Only the simulation clock scalar changes; allocation/layout remain intact.
         unsafe { data.ffi_mut() }.time = simtime;
         data.forward();
-        for (i, c) in config.cameras.iter().enumerate() {
-            scene.update(&mut data, &options, &perturb, &mut camera);
-            let p = data.xpos()[ids[i]];
-            let q = data.xquat()[ids[i]];
-            let mount = Isometry3::from_parts(
-                Translation3::from(p),
-                UnitQuaternion::new_normalize(Quaternion::new(q[0], q[1], q[2], q[3])),
-            );
-            let t = c.camera_to_link;
-            let optical = mount
-                * Isometry3::from_parts(
-                    Translation3::new(t[0], t[1], t[2]),
-                    UnitQuaternion::new_normalize(Quaternion::new(t[3], t[4], t[5], t[6])),
-                );
-            let forward = optical.rotation * Vector3::z();
-            let up = optical.rotation * (-Vector3::y());
-            let projection = &projections[i];
-            let viewport =
-                MjrRectangle::new(0, 0, projection.width as i32, projection.height as i32);
-            // Only the two fixed-size camera records change; scene allocation invariants remain intact.
-            for view in &mut unsafe { scene.ffi_mut() }.camera {
-                view.pos = optical.translation.vector.map(|x| x as f32).into();
-                view.forward = forward.map(|x| x as f32).into();
-                view.up = up.map(|x| x as f32).into();
-                projection.apply(view);
-            }
-            scene.render(&viewport, &context);
-            pixels.resize(
-                projection.width as usize * projection.height as usize * 3,
-                0,
-            );
-            context.read_pixels(Some(&mut pixels), None, &viewport)?;
-            let image = projection.image(&pixels);
-            let mut jpeg = Vec::with_capacity(65536);
-            JpegEncoder::new_with_quality(&mut jpeg, 90).encode_image(&image)?;
-            frames.publish(proto::Frame {
+        scene.update(&mut data, &options, &perturb, &mut camera);
+        for (c, eyes) in config.cameras.iter().zip(&views) {
+            let mut rendered = eyes
+                .iter()
+                .map(|eye| eye.render(&data, &mut scene, &context, &mut pixels));
+            let first = rendered.next().unwrap()?;
+            let image = match rendered.next().transpose()? {
+                Some(right) => side_by_side(first, right),
+                None => first,
+            };
+            let jpeg = encoder.encode(image)?;
+            let result = publisher.publish(proto::Frame {
                 name: c.name.clone(),
                 sequence,
                 capture_ns,
@@ -435,9 +499,32 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
                 jpeg,
                 flags: 0,
                 simulation_time_ns: Some((simtime * 1e9).round() as u64),
-            })?;
+            });
+            if let Err(error) = result {
+                if error
+                    .downcast_ref::<tonic::Status>()
+                    .is_some_and(|s| s.code() == tonic::Code::OutOfRange)
+                {
+                    eprintln!("Skipping {} frame {sequence}: {error}", c.name);
+                } else {
+                    return Err(error);
+                }
+            }
         }
     }
     server.abort();
+    if let Some(server) = tcp_server {
+        server.abort();
+    }
     Ok(())
 }
+
+fn side_by_side(left: image::RgbImage, right: image::RgbImage) -> image::RgbImage {
+    let mut packed = image::RgbImage::new(left.width() * 2, left.height());
+    image::imageops::replace(&mut packed, &left, 0, 0);
+    image::imageops::replace(&mut packed, &right, left.width().into(), 0);
+    packed
+}
+
+#[cfg(test)]
+mod stream_tests;

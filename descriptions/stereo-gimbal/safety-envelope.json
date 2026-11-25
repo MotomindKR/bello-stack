@@ -1,0 +1,51 @@
+{
+  "units": "m/rad",
+  "name": "gimbal_safety_sphere",
+  "frame": "gimbal_base_link",
+  "geometry": {
+    "type": "sphere",
+    "xyz": [
+      0.0,
+      0.0,
+      0.174
+    ],
+    "radius": 0.132
+  },
+  "proxy_urdf": "urdf/gimbal-safety-envelope.urdf",
+  "covers_links": [
+    "gimbal_yaw_link",
+    "gimbal_pitch_link",
+    "gimbal_roll_link",
+    "stereo_camera_link"
+  ],
+  "joint_ranges": {
+    "gimbal_yaw": [
+      -1.5707963267948966,
+      1.5707963267948966
+    ],
+    "gimbal_pitch": [
+      -1.5707963267948966,
+      1.5707963267948966
+    ],
+    "gimbal_roll": [
+      -1.5707963267948966,
+      1.5707963267948966
+    ]
+  },
+  "conservative_geometry_radius_m": 0.128515212,
+  "minimum_model_clearance_m": 0.003484788,
+  "bound_method": "Fixed sphere centre lies on the yaw axis, so yaw preserves radius. Bound only the moving assembly; retain the base plate and yaw stator primitives separately. Transform every current visual mesh vertex and collision box corner into its stage frame. Cylinders use circumscribed 64-sided prisms. For each pitch-subtree point, maximize squared distance analytically over pitch +/-pi/2. For camera points, first take the two extrema of z after roll +/-pi/2; the roll and camera translations are collinear with the roll axis. Evaluate A*cos(pitch)+B*sin(pitch) at both endpoints and its interior minimum. This bounds the full continuous yaw/pitch/roll travel without a triangle-inequality offset or pose sampling. Centre z=0.174 is a rounded one-dimensional minimax fit to the moving swept geometry.",
+  "per_link_bound_m": {
+    "gimbal_yaw_link": 0.128424845,
+    "gimbal_pitch_link": 0.086461011,
+    "stereo_camera_link": 0.128515212
+  },
+  "usage": "Coarse moving-assembly proxy for arm/environment avoidance. Replace only covers_links with this sphere. Keep the fixed gimbal_base_link mount plate and yaw stator, and the support pole, as their own primitives. Do not count covered bodies twice or use this proxy for internal gimbal self-collision.",
+  "excludes": [
+    "fixed base plate and yaw stator (retain original primitives)",
+    "support pole (retain original box)",
+    "cables",
+    "unmodelled mounting hardware"
+  ],
+  "revalidate_on": "Any gimbal geometry, joint axis, origin, travel, camera payload or mounting changes. The combined robot rigid base transform may change without invalidating the local bound."
+}

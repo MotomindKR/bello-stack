@@ -11,8 +11,20 @@ message Camera {
   string source = 5;
   string metadata_json = 6;
 }
+enum CameraLayout {
+  CAMERA_LAYOUT_UNSPECIFIED = 0;
+  CAMERA_LAYOUT_MONO = 1;
+  CAMERA_LAYOUT_STEREO_SIDE_BY_SIDE = 2;
+}
+message LocalCameraSource {
+  CameraLayout layout = 1;
+  // Host-local unixfdsrc socket carrying image/jpeg. Stereo packs the left eye first.
+  string unixfd_socket = 2;
+}
 message GetCamerasResponse {
   repeated Camera cameras = 1;
+  // Keyed by camera name. Publishers offering only gRPC omit this entry.
+  map<string, LocalCameraSource> local_sources = 2;
 }
 message WatchFramesRequest {
   string name = 1;
@@ -47,6 +59,7 @@ message CloseSessionRequest {
   string session = 1;
 }
 message CloseSessionResponse {}
+// Dashboard signaling. Camera source publishers serve CameraSourceService.
 service WebRtcService {
   rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
   rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);

@@ -1,0 +1,197 @@
+{
+  "units": "m",
+  "description": "Approximate primitive-only rigid exterior envelopes; one camera box. Small mounting interfaces overlap. No mesh collisions.",
+  "shapes": [
+    {
+      "link": "gimbal_base_link",
+      "name": "mount_plate",
+      "type": "box",
+      "xyz": [
+        0,
+        0,
+        0.005
+      ],
+      "rpy": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.072,
+        0.072,
+        0.01
+      ]
+    },
+    {
+      "link": "gimbal_base_link",
+      "name": "yaw_motor",
+      "type": "cylinder",
+      "xyz": [
+        0,
+        0,
+        0.0295
+      ],
+      "rpy": [
+        0,
+        0,
+        0
+      ],
+      "radius": 0.023,
+      "length": 0.047
+    },
+    {
+      "link": "gimbal_yaw_link",
+      "name": "yaw_output_mount",
+      "type": "box",
+      "xyz": [
+        -0.001325,
+        0,
+        0.002
+      ],
+      "rpy": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.0522,
+        0.0382,
+        0.01
+      ]
+    },
+    {
+      "link": "gimbal_yaw_link",
+      "name": "rear_stanchion",
+      "type": "box",
+      "xyz": [
+        -0.03015,
+        0,
+        0.055
+      ],
+      "rpy": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.0166,
+        0.026,
+        0.1
+      ]
+    },
+    {
+      "link": "gimbal_yaw_link",
+      "name": "pitch_motor",
+      "type": "cylinder",
+      "xyz": [
+        -0.001,
+        0,
+        0.128
+      ],
+      "rpy": [
+        1.5707963267948966,
+        0,
+        0
+      ],
+      "radius": 0.0235,
+      "length": 0.057
+    },
+    {
+      "link": "gimbal_pitch_link",
+      "name": "roll_mount",
+      "type": "box",
+      "xyz": [
+        0.028,
+        0,
+        0
+      ],
+      "rpy": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.008,
+        0.065,
+        0.046
+      ]
+    },
+    {
+      "link": "gimbal_pitch_link",
+      "name": "left_carrier",
+      "type": "box",
+      "xyz": [
+        0.0075,
+        0.0295,
+        0
+      ],
+      "rpy": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.049,
+        0.014,
+        0.034
+      ]
+    },
+    {
+      "link": "gimbal_pitch_link",
+      "name": "right_carrier",
+      "type": "box",
+      "xyz": [
+        0.0075,
+        -0.0305,
+        0
+      ],
+      "rpy": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.049,
+        0.012,
+        0.034
+      ]
+    },
+    {
+      "link": "gimbal_pitch_link",
+      "name": "roll_motor",
+      "type": "cylinder",
+      "xyz": [
+        0.0515,
+        0,
+        0
+      ],
+      "rpy": [
+        0,
+        1.5707963267948966,
+        0
+      ],
+      "radius": 0.023,
+      "length": 0.047
+    },
+    {
+      "link": "stereo_camera_link",
+      "name": "camera_box",
+      "type": "box",
+      "xyz": [
+        -0.0205,
+        0,
+        0
+      ],
+      "rpy": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.041,
+        0.0824,
+        0.0336
+      ]
+    }
+  ]
+}

@@ -24,6 +24,14 @@ jobs:
         run: nix develop --command cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: Test
         run: nix develop --command cargo test --workspace --all-features
+      - name: Check dual Milly physics and stereo projection
+        run: |
+          nix develop --command cargo run -p bello-sim -- check --config components/bello-sim/config/milly_7dof_gimbal.yaml
+          nix develop --command cargo test -p bello-sim --lib rendered_markers_match_calibrated_pixels_through_pitch_yaw_and_roll -- --ignored
+      - name: Check preview renderer failure
+        run: |
+          nix develop --command sh -ec 'cargo build -p bello-sim --example camera_preview
+            python components/bello-sim/tests/camera_preview.py "$CARGO_TARGET_DIR/debug/examples/camera_preview"'
       - name: Protobuf format and lint
         run: |
           nix develop --command buf format --diff --exit-code

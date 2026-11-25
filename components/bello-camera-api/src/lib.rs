@@ -5,6 +5,8 @@ pub mod proto {
     #![allow(clippy::double_must_use)]
     tonic::include_proto!("bello.camera.v1");
 }
+#[cfg(feature = "gstreamer")]
+pub mod media;
 pub mod socket;
 pub const FILE_DESCRIPTOR_SET: &[u8] =
     tonic::include_file_descriptor_set!("bello_camera_v1_descriptor");
@@ -12,6 +14,8 @@ pub const NAMES: [&str; 3] = ["birds_eye", "right_gripper", "left_gripper"];
 pub const WIDTH: u32 = 640;
 pub const HEIGHT: u32 = 360;
 pub const FPS: u32 = 30;
+/// Recommended WatchFrames client receive limit for the largest supported camera.
+pub const MAX_FRAME_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
 
 pub fn monotonic_ns() -> u64 {
     let mut time = libc::timespec {
@@ -33,6 +37,7 @@ struct Slot {
 #[derive(Clone)]
 pub struct Frames {
     cameras: Arc<Vec<proto::Camera>>,
+    local_sources: Arc<std::collections::HashMap<String, proto::LocalCameraSource>>,
     slots: Arc<Vec<Slot>>,
 }
 impl Frames {
@@ -52,6 +57,27 @@ impl Frames {
                 "requires three named 640x360, 30 Hz cameras",
             ));
         }
+        Self::configured(cameras)
+    }
+    /// Accepts independently named logical streams with their encoded dimensions.
+    pub fn configured(cameras: Vec<proto::Camera>) -> Result<Self, Status> {
+        let names: std::collections::BTreeSet<_> = cameras.iter().map(|c| &c.name).collect();
+        if cameras.is_empty()
+            || cameras.len() > 16
+            || names.len() != cameras.len()
+            || cameras.iter().any(|c| {
+                c.name.is_empty()
+                    || c.width == 0
+                    || c.height == 0
+                    || c.width > 4096
+                    || c.height > 2160
+                    || c.fps == 0
+                    || c.fps > 120
+                    || !matches!(c.source.as_str(), "v4l2" | "mujoco")
+            })
+        {
+            return Err(Status::invalid_argument("invalid camera set"));
+        }
         let slots = cameras
             .iter()
             .map(|_| Slot {
@@ -61,6 +87,7 @@ impl Frames {
             .collect();
         Ok(Self {
             cameras: Arc::new(cameras),
+            local_sources: Default::default(),
             slots: Arc::new(slots),
         })
     }
@@ -68,6 +95,9 @@ impl Frames {
         &self.cameras
     }
     pub fn publish(&self, frame: proto::Frame) -> Result<(), Status> {
+        self.publish_shared(Arc::new(frame))
+    }
+    fn publish_shared(&self, frame: Arc<proto::Frame>) -> Result<(), Status> {
         let i = self
             .cameras
             .iter()
@@ -78,15 +108,21 @@ impl Frames {
                 "frame clock does not match its declared source",
             ));
         }
-        if frame.jpeg.len() > 2 * 1024 * 1024
-            || !frame.jpeg.starts_with(&[0xff, 0xd8])
+        // Keep retained JPEGs bounded per camera, including room for JPEG headers.
+        let camera = &self.cameras[i];
+        let rgb_bytes = camera.width as usize * camera.height as usize * 3;
+        if frame.jpeg.len() > (rgb_bytes + 64 * 1024).max(2 * 1024 * 1024) {
+            return Err(Status::out_of_range(
+                "JPEG exceeds the configured camera frame budget",
+            ));
+        }
+        if !frame.jpeg.starts_with(&[0xff, 0xd8])
             || !frame.jpeg.ends_with(&[0xff, 0xd9])
             || frame.capture_ns == 0
             || frame.received_ns < frame.capture_ns
         {
             return Err(Status::invalid_argument("invalid camera frame"));
         }
-        let frame = Arc::new(frame);
         self.slots[i].latest.send_replace(Some(frame.clone()));
         let _ = self.slots[i].ordered.send(frame);
         Ok(())
@@ -101,6 +137,7 @@ impl proto::camera_source_service_server::CameraSourceService for Frames {
     ) -> Result<Response<proto::GetCamerasResponse>, Status> {
         Ok(Response::new(proto::GetCamerasResponse {
             cameras: self.cameras.as_ref().clone(),
+            local_sources: self.local_sources.as_ref().clone(),
         }))
     }
     type WatchFramesStream = Pin<
@@ -224,6 +261,28 @@ mod tests {
             recording.next().await.unwrap().unwrap_err().code(),
             tonic::Code::ResourceExhausted
         );
+    }
+    #[test]
+    fn configured_camera_sets_accept_custom_names_and_dimensions() {
+        let cameras = ["left", "right"]
+            .map(|name| proto::Camera {
+                name: name.into(),
+                width: 640,
+                height: 480,
+                fps: 30,
+                source: "mujoco".into(),
+                metadata_json: "{}".into(),
+            })
+            .to_vec();
+        assert!(Frames::new(cameras.clone()).is_err());
+        let stereo = Frames::configured(cameras.clone()).unwrap();
+        assert_eq!(stereo.cameras().len(), 2);
+        let mut duplicate = cameras;
+        duplicate[1].name = "left".into();
+        assert!(Frames::configured(duplicate).is_err());
+        let mut value = frame(1);
+        value.name = "left".into();
+        stereo.publish(value).unwrap();
     }
     #[test]
     fn invalid_source_clock_and_camera_mapping_are_rejected() {
