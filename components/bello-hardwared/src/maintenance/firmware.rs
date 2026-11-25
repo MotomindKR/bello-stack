@@ -29,10 +29,8 @@ pub(super) struct Image {
 struct Release {
     model: String,
     version: String,
-    filename: String,
     url: String,
     sha256: String,
-    size: usize,
 }
 
 impl Image {
@@ -46,7 +44,14 @@ impl Image {
             });
         }
 
-        let catalog: Vec<Release> = serde_json::from_str(include_str!("firmware_catalog.json"))?;
+        let cache = cache_directory()?;
+        let catalog = cached_file(
+            &cache,
+            "https://raw.githubusercontent.com/MotomindKR/motor-setup-tool/3437f89e0969b394fc729ec5945d29065eef6985/src/firmware_catalog.json",
+            "830b526562dfac39e079bc0f09767c81c60766a761ea5938cf77c5ac855c1bbc",
+            64 * 1024,
+        ).context("loading the pinned motor-setup-tool firmware catalog")?;
+        let catalog: Vec<Release> = serde_json::from_slice(&catalog)?;
         let release = catalog
             .into_iter()
             .find(|release| release.model == model.replace('_', "-"))
@@ -54,7 +59,8 @@ impl Image {
         let version: Version = release.version.parse()?;
         version.check_model(model)?;
         require_upgrade(installed, version)?;
-        let bytes = release.cached_image(&cache_directory()?)?;
+        let bytes = cached_file(&cache, &release.url, &release.sha256, MAX_IMAGE_SIZE)
+            .with_context(|| format!("loading {} firmware {}", release.model, release.version))?;
         Ok(Self { version, bytes })
     }
 
@@ -172,71 +178,47 @@ fn cache_directory() -> Result<PathBuf> {
     Ok(base.join("bello-hardwared").join("firmware"))
 }
 
-impl Release {
-    fn verify(&self, bytes: &[u8]) -> Result<()> {
-        ensure!(
-            bytes.len() == self.size,
-            "Firmware image is {} bytes, expected {}",
-            bytes.len(),
-            self.size
-        );
-        let sha256: String = digest(&SHA256, bytes)
+fn cached_file(directory: &Path, url: &str, sha256: &str, maximum: usize) -> Result<Vec<u8>> {
+    ensure!(
+        sha256.len() == 64 && sha256.bytes().all(|b| b.is_ascii_hexdigit()),
+        "invalid pinned SHA-256"
+    );
+    let valid = |bytes: &[u8]| {
+        let actual: String = digest(&SHA256, bytes)
             .as_ref()
             .iter()
-            .map(|byte| format!("{byte:02x}"))
+            .map(|b| format!("{b:02x}"))
             .collect();
-        ensure!(sha256 == self.sha256, "Firmware image SHA-256 mismatch");
-        Ok(())
-    }
-
-    fn cached_image(&self, directory: &Path) -> Result<Vec<u8>> {
-        ensure!(
-            (1..=MAX_IMAGE_SIZE).contains(&self.size),
-            "Invalid catalog firmware size {}",
-            self.size
-        );
-        fs::create_dir_all(directory).context("Create firmware cache directory")?;
-        let path = directory.join(&self.filename);
-        if let Ok(file) = File::open(&path) {
-            let mut bytes = Vec::new();
-            if file
-                .take((self.size + 1) as u64)
-                .read_to_end(&mut bytes)
-                .is_ok()
-                && self.verify(&bytes).is_ok()
-            {
-                return Ok(bytes);
-            }
+        !bytes.is_empty() && bytes.len() <= maximum && actual == sha256
+    };
+    fs::create_dir_all(directory).context("creating firmware cache directory")?;
+    let path = directory.join(sha256);
+    if let Ok(file) = File::open(&path) {
+        let mut bytes = Vec::new();
+        file.take((maximum + 1) as u64).read_to_end(&mut bytes)?;
+        if valid(&bytes) {
+            return Ok(bytes);
         }
-
-        let bytes = self.download()?;
-        let mut image = tempfile::NamedTempFile::new_in(directory)?;
-        image.write_all(&bytes)?;
-        image
-            .persist(path)
-            .context("Store verified firmware in cache")?;
-        Ok(bytes)
     }
-
-    fn download(&self) -> Result<Vec<u8>> {
-        let agent = ureq::Agent::config_builder()
-            .timeout_global(Some(Duration::from_secs(60)))
-            .build()
-            .new_agent();
-        let mut response = agent.get(&self.url).call().with_context(|| {
-            format!(
-                "Download verified Robstride {} firmware {}",
-                self.model, self.version
-            )
-        })?;
-        let bytes = response
-            .body_mut()
-            .with_config()
-            .limit((self.size + 1) as u64)
-            .read_to_vec()?;
-        self.verify(&bytes)?;
-        Ok(bytes)
-    }
+    let agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(60)))
+        .build()
+        .new_agent();
+    let bytes = agent
+        .get(url)
+        .call()?
+        .body_mut()
+        .with_config()
+        .limit(maximum as u64)
+        .read_to_vec()?;
+    ensure!(
+        valid(&bytes),
+        "downloaded file does not match pinned SHA-256"
+    );
+    let mut tmp = tempfile::NamedTempFile::new_in(directory)?;
+    tmp.write_all(&bytes)?;
+    tmp.persist(path)?;
+    Ok(bytes)
 }
 
 #[cfg(test)]
@@ -246,23 +228,16 @@ mod tests {
     #[test]
     fn cache_accepts_only_the_pinned_digest_and_bounded_size() {
         let dir = tempfile::tempdir().unwrap();
-        let release = Release {
-            model: "RS-00".into(),
-            version: "0.0.3.36".into(),
-            filename: "fixture.bin".into(),
-            url: "invalid:cache-miss".into(),
-            // SHA-256 of "abc", from the NIST SHA-256 test vectors.
-            sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".into(),
-            size: 3,
-        };
-        let path = dir.path().join("fixture.bin");
+        let hash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        let path = dir.path().join(hash);
         fs::write(&path, b"abc").unwrap();
-        assert_eq!(release.cached_image(dir.path()).unwrap(), b"abc");
-
-        for invalid in [b"abd".as_slice(), b"", &[0; MAX_IMAGE_SIZE + 1]] {
+        assert_eq!(
+            cached_file(dir.path(), "invalid:cache-miss", hash, 3).unwrap(),
+            b"abc"
+        );
+        for invalid in [b"abd".as_slice(), b"", b"abcd"] {
             fs::write(&path, invalid).unwrap();
-            assert!(release.cached_image(dir.path()).is_err());
-            assert_eq!(fs::read(&path).unwrap(), invalid);
+            assert!(cached_file(dir.path(), "invalid:cache-miss", hash, 3).is_err());
         }
     }
 }

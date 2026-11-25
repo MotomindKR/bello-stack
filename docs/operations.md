@@ -311,7 +311,7 @@ motor_config() {
 motor_config PrepareMotorConfiguration '{"motor":"joint_1","kind":"MOTOR_CONFIGURATION_KIND_ZERO"}'
 ```
 
-Use the returned ID in `GetMotorConfiguration`. At `READY`, review the motor UUID and shaft angle. Commit sets the motor's current position to zero. For firmware, prepare with `MOTOR_CONFIGURATION_KIND_FIRMWARE` and review the installed and target versions. The server selects the pinned image for the detected motor family. The simulated CAN transport uses a small fixture image and the emulator keeps its calibration and firmware version in memory.
+Use the returned ID in `GetMotorConfiguration`. At `READY`, review the motor UUID and shaft angle. Commit sets the motor's current position to zero. For firmware, prepare with `MOTOR_CONFIGURATION_KIND_FIRMWARE` and review the installed and target versions. The server caches the setup tool’s pinned release catalog and verifies the image digest for the detected motor family. The simulated CAN transport uses a small fixture image and the emulator keeps its calibration and firmware version in memory.
 
 ```sh
 motor_config GetMotorConfiguration '{"id":"<operation ID>"}'
