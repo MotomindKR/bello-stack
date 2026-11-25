@@ -14,6 +14,8 @@ pub const NAMES: [&str; 3] = ["birds_eye", "right_gripper", "left_gripper"];
 pub const WIDTH: u32 = 640;
 pub const HEIGHT: u32 = 360;
 pub const FPS: u32 = 30;
+/// Recommended WatchFrames client receive limit for the largest supported camera.
+pub const MAX_FRAME_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
 
 pub fn monotonic_ns() -> u64 {
     let mut time = libc::timespec {
@@ -106,8 +108,15 @@ impl Frames {
                 "frame clock does not match its declared source",
             ));
         }
-        if frame.jpeg.len() > 2 * 1024 * 1024
-            || !frame.jpeg.starts_with(&[0xff, 0xd8])
+        // Keep retained JPEGs bounded per camera, including room for JPEG headers.
+        let camera = &self.cameras[i];
+        let rgb_bytes = camera.width as usize * camera.height as usize * 3;
+        if frame.jpeg.len() > (rgb_bytes + 64 * 1024).max(2 * 1024 * 1024) {
+            return Err(Status::out_of_range(
+                "JPEG exceeds the configured camera frame budget",
+            ));
+        }
+        if !frame.jpeg.starts_with(&[0xff, 0xd8])
             || !frame.jpeg.ends_with(&[0xff, 0xd9])
             || frame.capture_ns == 0
             || frame.received_ns < frame.capture_ns

@@ -130,6 +130,8 @@ cargo run -p bello-hardwared -- --config components/bello-hardwared/config/milly
 
 The service at `/tmp/bello-milly-stereo.sock` publishes one `stereo` stream. Each 3200 × 1200 JPEG contains the left and right 1600 × 1200 exposures from one simulation snapshot. Use the [mono profile](config/cameras_milly_mono.yaml) for a single 1600 × 1200 stream from the left lens.
 
+For high-resolution streams, allow 32 MiB per gRPC response (`MAX_FRAME_MESSAGE_BYTES` in Rust or `grpc.max_receive_message_length` in Python). Detailed scenes can exceed the common 4 MiB client default. GStreamer and gRPC carry the original encoded JPEG at the same quality.
+
 To discover the local socket, run the following command from the repository root. Pass the returned `localSources.stereo.unixfdSocket` to `unixfdsrc` on the same host. Discover it again when the publisher restarts.
 
 ```sh

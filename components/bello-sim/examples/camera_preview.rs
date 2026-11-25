@@ -43,10 +43,11 @@ fn main() -> Result<()> {
             let mut cameras = cameras::Capture::start(settings, &config, &robot.simulation)?;
             let start = Instant::now();
             while start.elapsed().as_secs_f64() < seconds {
+                cameras.check_running()?;
                 cameras.sample(&robot.simulation);
                 std::thread::sleep(Duration::from_micros(1000));
             }
-            Ok(())
+            cameras.finish_preview()
         }
     }
 }
