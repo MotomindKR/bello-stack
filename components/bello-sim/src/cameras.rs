@@ -118,6 +118,34 @@ impl Capture {
             dropped: 0,
         })
     }
+    /// Poll only from the preview process, outside the physics sampling path.
+    pub fn check_running(&mut self) -> Result<()> {
+        if let Some(status) = self.child.try_wait()? {
+            anyhow::bail!("camera renderer exited early: {status}");
+        }
+        Ok(())
+    }
+
+    /// Queue a shutdown after the final snapshot so startup and render errors reach the caller.
+    pub fn finish_preview(mut self) -> Result<()> {
+        self.check_running()?;
+        self.socket.set_nonblocking(false)?;
+        self.socket
+            .set_write_timeout(Some(Duration::from_secs(5)))?;
+        self.socket
+            .send(&[])
+            .context("request camera renderer shutdown")?;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(status) = self.child.try_wait()? {
+                ensure!(status.success(), "camera renderer failed: {status}");
+                return Ok(());
+            }
+            ensure!(Instant::now() < deadline, "camera renderer did not finish");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     /// No rendering, waiting, serialization allocation or filesystem access in physics.
     pub fn sample(&mut self, source: &Simulation) {
         self.sample_data(&source.data);
@@ -167,6 +195,9 @@ impl Drop for Capture {
             "Camera snapshot attempts: {}, dropped: {}",
             self.sequence, self.dropped
         );
+        if self.child.try_wait().ok().flatten().is_some() {
+            return;
+        }
         let _ = nix::sys::signal::kill(
             nix::unistd::Pid::from_raw(self.child.id() as i32),
             nix::sys::signal::Signal::SIGTERM,
@@ -392,8 +423,15 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
             }
             Err(e) => return Err(e.into()),
         };
+        if size == 0 {
+            break;
+        }
         input.set_nonblocking(true)?;
         while let Ok(n) = input.recv(&mut packet) {
+            if n == 0 {
+                stop.store(true, Ordering::Release);
+                break;
+            }
             ensure!(n == size, "snapshot shape changed");
             latest[..n].copy_from_slice(&packet[..n]);
         }
@@ -453,7 +491,7 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
                 None => first,
             };
             let jpeg = encoder.encode(image)?;
-            publisher.publish(proto::Frame {
+            let result = publisher.publish(proto::Frame {
                 name: c.name.clone(),
                 sequence,
                 capture_ns,
@@ -461,7 +499,17 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
                 jpeg,
                 flags: 0,
                 simulation_time_ns: Some((simtime * 1e9).round() as u64),
-            })?;
+            });
+            if let Err(error) = result {
+                if error
+                    .downcast_ref::<tonic::Status>()
+                    .is_some_and(|s| s.code() == tonic::Code::OutOfRange)
+                {
+                    eprintln!("Skipping {} frame {sequence}: {error}", c.name);
+                } else {
+                    return Err(error);
+                }
+            }
         }
     }
     server.abort();
