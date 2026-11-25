@@ -12,6 +12,7 @@
         let
           pkgs = import nixpkgs { inherit system; };
           inherit (pkgs.stdenv.hostPlatform) isLinux;
+          mediaPlugins = with pkgs.gst_all_1; [ gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad ];
           runtimeLibraries = with pkgs; [
             stdenv.cc.cc.lib
             libglvnd
@@ -39,12 +40,13 @@
               ]))
               ruff
               uv
-            ] ++ pkgs.lib.optionals isLinux (with pkgs; [
+            ] ++ mediaPlugins ++ pkgs.lib.optionals isLinux (with pkgs; [
               can-utils
               ffmpeg
               iproute2
               mujoco
             ]);
+            GST_PLUGIN_SYSTEM_PATH_1_0 = pkgs.lib.makeSearchPath "lib/gstreamer-1.0" mediaPlugins;
             RUST_BACKTRACE = "1";
             # Path flakes copy in-tree Cargo artifacts into the Nix store.
             shellHook = ''

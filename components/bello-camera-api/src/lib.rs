@@ -5,6 +5,8 @@ pub mod proto {
     #![allow(clippy::double_must_use)]
     tonic::include_proto!("bello.camera.v1");
 }
+#[cfg(feature = "gstreamer")]
+pub mod media;
 pub mod socket;
 pub const FILE_DESCRIPTOR_SET: &[u8] =
     tonic::include_file_descriptor_set!("bello_camera_v1_descriptor");
@@ -33,6 +35,7 @@ struct Slot {
 #[derive(Clone)]
 pub struct Frames {
     cameras: Arc<Vec<proto::Camera>>,
+    local_sources: Arc<std::collections::HashMap<String, proto::LocalCameraSource>>,
     slots: Arc<Vec<Slot>>,
 }
 impl Frames {
@@ -54,7 +57,7 @@ impl Frames {
         }
         Self::configured(cameras)
     }
-    /// General camera sets (e.g. a synchronized stereo pair). Legacy `new` stays strict.
+    /// Accepts independently named logical streams with their encoded dimensions.
     pub fn configured(cameras: Vec<proto::Camera>) -> Result<Self, Status> {
         let names: std::collections::BTreeSet<_> = cameras.iter().map(|c| &c.name).collect();
         if cameras.is_empty()
@@ -82,6 +85,7 @@ impl Frames {
             .collect();
         Ok(Self {
             cameras: Arc::new(cameras),
+            local_sources: Default::default(),
             slots: Arc::new(slots),
         })
     }
@@ -89,6 +93,9 @@ impl Frames {
         &self.cameras
     }
     pub fn publish(&self, frame: proto::Frame) -> Result<(), Status> {
+        self.publish_shared(Arc::new(frame))
+    }
+    fn publish_shared(&self, frame: Arc<proto::Frame>) -> Result<(), Status> {
         let i = self
             .cameras
             .iter()
@@ -107,7 +114,6 @@ impl Frames {
         {
             return Err(Status::invalid_argument("invalid camera frame"));
         }
-        let frame = Arc::new(frame);
         self.slots[i].latest.send_replace(Some(frame.clone()));
         let _ = self.slots[i].ordered.send(frame);
         Ok(())
@@ -122,6 +128,7 @@ impl proto::camera_source_service_server::CameraSourceService for Frames {
     ) -> Result<Response<proto::GetCamerasResponse>, Status> {
         Ok(Response::new(proto::GetCamerasResponse {
             cameras: self.cameras.as_ref().clone(),
+            local_sources: self.local_sources.as_ref().clone(),
         }))
     }
     type WatchFramesStream = Pin<
@@ -247,7 +254,7 @@ mod tests {
         );
     }
     #[test]
-    fn stereo_formats_are_explicit_and_legacy_constructor_stays_strict() {
+    fn configured_camera_sets_accept_custom_names_and_dimensions() {
         let cameras = ["left", "right"]
             .map(|name| proto::Camera {
                 name: name.into(),

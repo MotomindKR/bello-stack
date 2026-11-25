@@ -60,12 +60,16 @@ and run `python scripts/milly_collisions.py`.
 
 Set `cameras` in the emulator profile to the path to a [camera configuration](config/cameras_mini_torso.yaml).
 Measure the mounting transforms and intrinsics before using the images for calibrated work.
-The cameras capture the same physics snapshot and publish JPEGs through
-[the camera gRPC service](../bello-camera-api/proto/bello/camera/v1/camera.proto).
-[bello-camerad](https://github.com/MotomindKR/bello_webxr_teleop/tree/main/crates/cameras) streams these frames or physical camera feeds over WebRTC. Lens distortion is not simulated.
+Each named stream has either a `mono` lens or a `stereo` pair with `left` and `right` lenses.
+The configured width and height apply to each eye. The simulator applies each lens’s optional
+fisheye calibration, packs stereo left-to-right, then uses GStreamer to encode one JPEG.
+`GetCameras` reports the encoded dimensions, layout and host-local GStreamer socket.
+`WatchFrames` delivers the same JPEG with its capture timestamp and sequence number.
+The dashboard handles WebRTC signaling. Physical Milly telepresence reads the USB camera directly.
+
 A camera failure interrupts the stream while physics continues.
 
-Preview the cameras without CAN devices:
+Preview the cameras without CAN devices from the Nix shell. Native installations need GStreamer 1.28 or later with the base, good, and bad plugins.
 
 ```sh
 cargo run -p bello-sim --example camera_preview -- preview \
@@ -124,6 +128,17 @@ cargo run -p bello-sim -- run --config components/bello-sim/config/emulator_mill
 cargo run -p bello-hardwared -- --config components/bello-hardwared/config/milly-7dof-gimbal-sim.yaml
 ```
 
-The camera service publishes left and right 1600 × 1200 JPEGs at `/tmp/bello-milly-stereo.sock`. Both eyes use one simulation snapshot. Pair the JPEGs by their shared sequence number and capture timestamp. The camera profile uses measured per-eye intrinsics, OpenCV fisheye coefficients and the inverse stereo extrinsics to place the right sensor relative to the left. The left optical centre is anchored half the measured baseline from the CAD midpoint. The ELP calibration comes from `bello-vr-telepresence/config/stereo.json` at revision `bded0439` (SHA-256 `f86832f946c464d0300e0463b04a67cd0b0d6687cde2fc89569c94b585059ab3`). [Stereo camera profile](config/cameras_milly_stereo.yaml)
+The service at `/tmp/bello-milly-stereo.sock` publishes one `stereo` stream. Each 3200 × 1200 JPEG contains the left and right 1600 × 1200 exposures from one simulation snapshot. Use the [mono profile](config/cameras_milly_mono.yaml) for a single 1600 × 1200 stream from the left lens.
+
+To discover the local socket, run the following command from the repository root. Pass the returned `localSources.stereo.unixfdSocket` to `unixfdsrc` on the same host. Discover it again when the publisher restarts.
+
+```sh
+grpcurl -plaintext -unix -import-path components/bello-camera-api/proto \
+  -proto bello/camera/v1/camera.proto /tmp/bello-milly-stereo.sock \
+  bello.camera.v1.CameraSourceService/GetCameras
+gst-launch-1.0 unixfdsrc socket-path="$CAMERA_SOCKET" ! jpegdec ! videoconvert ! autovideosink
+```
+
+The camera profile uses measured per-eye intrinsics, OpenCV fisheye coefficients and the inverse stereo extrinsics to place the right sensor relative to the left. The left optical centre is anchored half the measured baseline from the CAD midpoint. The ELP calibration comes from `bello-vr-telepresence/config/stereo.json` at revision `bded0439` (SHA-256 `f86832f946c464d0300e0463b04a67cd0b0d6687cde2fc89569c94b585059ab3`). [Stereo camera profile](config/cameras_milly_stereo.yaml)
 
 To configure another camera, set the dimensions and specify each optical pose as XYZ in metres followed by a WXYZ quaternion. Supply fx, fy, cx and cy in sensor pixels. Omit the four fisheye coefficients for pinhole projection. The model profile holds provisional auxiliary inertias for the gimbal and gripper linkages. [Simulation model](config/milly_7dof_gimbal.yaml)

@@ -7,8 +7,8 @@ fn rendered_markers_match_calibrated_pixels_through_pitch_yaw_and_roll() {
     use mujoco_rs::prelude::*;
     use nalgebra::{UnitQuaternion, Vector3};
 
-    // Verify actual rendered pixels, not a second implementation of the
-    // assumed frustum. This catches changes in mjr_render's field semantics.
+    // Each colored sphere should land within one pixel of its calibrated
+    // position as the gimbal turns.
     let _gl = crate::cameras::context::Context::new().unwrap();
     let model = MjModel::from_xml_string(
         r#"<mujoco><visual>
