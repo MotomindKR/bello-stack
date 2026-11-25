@@ -27,7 +27,6 @@ pub(super) struct PendingWrite {
 
 pub(super) struct Journal {
     path: PathBuf,
-    _lock: File,
 }
 
 pub(super) fn state_directory() -> Result<PathBuf> {
@@ -55,26 +54,28 @@ pub(super) fn check_clear(path: &Path) -> Result<()> {
     Ok(())
 }
 
-impl Journal {
-    fn lock(path: &Path) -> Result<Self> {
-        let lock = File::options()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(path.with_added_extension("lock"))
-            .context("opening motor configuration journal lock")?;
-        lock.try_lock()
-            .context("another process owns this motor configuration journal")?;
-        Ok(Self {
-            path: path.into(),
-            _lock: lock,
+pub(super) fn claim_transports(directory: &Path, topology: &ResolvedTopology) -> Result<Vec<File>> {
+    fs::create_dir_all(directory).context("creating hardwared state directory")?;
+    topology
+        .buses()
+        .map(|(_, bus)| {
+            let path = journal_path(directory, bus).with_extension("lock");
+            let lock = File::options()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(path)?;
+            lock.try_lock().with_context(|| {
+                format!("another hardwared process owns {}", bus.transport.label())
+            })?;
+            Ok(lock)
         })
-    }
+        .collect()
+}
 
+impl Journal {
     pub(super) fn begin(path: &Path, record: &PendingWrite) -> Result<Self> {
-        fs::create_dir_all(path.parent().context("missing journal directory")?)?;
-        let journal = Self::lock(path)?;
         let mut tmp =
             tempfile::NamedTempFile::new_in(path.parent().context("missing journal directory")?)?;
         tmp.write_all(serde_yaml::to_string(record)?.as_bytes())?;
@@ -82,7 +83,7 @@ impl Journal {
         tmp.persist_noclobber(path)
             .context("recording motor configuration before write")?;
         sync_parent(path)?;
-        Ok(journal)
+        Ok(Self { path: path.into() })
     }
 
     pub(super) fn clear(&self) -> Result<()> {
@@ -103,6 +104,7 @@ pub fn verify_motor_configuration(config: impl AsRef<Path>) -> Result<()> {
     let topology = ResolvedTopology::load(config)?;
     topology.validate_platform()?;
     let directory = state_directory()?;
+    let _ownership = claim_transports(&directory, &topology)?;
     let pending = topology
         .buses()
         .map(|(_, bus)| journal_path(&directory, bus))
@@ -115,7 +117,7 @@ pub fn verify_motor_configuration(config: impl AsRef<Path>) -> Result<()> {
     );
     let buses = BusManager::start(&topology, Telemetry::new(16))?;
     for path in pending {
-        let journal = Journal::lock(&path)?;
+        let journal = Journal { path: path.clone() };
         let record: PendingWrite = serde_yaml::from_reader(
             File::open(&path).context("opening pending motor configuration")?,
         )?;

@@ -298,7 +298,7 @@ a production control path until its timing impact has been evaluated.
 
 ## Re-zero a motor or update its firmware
 
-Support the mechanism at its intended motor-zero pose before disabling torque. Disable and release every group sharing the target CAN bus. Stop other CAN tools and hand drivers on that bus. Hardwared keeps its adapter open throughout maintenance. A group spanning two buses stays unavailable for motion while either bus is reserved.
+Support the mechanism at its intended motor-zero pose before disabling torque. Disable and release every group sharing the target CAN bus. Stop other CAN tools and hand drivers on that bus. Hardwared confirms every configured motor on that bus reports stopped and fault-free before suspending feedback. Daemons using the same state directory claim each transport exclusively. A group spanning two buses stays unavailable for motion while either bus is reserved.
 
 Use `MotorConfigurationService` on a loopback TCP, Unix socket, or mutually authenticated TLS listener. For example, from the repository root with the Milly simulator running on localhost:
 

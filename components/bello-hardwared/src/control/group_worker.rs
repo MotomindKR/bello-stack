@@ -113,14 +113,6 @@ impl GroupWorker {
         self.handle.clone()
     }
 
-    fn request_shutdown_inner(&self) {
-        self.handle.shutdown.store(true, Ordering::Release);
-        if let Some(pending) = self.handle.command_mailbox.lock().take() {
-            let _ = pending.reply.send(Err(CommandError::ControllerStopped));
-        }
-        let _ = self.handle.wake_tx.try_send(());
-    }
-
     fn join_inner(&mut self) {
         if let Some(join) = self.join.take()
             && join.join().is_err()
@@ -130,18 +122,18 @@ impl GroupWorker {
     }
 
     pub(crate) fn request_shutdown(&self) {
-        self.request_shutdown_inner();
+        self.handle.request_shutdown();
     }
 
     pub(crate) fn shutdown(mut self) {
-        self.request_shutdown_inner();
+        self.handle.request_shutdown();
         self.join_inner();
     }
 }
 
 impl Drop for GroupWorker {
     fn drop(&mut self) {
-        self.request_shutdown_inner();
+        self.handle.request_shutdown();
         self.join_inner();
     }
 }

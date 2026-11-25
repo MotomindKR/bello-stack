@@ -45,6 +45,7 @@ pub struct HardwareDaemon {
     motor_workers: MotorManager,
     bus_workers: BusManager,
     serial_workers: SerialManager,
+    _transport_ownership: Vec<std::fs::File>,
 }
 
 impl HardwareDaemon {
@@ -53,6 +54,10 @@ impl HardwareDaemon {
         telemetry: Telemetry,
         state_directory: std::path::PathBuf,
     ) -> Result<Arc<Self>> {
+        let ownership = super::journal::claim_transports(&state_directory, &topology)?;
+        for (_, bus) in topology.buses() {
+            super::journal::check_clear(&super::journal::journal_path(&state_directory, bus))?;
+        }
         let bus_workers = BusManager::start(&topology, telemetry.clone())?;
         let motor_workers = MotorManager::start(&topology, &bus_workers, telemetry.clone())?;
         let serial_workers = SerialManager::start(&topology, telemetry.clone())?;
@@ -100,6 +105,7 @@ impl HardwareDaemon {
             motor_workers,
             bus_workers,
             serial_workers,
+            _transport_ownership: ownership,
         });
         for (name, board) in daemon.topology.power_boards() {
             let serial = daemon.serial_workers.handle(&board.serial_device)?;
@@ -335,6 +341,11 @@ impl HardwareDaemon {
                 return;
             }
         }
+        for (name, handle) in &self.groups {
+            if !self.configuration.blocks(name) {
+                handle.request_shutdown();
+            }
+        }
         self.configuration.drain();
         let workers = std::mem::take(&mut *self.group_workers.lock());
         for worker in &workers {
@@ -380,9 +391,9 @@ mod tests {
         }
         config.power_boards.clear();
         let topology = ResolvedTopology::resolve(config).unwrap();
+        let directory = tempfile::tempdir().unwrap();
         let daemon =
-            HardwareDaemon::start(topology, Telemetry::new(4096), std::path::PathBuf::new())
-                .unwrap();
+            HardwareDaemon::start(topology, Telemetry::new(4096), directory.path().into()).unwrap();
         let leases = daemon
             .groups
             .keys()

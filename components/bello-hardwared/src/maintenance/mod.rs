@@ -231,6 +231,22 @@ impl<'a> Link<'a> {
 
     fn preflight(&self, peers: &[u8]) -> Result<([u8; 8], Version, f64)> {
         self.discard_pending()?;
+        for &id in peers.iter().chain(std::iter::once(&self.id)) {
+            self.wire.send(active_report_frame(self.host, id, true))?;
+            let status = self
+                .wait_for(STOP_TIMEOUT, |frame| {
+                    (frame.id >> 24 == u32::from(FEEDBACK)
+                        && (frame.id >> 8) as u8 == id
+                        && frame.id as u8 == self.host
+                        && !frame.data.starts_with(&[0, 0xc4, 0x56]))
+                    .then_some((frame.id >> 16) as u8)
+                })?
+                .with_context(|| format!("motor {id} did not confirm stopped mode"))?;
+            ensure!(
+                status == 0,
+                "motor {id} must report stopped mode without faults"
+            );
+        }
         self.wire.send(stop_frame(self.host, self.id, false))?;
         for &id in peers.iter().chain(std::iter::once(&self.id)) {
             self.wire.send(active_report_frame(self.host, id, false))?;
@@ -332,7 +348,7 @@ impl<'a> Link<'a> {
                 check.clear();
             }
             thread::sleep(
-                Duration::from_millis(20).min(deadline.saturating_duration_since(Instant::now())),
+                Duration::from_millis(10).min(deadline.saturating_duration_since(Instant::now())),
             );
         }
         anyhow::bail!("Could not confirm stopped mode and a stationary shaft")

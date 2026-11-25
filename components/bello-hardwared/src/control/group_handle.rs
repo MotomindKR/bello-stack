@@ -77,6 +77,14 @@ pub struct GroupHandle {
 }
 
 impl GroupHandle {
+    pub(crate) fn request_shutdown(&self) {
+        self.shutdown.store(true, Ordering::Release);
+        if let Some(pending) = self.command_mailbox.lock().take() {
+            let _ = pending.reply.send(Err(CommandError::ControllerStopped));
+        }
+        let _ = self.wake_tx.try_send(());
+    }
+
     #[cfg(test)]
     pub(crate) fn lease_generation_for_test(&self) -> u64 {
         self.lease_generation.load(Ordering::Acquire)

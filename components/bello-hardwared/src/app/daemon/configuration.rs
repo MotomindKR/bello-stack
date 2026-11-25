@@ -263,17 +263,22 @@ impl HardwareDaemon {
                 host,
                 &prepared,
                 || {
-                    let _gate = self.lease_gate.lock();
-                    ensure!(
-                        !self.shutting_down.load(Ordering::Acquire)
-                            && !self.emergency_blocked.load(Ordering::Acquire)
-                            && !self.configuration.jobs.lock()[id].cancel,
-                        "configuration interrupted before write"
-                    );
-                    journal = Some(Journal::begin(
+                    let pending = Journal::begin(
                         &crate::app::journal::journal_path(&self.state_directory, &handle.spec),
                         &record,
-                    )?);
+                    )?;
+                    let authorized = {
+                        let _gate = self.lease_gate.lock();
+                        !self.shutting_down.load(Ordering::Acquire)
+                            && !self.emergency_blocked.load(Ordering::Acquire)
+                            && !self.configuration.jobs.lock()[id].cancel
+                    };
+                    journal = Some(pending);
+                    if !authorized {
+                        journal.as_ref().unwrap().clear()?;
+                        journal = None;
+                        anyhow::bail!("configuration interrupted before write");
+                    }
                     Ok(())
                 },
                 |value| {

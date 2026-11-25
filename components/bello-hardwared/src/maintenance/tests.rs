@@ -25,6 +25,7 @@ struct MotorOnWire {
     position: f64,
     moving: bool,
     noisy: bool,
+    enabled_peer: Option<u8>,
     fault_bits: u16,
     accept_zero: bool,
     ota: Option<OtaBehavior>,
@@ -49,6 +50,7 @@ impl Default for MotorOnWire {
             position: 0.4,
             moving: false,
             noisy: false,
+            enabled_peer: None,
             fault_bits: 0,
             accept_zero: true,
             ota: None,
@@ -76,7 +78,18 @@ impl Wire for RefCell<MotorOnWire> {
         let field = (frame.id >> 8) as u16;
         if kind == 24 {
             assert_eq!(field, u16::from(HOST));
-            assert_eq!(frame.data, [1, 2, 3, 4, 5, 6, 0, 0]);
+            if frame.data[6] != 0 {
+                let peer = frame.id as u8;
+                let mode = if motor.enabled_peer == Some(peer) {
+                    2
+                } else {
+                    0
+                };
+                motor.received.push_back(Frame {
+                    id: (2 << 24) | (mode << 22) | (u32::from(peer) << 8) | u32::from(HOST),
+                    data: [0; 8],
+                });
+            }
             return Ok(());
         }
         assert_eq!(frame.id as u8, ID);
@@ -188,6 +201,26 @@ fn write_kinds(wire: &RefCell<MotorOnWire>) -> Vec<u32> {
 }
 
 #[test]
+fn enabled_peer_refuses_maintenance_before_stopping_or_silencing_motors() {
+    let wire = RefCell::new(MotorOnWire {
+        enabled_peer: Some(8),
+        ..MotorOnWire::default()
+    });
+    let spec = motor();
+    let error = Link::new(&wire, &spec, HOST)
+        .prepare(&[ID, 8], false, true)
+        .err()
+        .expect("an externally enabled peer must block maintenance");
+    assert!(error.to_string().contains("motor 8"));
+    assert!(
+        wire.borrow()
+            .sent
+            .iter()
+            .all(|frame| frame.id >> 24 == 24 && frame.data[6] != 0)
+    );
+}
+
+#[test]
 fn ota_retries_wrong_ack_rewinds_and_verifies_after_lost_end_ack() {
     let wire = RefCell::new(MotorOnWire {
         ota: Some(OtaBehavior {
@@ -224,7 +257,7 @@ fn ota_retries_wrong_ack_rewinds_and_verifies_after_lost_end_ack() {
             wire.borrow()
                 .sent
                 .iter()
-                .filter(|f| f.id >> 24 == 24 && f.id as u8 == id)
+                .filter(|f| f.id >> 24 == 24 && f.id as u8 == id && f.data[6] == 0)
                 .count(),
             if id == ID { 3 } else { 2 },
         );
