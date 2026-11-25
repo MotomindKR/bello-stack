@@ -69,5 +69,10 @@ jobs:
           sudo modprobe vcan
           sudo ip link add dev vcan0 type vcan
           sudo ip link set dev vcan0 up
+      - name: Test Linker O6 on two isolated Linux CAN pairs
+        run: |
+          cmp components/bello-hand/LICENSE LICENSE
+          sudo modprobe vxcan
+          sudo env PATH=/usr/sbin:/usr/bin:/sbin:/bin bash components/bello-hand/tests/run-socketcan.sh
       - name: Test the SocketCAN backend
         run: nix develop --command cargo e2e-vcan

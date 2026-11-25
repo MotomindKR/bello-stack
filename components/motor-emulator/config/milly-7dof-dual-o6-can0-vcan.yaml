@@ -1,0 +1,10 @@
+interface: vcan0
+host_id: 0
+actuators:
+  - { id: 1, model: RS_06 }
+  - { id: 2, model: RS_03, direction: -1 }
+  - { id: 3, model: RS_10P, direction: -1 }
+  - { id: 4, model: RS_06, direction: -1 }
+  - { id: 5, model: RS_00 }
+  - { id: 6, model: RS_00, direction: -1 }
+  - { id: 7, model: RS_05 }

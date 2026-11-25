@@ -239,6 +239,7 @@ mod tests {
             ("milly-7dof-dual", "milly-7dof/hardware-dual.yaml"),
             ("milly-7dof-gimbal", "milly-7dof-gimbal/hardware.yaml"),
             ("stereo-gimbal", "stereo-gimbal/hardware.yaml"),
+            ("milly-7dof-dual-o6", "milly-7dof-o6/hardware.yaml"),
         ] {
             let path = root.join("../../descriptions").join(inventory);
             let inventory: Inventory =
