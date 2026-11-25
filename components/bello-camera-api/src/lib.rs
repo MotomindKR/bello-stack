@@ -99,8 +99,7 @@ impl Frames {
                 "frame clock does not match its declared source",
             ));
         }
-        if frame.metadata_json.len() > 64 * 1024
-            || frame.jpeg.len() > 2 * 1024 * 1024
+        if frame.jpeg.len() > 2 * 1024 * 1024
             || !frame.jpeg.starts_with(&[0xff, 0xd8])
             || !frame.jpeg.ends_with(&[0xff, 0xd9])
             || frame.capture_ns == 0
@@ -207,7 +206,6 @@ mod tests {
             jpeg: vec![0xff, 0xd8, 0xff, 0xd9],
             flags: 0,
             simulation_time_ns: Some(sequence),
-            metadata_json: String::new(),
         }
     }
     #[tokio::test]
@@ -268,8 +266,7 @@ mod tests {
         assert!(Frames::configured(duplicate).is_err());
         let mut value = frame(1);
         value.name = "left".into();
-        value.metadata_json = "x".repeat(65537);
-        assert!(stereo.publish(value).is_err());
+        stereo.publish(value).unwrap();
     }
     #[test]
     fn invalid_source_clock_and_camera_mapping_are_rejected() {
