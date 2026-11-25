@@ -39,6 +39,8 @@ cross-object checks live in
 
 The [seven-axis Milly](../descriptions/milly-7dof/) and [dual stereo fixture](../descriptions/milly-7dof-gimbal/) have physical, loopback simulation and vCAN deployments.
 
+Both [dual Milly O6](../descriptions/milly-7dof-o6/) and [O6 with stereo gimbal](../descriptions/milly-7dof-o6-gimbal/) pair the arm deployment with a [standalone Linux hand driver](../components/bello-hand/). The hand driver reads the same SocketCAN interface bindings as hardwared.
+
 ## Document structure
 
 Unknown fields are rejected at every YAML object boundary. This catches

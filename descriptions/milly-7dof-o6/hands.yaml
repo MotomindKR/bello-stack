@@ -1,0 +1,13 @@
+# Standard CAN IDs from Linkerbot's O6 SDK. Confirm the installed units at commissioning.
+hardware: hardware.yaml
+hands:
+  left:
+    model: linker_o6
+    bus: can0
+    can_id: 0x28
+    palm_frame: left_palm_eef
+  right:
+    model: linker_o6
+    bus: can1
+    can_id: 0x27
+    palm_frame: right_palm_eef

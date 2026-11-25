@@ -176,3 +176,51 @@ fn mounted_stereo_and_arms_move_independently() {
     rig.set("right_joint_4", 1.2);
     assert_pose(rig.pose(optical), tilted);
 }
+
+#[test]
+fn dual_o6_profile_places_rigid_palms_on_each_seventh_axis() {
+    for (profile, motor_count) in [
+        ("milly-7dof-o6/urdf/milly-7dof-dual-o6.urdf", 14),
+        ("milly-7dof-o6-gimbal/urdf/milly-7dof-o6-gimbal.urdf", 17),
+    ] {
+        let mut rig = Fixture::load(profile);
+        assert_eq!(rig.joints.len(), motor_count);
+        assert!(rig.robot.slider_cranks().is_empty());
+        if motor_count == 17 {
+            let optical = rig.pose("stereo_camera_optical_frame");
+            assert!(rig.robot.link("center_d405_link").is_none());
+            assert!((optical.translation.z - 0.611).abs() < 1e-9);
+            assert!((optical.rotation * Vector3::z() + Vector3::x()).norm() < 1e-9);
+        }
+        for (side, thumb) in [("left", -1.0), ("right", 1.0)] {
+            let hand = rig.robot.link(&format!("{side}_o6_hand")).unwrap();
+            let [collider] = hand.collisions.as_slice() else {
+                panic!("expected one {side} palm collider")
+            };
+            let Geometry::Box { size } = &collider.geometry else {
+                panic!("expected a palm box")
+            };
+            assert!((size - Vector3::new(0.040, 0.07672, 0.11273)).norm() < 1e-9);
+            assert_pose(
+                collider.origin,
+                Isometry3::translation(0.0, -thumb * 0.00076, 0.056365),
+            );
+
+            let palm = format!("{side}_palm_eef");
+            assert!(rig.robot.link(&format!("{side}_camera_link")).is_none());
+            assert!(rig.robot.link(&palm).unwrap().collisions.is_empty());
+            rig.set(&format!("{side}_joint_2"), 1.15);
+            rig.set(&format!("{side}_joint_4"), 1.15);
+            let home = rig.pose(&palm);
+            assert!((home.rotation * Vector3::y() * thumb - Vector3::z()).norm() < 1e-5);
+            assert!((home.rotation * Vector3::x() + Vector3::y() * thumb).norm() < 1e-5);
+            let rotor = rig.pose(&format!("{side}_link_7_rotor"));
+            let offset = rotor.inv_mul(&home).translation.vector;
+            assert!((offset - Vector3::new(-0.102694, 0.0, 0.0)).norm() < 1e-8);
+            rig.set(&format!("{side}_joint_7"), 0.5);
+            let rolled = rig.pose(&palm);
+            assert!((home.rotation.angle_to(&rolled.rotation) - 0.5).abs() < 1e-8);
+            assert!((home.translation.vector - rolled.translation.vector).norm() < 1e-8);
+        }
+    }
+}

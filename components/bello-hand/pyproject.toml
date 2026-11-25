@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling>=1.30,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bello-hand"
+version = "0.1.0"
+description = "Linux SocketCAN hand control for Bello robots"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+readme = "README.md"
+classifiers = ["Private :: Do Not Upload", "Operating System :: POSIX :: Linux"]
+dependencies = ["PyYAML>=6,<7"]
+
+[project.scripts]
+bello-hand = "bello_hand.__main__:main"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
