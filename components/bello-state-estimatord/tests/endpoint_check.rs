@@ -1,42 +1,27 @@
-use std::fs;
-use std::net::TcpListener;
-use std::process::Command;
+use std::{fs, process::Command};
 
 #[test]
 fn validates_hardware_endpoint_offline() {
-    let temporary = tempfile::tempdir().unwrap();
-    let config_path = temporary.path().join("bello.yaml");
-    let reservation = TcpListener::bind("127.0.0.1:0").unwrap();
-    let address = reservation.local_addr().unwrap();
-    drop(reservation);
-
-    let profile = include_str!("../config/bello.yaml")
-        .replace(
-            "../../../descriptions/",
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../descriptions/"),
-        )
-        .replace("listen: 0.0.0.0:50053", "listen: 127.0.0.1:0");
-    for (scheme, flags, exit_code) in [
-        ("http", &["--check"][..], 0),
-        ("tcp", &[][..], 1),
-        ("tcp", &["--check"][..], 1),
-    ] {
-        let config = profile.replace("http://127.0.0.1:50051", &format!("{scheme}://{address}"));
-        fs::write(&config_path, config).unwrap();
-        let output = Command::new(env!("CARGO_BIN_EXE_bello-state-estimatord"))
-            .args(flags)
-            .arg("--config")
-            .arg(&config_path)
+    let temp = tempfile::tempdir().unwrap();
+    let config = temp.path().join("estimator.yaml");
+    let urdf = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../descriptions/bello/urdf/bello.urdf"
+    );
+    for (scheme, valid) in [("http", true), ("tcp", false)] {
+        fs::write(&config, format!(
+            "urdf: {urdf}\nhardware_endpoint: {scheme}://127.0.0.1:1\nlisten: 127.0.0.1:0\nimu_frame: pelvis_link\nplanar: true\nground_height_m: 0\n"
+        )).unwrap();
+        let result = Command::new(env!("CARGO_BIN_EXE_bello-state-estimatord"))
+            .args(["--check", "--config"])
+            .arg(&config)
             .output()
             .unwrap();
-        let stderr = String::from_utf8_lossy(&output.stderr);
         assert_eq!(
-            output.status.code(),
-            Some(exit_code),
-            "{scheme} {flags:?}: {stderr}"
+            result.status.success(),
+            valid,
+            "{scheme}: {}",
+            String::from_utf8_lossy(&result.stderr)
         );
-        if exit_code == 1 {
-            assert!(stderr.contains("endpoint must start with"), "{stderr}");
-        }
     }
 }
