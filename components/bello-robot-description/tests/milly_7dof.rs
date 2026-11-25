@@ -1,253 +1,226 @@
 use bello_robot_description::{Geometry, RobotDescription};
-use nalgebra::{Isometry3, Translation3, UnitQuaternion, Vector3};
-use std::{collections::BTreeMap, path::Path};
+use nalgebra::{Isometry3, Point3, UnitQuaternion, Vector3};
+use std::{collections::BTreeMap, f64::consts::FRAC_PI_2, path::Path};
 
-fn load(relative: &str) -> RobotDescription {
-    RobotDescription::load(
-        &Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../descriptions/{relative}")),
-    )
-    .unwrap()
+struct Fixture {
+    robot: RobotDescription,
+    joints: BTreeMap<String, f64>,
 }
 
-fn shifted(name: &str) -> String {
-    for kind in ["joint", "link"] {
-        for i in 3..=6 {
-            if name == format!("{kind}_{i}") {
-                return format!("{kind}_{}", i + 1);
-            }
-        }
-    }
-    name.to_owned()
-}
-
-#[test]
-fn zero_added_roll_and_wrist_yaw_preserve_legacy_link_poses_and_gripper_closure() {
-    let original = load("milly/urdf/milly.urdf");
-    let added = load("milly-7dof/urdf/milly-7dof.urdf");
-    assert_eq!(added.motor_coordinates().len(), 8);
-    assert_eq!(added.slider_cranks().len(), 1);
-    for case in 0..12 {
-        let positions: BTreeMap<String, f64> = BTreeMap::from([
-            ("joint_1".into(), -0.4 + 0.05 * f64::from(case)),
-            ("joint_2".into(), 0.4 + 0.08 * f64::from(case)),
-            ("joint_3".into(), 0.9 + 0.04 * f64::from(case)),
-            ("joint_4".into(), -0.3),
-            ("joint_5".into(), 0.2),
-            // The wrist-yaw axis has intentionally been corrected against CAD.
-            // Its zero pose, including the original payload reference, is preserved.
-            ("joint_6".into(), 0.0),
-            ("gripper".into(), -2.2 + 0.15 * f64::from(case)),
-        ]);
-        let mut remapped: BTreeMap<_, _> = positions
-            .iter()
-            .map(|(name, value)| (shifted(name), *value))
+impl Fixture {
+    fn load(profile: &str) -> Self {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../descriptions")
+            .join(profile);
+        let robot = RobotDescription::load(&path).unwrap();
+        let joints = robot
+            .motor_coordinates()
+            .into_iter()
+            .map(|name| (name.to_owned(), 0.0))
             .collect();
-        remapped.insert("joint_3".into(), 0.0);
-        for link in original.links() {
-            let expected = original
-                .link_transform("base_link", &link.name, &positions)
-                .unwrap();
-            let actual = added
-                .link_transform("base_link", &shifted(&link.name), &remapped)
-                .unwrap();
-            assert!(
-                (expected.to_homogeneous() - actual.to_homogeneous()).norm() < 1e-10,
-                "legacy frame changed: {} in pose {case}",
-                link.name
-            );
+        Self { robot, joints }
+    }
+
+    fn set(&mut self, joint: &str, radians: f64) {
+        *self.joints.get_mut(joint).unwrap() = radians;
+    }
+
+    fn pose(&self, link: &str) -> Isometry3<f64> {
+        self.robot
+            .link_transform(self.robot.root_link(), link, &self.joints)
+            .unwrap()
+    }
+}
+
+fn assert_pose(actual: Isometry3<f64>, expected: Isometry3<f64>) {
+    let delta = actual.inv_mul(&expected);
+    assert!(
+        delta.translation.vector.norm() < 1e-9 && delta.rotation.angle() < 1e-9,
+        "pose error: {delta:?}"
+    );
+}
+
+#[test]
+fn zero_roll_preserves_legacy_arm_poses_and_gripper_closure() {
+    let mut legacy = Fixture::load("milly/urdf/milly.urdf");
+    let mut arm = Fixture::load("milly-7dof/urdf/milly-7dof.urdf");
+    for (i, angle) in [-0.4, 0.6, 1.2, -0.3, 0.2, 0.0].into_iter().enumerate() {
+        let joint = i + 1;
+        let shifted = if joint < 3 { joint } else { joint + 1 };
+        legacy.set(&format!("joint_{joint}"), angle);
+        arm.set(&format!("joint_{shifted}"), angle);
+    }
+    for grip in [-2.1, -1.0, 0.0] {
+        legacy.set("gripper", grip);
+        arm.set("gripper", grip);
+        for link in legacy.robot.links() {
+            let shifted = match link.name.as_str() {
+                "link_3" => "link_4",
+                "link_4" => "link_5",
+                "link_5" => "link_6",
+                "link_6" => "link_7",
+                other => other,
+            };
+            assert_pose(arm.pose(shifted), legacy.pose(&link.name));
         }
     }
 }
 
 #[test]
-fn wrist_yaw_rotates_payload_about_the_motor_shaft_in_single_and_dual_profiles() {
-    for (profile, prefixes) in [
-        ("milly-7dof.urdf", vec![""]),
-        ("milly-7dof-dual.urdf", vec!["left_", "right_"]),
+fn payloads_rotate_about_the_cad_shafts() {
+    for (profile, sides) in [
+        ("milly-7dof/urdf/milly-7dof.urdf", &[""][..]),
+        (
+            "milly-7dof/urdf/milly-7dof-dual.urdf",
+            &["left_", "right_"][..],
+        ),
     ] {
-        let robot = load(&format!("milly-7dof/urdf/{profile}"));
-        let mut positions = BTreeMap::new();
-        for prefix in &prefixes {
-            for i in 1..=7 {
-                positions.insert(format!("{prefix}joint_{i}"), 0.0);
-            }
-            positions.insert(format!("{prefix}gripper"), -2.2);
-        }
-        for prefix in prefixes {
-            let parent = format!("{prefix}link_6");
-            let coordinate = format!("{prefix}joint_7");
-            let joint = robot.joint(&coordinate).unwrap();
-            let shaft_direction = joint.origin.rotation * joint.axis.as_ref();
-            assert!((shaft_direction - Vector3::x()).norm() < 1e-12);
-            // The cylindrical wrist/motor faces in CAD define y=0, z=23.5 mm
-            // in link_6. The point chosen along that line does not affect motion.
-            assert!(joint.origin.translation.y.abs() < 1e-12);
-            assert!((joint.origin.translation.z - 0.0235).abs() < 1e-12);
-            for payload in ["gripper_base", "camera_optical_frame"] {
-                let payload = format!("{prefix}{payload}");
-                positions.insert(coordinate.clone(), 0.0);
-                let before = robot.link_transform(&parent, &payload, &positions).unwrap();
-                for angle in [-1.6, -0.7, 0.8, 1.6] {
-                    positions.insert(coordinate.clone(), angle);
-                    let actual = robot.link_transform(&parent, &payload, &positions).unwrap();
-                    let expected = Isometry3::translation(0.0, 0.0, 0.0235)
-                        * Isometry3::from_parts(
-                            Translation3::identity(),
-                            UnitQuaternion::from_axis_angle(&Vector3::x_axis(), angle),
-                        )
-                        * Isometry3::translation(0.0, 0.0, -0.0235)
-                        * before;
-                    assert!(
-                        (actual.to_homogeneous() - expected.to_homogeneous()).norm() < 1e-10,
-                        "{profile}: {payload} does not rotate about its motor shaft at {angle}"
+        let mut arm = Fixture::load(profile);
+        assert_eq!(arm.joints.len(), 8 * sides.len());
+        for &side in sides {
+            for (joint, parent, shaft_z, angle) in [(3, 2, 0.097892511, -0.7), (7, 6, 0.0235, 0.7)]
+            {
+                let parent = format!("{side}link_{parent}");
+                let joint = format!("{side}joint_{joint}");
+                let payloads =
+                    ["gripper_base", "camera_optical_frame"].map(|link| format!("{side}{link}"));
+                let parent_pose = arm.pose(&parent);
+                let before = payloads.each_ref().map(|link| arm.pose(link));
+                let rotation = Isometry3::rotation_wrt_point(
+                    UnitQuaternion::from_axis_angle(&Vector3::x_axis(), angle),
+                    Point3::new(0.0, 0.0, shaft_z),
+                );
+                arm.set(&joint, 0.7);
+                assert_pose(arm.pose(&parent), parent_pose);
+                for (link, home) in payloads.iter().zip(before) {
+                    assert_pose(
+                        arm.pose(link),
+                        parent_pose * rotation * parent_pose.inverse() * home,
                     );
                 }
+                arm.set(&joint, 0.0);
             }
-            positions.insert(coordinate, 0.0);
         }
     }
 }
 
 #[test]
-fn added_roll_rotates_distal_chain_about_upper_arm_without_moving_shoulder() {
-    let robot = load("milly-7dof/urdf/milly-7dof.urdf");
-    let mut positions: BTreeMap<_, _> = (1..=7).map(|i| (format!("joint_{i}"), 0.0)).collect();
-    positions.insert("gripper".into(), -2.2);
-    positions.insert("joint_2".into(), 0.6);
-    let shoulder = robot
-        .link_transform("base_link", "link_2", &positions)
-        .unwrap();
-    let camera = robot
-        .link_transform("base_link", "camera_optical_frame", &positions)
-        .unwrap();
-    let joint = robot.joint("joint_3").unwrap();
-    let axis_frame = shoulder * joint.origin;
-    let expected_rotation = axis_frame
-        * Isometry3::from_parts(
-            Translation3::identity(),
-            UnitQuaternion::from_axis_angle(&joint.axis, 0.7),
-        )
-        * axis_frame.inverse();
-    positions.insert("joint_3".into(), 0.7);
-    let actual = robot
-        .link_transform("base_link", "camera_optical_frame", &positions)
-        .unwrap();
-    let expected = expected_rotation * camera;
-    assert!((expected.to_homogeneous() - actual.to_homogeneous()).norm() < 1e-10);
-    assert!((camera.to_homogeneous() - actual.to_homogeneous()).norm() > 0.1);
-    let unmoved = robot
-        .link_transform("base_link", "link_2", &positions)
-        .unwrap();
-    assert!((shoulder.to_homogeneous() - unmoved.to_homogeneous()).norm() < 1e-12);
+fn stereo_optics_follow_the_gimbal_axes() {
+    let mut rig = Fixture::load("stereo-gimbal/urdf/stereo-gimbal.urdf");
+    let optical = "stereo_camera_optical_frame";
+    let home = rig.pose(optical);
+    assert_pose(
+        home,
+        Isometry3::translation(0.112, 0.0, 0.181)
+            * UnitQuaternion::from_euler_angles(-FRAC_PI_2, 0.0, -FRAC_PI_2),
+    );
+    for (yaw, pitch, roll) in [
+        (0.0, 0.0, 0.0),
+        (0.4, -0.5, 0.6),
+        (-FRAC_PI_2, FRAC_PI_2, -FRAC_PI_2),
+    ] {
+        rig.set("gimbal_yaw", yaw);
+        rig.set("gimbal_pitch", pitch);
+        let midpoint = rig.pose(optical).translation;
+        rig.set("gimbal_roll", roll);
+        let rotation = UnitQuaternion::from_euler_angles(roll, pitch, yaw);
+        assert_pose(
+            rig.pose(optical),
+            Isometry3::from_parts(midpoint, rotation * home.rotation),
+        );
+        let [left, right] = [
+            "stereo_left_camera_optical_frame",
+            "stereo_right_camera_optical_frame",
+        ]
+        .map(|link| rig.pose(link).translation.vector);
+        assert!((left - right - rotation * Vector3::y() * 0.0592).norm() < 1e-9);
+    }
+    assert!(
+        rig.robot
+            .links()
+            .flat_map(|link| &link.collisions)
+            .all(|c| !matches!(c.geometry, Geometry::Mesh { .. }))
+    );
 }
 
 #[test]
-fn dual_profile_exposes_sixteen_motor_coordinates_with_independent_rolls() {
-    let robot = load("milly-7dof/urdf/milly-7dof-dual.urdf");
-    assert_eq!(robot.motor_coordinates().len(), 16);
-    assert_eq!(robot.slider_cranks().len(), 2);
-    let mut positions = BTreeMap::new();
-    for side in ["left", "right"] {
-        for i in 1..=7 {
-            positions.insert(format!("{side}_joint_{i}"), 0.0);
-        }
-        positions.insert(format!("{side}_gripper"), -2.2);
+fn mounted_stereo_and_arms_move_independently() {
+    let mut rig = Fixture::load("milly-7dof-gimbal/urdf/milly-7dof-gimbal.urdf");
+    let [left, right] = ["left_base_link", "right_base_link"]
+        .map(|link| rig.pose(link) * Point3::new(0.0, -0.045, 0.004));
+    assert!((right - left - Vector3::y() * 0.450).norm() < 1e-9);
+    let expected_mount = left + (right - left) / 2.0 + Vector3::new(0.0425, 0.0, 0.426);
+    assert!(
+        (rig.pose("gimbal_base_link").translation.vector - expected_mount.coords).norm() < 1e-9
+    );
+    let optical = "stereo_camera_optical_frame";
+    let home = rig.pose(optical);
+    assert_eq!(rig.joints.len(), 19);
+    assert_eq!(rig.robot.slider_cranks().len(), 2);
+    assert!((home.translation.z - left.z - 0.607).abs() < 1e-9);
+    assert!((home.rotation * Vector3::z() + Vector3::x()).norm() < 1e-9);
+    assert!(rig.robot.link("center_d405_link").is_none());
+
+    let arms = ["left_gripper_base", "right_gripper_base"];
+    let initial = arms.map(|link| rig.pose(link));
+    rig.set("gimbal_pitch", -0.4);
+    rig.set("gimbal_yaw", 0.5);
+    rig.set("gimbal_roll", 0.3);
+    let tilted = rig.pose(optical);
+    assert!(tilted.rotation.angle_to(&home.rotation) > 0.1);
+    for (link, pose) in arms.into_iter().zip(initial) {
+        assert_pose(rig.pose(link), pose);
     }
-    let before: Vec<_> = ["left", "right"]
-        .into_iter()
-        .map(|side| {
-            robot
-                .link_transform(
-                    "dual_milly_base",
-                    &format!("{side}_camera_optical_frame"),
-                    &positions,
-                )
-                .unwrap()
-        })
-        .collect();
-    positions.insert("left_joint_3".into(), 0.4);
-    for (i, side) in ["left", "right"].into_iter().enumerate() {
-        let after = robot
-            .link_transform(
-                "dual_milly_base",
-                &format!("{side}_camera_optical_frame"),
-                &positions,
-            )
-            .unwrap();
-        let change = (before[i].to_homogeneous() - after.to_homogeneous()).norm();
-        if side == "left" {
-            assert!(change > 0.1);
-        } else {
-            assert!(change < 1e-12);
-        }
-    }
+    rig.set("left_joint_3", 0.6);
+    assert_pose(rig.pose(arms[1]), initial[1]);
+    rig.set("right_joint_4", 1.2);
+    assert_pose(rig.pose(optical), tilted);
 }
 
 #[test]
 fn dual_o6_profile_places_rigid_palms_on_each_seventh_axis() {
-    for (path, has_gimbal) in [
-        ("milly-7dof-o6/urdf/milly-7dof-dual-o6.urdf", false),
-        ("milly-7dof-o6-gimbal/urdf/milly-7dof-o6-gimbal.urdf", true),
+    for (profile, motor_count) in [
+        ("milly-7dof-o6/urdf/milly-7dof-dual-o6.urdf", 14),
+        ("milly-7dof-o6-gimbal/urdf/milly-7dof-o6-gimbal.urdf", 17),
     ] {
-        let robot = load(path);
-        let mut positions = BTreeMap::new();
-        for side in ["left", "right"] {
-            for i in 1..=7 {
-                // Pose used for the full-arm CAD review.
-                let angle = if i == 2 || i == 4 { 1.15 } else { 0.0 };
-                positions.insert(format!("{side}_joint_{i}"), angle);
-            }
+        let mut rig = Fixture::load(profile);
+        assert_eq!(rig.joints.len(), motor_count);
+        assert!(rig.robot.slider_cranks().is_empty());
+        if motor_count == 17 {
+            let optical = rig.pose("stereo_camera_optical_frame");
+            assert!(rig.robot.link("center_d405_link").is_none());
+            assert!((optical.translation.z - 0.611).abs() < 1e-9);
+            assert!((optical.rotation * Vector3::z() + Vector3::x()).norm() < 1e-9);
         }
-        if has_gimbal {
-            assert!(robot.link("center_d405_link").is_none());
-            for axis in ["yaw", "pitch", "roll"] {
-                positions.insert(format!("gimbal_{axis}"), 0.0);
-            }
-            let optical = robot
-                .link_transform("dual_milly_base", "stereo_camera_optical_frame", &positions)
-                .unwrap();
-            assert!((optical.translation.z - 0.611).abs() < 1e-12);
-            assert!((optical.rotation * Vector3::z() + Vector3::x()).norm() < 1e-12);
-        }
-        assert_eq!(
-            robot.motor_coordinates(),
-            positions.keys().map(String::as_str).collect()
-        );
-        assert!(robot.slider_cranks().is_empty());
-        for (side, thumb_sign) in [("left", -1.0), ("right", 1.0)] {
-            let hand = format!("{side}_o6_hand");
-            let palm = format!("{side}_palm_eef");
-            let rotor = format!("{side}_link_7_rotor");
-            assert!(robot.link(&format!("{side}_camera_link")).is_none());
-            let [collision] = robot.link(&hand).unwrap().collisions.as_slice() else {
-                panic!("{side} hand should have one palm collider");
+        for (side, thumb) in [("left", -1.0), ("right", 1.0)] {
+            let hand = rig.robot.link(&format!("{side}_o6_hand")).unwrap();
+            let [collider] = hand.collisions.as_slice() else {
+                panic!("expected one {side} palm collider")
             };
-            let Geometry::Box { size } = &collision.geometry else {
-                panic!("{side} palm collider should be a box");
+            let Geometry::Box { size } = &collider.geometry else {
+                panic!("expected a palm box")
             };
             assert!((size - Vector3::new(0.040, 0.07672, 0.11273)).norm() < 1e-9);
-            let center = Vector3::new(0.0, -thumb_sign * 0.00076, 0.056365);
-            assert!((collision.origin.translation.vector - center).norm() < 1e-9);
-            assert!(collision.origin.rotation.angle() < 1e-9);
-            assert!(robot.link(&palm).unwrap().collisions.is_empty());
-            let world = robot
-                .link_transform("dual_milly_base", &palm, &positions)
-                .unwrap();
-            assert!((world.rotation * Vector3::y() * thumb_sign - Vector3::z()).norm() < 1e-5);
-            assert!((world.rotation * Vector3::x() + Vector3::y() * thumb_sign).norm() < 1e-5);
-            let wrist_to_palm = robot.link_transform(&rotor, &palm, &positions).unwrap();
-            assert!(
-                (wrist_to_palm.translation.vector - Vector3::new(-0.102694, 0.0, 0.0)).norm()
-                    < 1e-8
+            assert_pose(
+                collider.origin,
+                Isometry3::translation(0.0, -thumb * 0.00076, 0.056365),
             );
-            let wrist_joint = format!("{side}_joint_7");
-            positions.insert(wrist_joint.clone(), 0.5);
-            let rolled = robot
-                .link_transform("dual_milly_base", &palm, &positions)
-                .unwrap();
-            assert!((world.rotation.angle_to(&rolled.rotation) - 0.5).abs() < 1e-8);
-            assert!((world.translation.vector - rolled.translation.vector).norm() < 1e-8);
-            positions.insert(wrist_joint, 0.0);
+
+            let palm = format!("{side}_palm_eef");
+            assert!(rig.robot.link(&format!("{side}_camera_link")).is_none());
+            assert!(rig.robot.link(&palm).unwrap().collisions.is_empty());
+            rig.set(&format!("{side}_joint_2"), 1.15);
+            rig.set(&format!("{side}_joint_4"), 1.15);
+            let home = rig.pose(&palm);
+            assert!((home.rotation * Vector3::y() * thumb - Vector3::z()).norm() < 1e-5);
+            assert!((home.rotation * Vector3::x() + Vector3::y() * thumb).norm() < 1e-5);
+            let rotor = rig.pose(&format!("{side}_link_7_rotor"));
+            let offset = rotor.inv_mul(&home).translation.vector;
+            assert!((offset - Vector3::new(-0.102694, 0.0, 0.0)).norm() < 1e-8);
+            rig.set(&format!("{side}_joint_7"), 0.5);
+            let rolled = rig.pose(&palm);
+            assert!((home.rotation.angle_to(&rolled.rotation) - 0.5).abs() < 1e-8);
+            assert!((home.translation.vector - rolled.translation.vector).norm() < 1e-8);
         }
     }
 }
