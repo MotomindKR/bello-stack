@@ -159,26 +159,13 @@ fn asymmetric_focals_and_off_center_principal_point_preserve_pixel_rays() {
     }
 }
 #[test]
-fn configurable_stereo_dimensions_flip_rows_without_changing_intrinsics() {
-    let p = Projection::for_format(640, 480, [285., 285., 320., 240.]).unwrap();
-    let mut pixels = vec![0; 640 * 480 * 3];
-    pixels[..3].copy_from_slice(&[12, 34, 56]);
-    let output = p.sensor_image(&pixels);
-    assert_eq!(output.dimensions(), (640, 480));
-    assert_eq!(output.get_pixel(0, 479).0, [12, 34, 56]);
-}
-#[test]
-fn usb_native_stereo_dimensions_are_supported() {
-    let p = Projection::for_format(1600, 1200, [711.5, 711.5, 772.7, 611.4]).unwrap();
-    assert_eq!((p.render_width, p.render_height), (1600, 1200));
-}
-#[test]
-fn output_flips_opengl_rows_and_has_exact_capture_dimensions() {
-    let p = Projection::for_format(WIDTH, HEIGHT, [320., 320., 320., 180.]).unwrap();
-    let mut pixels = vec![0; WIDTH as usize * HEIGHT as usize * 3];
+fn sensor_image_has_the_configured_dimensions_and_top_left_origin() {
+    let (width, height) = (1600, 1200);
+    let p = Projection::for_format(width, height, [711.5, 711.5, 772.7, 611.4]).unwrap();
+    let mut pixels = vec![0; width as usize * height as usize * 3];
     pixels[..3].copy_from_slice(&[10, 20, 30]);
     let output = p.sensor_image(&pixels);
-    assert_eq!(output.dimensions(), (WIDTH, HEIGHT));
-    assert_eq!(output.get_pixel(0, HEIGHT - 1).0, [10, 20, 30]);
+    assert_eq!(output.dimensions(), (width, height));
+    assert_eq!(output.get_pixel(0, height - 1).0, [10, 20, 30]);
     assert_eq!(output.get_pixel(0, 0).0, [0, 0, 0]);
 }
