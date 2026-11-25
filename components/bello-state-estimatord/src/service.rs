@@ -5,7 +5,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, bail};
-use bello_hardware_client::{Error as HardwareError, Robot, RobotStateChange, StateStreamOptions};
+use bello_hardware_client::{
+    ConnectOptions, Error as HardwareError, Robot, RobotStateChange, StateStreamOptions,
+};
 use bello_pose_api::pose_service_server::{PoseService, PoseServiceServer};
 use bello_pose_api::{
     AngularVelocity, LinearVelocity, Orientation, Translation, WatchPoseRequest, WatchPoseResponse,
@@ -176,7 +178,8 @@ pub fn check(path: &Path) -> anyhow::Result<()> {
 
 fn load(path: &Path) -> anyhow::Result<(EstimatorConfig, KinematicModel, ImuFrameTransform)> {
     let config = EstimatorConfig::load(path)?;
-    tonic::transport::Endpoint::from_shared(config.hardware_endpoint.clone())
+    ConnectOptions::new(config.hardware_endpoint.as_str())
+        .validate()
         .context("invalid hardware endpoint")?;
     let description = RobotDescription::load(&config.urdf)?;
     let model = description.kinematic_model(
