@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, bail};
-use bello_config::{finite, nonnegative, positive, trimmed_name};
+use bello_config::finite;
 use garde::Validate;
 use serde::Deserialize;
 
@@ -13,28 +13,28 @@ use serde::Deserialize;
 #[serde(deny_unknown_fields)]
 pub struct EstimatorConfig {
     pub urdf: PathBuf,
-    #[garde(custom(trimmed_name))]
+    #[garde(length(min = 1))]
     pub hardware_endpoint: String,
     pub listen: SocketAddr,
     #[serde(default = "default_imu")]
-    #[garde(custom(trimmed_name))]
+    #[garde(length(min = 1))]
     pub imu: String,
-    #[garde(custom(trimmed_name))]
+    #[garde(length(min = 1))]
     pub imu_frame: String,
     #[serde(default = "default_reference_frame")]
-    #[garde(custom(trimmed_name))]
+    #[garde(length(min = 1))]
     pub reference_frame: String,
     #[serde(default = "default_base")]
-    #[garde(custom(trimmed_name))]
+    #[garde(length(min = 1))]
     pub tracked_frame: String,
     pub planar: bool,
     #[garde(custom(finite))]
     pub ground_height_m: f64,
     #[serde(default = "default_left_foot")]
-    #[garde(custom(trimmed_name))]
+    #[garde(length(min = 1))]
     pub left_foot: String,
     #[serde(default = "default_right_foot")]
-    #[garde(custom(trimmed_name))]
+    #[garde(length(min = 1))]
     pub right_foot: String,
     #[serde(default = "default_imu_stale_ms")]
     #[garde(range(min = 1))]
@@ -43,31 +43,31 @@ pub struct EstimatorConfig {
     #[garde(range(min = 1))]
     pub motor_stale_ms: u64,
     #[serde(default = "default_orientation_lpf_cutoff_hz")]
-    #[garde(custom(positive))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub orientation_lpf_cutoff_hz: f64,
     #[serde(default = "default_gyro_lpf_cutoff_hz")]
-    #[garde(custom(positive))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub gyro_lpf_cutoff_hz: f64,
     #[serde(default = "default_acceleration_lpf_cutoff_hz")]
-    #[garde(custom(positive))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub acceleration_lpf_cutoff_hz: f64,
     #[serde(default = "default_contact_height_full")]
-    #[garde(custom(nonnegative))]
+    #[garde(custom(finite), range(min = 0.0))]
     pub contact_height_full_m: f64,
     #[serde(default = "default_contact_height_zero")]
-    #[garde(custom(nonnegative))]
+    #[garde(custom(finite), range(min = 0.0))]
     pub contact_height_zero_m: f64,
     #[serde(default = "default_contact_motion_full")]
-    #[garde(custom(nonnegative))]
+    #[garde(custom(finite), range(min = 0.0))]
     pub contact_motion_full_mps: f64,
     #[serde(default = "default_contact_motion_zero")]
-    #[garde(custom(nonnegative))]
+    #[garde(custom(finite), range(min = 0.0))]
     pub contact_motion_zero_mps: f64,
     #[serde(default = "default_contact_world_speed_full")]
-    #[garde(custom(nonnegative))]
+    #[garde(custom(finite), range(min = 0.0))]
     pub contact_world_speed_full_mps: f64,
     #[serde(default = "default_contact_world_speed_zero")]
-    #[garde(custom(nonnegative))]
+    #[garde(custom(finite), range(min = 0.0))]
     pub contact_world_speed_zero_mps: f64,
     #[serde(default = "default_contact_probability_rise_ms")]
     #[garde(range(min = 1))]

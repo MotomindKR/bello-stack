@@ -1,7 +1,7 @@
 //! Bounded pose capture; software rasterization runs in a separate process after shutdown.
 use crate::{Simulation, model};
 use anyhow::{Context, Result, ensure};
-use bello_config::{finite, positive};
+use bello_config::finite;
 use mujoco_rs::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::io::{BufWriter, Write};
@@ -24,9 +24,9 @@ pub struct Config {
     pub height: u32,
     #[garde(range(min = 1, max = 120))]
     pub fps: u32,
-    #[garde(custom(positive))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub max_seconds: f64,
-    #[garde(custom(positive))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub render_timeout_seconds: f64,
     #[garde(dive)]
     pub camera: Camera,
@@ -37,7 +37,7 @@ pub struct Config {
 pub struct Camera {
     #[garde(length(min = 1))]
     pub body: String,
-    #[garde(custom(positive))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub distance_m: f64,
     #[garde(custom(finite))]
     pub azimuth_degrees: f64,

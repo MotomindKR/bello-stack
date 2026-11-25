@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
-use bello_config::{finite, nonnegative, positive};
+use bello_config::finite;
 use bello_sim_can::SimBus;
 use robstride_protocol::{MAX_MOTOR_ID, MotorParams};
 use serde::Deserialize;
@@ -65,9 +65,9 @@ fn default_feedback_rate() -> f64 {
 #[derive(Clone, Debug, Deserialize, garde::Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct DynamicsConfig {
-    #[garde(custom(positive))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub position_response_hz: f64,
-    #[garde(custom(positive))]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub idle_velocity_decay_hz: f64,
 }
 
@@ -92,7 +92,7 @@ pub struct ActuatorConfig {
     #[serde(default)]
     pub initial_position: f64,
     #[serde(default = "default_temperature")]
-    #[garde(custom(nonnegative))]
+    #[garde(custom(finite), range(min = 0.0))]
     pub initial_temperature_c: f64,
 }
 
@@ -134,7 +134,7 @@ pub enum FaultAction {
         value: u16,
     },
     SetTemperature {
-        #[garde(custom(nonnegative))]
+        #[garde(custom(finite), range(min = 0.0))]
         celsius: f64,
     },
     ClearTemperature,

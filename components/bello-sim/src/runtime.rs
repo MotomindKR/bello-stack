@@ -1,7 +1,7 @@
 //! Single-threaded physics with bounded transport queues; async work owns no model.
 use crate::{ebimu, guide, model, pose, robstride::RobstrideSimulation, transport::CanEndpoint};
 use anyhow::{Context, Result, ensure};
-use bello_config::{finite, nonnegative};
+use bello_config::finite;
 use garde::Validate;
 use nalgebra::{UnitQuaternion, Vector3};
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
@@ -32,9 +32,9 @@ pub struct Config {
     pub temperature_c: f64,
     #[garde(custom(finite), range(min = 0.0, max = 1.0))]
     pub command_latency_seconds: f64,
-    #[garde(custom(nonnegative))]
+    #[garde(custom(finite), range(min = 0.0))]
     pub motor_kp_scale: f64,
-    #[garde(custom(nonnegative))]
+    #[garde(custom(finite), range(min = 0.0))]
     pub motor_kd_scale: f64,
     /// Simulation fixture: hold the initial pose until every motor is commanded once.
     #[serde(default)]
@@ -58,9 +58,9 @@ pub struct ImuConfig {
     #[serde(flatten)]
     pub endpoint: crate::uart::Endpoint,
     pub rate_hz: f64,
-    #[garde(custom(nonnegative))]
+    #[garde(custom(finite), range(min = 0.0))]
     pub orientation_std_radians: f64,
-    #[garde(custom(nonnegative))]
+    #[garde(custom(finite), range(min = 0.0))]
     pub acceleration_std_mps2: f64,
     pub seed: u64,
 }
