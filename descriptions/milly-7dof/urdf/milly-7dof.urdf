@@ -500,19 +500,19 @@
     </collision>
     <visual name="finger_1_carriage">
       <geometry>
-        <mesh filename="../meshes/visual/gripper/finger_1_carriage.stl" />
+        <mesh filename="../../milly/meshes/visual/gripper/finger_1_carriage.stl" />
       </geometry>
       <material name="milly_metal" />
     </visual>
     <visual name="finger_1_mount">
       <geometry>
-        <mesh filename="../meshes/visual/gripper/finger_1_mount.stl" />
+        <mesh filename="../../milly/meshes/visual/gripper/finger_1_mount.stl" />
       </geometry>
       <material name="milly_black" />
     </visual>
     <visual name="finger_1_soft_pad">
       <geometry>
-        <mesh filename="../meshes/visual/gripper/finger_1_soft_pad.stl" />
+        <mesh filename="../../milly/meshes/visual/gripper/finger_1_soft_pad.stl" />
       </geometry>
       <material name="milly_blue" />
     </visual>
@@ -566,19 +566,19 @@
     </collision>
     <visual name="finger_2_carriage">
       <geometry>
-        <mesh filename="../meshes/visual/gripper/finger_2_carriage.stl" />
+        <mesh filename="../../milly/meshes/visual/gripper/finger_2_carriage.stl" />
       </geometry>
       <material name="milly_metal" />
     </visual>
     <visual name="finger_2_mount">
       <geometry>
-        <mesh filename="../meshes/visual/gripper/finger_2_mount.stl" />
+        <mesh filename="../../milly/meshes/visual/gripper/finger_2_mount.stl" />
       </geometry>
       <material name="milly_black" />
     </visual>
     <visual name="finger_2_soft_pad">
       <geometry>
-        <mesh filename="../meshes/visual/gripper/finger_2_soft_pad.stl" />
+        <mesh filename="../../milly/meshes/visual/gripper/finger_2_soft_pad.stl" />
       </geometry>
       <material name="milly_blue" />
     </visual>

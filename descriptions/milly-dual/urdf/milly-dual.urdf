@@ -6,6 +6,9 @@
   <material name="left_milly_base">
     <color rgba="0.26 0.28 0.29 1" />
   </material>
+  <material name="left_milly_blue">
+    <color rgba="0.10 0.34 0.70 1" />
+  </material>
   <material name="left_milly_black">
     <color rgba="0.055 0.060 0.065 1" />
   </material>
@@ -17,6 +20,9 @@
   </material>
   <material name="right_milly_base">
     <color rgba="0.26 0.28 0.29 1" />
+  </material>
+  <material name="right_milly_blue">
+    <color rgba="0.10 0.34 0.70 1" />
   </material>
   <material name="right_milly_black">
     <color rgba="0.055 0.060 0.065 1" />
@@ -308,16 +314,21 @@
     </inertial>
     <visual name="left_finger_1_carriage">
       <geometry>
-        <mesh filename="../../milly/meshes/visual/exterior/finger_1_carriage.stl" />
+        <mesh filename="../../milly/meshes/visual/gripper/finger_1_carriage.stl" />
       </geometry>
       <material name="left_milly_metal" />
     </visual>
-    <visual name="left_finger_1">
-      <origin xyz="-0.0060008139556 -0.000178281134641 0.0107500213551" rpy="3.14159260612 -3.12187331541e-08 0.09118335" />
+    <visual name="left_finger_1_mount">
       <geometry>
-        <mesh filename="../../milly/meshes/visual/retained/finger_1.stl" />
+        <mesh filename="../../milly/meshes/visual/gripper/finger_1_mount.stl" />
       </geometry>
       <material name="left_milly_black" />
+    </visual>
+    <visual name="left_finger_1_soft_pad">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/gripper/finger_1_soft_pad.stl" />
+      </geometry>
+      <material name="left_milly_blue" />
     </visual>
     <collision name="left_finger_1_jaw_base">
       <origin xyz="-0.0075 -0.000175 0.018625" rpy="0 0 0" />
@@ -361,16 +372,21 @@
     </inertial>
     <visual name="left_finger_2_carriage">
       <geometry>
-        <mesh filename="../../milly/meshes/visual/exterior/finger_2_carriage.stl" />
+        <mesh filename="../../milly/meshes/visual/gripper/finger_2_carriage.stl" />
       </geometry>
       <material name="left_milly_metal" />
     </visual>
-    <visual name="left_finger_2">
-      <origin xyz="0.00600039147885 0.000178292853716 0.0107500166638" rpy="3.14159260612 -3.12187331541e-08 0.09118335" />
+    <visual name="left_finger_2_mount">
       <geometry>
-        <mesh filename="../../milly/meshes/visual/retained/finger_2.stl" />
+        <mesh filename="../../milly/meshes/visual/gripper/finger_2_mount.stl" />
       </geometry>
       <material name="left_milly_black" />
+    </visual>
+    <visual name="left_finger_2_soft_pad">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/gripper/finger_2_soft_pad.stl" />
+      </geometry>
+      <material name="left_milly_blue" />
     </visual>
     <collision name="left_finger_2_jaw_base">
       <origin xyz="0.0075 0.000175 0.018625" rpy="0 0 0" />
@@ -786,16 +802,21 @@
     </inertial>
     <visual name="right_finger_1_carriage">
       <geometry>
-        <mesh filename="../../milly/meshes/visual/exterior/finger_1_carriage.stl" />
+        <mesh filename="../../milly/meshes/visual/gripper/finger_1_carriage.stl" />
       </geometry>
       <material name="right_milly_metal" />
     </visual>
-    <visual name="right_finger_1">
-      <origin xyz="-0.0060008139556 -0.000178281134641 0.0107500213551" rpy="3.14159260612 -3.12187331541e-08 0.09118335" />
+    <visual name="right_finger_1_mount">
       <geometry>
-        <mesh filename="../../milly/meshes/visual/retained/finger_1.stl" />
+        <mesh filename="../../milly/meshes/visual/gripper/finger_1_mount.stl" />
       </geometry>
       <material name="right_milly_black" />
+    </visual>
+    <visual name="right_finger_1_soft_pad">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/gripper/finger_1_soft_pad.stl" />
+      </geometry>
+      <material name="right_milly_blue" />
     </visual>
     <collision name="right_finger_1_jaw_base">
       <origin xyz="-0.0075 -0.000175 0.018625" rpy="0 0 0" />
@@ -839,16 +860,21 @@
     </inertial>
     <visual name="right_finger_2_carriage">
       <geometry>
-        <mesh filename="../../milly/meshes/visual/exterior/finger_2_carriage.stl" />
+        <mesh filename="../../milly/meshes/visual/gripper/finger_2_carriage.stl" />
       </geometry>
       <material name="right_milly_metal" />
     </visual>
-    <visual name="right_finger_2">
-      <origin xyz="0.00600039147885 0.000178292853716 0.0107500166638" rpy="3.14159260612 -3.12187331541e-08 0.09118335" />
+    <visual name="right_finger_2_mount">
       <geometry>
-        <mesh filename="../../milly/meshes/visual/retained/finger_2.stl" />
+        <mesh filename="../../milly/meshes/visual/gripper/finger_2_mount.stl" />
       </geometry>
       <material name="right_milly_black" />
+    </visual>
+    <visual name="right_finger_2_soft_pad">
+      <geometry>
+        <mesh filename="../../milly/meshes/visual/gripper/finger_2_soft_pad.stl" />
+      </geometry>
+      <material name="right_milly_blue" />
     </visual>
     <collision name="right_finger_2_jaw_base">
       <origin xyz="0.0075 0.000175 0.018625" rpy="0 0 0" />

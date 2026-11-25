@@ -14,6 +14,7 @@
     <texture type="skybox" builtin="gradient" rgb1=".94 .95 .96" rgb2=".94 .95 .96" width="128" height="768" />
     <material name="milly_metal" rgba="0.52 0.55 0.58 1" specular=".3" shininess=".4" />
     <material name="milly_base" rgba="0.26 0.28 0.29 1" specular=".3" shininess=".4" />
+    <material name="milly_blue" rgba="0.10 0.34 0.70 1" specular=".3" shininess=".4" />
     <material name="milly_black" rgba="0.055 0.060 0.065 1" specular=".3" shininess=".4" />
     <material name="milly_white" rgba="0.88 0.90 0.89 1" specular=".3" shininess=".4" />
     <mesh name="gripper_body" file="visual/exterior/gripper_body.stl" />
@@ -21,10 +22,12 @@
     <mesh name="gripper_crank" file="visual/exterior/gripper_crank.stl" />
     <mesh name="gripper_rod_1" file="visual/exterior/gripper_rod_1.stl" />
     <mesh name="gripper_rod_2" file="visual/exterior/gripper_rod_2.stl" />
-    <mesh name="finger_1_carriage" file="visual/exterior/finger_1_carriage.stl" />
-    <mesh name="finger_1" file="visual/retained/finger_1.stl" />
-    <mesh name="finger_2_carriage" file="visual/exterior/finger_2_carriage.stl" />
-    <mesh name="finger_2" file="visual/retained/finger_2.stl" />
+    <mesh name="finger_1_carriage" file="visual/gripper/finger_1_carriage.stl" />
+    <mesh name="finger_1_mount" file="visual/gripper/finger_1_mount.stl" />
+    <mesh name="finger_1_soft_pad" file="visual/gripper/finger_1_soft_pad.stl" />
+    <mesh name="finger_2_carriage" file="visual/gripper/finger_2_carriage.stl" />
+    <mesh name="finger_2_mount" file="visual/gripper/finger_2_mount.stl" />
+    <mesh name="finger_2_soft_pad" file="visual/gripper/finger_2_soft_pad.stl" />
     <mesh name="camera" file="visual/exterior/camera.stl" />
   </asset>
   <worldbody>
@@ -57,7 +60,8 @@
         <joint name="finger_1_joint" type="slide" axis="1 0 0" ref="-0.053449516323459914" range="-0.065 0.005" damping=".002" armature="0.000001" />
         <inertial pos="-0.00672827489831 0.0045702454707 0.0227900702613" mass="0.0387190830608586" fullinertia="1.44398992694e-05 1.41482579611e-05 3.63734068543e-06 -1.15229556911e-07 2.14674215772e-06 7.00821762523e-07" />
         <geom name="finger_1_carriage" mesh="finger_1_carriage" material="milly_metal" pos="0 0 0" quat="1 0 0 0" />
-        <geom name="finger_1" mesh="finger_1" material="milly_black" pos="-0.0060008139556 -0.000178281134641 0.0107500213551" quat="2.29988224869e-08 0.998960879597 0.0455758821592 1.66748854142e-08" />
+        <geom name="finger_1_mount" mesh="finger_1_mount" material="milly_black" pos="0 0 0" quat="1 0 0 0" />
+        <geom name="finger_1_soft_pad" mesh="finger_1_soft_pad" material="milly_blue" pos="0 0 0" quat="1 0 0 0" />
         <body name="finger_1_pin" pos="0 0.014 0.004025" quat="1 0 0 0">
           <site name="finger_1_pin" />
         </body>
@@ -66,12 +70,13 @@
         <joint name="finger_2_joint" type="slide" axis="-1 0 0" ref="-0.053449516323459914" range="-0.065 0.005" damping=".002" armature="0.000001" />
         <inertial pos="0.00838813551341 -0.00385209411295 0.0227394150102" mass="0.0387190831442922" fullinertia="1.43155284863e-05 1.40195065826e-05 3.62778234626e-06 -1.10404778427e-07 -2.11733409538e-06 -6.76674411502e-07" />
         <geom name="finger_2_carriage" mesh="finger_2_carriage" material="milly_metal" pos="0 0 0" quat="1 0 0 0" />
-        <geom name="finger_2" mesh="finger_2" material="milly_black" pos="0.00600039147885 0.000178292853716 0.0107500166638" quat="2.29988224869e-08 0.998960879597 0.0455758821592 1.66748854142e-08" />
+        <geom name="finger_2_mount" mesh="finger_2_mount" material="milly_black" pos="0 0 0" quat="1 0 0 0" />
+        <geom name="finger_2_soft_pad" mesh="finger_2_soft_pad" material="milly_blue" pos="0 0 0" quat="1 0 0 0" />
         <body name="finger_2_pin" pos="0 -0.014 0.004025" quat="1 0 0 0">
           <site name="finger_2_pin" />
         </body>
       </body>
-      <body name="camera_link" pos="7.05266736938e-16 0.0766971000002 -0.0318112000001" quat="0.612372435698 -0.35355339059 -0.353553390592 -0.612372435696">
+      <body name="camera_link" pos="7.03430369509e-16 0.0766971000002 -0.0318112000001" quat="0.612372435698 -0.35355339059 -0.353553390592 -0.612372435696">
         <geom name="camera" mesh="camera" material="milly_black" pos="0 0 0" quat="1 0 0 0" />
         <body name="camera_optical_frame" pos="0 0 0" quat="0.500000000002 -0.5 0.499999999998 -0.5">
           <camera name="gripper_camera" euler="3.141592653589793 0 0" fovy="60" />
