@@ -21,7 +21,12 @@ VIRTUAL = CONFIG.with_name("milly-7dof-dual-o6-vcan.yaml")
 
 class InventoryTests(unittest.TestCase):
     def test_physical_and_virtual_use_the_same_hands_and_palm_frames(self):
-        for deployment, prefix in [(CONFIG, "can"), (VIRTUAL, "vcan")]:
+        for deployment, prefix in [
+            (CONFIG, "can"),
+            (VIRTUAL, "vcan"),
+            (CONFIG.with_name("milly-7dof-o6-gimbal.yaml"), "can"),
+            (CONFIG.with_name("milly-7dof-o6-gimbal-vcan.yaml"), "vcan"),
+        ]:
             hands = load_endpoints(deployment)
             self.assertEqual(set(hands), {"left", "right"})
             for index, (side, can_id) in enumerate([("left", 0x28), ("right", 0x27)]):

@@ -1,0 +1,31 @@
+hardware: ../../../descriptions/milly-7dof-o6-gimbal/hardware.yaml
+root: fixed
+floor: false
+timestep_seconds: 0.001
+initial_root_position: [0, 0, 0]
+initial_root_quaternion: [1, 0, 0, 0]
+initial_joint_positions:
+  left_joint_1: 0.0
+  left_joint_2: 0.0
+  left_joint_3: 0.0
+  left_joint_4: 0.0
+  left_joint_5: 0.0
+  left_joint_6: 0.0
+  left_joint_7: 0.0
+  right_joint_1: 0.0
+  right_joint_2: 0.0
+  right_joint_3: 0.0
+  right_joint_4: 0.0
+  right_joint_5: 0.0
+  right_joint_6: 0.0
+  right_joint_7: 0.0
+  gimbal_yaw: 0.0
+  gimbal_pitch: 0.0
+  gimbal_roll: 0.0
+neighbor_exclusion_depth: 2
+physics:
+  # Provisional simulation inertias for moving bodies without supplied CAD inertias.
+  additional_inertias:
+    - { frame: gimbal_yaw_link, mass_kg: 0.55, center_m: [0, 0, 0.055], diagonal_kg_m2: [0.003, 0.003, 0.003] }
+    - { frame: gimbal_pitch_link, mass_kg: 0.35, center_m: [0.035, 0, 0], diagonal_kg_m2: [0.0015, 0.0015, 0.0015] }
+    - { frame: gimbal_roll_link, mass_kg: 0.18, center_m: [0.025, 0, 0], diagonal_kg_m2: [0.0005, 0.0005, 0.0005] }

@@ -1,0 +1,17 @@
+model: milly_7dof_o6_gimbal.yaml
+cameras: cameras_milly_stereo.yaml
+startup_hold_until_commanded: true
+bus_interfaces:
+  can0: { daemon_port: 19100, simulator_port: 19101 }
+  can1: { daemon_port: 19102, simulator_port: 19103 }
+feedback_rate_hz: 100
+temperature_c: 25
+command_latency_seconds: 0.0
+motor_kp_scale: 1.0
+motor_kd_scale: 1.0
+pose:
+  listen: 127.0.0.1:50052
+  reference_frame: odom
+  tracked_frame: dual_milly_base
+  rate_hz: 100
+fault_events: {}

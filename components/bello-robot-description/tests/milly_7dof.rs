@@ -185,52 +185,69 @@ fn dual_profile_exposes_sixteen_motor_coordinates_with_independent_rolls() {
 
 #[test]
 fn dual_o6_profile_places_rigid_palms_on_each_seventh_axis() {
-    let robot = load("milly-7dof-o6/urdf/milly-7dof-dual-o6.urdf");
-    let mut positions = BTreeMap::new();
-    for side in ["left", "right"] {
-        for i in 1..=7 {
-            // Pose used for the full-arm CAD review.
-            let angle = if i == 2 || i == 4 { 1.15 } else { 0.0 };
-            positions.insert(format!("{side}_joint_{i}"), angle);
+    for (path, has_gimbal) in [
+        ("milly-7dof-o6/urdf/milly-7dof-dual-o6.urdf", false),
+        ("milly-7dof-o6-gimbal/urdf/milly-7dof-o6-gimbal.urdf", true),
+    ] {
+        let robot = load(path);
+        let mut positions = BTreeMap::new();
+        for side in ["left", "right"] {
+            for i in 1..=7 {
+                // Pose used for the full-arm CAD review.
+                let angle = if i == 2 || i == 4 { 1.15 } else { 0.0 };
+                positions.insert(format!("{side}_joint_{i}"), angle);
+            }
         }
-    }
-    assert_eq!(
-        robot.motor_coordinates(),
-        positions.keys().map(String::as_str).collect()
-    );
-    assert!(robot.slider_cranks().is_empty());
-    for (side, thumb_sign) in [("left", -1.0), ("right", 1.0)] {
-        let hand = format!("{side}_o6_hand");
-        let palm = format!("{side}_palm_eef");
-        let rotor = format!("{side}_link_7_rotor");
-        assert!(robot.link(&format!("{side}_camera_link")).is_none());
-        let [collision] = robot.link(&hand).unwrap().collisions.as_slice() else {
-            panic!("{side} hand should have one palm collider");
-        };
-        let Geometry::Box { size } = &collision.geometry else {
-            panic!("{side} palm collider should be a box");
-        };
-        assert!((size - Vector3::new(0.040, 0.07672, 0.11273)).norm() < 1e-9);
-        let center = Vector3::new(0.0, -thumb_sign * 0.00076, 0.056365);
-        assert!((collision.origin.translation.vector - center).norm() < 1e-9);
-        assert!(collision.origin.rotation.angle() < 1e-9);
-        assert!(robot.link(&palm).unwrap().collisions.is_empty());
-        let world = robot
-            .link_transform("dual_milly_base", &palm, &positions)
-            .unwrap();
-        assert!((world.rotation * Vector3::y() * thumb_sign - Vector3::z()).norm() < 1e-5);
-        assert!((world.rotation * Vector3::x() + Vector3::y() * thumb_sign).norm() < 1e-5);
-        let wrist_to_palm = robot.link_transform(&rotor, &palm, &positions).unwrap();
-        assert!(
-            (wrist_to_palm.translation.vector - Vector3::new(-0.102694, 0.0, 0.0)).norm() < 1e-8
+        if has_gimbal {
+            assert!(robot.link("center_d405_link").is_none());
+            for axis in ["yaw", "pitch", "roll"] {
+                positions.insert(format!("gimbal_{axis}"), 0.0);
+            }
+            let optical = robot
+                .link_transform("dual_milly_base", "stereo_camera_optical_frame", &positions)
+                .unwrap();
+            assert!((optical.translation.z - 0.611).abs() < 1e-12);
+            assert!((optical.rotation * Vector3::z() + Vector3::x()).norm() < 1e-12);
+        }
+        assert_eq!(
+            robot.motor_coordinates(),
+            positions.keys().map(String::as_str).collect()
         );
-        let wrist_joint = format!("{side}_joint_7");
-        positions.insert(wrist_joint.clone(), 0.5);
-        let rolled = robot
-            .link_transform("dual_milly_base", &palm, &positions)
-            .unwrap();
-        assert!((world.rotation.angle_to(&rolled.rotation) - 0.5).abs() < 1e-8);
-        assert!((world.translation.vector - rolled.translation.vector).norm() < 1e-8);
-        positions.insert(wrist_joint, 0.0);
+        assert!(robot.slider_cranks().is_empty());
+        for (side, thumb_sign) in [("left", -1.0), ("right", 1.0)] {
+            let hand = format!("{side}_o6_hand");
+            let palm = format!("{side}_palm_eef");
+            let rotor = format!("{side}_link_7_rotor");
+            assert!(robot.link(&format!("{side}_camera_link")).is_none());
+            let [collision] = robot.link(&hand).unwrap().collisions.as_slice() else {
+                panic!("{side} hand should have one palm collider");
+            };
+            let Geometry::Box { size } = &collision.geometry else {
+                panic!("{side} palm collider should be a box");
+            };
+            assert!((size - Vector3::new(0.040, 0.07672, 0.11273)).norm() < 1e-9);
+            let center = Vector3::new(0.0, -thumb_sign * 0.00076, 0.056365);
+            assert!((collision.origin.translation.vector - center).norm() < 1e-9);
+            assert!(collision.origin.rotation.angle() < 1e-9);
+            assert!(robot.link(&palm).unwrap().collisions.is_empty());
+            let world = robot
+                .link_transform("dual_milly_base", &palm, &positions)
+                .unwrap();
+            assert!((world.rotation * Vector3::y() * thumb_sign - Vector3::z()).norm() < 1e-5);
+            assert!((world.rotation * Vector3::x() + Vector3::y() * thumb_sign).norm() < 1e-5);
+            let wrist_to_palm = robot.link_transform(&rotor, &palm, &positions).unwrap();
+            assert!(
+                (wrist_to_palm.translation.vector - Vector3::new(-0.102694, 0.0, 0.0)).norm()
+                    < 1e-8
+            );
+            let wrist_joint = format!("{side}_joint_7");
+            positions.insert(wrist_joint.clone(), 0.5);
+            let rolled = robot
+                .link_transform("dual_milly_base", &palm, &positions)
+                .unwrap();
+            assert!((world.rotation.angle_to(&rolled.rotation) - 0.5).abs() < 1e-8);
+            assert!((world.translation.vector - rolled.translation.vector).norm() < 1e-8);
+            positions.insert(wrist_joint, 0.0);
+        }
     }
 }

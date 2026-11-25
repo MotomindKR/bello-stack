@@ -4,6 +4,8 @@ Use `left_palm_eef` and `right_palm_eef` as the tool frames for IK and teleopera
 
 The `dual_arm` motor group has 14 coordinates, ordered left J1–J7 then right J1–J7. CAN0 serves the left arm and CAN1 serves the right. Each uses IDs 1–7. The O6 fingers have no commanded coordinates, moving joints or collision geometry in this profile. The model omits both wrist cameras and retains the base-mounted center D405 from the dual profile.
 
+For the workcell with head-mounted stereo, use the [dual O6 and gimbal profile](../milly-7dof-o6-gimbal/).
+
 | Entry point | File |
 | --- | --- |
 | Robot model | [Dual-arm URDF](urdf/milly-7dof-dual-o6.urdf) |

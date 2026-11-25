@@ -71,6 +71,8 @@ jobs:
           sudo ip link set dev vcan0 up
       - name: Test Linker O6 on two isolated Linux CAN pairs
         run: |
+          nix develop --command cargo run -p bello-sim -- check --config components/bello-sim/config/milly_7dof_o6_gimbal.yaml
+          nix develop --command cargo run -p bello-hardwared -- --check --config components/bello-hardwared/config/milly-7dof-o6-gimbal.yaml
           cmp components/bello-hand/LICENSE LICENSE
           sudo modprobe vxcan
           sudo env PATH=/usr/sbin:/usr/bin:/sbin:/bin bash components/bello-hand/tests/run-socketcan.sh
