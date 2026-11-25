@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
@@ -50,6 +50,8 @@ fn default_power_stale_timeout() -> u64 {
 pub(crate) struct Config {
     #[serde(skip)]
     pub(crate) robot_description: PathBuf,
+    #[serde(skip)]
+    pub(crate) disabled_groups: HashSet<String>,
     #[serde(default)]
     pub simulation: bool,
     #[serde(default)]
