@@ -25,6 +25,7 @@ license-file = "LICENSE"
 publish = false
 
 [workspace.dependencies]
+garde = { version = "0.23", default-features = false, features = ["derive"] }
 cog-protocol = { path = "components/cog-protocol" }
 anyhow = "1"
 async-stream = "0.3"

@@ -4,6 +4,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
+use garde::Validate;
 use parking_lot::RwLock;
 
 use crate::config::ReconnectConfig;
@@ -307,18 +308,13 @@ impl ReconnectPolicy {
     }
 }
 
-impl TryFrom<(&ReconnectConfig, &str)> for ReconnectPolicy {
+impl TryFrom<&ReconnectConfig> for ReconnectPolicy {
     type Error = anyhow::Error;
 
-    fn try_from((config, path): (&ReconnectConfig, &str)) -> Result<Self> {
-        if config.initial_delay_ms == 0 {
-            bail!("{path}.initial_delay_ms must be positive");
-        }
+    fn try_from(config: &ReconnectConfig) -> Result<Self> {
+        config.validate()?;
         if config.maximum_delay_ms < config.initial_delay_ms {
-            bail!("{path}.maximum_delay_ms must be >= initial_delay_ms");
-        }
-        if config.maximum_delay_ms > 60_000 {
-            bail!("{path}.maximum_delay_ms must not exceed 60000");
+            bail!("maximum_delay_ms must be >= initial_delay_ms");
         }
         Ok(Self {
             initial_delay: Duration::from_millis(config.initial_delay_ms),

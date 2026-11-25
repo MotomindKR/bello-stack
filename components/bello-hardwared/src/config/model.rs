@@ -1,9 +1,19 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use robstride_protocol::{CONTROL_POSITION_MAX, CONTROL_POSITION_MIN, CONTROL_POSITION_SPAN};
+use garde::Validate;
+use robstride_protocol::{
+    CONTROL_POSITION_MAX, CONTROL_POSITION_MIN, CONTROL_POSITION_SPAN, MAX_MOTOR_ID,
+};
 use serde::Deserialize;
+
+fn finite(value: &f64, _: &()) -> garde::Result {
+    if !value.is_finite() {
+        return Err(garde::Error::new("must be finite"));
+    }
+    Ok(())
+}
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -13,16 +23,20 @@ pub(crate) enum EmergencyStopMode {
     Damping,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Validate)]
+#[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PowerBoardConfig {
+    #[garde(length(min = 1))]
     pub name: String,
+    #[garde(length(min = 1))]
     pub serial_device: String,
     pub profile: crate::hardware::power_board::protocol::Profile,
     pub sync_period_ms: Option<u64>,
     #[serde(default)]
     pub emergency_stop: EmergencyStopMode,
     #[serde(default = "default_power_stale_timeout")]
+    #[garde(range(min = 250, max = 60_000))]
     pub stale_timeout_ms: u64,
 }
 
@@ -30,14 +44,18 @@ fn default_power_stale_timeout() -> u64 {
     3000
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Validate)]
+#[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Config {
     #[serde(skip)]
     pub(crate) robot_description: PathBuf,
+    #[serde(skip)]
+    pub(crate) disabled_groups: HashSet<String>,
     #[serde(default)]
     pub simulation: bool,
     #[serde(default)]
+    #[garde(dive)]
     pub runtime: RuntimeConfig,
     #[serde(default)]
     pub grpc: GrpcConfig,
@@ -47,8 +65,11 @@ pub(crate) struct Config {
     pub imus: Vec<ImuConfig>,
     #[serde(default)]
     pub power_boards: Vec<PowerBoardConfig>,
+    #[garde(length(min = 1))]
     pub buses: Vec<BusConfig>,
+    #[garde(length(min = 1))]
     pub motors: Vec<MotorConfig>,
+    #[garde(length(min = 1))]
     pub motor_groups: Vec<GroupConfig>,
 }
 
@@ -111,11 +132,14 @@ pub(crate) struct LogicalSerialDeviceConfig {
     pub reconnect: ReconnectConfig,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct RuntimeConfig {
+    #[garde(range(min = 64, max = 1_000_000))]
     pub telemetry_capacity: usize,
+    #[garde(dive)]
     pub motor_velocity_filter: MotorVelocityFilterConfig,
+    #[garde(dive)]
     pub imu_filter: ImuFilterConfig,
 }
 impl Default for RuntimeConfig {
@@ -128,9 +152,10 @@ impl Default for RuntimeConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct MotorVelocityFilterConfig {
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub cutoff_hz: f64,
 }
 
@@ -140,11 +165,14 @@ impl Default for MotorVelocityFilterConfig {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct ImuFilterConfig {
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub orientation_cutoff_hz: f64,
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub gyro_cutoff_hz: f64,
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub acceleration_cutoff_hz: f64,
 }
 
@@ -158,12 +186,16 @@ impl Default for ImuFilterConfig {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Validate)]
+#[garde(allow_unvalidated)]
 #[serde(default, deny_unknown_fields)]
 pub struct GrpcConfig {
+    #[garde(length(min = 1))]
     pub listen: Vec<GrpcListenConfig>,
     pub tls: Option<GrpcTlsConfig>,
+    #[garde(range(min = 20, max = 60_000))]
     pub default_lease_ms: u64,
+    #[garde(range(max = 300_000))]
     pub maximum_lease_ms: u64,
 }
 impl Default for GrpcConfig {
@@ -210,16 +242,20 @@ pub struct GrpcTlsConfig {
     pub client_ca: Option<PathBuf>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Validate)]
+#[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
 pub struct BusConfig {
+    #[garde(length(min = 1))]
     pub name: String,
     pub transport: BusTransportConfig,
     #[serde(default = "default_host_id")]
     pub host_id: u8,
     #[serde(default = "default_bitrate")]
+    #[garde(range(min = 10_000, max = 1_000_000))]
     pub bitrate: u32,
     #[serde(default = "default_bus_utilization")]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up(), max = 1.0))]
     pub maximum_utilization: f64,
     #[serde(default)]
     pub reconnect: ReconnectConfig,
@@ -252,20 +288,27 @@ fn default_bus_utilization() -> f64 {
     0.75
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct ReconnectConfig {
+    #[garde(range(min = 1))]
     pub initial_delay_ms: u64,
+    #[garde(range(max = 60_000))]
     pub maximum_delay_ms: u64,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Validate)]
+#[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
 pub struct SerialDeviceConfig {
+    #[garde(length(min = 1))]
     pub name: String,
+    #[garde(length(min = 1))]
     pub port: String,
+    #[garde(range(min = 1))]
     pub baud_rate: u32,
     #[serde(default = "default_serial_timeout")]
+    #[garde(range(min = 1, max = 500))]
     pub timeout_ms: u64,
     #[serde(default)]
     pub reconnect: ReconnectConfig,
@@ -282,35 +325,48 @@ impl Default for ReconnectConfig {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Validate)]
+#[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
 pub struct MotorConfig {
+    #[garde(length(min = 1))]
     pub name: String,
+    #[garde(length(min = 1))]
     pub coordinate: String,
+    #[garde(length(min = 1))]
     pub bus: String,
+    #[garde(range(max = MAX_MOTOR_ID))]
     pub id: u8,
     pub model: String,
     #[serde(default = "default_direction")]
     pub direction: i8,
     #[serde(default)]
+    #[garde(dive)]
     pub limits: MotorLimits,
     #[serde(default)]
+    #[garde(dive)]
     pub health: MotorHealth,
     #[serde(default)]
+    #[garde(dive)]
     pub command_policy: MotorCommandPolicy,
     #[serde(default = "default_fault_damping_kd")]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub fault_damping_kd: f64,
 }
 fn default_direction() -> i8 {
     1
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct MotorLimits {
+    #[garde(custom(finite), range(min = CONTROL_POSITION_MIN, max = CONTROL_POSITION_MAX))]
     pub position_min: f64,
+    #[garde(custom(finite), range(min = CONTROL_POSITION_MIN, max = CONTROL_POSITION_MAX))]
     pub position_max: f64,
+    #[garde(inner(custom(finite), range(min = 0.0_f64.next_up())))]
     pub velocity_abs: Option<f64>,
+    #[garde(inner(custom(finite), range(min = 0.0_f64.next_up())))]
     pub torque_abs: Option<f64>,
 }
 impl Default for MotorLimits {
@@ -324,15 +380,22 @@ impl Default for MotorLimits {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct MotorHealth {
+    #[garde(custom(finite), range(min = CONTROL_POSITION_MIN, max = CONTROL_POSITION_MAX))]
     pub safe_position_min: f64,
+    #[garde(custom(finite), range(min = CONTROL_POSITION_MIN, max = CONTROL_POSITION_MAX))]
     pub safe_position_max: f64,
+    #[garde(custom(finite), range(min = CONTROL_POSITION_SPAN / u16::MAX as f64, max = 0.4))]
     pub feedback_position_tolerance: f64,
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub temperature_warning_c: f64,
+    #[garde(custom(finite), range(min = 0.0_f64.next_up(), max = 200.0))]
     pub maximum_temperature_c: f64,
+    #[garde(custom(finite), range(min = 0.0_f64.next_up()))]
     pub temperature_recovery_c: f64,
+    #[garde(range(min = 1, max = 60_000))]
     pub temperature_recovery_duration_ms: u64,
 }
 impl Default for MotorHealth {
@@ -353,9 +416,11 @@ fn default_feedback_position_tolerance() -> f64 {
     2.0 * CONTROL_POSITION_SPAN / u16::MAX as f64
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Validate)]
+#[garde(allow_unvalidated)]
 #[serde(default, deny_unknown_fields)]
 pub struct MotorCommandPolicy {
+    #[garde(custom(finite), range(min = 0.0_f64.next_up(), max = CONTROL_POSITION_SPAN))]
     pub maximum_position_step: f64,
     pub limit: CommandBehavior,
     pub position_step: CommandBehavior,
@@ -416,14 +481,19 @@ pub enum CommandTransmission {
     Periodic,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Validate)]
+#[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields)]
 pub struct GroupConfig {
+    #[garde(length(min = 1))]
     pub name: String,
+    #[garde(length(min = 1))]
     pub motors: Vec<String>,
     #[serde(default = "default_parallel_feedback_position_tolerance")]
+    #[garde(custom(finite), range(min = 0.0_f64.next_up(), max = 0.4))]
     pub parallel_feedback_position_tolerance: f64,
     #[serde(default = "default_control_rate")]
+    #[garde(custom(finite), range(min = 1.0, max = 2_000.0))]
     pub control_rate_hz: f64,
     #[serde(default)]
     pub command_refresh_rate_hz: Option<f64>,
@@ -432,12 +502,16 @@ pub struct GroupConfig {
     #[serde(default = "default_periodic_feedback")]
     pub periodic_feedback_during_control: bool,
     #[serde(default = "default_command_timeout")]
+    #[garde(range(min = 1, max = 10_000))]
     pub command_timeout_ms: u64,
     #[serde(default = "default_feedback_timeout")]
+    #[garde(range(min = 1, max = 10_000))]
     pub feedback_timeout_ms: u64,
     #[serde(default = "default_enable_timeout")]
+    #[garde(range(min = 1, max = 30_000))]
     pub enable_timeout_ms: u64,
     #[serde(default = "default_retries")]
+    #[garde(range(min = 1, max = 100))]
     pub enable_retries: u32,
     #[serde(default)]
     pub fault_policy: FaultPolicyConfig,
@@ -486,14 +560,20 @@ impl FaultPolicyConfig {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Validate)]
 #[serde(default, deny_unknown_fields)]
 pub struct ImuConfig {
+    #[garde(length(min = 1))]
     pub name: String,
+    #[garde(length(min = 1))]
     pub serial_device: String,
+    #[garde(length(min = 1))]
     pub source_frame: String,
+    #[garde(length(min = 1))]
     pub output_frame: String,
+    #[garde(range(min = 1, max = 60_000))]
     pub stale_timeout_ms: u64,
+    #[garde(range(min = 1, max = 1000))]
     pub output_rate_hz: u32,
 }
 impl Default for ImuConfig {

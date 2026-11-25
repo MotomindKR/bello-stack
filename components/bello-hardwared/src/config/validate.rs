@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
@@ -7,10 +7,7 @@ use anyhow::{Context, Result, bail};
 #[cfg(test)]
 use super::ResolvedTopology;
 use super::{Config, DeploymentConfig, HardwareDescription};
-use crate::control::GroupSpec;
 use crate::hardware::can::BusSpec;
-use crate::hardware::robstride::MotorSpec;
-use crate::mechanics::{MechanicalEnvelope, apply_coordinate_limits};
 
 impl Config {
     pub(crate) fn load_raw(path: impl AsRef<Path>) -> Result<Self> {
@@ -46,13 +43,6 @@ impl Config {
                 .unwrap_or_else(|| Path::new("."))
                 .join(&description.robot_description)
         };
-        let robot = bello_robot_description::RobotDescription::load(&robot_description)
-            .with_context(|| {
-                format!(
-                    "hardware description references invalid robot description {}",
-                    robot_description.display()
-                )
-            })?;
         if description.logical_buses.is_empty() {
             bail!("hardware description must declare at least one logical bus");
         }
@@ -76,14 +66,7 @@ impl Config {
             })?;
         }
 
-        let mut motors = HashMap::new();
-        let mut resolved_motors = HashMap::new();
-        let mut coordinates = HashSet::new();
-        let mut addresses = HashSet::new();
         for motor in &description.motors {
-            let mut spec = MotorSpec::try_from(motor)?;
-            apply_coordinate_limits(&robot, &mut spec)?;
-            resolved_motors.insert(spec.name.clone(), spec);
             if !logical_buses.contains(&motor.bus) {
                 bail!(
                     "motor {} refers to undeclared logical bus {}",
@@ -91,52 +74,13 @@ impl Config {
                     motor.bus
                 );
             }
-            if !coordinates.insert(motor.coordinate.as_str()) {
-                bail!(
-                    "coordinate {} is assigned to more than one motor",
-                    motor.coordinate
-                );
-            }
-            if !addresses.insert((motor.bus.as_str(), motor.id)) {
-                bail!("duplicate motor address {}:{}", motor.bus, motor.id);
-            }
-            if motors.insert(motor.name.as_str(), motor).is_some() {
-                bail!("duplicate motor name {}", motor.name);
-            }
-        }
-        if motors.is_empty() {
-            bail!("hardware description must declare at least one motor");
         }
 
-        let mut groups = HashMap::new();
-        let mut membership = HashMap::new();
-        for group in &description.motor_groups {
-            let spec = GroupSpec::try_from(group)?;
-            MechanicalEnvelope::build(
-                &robot,
-                &spec.motors,
-                &resolved_motors,
-                group.parallel_feedback_position_tolerance,
-            )?;
-            if groups.insert(group.name.as_str(), group).is_some() {
-                bail!("duplicate motor group name {}", group.name);
-            }
-            for motor in &group.motors {
-                if !motors.contains_key(motor.as_str()) {
-                    bail!("group {} refers to unknown motor {motor}", group.name);
-                }
-                if let Some(owner) = membership.insert(motor.as_str(), group.name.as_str()) {
-                    bail!("motor {motor} belongs to both {owner} and {}", group.name);
-                }
-            }
-        }
-        if groups.is_empty() {
-            bail!("hardware description must declare at least one motor group");
-        }
-        if let Some(unowned) = motors.keys().find(|name| !membership.contains_key(**name)) {
-            bail!("motor {unowned} does not belong to a group");
-        }
-
+        let mut disabled_groups: HashSet<_> = description
+            .motor_groups
+            .iter()
+            .map(|group| group.name.clone())
+            .collect();
         if deployment.enabled_groups.is_empty() {
             bail!("enabled_groups must not be empty");
         }
@@ -145,47 +89,20 @@ impl Config {
             if !enabled.insert(group.as_str()) {
                 bail!("enabled_groups contains duplicate group {group}");
             }
-            if !groups.contains_key(group.as_str()) {
+            if !disabled_groups.remove(group) {
                 bail!("enabled_groups refers to unknown group {group}");
             }
         }
 
-        let motor_groups: Vec<_> = description
-            .motor_groups
-            .into_iter()
-            .filter(|group| enabled.contains(group.name.as_str()))
-            .collect();
-        let selected_motors: HashSet<_> = motor_groups
-            .iter()
-            .flat_map(|group| group.motors.iter().map(String::as_str))
-            .collect();
-        let motors: Vec<_> = description
-            .motors
-            .into_iter()
-            .filter(|motor| selected_motors.contains(motor.name.as_str()))
-            .collect();
-
-        let configured_buses: HashSet<_> = deployment.bus_transports.keys().cloned().collect();
-        for bus in &configured_buses {
+        for bus in deployment.bus_transports.keys() {
             if !logical_buses.contains(bus) {
                 bail!("deployment maps unknown logical bus {bus}");
             }
         }
-        let required_buses: HashSet<String> = motors
-            .iter()
-            .map(|motor: &super::MotorConfig| motor.bus.clone())
-            .collect();
-        if configured_buses != required_buses {
-            let missing: Vec<_> = required_buses.difference(&configured_buses).collect();
-            let unused: Vec<_> = configured_buses.difference(&required_buses).collect();
-            bail!(
-                "deployment logical bus mappings do not match enabled groups (missing: {missing:?}, unused: {unused:?})"
-            );
-        }
         let buses = description
             .logical_buses
             .into_iter()
-            .filter(|bus| required_buses.contains(&bus.name))
+            .filter(|bus| deployment.bus_transports.contains_key(&bus.name))
             .map(|bus| super::BusConfig {
                 transport: deployment.bus_transports[&bus.name].clone(),
                 name: bus.name,
@@ -270,6 +187,7 @@ impl Config {
 
         Ok(Self {
             robot_description,
+            disabled_groups,
             simulation: deployment.simulation,
             runtime: deployment.runtime,
             grpc: deployment.grpc,
@@ -277,8 +195,8 @@ impl Config {
             imus: description.imus,
             power_boards: description.power_boards,
             buses,
-            motors,
-            motor_groups,
+            motors: description.motors,
+            motor_groups: description.motor_groups,
         })
     }
 }
@@ -427,11 +345,11 @@ bus_transports:
             .unwrap()
             .model = "UNKNOWN".into();
 
+        let config = Config::compose(description, deployment, &description_path).unwrap();
+        let error = ResolvedTopology::resolve(config).err().unwrap();
         assert!(
-            Config::compose(description, deployment, &description_path)
-                .unwrap_err()
-                .to_string()
-                .contains("unsupported Robstride model")
+            error.to_string().contains("unsupported Robstride model"),
+            "{error}"
         );
     }
 
@@ -444,11 +362,13 @@ bus_transports:
             load_yaml(&component.join("config/bello-vcan.yaml")).unwrap();
         let bus = missing_bus.bus_transports.keys().next().unwrap().clone();
         missing_bus.bus_transports.remove(&bus);
+        let config = Config::compose(description.clone(), missing_bus, &description_path).unwrap();
+        let error = ResolvedTopology::resolve(config).err().unwrap();
         assert!(
-            Config::compose(description.clone(), missing_bus, &description_path)
-                .unwrap_err()
+            error
                 .to_string()
-                .contains("missing")
+                .contains(&format!("missing transport for CAN bus {bus}")),
+            "{error}"
         );
 
         let mut extra_serial: DeploymentConfig =

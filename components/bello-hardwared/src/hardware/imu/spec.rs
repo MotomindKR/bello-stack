@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use bello_robot_description::RobotDescription;
+use garde::Validate;
 use nalgebra::{Quaternion, UnitQuaternion, Vector3};
 
 use crate::config::ImuConfig;
@@ -24,29 +25,9 @@ pub(crate) struct ImuSpec {
 
 impl ImuSpec {
     pub(crate) fn resolve(config: &ImuConfig, robot: &RobotDescription) -> Result<Self> {
-        if config.name.is_empty() {
-            bail!("imus[].name must be non-empty");
-        }
-        if config.serial_device.is_empty() {
-            bail!("imus.{}.serial_device must be non-empty", config.name);
-        }
-        for (name, value) in [
-            ("source_frame", config.source_frame.as_str()),
-            ("output_frame", config.output_frame.as_str()),
-        ] {
-            if value.is_empty() || value.trim() != value {
-                bail!(
-                    "imus.{}.{name} must be non-empty without surrounding whitespace",
-                    config.name
-                );
-            }
-        }
-        if !(1..=60_000).contains(&config.stale_timeout_ms) {
-            bail!("imus.{}.stale_timeout_ms must be in 1..=60000", config.name);
-        }
-        if !(1..=1000).contains(&config.output_rate_hz) {
-            bail!("imus.{}.output_rate_hz must be in 1..=1000", config.name);
-        }
+        config
+            .validate()
+            .with_context(|| format!("imus.{}", config.name))?;
         if 1000 % config.output_rate_hz != 0 {
             bail!(
                 "imus.{}.output_rate_hz must divide 1000 exactly because EBIMU configures an integer millisecond interval",
@@ -137,17 +118,8 @@ mod tests {
 
     #[test]
     fn requires_explicit_source_and_output_frames() {
-        let error = resolve(&ImuConfig::default()).unwrap_err().to_string();
+        let error = format!("{:#}", resolve(&ImuConfig::default()).unwrap_err());
         assert!(error.contains("source_frame"), "{error}");
-    }
-
-    #[test]
-    fn rejects_output_rate_above_device_limit() {
-        let config = ImuConfig {
-            output_rate_hz: 1001,
-            ..valid_config()
-        };
-        assert!(resolve(&config).is_err());
     }
 
     #[test]

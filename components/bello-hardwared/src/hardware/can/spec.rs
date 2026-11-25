@@ -1,6 +1,7 @@
 use std::time::Duration;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
+use garde::Validate;
 
 use crate::config::{BusConfig, BusTransportConfig};
 use crate::domain::BusName;
@@ -46,9 +47,9 @@ impl TryFrom<&BusConfig> for BusSpec {
     type Error = anyhow::Error;
 
     fn try_from(config: &BusConfig) -> Result<Self> {
-        if config.name.is_empty() {
-            bail!("buses[].name must be non-empty");
-        }
+        config
+            .validate()
+            .with_context(|| format!("buses.{}", config.name))?;
         match &config.transport {
             BusTransportConfig::Socketcan { interface } if interface.trim().is_empty() => {
                 bail!(
@@ -62,28 +63,14 @@ impl TryFrom<&BusConfig> for BusSpec {
             BusTransportConfig::Sim(bus) => bus.validate()?,
             _ => {}
         }
-        if !(10_000..=1_000_000).contains(&config.bitrate) {
-            bail!(
-                "buses.{}.bitrate must be a classic CAN nominal bitrate in 10000..=1000000",
-                config.name
-            );
-        }
-        if !config.maximum_utilization.is_finite()
-            || !(0.0..=1.0).contains(&config.maximum_utilization)
-            || config.maximum_utilization == 0.0
-        {
-            bail!(
-                "buses.{}.maximum_utilization must be in (0, 1]",
-                config.name
-            );
-        }
         Ok(Self {
             name: BusName::from(config.name.as_str()),
             transport: config.transport.clone(),
             host_id: config.host_id,
             bitrate: config.bitrate,
             maximum_utilization: config.maximum_utilization,
-            reconnect: ReconnectPolicy::try_from((&config.reconnect, "buses[].reconnect"))?,
+            reconnect: ReconnectPolicy::try_from(&config.reconnect)
+                .with_context(|| format!("buses.{}.reconnect", config.name))?,
         })
     }
 }
@@ -91,25 +78,6 @@ impl TryFrom<&BusConfig> for BusSpec {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn rejects_zero_bitrate() {
-        let config: BusConfig = serde_yaml::from_str(
-            "name: can\ntransport: { type: socketcan, interface: vcan0 }\nbitrate: 0\nmaximum_utilization: 0.5",
-        )
-        .unwrap();
-        assert!(BusSpec::try_from(&config).is_err());
-    }
-
-    #[test]
-    fn rejects_nominal_bitrate_above_classic_can_limit() {
-        let config: BusConfig = serde_yaml::from_str(
-            "name: can\ntransport: { type: socketcan, interface: can0 }\nbitrate: 1000001\nmaximum_utilization: 0.5",
-        )
-        .unwrap();
-        let error = BusSpec::try_from(&config).unwrap_err().to_string();
-        assert!(error.contains("classic CAN nominal bitrate"), "{error}");
-    }
 
     #[test]
     fn batch_budget_uses_bitrate_and_full_frame_count() {

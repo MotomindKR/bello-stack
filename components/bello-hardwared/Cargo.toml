@@ -8,6 +8,7 @@ publish.workspace = true
 description = "Monolithic Robstride and EBIMU hardware daemon"
 
 [dependencies]
+garde.workspace = true
 cog-protocol.workspace = true
 anyhow.workspace = true
 async-stream.workspace = true
@@ -35,3 +36,6 @@ uuid = { workspace = true, features = ["v4"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 nix = { workspace = true, features = ["time"] }
 socketcan.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
