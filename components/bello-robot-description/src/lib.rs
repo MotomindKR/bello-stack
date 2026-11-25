@@ -1054,12 +1054,7 @@ fn parse_transmissions(robot: Node<'_, '_>) -> anyhow::Result<Vec<DifferentialTr
         .descendants()
         .filter(|node| node.has_tag_name("transmission"))
     {
-        let kind = node
-            .children()
-            .find(|child| child.has_tag_name("type") || child.has_tag_name("plugin"))
-            .and_then(|child| child.text())
-            .unwrap_or_default();
-        if !kind.ends_with("DifferentialTransmission") {
+        if !transmission_type(node).ends_with("DifferentialTransmission") {
             continue;
         }
         let name = node.attribute("name").unwrap_or("unnamed");
@@ -1087,6 +1082,14 @@ fn parse_transmissions(robot: Node<'_, '_>) -> anyhow::Result<Vec<DifferentialTr
         });
     }
     Ok(transmissions)
+}
+
+fn transmission_type<'a>(node: Node<'a, '_>) -> &'a str {
+    node.children()
+        .find(|child| child.has_tag_name("type") || child.has_tag_name("plugin"))
+        .and_then(|child| child.text())
+        .unwrap_or_default()
+        .trim()
 }
 
 fn ordered_members(
