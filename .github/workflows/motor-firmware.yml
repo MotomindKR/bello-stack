@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: '17 5 * * 1'
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/motor-firmware.yml'
+      - 'components/bello-hardwared/firmware/**'
+      - 'scripts/check-motor-firmware.py'
 
 permissions:
   contents: read
