@@ -181,8 +181,9 @@ impl Capture {
             .iter()
             .chain(positions)
             .chain(rotations);
-        for (bytes, value) in self.packet[HEADER..].chunks_exact_mut(8).zip(values) {
-            bytes.copy_from_slice(&value.to_le_bytes());
+        let (chunks, _) = self.packet[HEADER..].as_chunks_mut::<8>();
+        for (bytes, value) in chunks.iter_mut().zip(values) {
+            *bytes = value.to_le_bytes();
         }
         if self.socket.send(&self.packet).is_err() {
             self.dropped += 1;
@@ -454,27 +455,23 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
         if monotonic_ns().saturating_sub(capture_ns) > 500_000_000 {
             continue;
         }
-        let values = latest[HEADER..size]
-            .chunks_exact(8)
-            .map(|b| f64::from_le_bytes(b.try_into().unwrap()))
+        let (chunks, _) = latest[HEADER..size].as_chunks::<8>();
+        let values = chunks
+            .iter()
+            .copied()
+            .map(f64::from_le_bytes)
             .collect::<Vec<_>>();
         ensure!(
             values.iter().all(|v| v.is_finite()),
             "invalid snapshot state"
         );
         data.qpos_mut().copy_from_slice(&values[..nq]);
-        for (target, chunk) in data
-            .mocap_pos_mut()
-            .iter_mut()
-            .zip(values[nq..nq + 3 * nmocap].chunks_exact(3))
-        {
+        let (positions, _) = values[nq..nq + 3 * nmocap].as_chunks::<3>();
+        for (target, chunk) in data.mocap_pos_mut().iter_mut().zip(positions) {
             target.copy_from_slice(chunk);
         }
-        for (target, chunk) in data
-            .mocap_quat_mut()
-            .iter_mut()
-            .zip(values[nq + 3 * nmocap..].chunks_exact(4))
-        {
+        let (rotations, _) = values[nq + 3 * nmocap..].as_chunks::<4>();
+        for (target, chunk) in data.mocap_quat_mut().iter_mut().zip(rotations) {
             target.copy_from_slice(chunk);
         }
         // Only the simulation clock scalar changes; allocation/layout remain intact.

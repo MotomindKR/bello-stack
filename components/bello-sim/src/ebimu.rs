@@ -289,7 +289,6 @@ mod tests {
     use super::*;
     use std::fs::File;
     use std::io::{Read, Write};
-    use std::os::fd::AsRawFd;
 
     fn sample() -> Sample {
         let orientation = UnitQuaternion::from_euler_angles(0.2, -0.3, 0.4);
@@ -424,7 +423,7 @@ mod tests {
         let mut serial = Serial::open(&Endpoint::Device(path), 200., 25.).unwrap();
         let mut peer = File::from(pty.master);
         nix::fcntl::fcntl(
-            peer.as_raw_fd(),
+            &peer,
             nix::fcntl::FcntlArg::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
         )
         .unwrap();

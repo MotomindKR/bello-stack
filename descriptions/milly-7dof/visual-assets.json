@@ -51,8 +51,8 @@
         26.622872416902275
       ],
       "mesh": "meshes/visual/covers/base_case.stl",
-      "mesh_sha256": "fd14855a5ed417294422a0e2c06675a5947d1502060d4f7d3d9b9d291799fc31",
-      "triangles": 17700,
+      "mesh_sha256": "a5607a6dd5d5996a2cda874e4798334238486057fb546b04631f56fa02fd20b8",
+      "triangles": 4247,
       "source_triangles": 17700,
       "link_from_cad": [
         [
@@ -96,8 +96,8 @@
         -38.3771275830977
       ],
       "mesh": "meshes/visual/covers/base_mount.stl",
-      "mesh_sha256": "17283bdfbdf8973f44baa09432977e4b89e70ec44f12286edabe31ed9f679ee3",
-      "triangles": 4876,
+      "mesh_sha256": "6edcab35ae5f9214e9c9d850e422f49cd75f65f384fe4c480f37c93740c2630b",
+      "triangles": 1170,
       "source_triangles": 4876,
       "link_from_cad": [
         [
@@ -141,8 +141,8 @@
         -0.6771275830977252
       ],
       "mesh": "meshes/visual/covers/main_connector.stl",
-      "mesh_sha256": "e7e4cf427d7a6cd5561d8eef1b5af75484125c3d4df6379f964b1c619ed4cabb",
-      "triangles": 107335,
+      "mesh_sha256": "4588391f404ffaf1cc35e7a2874649fcdf06962bf9b0139826f6d606ce0efbe1",
+      "triangles": 45079,
       "source_triangles": 107335,
       "link_from_cad": [
         [
@@ -186,8 +186,8 @@
         -34.37712758309773
       ],
       "mesh": "meshes/visual/covers/base_cover.stl",
-      "mesh_sha256": "168548950835b69350dfee3c76f39925fa31fb69cdf6041e2c7bd48922dd9c96",
-      "triangles": 5258,
+      "mesh_sha256": "5c508d137506d482f9b5c2066ede53c1d75f6c7e791d3adb51a39fcc625d5966",
+      "triangles": 1260,
       "source_triangles": 5258,
       "link_from_cad": [
         [
@@ -231,8 +231,8 @@
         141.62244697620224
       ],
       "mesh": "meshes/visual/covers/shoulder_spacer.stl",
-      "mesh_sha256": "2d2a974a739ce5970e8f3bec8747384c9b0310ba87588243521ad895a51ebe02",
-      "triangles": 19268,
+      "mesh_sha256": "c49ddac894ec4d66b8de4bd64a473b287313caf9d0610a34052b0b74e534fa8c",
+      "triangles": 4624,
       "source_triangles": 19268,
       "link_from_cad": [
         [
@@ -276,8 +276,8 @@
         141.62312152916502
       ],
       "mesh": "meshes/visual/covers/shoulder_roll_case.stl",
-      "mesh_sha256": "1e0d6c5832c8de70120e827f9977d3bad913e1fc06fb7027c7cbca71ec74c81e",
-      "triangles": 77477,
+      "mesh_sha256": "fc6800adac672a9aa901c6580a323518aeccb11c8ec05435ca539e1e3a72b98f",
+      "triangles": 18593,
       "source_triangles": 77477,
       "link_from_cad": [
         [
@@ -321,8 +321,8 @@
         206.08307279051888
       ],
       "mesh": "meshes/visual/covers/upper_arm_case.stl",
-      "mesh_sha256": "1ef6c86043a37238d00fa32d1ade0980fe49aeb3e8f12d97d12868b71be7ff6f",
-      "triangles": 143829,
+      "mesh_sha256": "15178719d8bc2d9c60af7838dad4d312963b9adfc7c783d0aa4e4150894619df",
+      "triangles": 25889,
       "source_triangles": 143829,
       "link_from_cad": [
         [
@@ -366,8 +366,8 @@
         216.3029126164452
       ],
       "mesh": "meshes/visual/covers/forearm_cover_a.stl",
-      "mesh_sha256": "c5d1dc15f1543dfefa1c120df19483e1f39566359275924466790e8577307dd8",
-      "triangles": 24332,
+      "mesh_sha256": "d2838a9d03dcbe71f10f5207a690d0fca0fba24cab5042f28603e8f899fd806a",
+      "triangles": 4378,
       "source_triangles": 24332,
       "link_from_cad": [
         [
@@ -411,8 +411,8 @@
         216.3029126164452
       ],
       "mesh": "meshes/visual/covers/forearm_cover_b.stl",
-      "mesh_sha256": "2ff30603a4a35ff21ac87a964545f2c0dad7d24496427aa4f853d8b55fb5b959",
-      "triangles": 29104,
+      "mesh_sha256": "5f330eb4ea3404e38585cee50ff14262f6510add0b77de72fd10ccab73924adc",
+      "triangles": 5238,
       "source_triangles": 29104,
       "link_from_cad": [
         [
@@ -456,8 +456,8 @@
         206.12342069141
       ],
       "mesh": "meshes/visual/covers/elbow_spacer.stl",
-      "mesh_sha256": "1b4015122fc916a93e0a6ef8727ef30fdc44afe749070e31d626695d8b2f9338",
-      "triangles": 21182,
+      "mesh_sha256": "666f4631d3b37e023ebec815ddac270eb53e2c0dbe42206482e4c2156dfa91b5",
+      "triangles": 3812,
       "source_triangles": 21182,
       "link_from_cad": [
         [
@@ -501,8 +501,8 @@
         216.28705551922704
       ],
       "mesh": "meshes/visual/covers/wrist_spacer.stl",
-      "mesh_sha256": "5a7eb37ac80a31dfd4cfb6137da07ca6f26bc744af35d8d36c4d32313b96cf7c",
-      "triangles": 4084,
+      "mesh_sha256": "fd971e393b502ed72660ebb1fbb9c8c66e3cd7a659350a8a313a1509f5d74d00",
+      "triangles": 980,
       "source_triangles": 4084,
       "link_from_cad": [
         [
@@ -636,8 +636,8 @@
         217.80286576763595
       ],
       "mesh": "meshes/visual/covers/wrist_case.stl",
-      "mesh_sha256": "a060cd224781bdfd4d55a2791bbc284fee8329bf679ca3f1e16508a44769a89b",
-      "triangles": 30828,
+      "mesh_sha256": "b56d5bd4a5954d461b9914f0b8d06c0a67055eee7aa3a74e7df7981dbe6308d4",
+      "triangles": 7398,
       "source_triangles": 30828,
       "link_from_cad": [
         [
@@ -681,8 +681,8 @@
         216.3029126149941
       ],
       "mesh": "meshes/visual/covers/wrist_end_cover.stl",
-      "mesh_sha256": "99c9a4e078cd506bf114d163cb93dd208a119ff6e5a73c642c90609ae1f7afde",
-      "triangles": 3496,
+      "mesh_sha256": "87e4f749b2b53a7182e9ca67bc03028f5ff6de271d30c577c11914c8a774422c",
+      "triangles": 629,
       "source_triangles": 3496,
       "link_from_cad": [
         [
@@ -726,8 +726,8 @@
         216.30291560977986
       ],
       "mesh": "meshes/visual/covers/wrist_button.stl",
-      "mesh_sha256": "9243e81d4a2484e81c0fb38d81e8e0f6f785188078734215fa7fe9f9345167fb",
-      "triangles": 3070,
+      "mesh_sha256": "67b0655ae92b09c4ba10522ddf984ea7bc239a69a5026020ce8061bc95e215a2",
+      "triangles": 736,
       "source_triangles": 3070,
       "link_from_cad": [
         [
@@ -771,8 +771,8 @@
       "name": "roll_output_connector",
       "color": "metal",
       "mesh": "meshes/visual/exterior/roll_output_connector.stl",
-      "mesh_sha256": "c40f568106ab192051549406d78db4793377ccc5a3c8e40a86c81b1b5dc70014",
-      "triangles": 15764,
+      "mesh_sha256": "a586675bb2deaa1e2d222fb26ac2c2b2c26fba36278e857077770d7761bff454",
+      "triangles": 3782,
       "source_triangles": 15764,
       "link_from_cad": [
         [
@@ -816,8 +816,8 @@
       "name": "elbow_frame_right",
       "color": "metal",
       "mesh": "meshes/visual/exterior/elbow_frame_right.stl",
-      "mesh_sha256": "c250140c06e60586916ad1253ff776ea5723a3c83c629617b5dfa088173628ef",
-      "triangles": 12220,
+      "mesh_sha256": "680a8e2d1ee07d874b070c21a03f19a57b442e421a3b785d43e7db067fb20298",
+      "triangles": 2932,
       "source_triangles": 12220,
       "link_from_cad": [
         [
@@ -861,8 +861,8 @@
       "name": "elbow_frame_left",
       "color": "metal",
       "mesh": "meshes/visual/exterior/elbow_frame_left.stl",
-      "mesh_sha256": "f8d6c4450a49f68808ebb50949f52455fb2a457317518e84429352b4a89ea4a2",
-      "triangles": 12488,
+      "mesh_sha256": "0f5179f14c6bc5b21fff6c68c82f58ea084b0d4c92b2b1602e59cac72d4b7a2a",
+      "triangles": 2996,
       "source_triangles": 12488,
       "link_from_cad": [
         [
@@ -906,8 +906,8 @@
       "name": "elbow_motor_housing",
       "color": "dark",
       "mesh": "meshes/visual/exterior/elbow_motor_housing.stl",
-      "mesh_sha256": "7fe5c00a18db310558aa4663810eaf7da4bd7cbfda3982ac7fcf044cfc48e006",
-      "triangles": 126252,
+      "mesh_sha256": "961a198464d09da38dc345448da1b3528cc0e36f2df182b9c5aea92a8b139513",
+      "triangles": 17675,
       "source_triangles": 126342,
       "link_from_cad": [
         [
@@ -951,8 +951,8 @@
       "name": "forearm_roll_motor_housing",
       "color": "dark",
       "mesh": "meshes/visual/exterior/forearm_roll_motor_housing.stl",
-      "mesh_sha256": "ee752f0407475fa080150a96d70c6b256ab8c2b4226837bd41f18c929b4eeefc",
-      "triangles": 87390,
+      "mesh_sha256": "dc43ef4e4ba365c7bee5222cf1327887e361fa3aea1d988d5694a75a05a13911",
+      "triangles": 8738,
       "source_triangles": 87440,
       "link_from_cad": [
         [
@@ -996,8 +996,8 @@
       "name": "forearm_end_limiter",
       "color": "metal",
       "mesh": "meshes/visual/exterior/forearm_end_limiter.stl",
-      "mesh_sha256": "309a7d5608673eacb3252b3fd7b3e67fff40cd0bf08450938831f720646ee453",
-      "triangles": 5632,
+      "mesh_sha256": "5b31adc2873d688e0576d1d253e3d67aa58788b02693e392d7e98a7926cb8a2c",
+      "triangles": 1350,
       "source_triangles": 5632,
       "link_from_cad": [
         [
@@ -1041,8 +1041,8 @@
       "name": "wrist_roll_top_bracket",
       "color": "metal",
       "mesh": "meshes/visual/exterior/wrist_roll_top_bracket.stl",
-      "mesh_sha256": "d1f1e4743ba7b52c2d719715a0680afddbb596dcac6280eb967ddaa66940960d",
-      "triangles": 3036,
+      "mesh_sha256": "cdc8164eb10fd9c33d6911dc4c86b7c028b7c71d9789d6fd6413243eca01a565",
+      "triangles": 728,
       "source_triangles": 3036,
       "link_from_cad": [
         [
@@ -1086,8 +1086,8 @@
       "name": "wrist_inner_frame",
       "color": "metal",
       "mesh": "meshes/visual/exterior/wrist_inner_frame.stl",
-      "mesh_sha256": "41a3af9ed41bc8018d4f5e29c67a90a9ab5258ef8768935969ace6e58512047a",
-      "triangles": 20104,
+      "mesh_sha256": "b6ebd007f9ec1b03df64e8739e2ff2a2c614cbd7f62dae51fee98cf0e17fac6b",
+      "triangles": 3618,
       "source_triangles": 20104,
       "link_from_cad": [
         [
@@ -1131,8 +1131,8 @@
       "name": "wrist_pitch_motor_housing",
       "color": "dark",
       "mesh": "meshes/visual/exterior/wrist_pitch_motor_housing.stl",
-      "mesh_sha256": "c4702e65732774c3134620ec10e0ae826406943dfc74f72386a39d896e32bfa6",
-      "triangles": 87395,
+      "mesh_sha256": "66fc7fb05de1f91d0d89e1c67a50bbbf36ae16e9789fff9837872ef3773e642e",
+      "triangles": 8739,
       "source_triangles": 87438,
       "link_from_cad": [
         [
@@ -1176,8 +1176,8 @@
       "name": "wrist_outer_frame",
       "color": "metal",
       "mesh": "meshes/visual/exterior/wrist_outer_frame.stl",
-      "mesh_sha256": "20878223e9f88313ff46477950982327008e006349b47c44c3269f13d3c7b0b3",
-      "triangles": 19412,
+      "mesh_sha256": "342b8b7dbfc8d6c0418b272b47860b1c657f6043037a26cfa235525ab6caddae",
+      "triangles": 3494,
       "source_triangles": 19412,
       "link_from_cad": [
         [
@@ -1221,8 +1221,8 @@
       "name": "wrist_bottom_bracket",
       "color": "metal",
       "mesh": "meshes/visual/exterior/wrist_bottom_bracket.stl",
-      "mesh_sha256": "7834345ed20183ba8f887cbda96614ba9d60e11ac8f67abad7911575e93d5071",
-      "triangles": 6696,
+      "mesh_sha256": "46ea3977557a399dd68e7c3a40a3a8e2e44d5309f96f1a505e4506978fcdad2b",
+      "triangles": 1606,
       "source_triangles": 6696,
       "link_from_cad": [
         [
@@ -1266,8 +1266,8 @@
       "name": "wrist_top_bracket",
       "color": "metal",
       "mesh": "meshes/visual/exterior/wrist_top_bracket.stl",
-      "mesh_sha256": "763ddeadf7bfb31bff980a1506defe42dce71e13909297049a84ee91b583fd98",
-      "triangles": 2932,
+      "mesh_sha256": "9b8e8aafcbc2123cdf7a6e70482be5435fd8167e2f223ec872e7fad480ab8797",
+      "triangles": 702,
       "source_triangles": 2932,
       "link_from_cad": [
         [
@@ -1301,8 +1301,8 @@
       "link": "link_3",
       "color": "dark",
       "mesh": "meshes/visual/exterior/elbow_cover_holder_positive.stl",
-      "mesh_sha256": "6288ff4c8f9bf1a3f50ddd51e306d4d51d1210eb4189daa952af7e864fd7489e",
-      "triangles": 113034,
+      "mesh_sha256": "d8ecadc7116503021efae1f506120094c3045ba4c6122d2df9e085bb5a0da19a",
+      "triangles": 11302,
       "link_from_cad": [
         [
           -2.6794896250814618e-08,
@@ -1341,8 +1341,8 @@
       "link": "link_3",
       "color": "dark",
       "mesh": "meshes/visual/exterior/elbow_cover_holder_negative.stl",
-      "mesh_sha256": "c7dd92e33a105ec0c4d3a6cd33e44f87fc73a7483cb9b388fb21481f2c18264f",
-      "triangles": 113132,
+      "mesh_sha256": "75233440dd5add47888d909594aaccf17360ac8dadd0fca995c6b33ce3e3e86f",
+      "triangles": 11312,
       "link_from_cad": [
         [
           -2.6794896250814618e-08,
@@ -1381,8 +1381,8 @@
       "link": "finger_1",
       "color": "metal",
       "mesh": "../milly/meshes/visual/gripper/finger_1_carriage.stl",
-      "mesh_sha256": "41355e62ed2b9dd0053c27e9fba482c6fb3d642984c05f22ef05d3636080376b",
-      "triangles": 45342,
+      "mesh_sha256": "25fb64eb414866ff177f22fb5e9e7681b9dec7c59eae251a86c32205732d1f98",
+      "triangles": 4534,
       "link_from_cad": [
         [
           0.9999999999999991,
@@ -1421,8 +1421,8 @@
       "link": "finger_1",
       "color": "dark",
       "mesh": "../milly/meshes/visual/gripper/finger_1_mount.stl",
-      "mesh_sha256": "5b6e5ca17033c1ac245ed349e77550f6a882f204f1d436d832397d3f3542571f",
-      "triangles": 9156,
+      "mesh_sha256": "06f5832a6235fd8bbc9d0a1119fed2636beaa6b7f6cf683ca975680d5eb0edfe",
+      "triangles": 1648,
       "link_from_cad": [
         [
           0.9999999999999991,
@@ -1473,8 +1473,8 @@
       "link": "finger_1",
       "color": "blue",
       "mesh": "../milly/meshes/visual/gripper/finger_1_soft_pad.stl",
-      "mesh_sha256": "51a655d06b4d59c14e9283f45d9bd2018a51beb65dbf3f8613104e370c5c6864",
-      "triangles": 4616,
+      "mesh_sha256": "7582c2e33e672a4b7982afa984c8802f736e1263c5d8a4d9ee3f2b27499e4cc6",
+      "triangles": 646,
       "link_from_cad": [
         [
           0.9999999999999991,
@@ -1513,8 +1513,8 @@
       "link": "finger_2",
       "color": "metal",
       "mesh": "../milly/meshes/visual/gripper/finger_2_carriage.stl",
-      "mesh_sha256": "e81711a284dfca76c1be140e199058d2bfad09490db491de663d6025f2d1399b",
-      "triangles": 45344,
+      "mesh_sha256": "fa05bb448c3ab69ae2726a7012029d06236f8bb8e283f311440ba7eb4bcc6311",
+      "triangles": 4534,
       "link_from_cad": [
         [
           0.9999999999999991,
@@ -1553,8 +1553,8 @@
       "link": "finger_2",
       "color": "dark",
       "mesh": "../milly/meshes/visual/gripper/finger_2_mount.stl",
-      "mesh_sha256": "11fc2e59bd1378d0bd92100b7298db9b4c434d98f3a8338c0328b350ca6cbe5c",
-      "triangles": 9156,
+      "mesh_sha256": "c1783abf28ea9b094b579c73cb15ca9d3bea01df0dddc1ef6b2f9a58e3ef3246",
+      "triangles": 1648,
       "link_from_cad": [
         [
           0.9999999999999991,
@@ -1605,8 +1605,8 @@
       "link": "finger_2",
       "color": "blue",
       "mesh": "../milly/meshes/visual/gripper/finger_2_soft_pad.stl",
-      "mesh_sha256": "8c96e5d331c5d742bb44859b80e0d0590f7990cb942d3be318ba9fe0e2d2ac11",
-      "triangles": 4616,
+      "mesh_sha256": "9404ddf66d36ed5bddc3897a5f041a05561367379a14883f65b1d4fd144c2659",
+      "triangles": 646,
       "link_from_cad": [
         [
           0.9999999999999991,
@@ -1645,18 +1645,18 @@
       "link": "link_1",
       "color": "metal",
       "mesh": "meshes/visual/exterior/shoulder_top_plate.stl",
-      "mesh_sha256": "b720d7cbd9788958a45541eb085da197ab056281a708a1ad9aeb02a454aca104",
-      "triangles": 3620,
+      "mesh_sha256": "a69df24d9d6857e64e9ba7cc4b5a4196e68c6fb52101d8659cfd4ae779f33d27",
+      "triangles": 1158,
       "bounds_link_m": [
         [
-          -0.018500000083986612,
-          -0.03448362387876612,
-          -0.005999921165061692
+          -0.01850000023841858,
+          -0.03448362275958061,
+          -0.005999972578138113
         ],
         [
-          0.018499998723920497,
-          0.018500003626210598,
-          -0.0004999187292892456
+          0.018501531332731247,
+          0.01850302144885063,
+          -0.0004999186494387686
         ]
       ],
       "object_path": "LinkGroup002.Solid028.",
@@ -1693,18 +1693,18 @@
       "link": "link_1",
       "color": "metal",
       "mesh": "meshes/visual/exterior/shoulder_inner_frame.stl",
-      "mesh_sha256": "5dac899f3136a8c49f65efa415102005aac609c8d86661308e36f3454eb1db3a",
-      "triangles": 19300,
+      "mesh_sha256": "febae0838db29c5f264bfd8d8ffc4a49ccedc6c1c2619a98822ae895a3a69ef7",
+      "triangles": 4632,
       "bounds_link_m": [
         [
-          -0.03449999936873089,
-          -0.05399999936724757,
-          -0.11999992605172376
+          -0.03450000658631325,
+          -0.05400837957859039,
+          -0.11999992281198502
         ],
         [
-          0.03449999872392052,
-          0.054000000632752315,
-          -0.005999919239038115
+          0.03450000658631325,
+          0.054002102464437485,
+          -0.005999919027090073
         ]
       ],
       "object_path": "LinkGroup002.Solid029.",
@@ -1741,18 +1741,18 @@
       "link": "link_2",
       "color": "dark",
       "mesh": "meshes/visual/exterior/shoulder_case_inner_bracket.stl",
-      "mesh_sha256": "83abadf46582cd2832f9612429191c87fff07c59bb909cc1517876b096254929",
-      "triangles": 28992,
+      "mesh_sha256": "ae8d4794464ae566063210a81089aa364c3c6cb7479762ff26811b401b4d8ba2",
+      "triangles": 5218,
       "bounds_link_m": [
         [
-          -0.12210002038092574,
-          -0.05149988896754028,
-          0.05939250851103764
+          -0.12211073935031891,
+          -0.05149988830089569,
+          0.05939250811934471
         ],
         [
-          0.051500039908332615,
-          0.051499888028369814,
-          0.13639251231896649
+          0.05150004103779793,
+          0.05149988830089569,
+          0.1363981068134308
         ]
       ],
       "object_path": "LinkGroup003.Solid036.",
@@ -1789,18 +1789,18 @@
       "link": "link_2",
       "color": "dark",
       "mesh": "meshes/visual/exterior/shoulder_case_holder_positive.stl",
-      "mesh_sha256": "4095e33c29c37499bff178f782b641648e85651ecebac4fa4fe658180439dd45",
-      "triangles": 25000,
+      "mesh_sha256": "b8a0277b9679b0a6e4af5c0500d956ecbddc64752f978639a8b3e0e7ef244acb",
+      "triangles": 2500,
       "bounds_link_m": [
         [
-          0.0004999350201140701,
-          -0.05399408906082122,
-          0.13339250895144153
+          0.0004999351222068071,
+          -0.05399408936500549,
+          0.13339218497276306
         ],
         [
-          0.05400003791746792,
-          0.053994085490024456,
-          0.14039251240379708
+          0.05400003865361214,
+          0.053994085639715195,
+          0.14039276540279388
         ]
       ],
       "object_path": "LinkGroup003.Solid037.",
@@ -1837,18 +1837,18 @@
       "link": "link_2",
       "color": "dark",
       "mesh": "meshes/visual/exterior/shoulder_case_holder_negative.stl",
-      "mesh_sha256": "859795ea19cdaa5c8417898e5425d5e47ab8b1fcbb7b06be0279141e2d3243ea",
-      "triangles": 25000,
+      "mesh_sha256": "73494e28bf8ba0ea24193992b3342a275a48a54307969a531504dcce5026062a",
+      "triangles": 2500,
       "bounds_link_m": [
         [
-          0.000499937051167243,
-          -0.053994087029764506,
-          0.05539251091965741
+          0.0004999370430596173,
+          -0.053994085639715195,
+          0.055392488837242126
         ],
         [
-          0.05400004000760904,
-          0.053994087521081105,
-          0.06239251431008284
+          0.05400003865361214,
+          0.053994085639715195,
+          0.06239285692572594
         ]
       ],
       "object_path": "LinkGroup003.Solid038.",
@@ -1885,18 +1885,18 @@
       "link": "link_2",
       "color": "dark",
       "mesh": "meshes/visual/exterior/roll_motor_bracket.stl",
-      "mesh_sha256": "06a7fc670fe6a79803866d2fe2771c82e99d7a7b4b47e27b9e929437a94b7d96",
-      "triangles": 69724,
+      "mesh_sha256": "84689353cb57f9b986cdca3d9b6cd4e8954c918664966ef726963c8b25a39f50",
+      "triangles": 6972,
       "bounds_link_m": [
         [
-          -0.11910001949502831,
-          -0.032479943158975136,
-          0.06259250553343006
+          -0.11910004168748856,
+          -0.032479941844940186,
+          0.06259247660636902
         ],
         [
-          -0.05699991205446099,
-          0.03247973909609921,
-          0.13319251062890658
+          -0.05699988827109337,
+          0.03247974067926407,
+          0.1331925392150879
         ]
       ],
       "object_path": "LinkGroup003.Solid039.",
@@ -1933,18 +1933,18 @@
       "link": "link_2",
       "color": "metal",
       "mesh": "meshes/visual/exterior/shoulder_bottom_plate.stl",
-      "mesh_sha256": "4756bfd30a78a76464dfd52acc098195806c60eb9437ca4d02ca95b9c95f0447",
-      "triangles": 6668,
+      "mesh_sha256": "1c7efc3a197e6d3ceb2bb800878baa21a4f4303c56ac51ef27aac5b2d054905a",
+      "triangles": 1600,
       "bounds_link_m": [
         [
-          -0.02226719192920755,
-          -0.023500001154294514,
-          0.056392511404537736
+          -0.022268014028668404,
+          -0.02350383624434471,
+          0.05639243498444557
         ],
         [
-          0.02350003997536383,
-          0.02349418624055502,
-          0.06839251274847452
+          0.023503851145505905,
+          0.023507867008447647,
+          0.06839251518249512
         ]
       ],
       "object_path": "LinkGroup003.Solid041.",
@@ -1981,18 +1981,18 @@
       "link": "link_2",
       "color": "metal",
       "mesh": "meshes/visual/exterior/shoulder_upper_plate.stl",
-      "mesh_sha256": "3c008c1f06e9175a14024f61fa39a25789db8cdea6a99d27269d6d0a43f28d73",
-      "triangles": 3976,
+      "mesh_sha256": "43df3cb8438dc1c9ff160006883e313e213a41510679dc783afe095478fef17b",
+      "triangles": 954,
       "bounds_link_m": [
         [
-          -0.04124996970373851,
-          -0.023500003137120223,
-          0.12889251000263605
+          -0.041255608201026917,
+          -0.02350320853292942,
+          0.12889251112937927
         ],
         [
-          0.023500037992541564,
-          0.023499996929793307,
-          0.1333925112592281
+          0.023504897952079773,
+          0.023499997332692146,
+          0.1333925575017929
         ]
       ],
       "object_path": "LinkGroup003.Solid042.",
@@ -2029,18 +2029,18 @@
       "link": "link_7",
       "color": "metal",
       "mesh": "meshes/visual/exterior/wrist_yaw_output_plate.stl",
-      "mesh_sha256": "1fc5d82eb5902ca12e1ade1cc006cd86cb61198da4c8386c3ee52eab967bfbdb",
-      "triangles": 6376,
+      "mesh_sha256": "70fc3faba9bd6451b542ea0d8cffa1e6cfc2d23b4d811abca738ecbde8c55c47",
+      "triangles": 1530,
       "bounds_link_m": [
         [
-          -0.030195159415895942,
-          -0.028074201404004434,
-          -0.037194228884315256
+          -0.03019515983760357,
+          -0.028074201196432114,
+          -0.037194252014160156
         ],
         [
-          0.029802584188874798,
-          0.03192354382708734,
-          -0.03219414679523641
+          0.02981826290488243,
+          0.03192354366183281,
+          -0.032194145023822784
         ]
       ],
       "object_path": "LinkGroup011.Solid088.",
@@ -2077,18 +2077,18 @@
       "link": "link_7",
       "color": "metal",
       "mesh": "meshes/visual/exterior/wrist_yaw_limit_frame.stl",
-      "mesh_sha256": "ff4b3f4568ce3756f257fb6b708deb71bead808bcc40de87b0018d66a56d913f",
-      "triangles": 10128,
+      "mesh_sha256": "e6a11c8e052b0cc7136052f1fad960e05ebb17247b2ff920da9d2b06993df092",
+      "triangles": 2430,
       "bounds_link_m": [
         [
-          -0.023188359438429673,
-          -0.018384331757409444,
-          -0.0321942129405379
+          -0.02321481890976429,
+          -0.018377510830760002,
+          -0.032194215804338455
         ],
         [
-          0.01730305553757227,
-          0.02021333821084209,
-          -0.01519416326676229
+          0.01730283349752426,
+          0.020219655707478523,
+          -0.015194141305983067
         ]
       ],
       "object_path": "LinkGroup011.Solid106.",
@@ -2125,18 +2125,18 @@
       "link": "link_6",
       "color": "dark",
       "mesh": "meshes/visual/exterior/wrist_yaw_motor_housing.stl",
-      "mesh_sha256": "80efe9c6f4498853a908ccd3602ba578ace19dc04ca2b220b47912c0b817bc2a",
-      "triangles": 12606,
+      "mesh_sha256": "81d69fdebf2440a9f6bad1332658ae74de6390b5c20b45419e3e6e5072d15c81",
+      "triangles": 1260,
       "bounds_link_m": [
         [
-          -0.08699999285996983,
-          -0.022989205215668135,
-          0.0005107683969310713
+          -0.08699917793273926,
+          -0.022982994094491005,
+          0.0005107683828100562
         ],
         [
-          -0.03999999028590537,
-          0.022989227547678792,
-          0.0464892090278656
+          -0.04000164940953255,
+          0.02298266813158989,
+          0.046478014439344406
         ]
       ],
       "source_file": "Milly_Assem_0914_Case Only.step",
@@ -2236,7 +2236,7 @@
     "milly-7dof.urdf": "820dc8498f86a780819ffdb76e22c3661d125e59a3f7fc865d92defb25d5fda5",
     "milly-7dof-dual.urdf": "44da03b341f64d05afddcdf2e1251c0627db96ac44a164f61de29290db6911d6"
   },
-  "scope": "Visual asset provenance; meshes unchanged. Position bounds follow sdk-limits.json. Collisions are primitives; J4 side boxes and wrist-camera stalk/mount colliders are omitted. Corrected J7 shaft and all existing zero-pose/inertia frames are preserved.",
+  "scope": "Visual asset provenance and simplified render meshes. Position bounds follow sdk-limits.json. Collisions are primitives; J4 side boxes and wrist-camera stalk/mount colliders are omitted. Corrected J7 shaft and all existing zero-pose/inertia frames are preserved.",
   "additional_sources": [
     {
       "source_file": "Milly_Assem_0914_Case Only.step",

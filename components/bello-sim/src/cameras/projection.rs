@@ -166,7 +166,8 @@ impl Projection {
                     .par_chunks_mut(tile * 3)
                     .zip(map.par_chunks(tile))
                     .for_each(|(output, map)| {
-                        for (pixel, sample) in output.chunks_exact_mut(3).zip(map) {
+                        let (output, _) = output.as_chunks_mut::<3>();
+                        for (pixel, sample) in output.iter_mut().zip(map) {
                             for (c, value) in pixel.iter_mut().enumerate() {
                                 let i = sample.index + c;
                                 let top = f32::from(pixels[i]) * (1. - sample.dx)
