@@ -1,301 +1,53 @@
-# Bello hardware for Python
+# Bello hardware Python client
 
-Synchronous Python client for reading hardwared telemetry and controlling motor groups.
-
-## Install
-
-With Python 3.10 or newer, install the SDK and its API dependency from the repository root.
+Install from the repository root with Python 3.10 or newer.
 
 ```sh
 python -m pip install ./components/bello-hardware-api ./components/bello-hardware-python
 ```
 
-## Connect and inspect the robot
-
-Use `Robot` as a context manager so the gRPC channel and any owned control
-sessions are always closed:
+## Read hardware
 
 ```python
 from bello_hardware import Robot
 
-with Robot.connect("http://127.0.0.1:50051") as robot:
-    print("groups:", robot.inventory.group_names)
-
-    for motor in robot.inventory.motors:
-        print(motor.name, "coordinate=", motor.coordinate, "torque=", motor.limits.torque_max)
-
-    for imu in robot.inventory.imus:
-        print(
-            "IMU:",
-            imu.name,
-            "source_frame=",
-            imu.source_frame,
-            "output_frame=",
-            imu.output_frame,
-        )
-```
-
-`Robot.connect()` defaults to `http://127.0.0.1:50051` and caches the daemon’s inventory
-on connection. Check each IMU's `output_frame` before using its readings.
-
-Call `robot.refresh_inventory()` to query the daemon again on the same connection.
-A successful refresh returns and caches a fresh inventory. Existing group handles
-and state readers keep the metadata they were created with. Create new handles
-and readers when you need the updated metadata.
-
-## Read state
-
-Compare a group state with `GroupState.GROUP_STATE_IDLE` from `bello_hardware`.
-State fields hold protobuf integer values. `GroupState.Name(value)` returns the
-symbolic name for a known value.
-
-`Robot.states()` creates a synchronous reader. Each `read()` returns one
-immutable frame built from the latest samples for every selected motor, IMU,
-and group. If daemon state is still initializing, the reader waits for a
-complete frame within the caller's timeout.
-
-```python
-with Robot.connect("http://127.0.0.1:50051") as robot:
-    reader = robot.states(
-        groups=("leg",),
-        imus=("body-imu",),
-    )
-    while True:
-        frame = reader.read(timeout=1.0)
-        print(frame.motors, frame.imus, frame.groups)
-```
-
-Empty group or IMU selectors select all configured devices. Frames expose
-daemon-side sample ages and span, the local receive timestamp, and the complete
-RPC round-trip duration. A control loop can conservatively add that duration
-and any time since receipt to its freshness checks, covering transport and
-Python scheduling delays without synchronized clocks. Apply those checks to
-motor, IMU, and group ages, and reject a sample span wider than the control
-loop's coherence budget.
-
-For temporary debugging, `examples/log_hardware.py` records complete state
-frames as newline-delimited JSON at 50 Hz by default:
-
-```sh
-python3 components/bello-hardware-python/examples/log_hardware.py \
-  --endpoint http://127.0.0.1:50051
-```
-
-It creates `hardware-<UTC timestamp>.jsonl` in the current directory. Use
-`--output -` for stdout, `--rate 100` to change the sampling rate, or
-`--duration 30` for a bounded capture. The first line contains inventory; later
-lines contain complete motor, group, and IMU frames with sample and transport
-timing.
-
-Turn a capture into a self-contained interactive browser dashboard with no
-additional Python dependencies:
-
-```sh
-python3 components/bello-hardware-python/examples/view_hardware_log.py \
-  hardware-20260722T120000Z.jsonl
-```
-
-The dashboard plots selectable motor and IMU channels and summarizes group and
-fault transitions. It writes `LOG.jsonl.html` and opens it in the default
-browser; pass `--no-open` when running headless.
-
-## Read power telemetry
-
-`Robot.power().read()` returns one snapshot per selected board.
-
-```python
-from bello_hardware import PowerBattery, Robot
-
 with Robot.connect() as robot:
-    for board in robot.power().read(timeout=1.0):
-        for sample in board.samples:
-            if isinstance(sample.reading, PowerBattery) and not board.is_stale(sample):
-                print(board.board_name, sample.reading.voltage_v, sample.reading.soc_percent)
+    print(robot.inventory.group_names)
+    frame = robot.states().read(timeout=1.0)
+    for motor in frame.motors:
+        print(motor.coordinate, motor.position)
 ```
 
-An absent battery charge percentage or second GPIO register has the value `None`.
+| Call | Result |
+| --- | --- |
+| `robot.refresh_inventory()` | Fetch and cache new inventory. Existing groups and readers keep their snapshot. |
+| `robot.states(groups=..., imus=...).read(timeout=...)` | One complete frame for the selection. Check sample ages, round-trip time, and sample span before using it for control. |
+| `robot.power().read(timeout=...)` | A snapshot per board. Use `board.is_stale(sample)` for freshness. Optional readings such as battery charge use `None`. |
+
+The default endpoint is `http://127.0.0.1:50051`. Pass an HTTPS URL or Unix socket path such as `unix:///run/bello/hardwared.sock` to `Robot.connect()`. For mTLS, pass `tls=TlsCredentials.from_files(...)`. [Transport configuration](../../docs/configuration.md#grpc)
 
 ## Control a motor group
 
-Control authority is acquired per motor group. Only one client can hold the
-write lease for a particular group, although different groups can be controlled
-concurrently.
+Replace `leg` with a configured group. Each command supplies one target per coordinate.
 
 ```python
 from bello_hardware import CoordinateTarget, Robot
 
-with Robot.connect("http://127.0.0.1:50051") as robot:
-    leg = robot.group("leg")
-    print("expected coordinates:", leg.coordinates)
-    print("control rate:", leg.control_rate_hz, "Hz")
-
-    initial = {
-        "hip": CoordinateTarget.position(0.0, kp=20.0, kd=1.0),
-        "knee": CoordinateTarget.position(0.0, kp=20.0, kd=1.0),
-    }
-
-    target = {
-        "hip": CoordinateTarget.position(0.2, kp=20.0, kd=1.0),
-        "knee": CoordinateTarget.position(-0.4, kp=20.0, kd=1.0),
-    }
-
-    with leg.control("walking-controller") as control:
-        control.start(initial)
-        control.send(target)
+with Robot.connect() as robot:
+    group = robot.group("leg")
+    targets = {name: CoordinateTarget.damping(kd=1.0) for name in group.coordinates}
+    with group.control("example") as control:
+        control.start(targets)
+        control.send(targets)
 ```
 
-`control.start` enables the group into `DAMPED`, then atomically starts the
-daemon controller with the initial complete coordinate frame. `control.send`
-blocks until the daemon acknowledges that exact command. `control.stop()` leaves
-the motors damped under the current lease; restart with
-`control.resume(fresh_frame)` or call `control.disable()` to return to `IDLE`.
-Leaving the control context performs stop if needed, disables the group, stops
-automatic lease renewal, and releases the lease.
+| Operation | Behavior |
+| --- | --- |
+| `control.send(targets)` | Wait for capacity and daemon acknowledgement. |
+| `control.try_submit(targets)` | Return a receipt or raise `CommandQueueFullError`. Call `receipt.result()` to wait. Default capacity is one. |
+| `control.stop()` / `control.resume(targets)` | Keep the lease while damped, then restart with fresh targets. |
+| Exit the control context | Stop, disable, and release. Use `control.close(preserve_damping=True)` to release with damping. |
 
-Safety-critical applications that require an operator-confirmed transition to
-`IDLE` can call `control.close(preserve_damping=True)`. This stops a running
-group when possible and releases the lease without sending `DisableGroup`;
-daemon lease-loss handling retains damping. Call `control.disable()` explicitly
-only after the operator has confirmed that disabling the group is safe.
+A rejection closes the command stream. Resume after confirmed damping. Check group state before recovery after an ambiguous result. [Control and safety](../../docs/control-and-safety.md)
 
-For a fixed-rate loop, configure `max_pending` when acquiring control. It defaults
-to one. `try_submit` returns a receipt immediately, or raises `CommandQueueFullError`
-when the pending limit is reached. `send` waits for a free slot and the reply.
-
-```python
-with leg.control("policy", max_pending=4) as control:
-    control.start(initial)
-    receipt = control.try_submit(target)
-    receipt.result()
-```
-
-A receipt acknowledges daemon acceptance. Its deadline starts at submission.
-The session tracks timeouts and stream failures even if the caller drops the receipt.
-A command rejection closes the command stream. A confirmed damped group can resume
-with a new frame. Other rejections and lease loss mark the session uncertain.
-
-Every `start` and `send` call must contain exactly one target for every coordinate in
-`leg.coordinates`. A partial command is rejected before it reaches the daemon.
-
-All target values use SI units. The available constructors are:
-
-```python
-CoordinateTarget.position(0.25, kp=20.0, kd=1.0)
-CoordinateTarget.torque(1.5)
-CoordinateTarget.damping(kd=1.0)
-CoordinateTarget.hybrid(
-    position=0.25,
-    velocity=0.0,
-    torque_feedforward=0.2,
-    kp=20.0,
-    kd=1.0,
-)
-```
-
-The daemon applies accepted commands immediately and refreshes them at
-`command_refresh_rate_hz` while valid. Lease expiry or command timeout damps
-an enabled group if the client disconnects.
-
-## Handle failures
-
-All package-defined errors inherit from `BelloError`. Catch specific errors
-when your application can make a meaningful recovery decision:
-
-```python
-from bello_hardware import (
-    CommandRejectedError,
-    ControlRequestError,
-    CoordinateTarget,
-    LeaseLostError,
-)
-
-try:
-    control.send(
-        {
-            "hip": CoordinateTarget.damping(kd=1.0),
-            "knee": CoordinateTarget.damping(kd=1.0),
-        }
-    )
-except CommandRejectedError as error:
-    print("command rejected:", error.result, error.detail)
-except LeaseLostError:
-    print("control authority was lost")
-except ControlRequestError as error:
-    print(error.operation, error.code, error.detail)
-```
-
-The client deliberately does not reacquire control or replay a motion command
-after an ambiguous transport failure. If a rejected command acknowledgement
-reports daemon state `DAMPED`, the session also becomes `DAMPED` and can be
-resumed with a fresh frame. If a command might have reached the daemon but its
-acknowledgement was lost, the session becomes `UNCERTAIN`. Resolve the
-authoritative daemon state before choosing recovery or closing the session.
-
-## Connection endpoints
-
-`Robot.connect` accepts these endpoint forms:
-
-```python
-Robot.connect("127.0.0.1:50051")  # plaintext gRPC
-Robot.connect("http://127.0.0.1:50051")  # plaintext gRPC
-Robot.connect("https://robot.example")  # TLS with default roots
-Robot.connect("unix:///run/bello/hardwared.sock")
-```
-
-For a private CA or mutual TLS, load the PEM files once and pass explicit
-credentials:
-
-```python
-from bello_hardware import Robot, TlsCredentials
-
-tls = TlsCredentials.from_files(
-    ca_certificate="/etc/bello/tls/ca.crt",
-    client_certificate="/etc/bello/tls/client.crt",
-    client_private_key="/etc/bello/tls/client.key",
-)
-
-with Robot.connect("https://robot.example:50051", tls=tls) as robot:
-    print(robot.inventory.group_names)
-```
-
-For server-only TLS, omit both client identity fields. TLS credentials are
-rejected for plaintext and Unix endpoints.
-
-Use the `timeout` argument to bound the initial connection and inventory call:
-
-```python
-Robot.connect("http://robot.local:50051", timeout=3.0)
-```
-
-## Call the daemon directly
-
-For raw RPCs such as `WatchTelemetry`, use the generated messages and service
-stubs from `bello_hardware_api` with your own channel. The hardware API guide
-shows how to connect. [Hardware API guide](../../docs/api.md)
-
-## Development
-
-The `bello-hardware-api` distribution includes the generated bindings. It
-installs without Rust, `protoc`, or `grpcio-tools`.
-
-Check the SDK and build both distributions from the repository's development environment.
-
-```sh
-(cd components/bello-hardware-api && python -m hatchling build)
-cd components/bello-hardware-python
-ruff format --check .
-ruff check .
-mypy src/bello_hardware tests
-pytest
-python -m hatchling build
-```
-
-After changing the canonical protobuf contract, regenerate the Python bindings
-from the repository root.
-
-```sh
-python components/bello-hardware-api/scripts/generate_proto.py
-```
-
-For daemon configuration, safety semantics, and operations, see the main
-[Bello stack documentation](../../README.md#where-to-start).
+[Record telemetry](examples/log_hardware.py) · [View a recording](examples/view_hardware_log.py) · [Direct RPCs](../../docs/api.md#direct-clients) · [Development](../../docs/development.md)
