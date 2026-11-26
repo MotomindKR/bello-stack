@@ -18,8 +18,8 @@ pub(crate) use cog_protocol as protocol;
 use protocol::{Framer, Profile, Reading};
 
 mod emergency;
+use emergency::BoardSafety;
 pub(crate) use emergency::EmergencyHandler;
-use emergency::EmergencyHandoff;
 
 const POLL: Duration = Duration::from_millis(20);
 const IDLE_PUBLISH: Duration = Duration::from_millis(250);
@@ -95,12 +95,8 @@ impl PowerBoardWorker {
         spec: PowerBoardSpec,
         serial: SerialHandle,
         telemetry: Telemetry,
-        emergency: Option<EmergencyHandler>,
+        emergency: EmergencyHandler,
     ) -> Result<Self> {
-        ensure!(
-            emergency.is_some() == (spec.emergency_stop == EmergencyStopMode::Damping),
-            "emergency damping requires a daemon safety handler"
-        );
         let lifecycle = DeviceLifecycle::new(
             format!("power_board/{}", spec.name),
             DeviceState::Starting,
@@ -158,10 +154,12 @@ fn run(
     lifecycle: &DeviceLifecycle,
     stop: &AtomicBool,
     telemetry: Telemetry,
-    emergency: Option<EmergencyHandler>,
+    emergency: EmergencyHandler,
 ) {
-    let mut emergency =
-        emergency.map(|handler| EmergencyHandoff::new(serial.clone(), handler, spec.stale_timeout));
+    let mut emergency = (spec.profile == Profile::Agx).then(|| {
+        let handoff = (spec.emergency_stop == EmergencyStopMode::Damping).then(|| serial.clone());
+        BoardSafety::new(handoff, emergency, spec.stale_timeout)
+    });
     let mut connected_at = Instant::now();
     let mut framer = Framer::default();
     let mut samples: BTreeMap<u8, Sample> = BTreeMap::new();

@@ -28,6 +28,8 @@ tonic = { workspace = true, features = ["transport"] }
 tempfile.workspace = true
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
+cog-protocol.workspace = true
+serialport.workspace = true
 socketcan.workspace = true
 
 [[bin]]

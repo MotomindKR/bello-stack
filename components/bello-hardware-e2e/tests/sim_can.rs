@@ -9,6 +9,10 @@ mod sim;
 #[path = "sim_can/lower_body.rs"]
 mod lower_body;
 
+#[cfg(target_os = "linux")]
+#[path = "sim_can/power_warning.rs"]
+mod power_warning;
+
 #[path = "sim_can/configuration.rs"]
 mod configuration;
 
@@ -169,6 +173,14 @@ fn spawn_pair_with_transports(
     ports: &str,
     emulator_ports: &str,
 ) -> Result<(tempfile::TempDir, String, ManagedProcess, ManagedProcess)> {
+    spawn_pair_with_config(ports, emulator_ports, |_| Ok(()))
+}
+
+fn spawn_pair_with_config(
+    ports: &str,
+    emulator_ports: &str,
+    configure: impl FnOnce(&std::path::Path) -> Result<()>,
+) -> Result<(tempfile::TempDir, String, ManagedProcess, ManagedProcess)> {
     let directory = tempfile::tempdir()?;
     let deployment = directory.path().join("hardwared.yaml");
     let emulator_config = directory.path().join("emulator.yaml");
@@ -183,6 +195,7 @@ fn spawn_pair_with_transports(
         &emulator_config,
         support::config::emulator(&format!("{{ {emulator_ports} }}")),
     )?;
+    configure(directory.path())?;
     let daemon = ManagedProcess::spawn(
         "hardwared",
         env!("CARGO_BIN_EXE_hardwared-e2e-fixture"),
