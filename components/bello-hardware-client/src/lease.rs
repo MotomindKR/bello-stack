@@ -1,5 +1,4 @@
 use std::fmt;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bello_hardware_api::hardware_service_client::HardwareServiceClient;
@@ -8,30 +7,11 @@ use bello_hardware_api::{
     RecoverGroupRequest, ReleaseLeaseRequest, RenewLeaseRequest, StartControlRequest,
     StopControlRequest,
 };
-use tokio::sync::{Mutex, watch};
+use tokio::sync::watch;
 use tonic::Code;
 use tonic::transport::Channel;
 
-use crate::duration::positive_milliseconds;
 use crate::{EnumValue, Error};
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum LeaseDuration {
-    /// Let the daemon select its configured default.
-    #[default]
-    ServerDefault,
-    /// Ask for this duration. The daemon clamps it to its supported range.
-    For(Duration),
-}
-
-impl LeaseDuration {
-    pub(crate) fn to_milliseconds(self) -> Result<u64, Error> {
-        match self {
-            Self::ServerDefault => Ok(0),
-            Self::For(duration) => positive_milliseconds(duration, "lease duration"),
-        }
-    }
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LeaseStatus {
@@ -49,17 +29,12 @@ pub(crate) struct LeaseHealth {
     pub(crate) expires_at: Instant,
 }
 
-/// Exclusive write authority for one motor group.
-///
-/// The bearer token is intentionally private and redacted from `Debug`.
-/// Dropping this value performs no asynchronous RPC; an unreleased server
-/// lease expires according to daemon policy.
-pub struct GroupLease {
+pub(crate) struct GroupLease {
     pub(crate) client: HardwareServiceClient<Channel>,
     pub(crate) group: String,
     pub(crate) token: String,
     pub(crate) health: watch::Sender<LeaseHealth>,
-    renew_lock: Arc<Mutex<()>>,
+    requested_duration_ms: u64,
 }
 
 impl GroupLease {
@@ -67,9 +42,8 @@ impl GroupLease {
         mut client: HardwareServiceClient<Channel>,
         group: &str,
         owner: &str,
-        duration: LeaseDuration,
+        requested_duration_ms: u64,
     ) -> Result<Self, Error> {
-        let requested_duration_ms = duration.to_milliseconds()?;
         let request_started = Instant::now();
         let response = client
             .acquire_lease(AcquireLeaseRequest {
@@ -100,24 +74,11 @@ impl GroupLease {
             group: response.group,
             token: response.token,
             health,
-            renew_lock: Arc::new(Mutex::new(())),
+            requested_duration_ms,
         })
     }
 
-    /// Returns a restricted, cloneable capability suitable for a dedicated
-    /// renewal task. It can only renew this lease; it cannot move the group or
-    /// submit commands.
-    pub fn renewer(&self) -> LeaseRenewer {
-        LeaseRenewer {
-            client: self.client.clone(),
-            group: self.group.clone(),
-            token: self.token.clone(),
-            health: self.health.clone(),
-            renew_lock: Arc::clone(&self.renew_lock),
-        }
-    }
-
-    pub async fn enable(&self) -> Result<EnumValue<GroupState>, Error> {
+    pub(crate) async fn enable(&self) -> Result<(), Error> {
         active_health(&self.health)?;
         let mut client = self.client.clone();
         let response = client
@@ -128,14 +89,15 @@ impl GroupLease {
             .await
             .map_err(|status| self.rpc_error(status))?
             .into_inner();
-        Ok(EnumValue::from_raw(response.state))
+        self.confirm_state("enable", GroupState::Damped, response.state)
     }
 
-    pub async fn start(
+    pub(crate) async fn start(
         &self,
+        operation: &'static str,
         valid_for_ms: u64,
         commands: Vec<MotorCommand>,
-    ) -> Result<EnumValue<GroupState>, Error> {
+    ) -> Result<(), Error> {
         active_health(&self.health)?;
         let mut client = self.client.clone();
         let response = client
@@ -148,10 +110,10 @@ impl GroupLease {
             .await
             .map_err(|status| self.rpc_error(status))?
             .into_inner();
-        Ok(EnumValue::from_raw(response.state))
+        self.confirm_state(operation, GroupState::Running, response.state)
     }
 
-    pub async fn stop(&self) -> Result<EnumValue<GroupState>, Error> {
+    pub(crate) async fn stop(&self) -> Result<(), Error> {
         ensure_owned(&self.health)?;
         let mut client = self.client.clone();
         let response = client
@@ -162,10 +124,10 @@ impl GroupLease {
             .await
             .map_err(|status| self.rpc_error(status))?
             .into_inner();
-        Ok(EnumValue::from_raw(response.state))
+        self.confirm_state("stop", GroupState::Damped, response.state)
     }
 
-    pub async fn disable(&self) -> Result<EnumValue<GroupState>, Error> {
+    pub(crate) async fn disable(&self) -> Result<(), Error> {
         ensure_owned(&self.health)?;
         let mut client = self.client.clone();
         let response = client
@@ -176,10 +138,10 @@ impl GroupLease {
             .await
             .map_err(|status| self.rpc_error(status))?
             .into_inner();
-        Ok(EnumValue::from_raw(response.state))
+        self.confirm_state("disable", GroupState::Idle, response.state)
     }
 
-    pub async fn recover(&self) -> Result<EnumValue<GroupState>, Error> {
+    pub(crate) async fn recover(&self) -> Result<(), Error> {
         ensure_owned(&self.health)?;
         let mut client = self.client.clone();
         let response = client
@@ -190,13 +152,10 @@ impl GroupLease {
             .await
             .map_err(|status| self.rpc_error(status))?
             .into_inner();
-        Ok(EnumValue::from_raw(response.state))
+        self.confirm_state("recover", GroupState::Idle, response.state)
     }
 
-    /// Releases ownership and waits for the daemon's configured lease-release
-    /// reaction. Normally call `stop`, then `disable`, before this operation.
-    pub async fn release(&mut self) -> Result<EnumValue<GroupState>, Error> {
-        let _renew = self.renew_lock.lock().await;
+    pub(crate) async fn release(&self) -> Result<EnumValue<GroupState>, Error> {
         ensure_owned(&self.health)?;
         self.health.send_if_modified(|health| {
             if matches!(health.status, LeaseStatus::Active | LeaseStatus::Expired) {
@@ -224,48 +183,49 @@ impl GroupLease {
         Ok(EnumValue::from_raw(response.state))
     }
 
+    fn confirm_state(
+        &self,
+        operation: &'static str,
+        expected: GroupState,
+        state: i32,
+    ) -> Result<(), Error> {
+        if state == expected as i32 {
+            Ok(())
+        } else {
+            Err(Error::UnexpectedGroupState {
+                group: self.group.clone(),
+                operation,
+                expected,
+                actual: EnumValue::from_raw(state),
+            })
+        }
+    }
+
     fn rpc_error(&self, status: tonic::Status) -> Error {
-        record_rpc_failure(&self.health, &status);
+        if status.code() == Code::PermissionDenied {
+            mark_lease_lost(&self.health);
+        }
         status.into()
     }
-}
 
-/// Restricted capability for renewing a [`GroupLease`] from another task.
-#[derive(Clone)]
-pub struct LeaseRenewer {
-    client: HardwareServiceClient<Channel>,
-    group: String,
-    token: String,
-    health: watch::Sender<LeaseHealth>,
-    renew_lock: Arc<Mutex<()>>,
-}
-
-impl LeaseRenewer {
     pub(crate) fn remaining(&self) -> Duration {
         current_health(&self.health)
             .expires_at
             .saturating_duration_since(Instant::now())
     }
 
-    pub(crate) async fn renew(&self, duration: LeaseDuration) -> Result<(), Error> {
-        let _renew = self.renew_lock.lock().await;
+    pub(crate) async fn renew(&self) -> Result<(), Error> {
         ensure_owned(&self.health)?;
-        let requested_duration_ms = duration.to_milliseconds()?;
         let request_started = Instant::now();
         let mut client = self.client.clone();
-        let response = match client
+        let response = client
             .renew_lease(RenewLeaseRequest {
                 token: self.token.clone(),
-                requested_duration_ms,
+                requested_duration_ms: self.requested_duration_ms,
             })
             .await
-        {
-            Ok(response) => response.into_inner(),
-            Err(status) => {
-                record_rpc_failure(&self.health, &status);
-                return Err(status.into());
-            }
-        };
+            .map_err(|status| self.rpc_error(status))?
+            .into_inner();
         if response.group != self.group {
             return Err(Error::Protocol(format!(
                 "renew response group {:?} does not match lease group {:?}",
@@ -341,12 +301,6 @@ fn ensure_owned(sender: &watch::Sender<LeaseHealth>) -> Result<(), Error> {
         Ok(())
     } else {
         Err(Error::LeaseInactive(status))
-    }
-}
-
-fn record_rpc_failure(sender: &watch::Sender<LeaseHealth>, status: &tonic::Status) {
-    if status.code() == Code::PermissionDenied {
-        set_terminal(sender, LeaseStatus::Lost);
     }
 }
 

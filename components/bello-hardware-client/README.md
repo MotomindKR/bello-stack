@@ -56,17 +56,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("coordinates: {:?}", group.coordinate_names().collect::<Vec<_>>());
 
-    let initial = group
-        .frame()
-        .coordinate(
+    let initial = group.frame([
+        (
             "emulated_joint_1",
             CoordinateTarget::position(0.0).gains(20.0, 1.0),
-        )?
-        .coordinate(
+        ),
+        (
             "emulated_joint_2",
             CoordinateTarget::position(0.0).gains(20.0, 1.0),
-        )?
-        .build()?;
+        ),
+    ])?;
 
     let mut control = group
         .control(
@@ -78,17 +77,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Enables damping, then atomically starts with the complete initial frame.
     control.start(initial).await?;
 
-    let next = group
-        .frame()
-        .coordinate(
+    let next = group.frame([
+        (
             "emulated_joint_1",
             CoordinateTarget::position(0.1).gains(20.0, 1.0),
-        )?
-        .coordinate(
+        ),
+        (
             "emulated_joint_2",
             CoordinateTarget::position(-0.1).gains(20.0, 1.0),
-        )?
-        .build()?;
+        ),
+    ])?;
 
     control.send(next).await?;
 

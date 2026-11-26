@@ -1,8 +1,6 @@
-use std::sync::Arc;
-
 use bello_hardware_api::MotorCommand;
 
-use crate::inventory::GroupDefinition;
+use crate::inventory::{GroupDefinition, Motor};
 use crate::{Error, MotorGroup};
 
 /// One coordinate's hybrid impedance target, expressed in SI units.
@@ -75,7 +73,8 @@ impl CoordinateTarget {
         self
     }
 
-    fn validate(self, coordinate: &str) -> Result<ValidatedTarget, Error> {
+    fn into_command(self, motor: &Motor) -> Result<MotorCommand, Error> {
+        let coordinate = motor.coordinate();
         let (kp, kd) = self.gains.ok_or_else(|| Error::InvalidTarget {
             coordinate: coordinate.into(),
             detail: "position targets require explicit kp and kd gains".into(),
@@ -100,96 +99,13 @@ impl CoordinateTarget {
                 detail: "kp and kd must be non-negative".into(),
             });
         }
-        Ok(ValidatedTarget {
+        Ok(MotorCommand {
+            motor_name: motor.name().into(),
             position: self.position,
             velocity: self.velocity,
             torque_feedforward: self.torque_feedforward,
             kp,
             kd,
-        })
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-struct ValidatedTarget {
-    position: f64,
-    velocity: f64,
-    torque_feedforward: f64,
-    kp: f64,
-    kd: f64,
-}
-
-/// Builder for one complete, locally validated motor-group command snapshot.
-#[derive(Debug)]
-pub struct CommandFrameBuilder {
-    group: Arc<GroupDefinition>,
-    targets: Vec<Option<ValidatedTarget>>,
-}
-
-impl CommandFrameBuilder {
-    pub(crate) fn new(group: Arc<GroupDefinition>) -> Self {
-        Self {
-            targets: vec![None; group.motors.len()],
-            group,
-        }
-    }
-
-    pub fn coordinate(
-        mut self,
-        coordinate: impl AsRef<str>,
-        target: CoordinateTarget,
-    ) -> Result<Self, Error> {
-        let coordinate = coordinate.as_ref();
-        let Some(&index) = self.group.coordinate_indices.get(coordinate) else {
-            return Err(Error::UnknownCoordinate {
-                group: self.group.name.clone(),
-                coordinate: coordinate.into(),
-            });
-        };
-        if self.targets[index].is_some() {
-            return Err(Error::DuplicateCoordinate {
-                group: self.group.name.clone(),
-                coordinate: coordinate.into(),
-            });
-        }
-        self.targets[index] = Some(target.validate(coordinate)?);
-        Ok(self)
-    }
-
-    pub fn build(self) -> Result<CommandFrame, Error> {
-        let missing = self
-            .targets
-            .iter()
-            .enumerate()
-            .filter(|(_, target)| target.is_none())
-            .map(|(index, _)| self.group.motors[index].coordinate().to_owned())
-            .collect::<Vec<_>>();
-        if !missing.is_empty() {
-            return Err(Error::IncompleteFrame {
-                group: self.group.name.clone(),
-                missing,
-            });
-        }
-        let commands = self
-            .group
-            .motors
-            .iter()
-            .zip(self.targets)
-            .map(|(motor, target)| {
-                let target = target.expect("missing targets were checked above");
-                MotorCommand {
-                    motor_name: motor.name().into(),
-                    position: target.position,
-                    velocity: target.velocity,
-                    torque_feedforward: target.torque_feedforward,
-                    kp: target.kp,
-                    kd: target.kd,
-                }
-            })
-            .collect();
-        Ok(CommandFrame {
-            group: self.group.name.clone(),
-            commands,
         })
     }
 }
@@ -201,6 +117,48 @@ pub struct CommandFrame {
 }
 
 impl CommandFrame {
+    fn new(
+        group: &GroupDefinition,
+        targets: impl IntoIterator<Item = (impl AsRef<str>, CoordinateTarget)>,
+    ) -> Result<Self, Error> {
+        let mut commands = vec![None; group.motors.len()];
+        for (coordinate, target) in targets {
+            let coordinate = coordinate.as_ref();
+            let Some(&index) = group.coordinate_indices.get(coordinate) else {
+                return Err(Error::UnknownCoordinate {
+                    group: group.name.clone(),
+                    coordinate: coordinate.into(),
+                });
+            };
+            if commands[index].is_some() {
+                return Err(Error::DuplicateCoordinate {
+                    group: group.name.clone(),
+                    coordinate: coordinate.into(),
+                });
+            }
+            commands[index] = Some(target.into_command(&group.motors[index])?);
+        }
+
+        let missing = group
+            .motors
+            .iter()
+            .zip(&commands)
+            .filter(|(_, command)| command.is_none())
+            .map(|(motor, _)| motor.coordinate().to_owned())
+            .collect::<Vec<_>>();
+        if !missing.is_empty() {
+            return Err(Error::IncompleteFrame {
+                group: group.name.clone(),
+                missing,
+            });
+        }
+
+        Ok(Self {
+            group: group.name.clone(),
+            commands: commands.into_iter().flatten().collect(),
+        })
+    }
+
     pub fn group(&self) -> &str {
         &self.group
     }
@@ -225,18 +183,22 @@ impl CommandFrame {
 }
 
 impl MotorGroup {
-    pub fn frame(&self) -> CommandFrameBuilder {
-        CommandFrameBuilder::new(Arc::clone(&self.definition))
+    /// Creates a command frame from one target for each coordinate in the group.
+    pub fn frame(
+        &self,
+        targets: impl IntoIterator<Item = (impl AsRef<str>, CoordinateTarget)>,
+    ) -> Result<CommandFrame, Error> {
+        CommandFrame::new(&self.definition, targets)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, sync::Arc};
 
     use super::*;
     use crate::GroupState;
-    use crate::inventory::{Motor, MotorLimits};
+    use crate::inventory::MotorLimits;
 
     fn limits() -> MotorLimits {
         MotorLimits {
@@ -253,7 +215,7 @@ mod tests {
         }
     }
 
-    fn group() -> Arc<GroupDefinition> {
+    fn group() -> GroupDefinition {
         let motors: Arc<[Motor]> = vec![
             Motor {
                 name: "motor_a".into(),
@@ -281,7 +243,7 @@ mod tests {
             },
         ]
         .into();
-        Arc::new(GroupDefinition {
+        GroupDefinition {
             name: "pair".into(),
             control_rate_hz: 250.0,
             initial_state: crate::EnumValue::Known(GroupState::Idle),
@@ -291,22 +253,23 @@ mod tests {
                 .map(|(index, motor)| (motor.coordinate().to_owned(), index))
                 .collect::<BTreeMap<_, _>>(),
             motors,
-        })
+        }
     }
 
     #[test]
     fn complete_frame_maps_coordinates_to_motor_commands() {
         let group = group();
-        let frame = CommandFrameBuilder::new(group)
-            .coordinate("coordinate_b", CoordinateTarget::torque(2.0))
-            .unwrap()
-            .coordinate(
-                "coordinate_a",
-                CoordinateTarget::position(1.0).gains(20.0, 1.0),
-            )
-            .unwrap()
-            .build()
-            .unwrap();
+        let frame = CommandFrame::new(
+            &group,
+            [
+                ("coordinate_b", CoordinateTarget::torque(2.0)),
+                (
+                    "coordinate_a",
+                    CoordinateTarget::position(1.0).gains(20.0, 1.0),
+                ),
+            ],
+        )
+        .unwrap();
         assert_eq!(frame.commands[0].motor_name, "motor_a");
         assert_eq!(frame.commands[0].position, 1.0);
         assert_eq!(frame.commands[1].motor_name, "motor_b");
@@ -316,16 +279,12 @@ mod tests {
     #[test]
     fn incomplete_and_duplicate_frames_fail_locally() {
         let group = group();
-        let incomplete = CommandFrameBuilder::new(Arc::clone(&group))
-            .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
-            .unwrap()
-            .build();
+        let target = CoordinateTarget::damping(1.0);
+        let incomplete = CommandFrame::new(&group, [("coordinate_a", target)]);
         assert!(matches!(incomplete, Err(Error::IncompleteFrame { .. })));
 
-        let duplicate = CommandFrameBuilder::new(group)
-            .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
-            .unwrap()
-            .coordinate("coordinate_a", CoordinateTarget::damping(1.0));
+        let duplicate =
+            CommandFrame::new(&group, [("coordinate_a", target), ("coordinate_a", target)]);
         assert!(matches!(duplicate, Err(Error::DuplicateCoordinate { .. })));
     }
 }

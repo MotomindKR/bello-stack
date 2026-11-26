@@ -6,7 +6,7 @@ from typing import Any
 import grpc  # type: ignore[import-untyped]
 import pytest
 
-from bello_hardware import PowerBattery, Robot
+from bello_hardware import Robot
 from bello_hardware._generated import hardware_pb2 as proto
 from bello_hardware._generated import hardware_pb2_grpc
 from bello_hardware.errors import ProtocolError
@@ -56,7 +56,9 @@ def test_power_reader_uses_telemetry_without_control_or_state_frame() -> None:
         with Robot.connect(f"http://127.0.0.1:{port}") as robot:
             (snapshot,) = robot.power().read(timeout=1)
             assert snapshot.connection_generation == 2
-            assert snapshot.samples[0].reading == PowerBattery(48.5, -1.25, 73)
+            assert snapshot.samples[0].reading == proto.PowerBattery(
+                voltage_v=48.5, current_a=-1.25, soc_percent=73
+            )
             assert snapshot.is_stale(snapshot.samples[0])
             assert service.command_count == 0 and service.state_frame_calls == 0
             with pytest.raises(ValueError, match="unknown"):
@@ -85,4 +87,6 @@ def test_legacy_soc_is_absent_not_zero() -> None:
     sample = _decode_sample(
         proto.PowerBoardSample(battery=proto.PowerBattery(voltage_v=24, current_a=1))
     )
-    assert sample.reading == PowerBattery(24, 1, None)
+    assert sample.reading == proto.PowerBattery(voltage_v=24, current_a=1)
+    assert isinstance(sample.reading, proto.PowerBattery)
+    assert not sample.reading.HasField("soc_percent")

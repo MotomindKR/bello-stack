@@ -563,22 +563,16 @@ async fn ergonomic_robot_api_hides_lease_stream_and_acknowledgement_workflow() {
     assert_eq!(imu.output_frame, "imu_link");
 
     let initial = group
-        .frame()
-        .coordinate(
+        .frame([(
             "coordinate_a",
             CoordinateTarget::position(0.0).gains(20.0, 1.0),
-        )
-        .expect("assign initial target")
-        .build()
+        )])
         .expect("build initial frame");
     let next = group
-        .frame()
-        .coordinate(
+        .frame([(
             "coordinate_a",
             CoordinateTarget::position(0.1).gains(20.0, 1.0),
-        )
-        .expect("assign next target")
-        .build()
+        )])
         .expect("build next frame");
 
     let mut control = group
@@ -720,13 +714,10 @@ async fn shutdown_releases_faulted_group_without_recovering_or_disabling_it() {
     let group = robot.group(GROUP).unwrap();
     let mut control = group.control("fault-cleanup").await.unwrap();
     let frame = group
-        .frame()
-        .coordinate(
+        .frame([(
             "coordinate_a",
             CoordinateTarget::position(0.0).gains(20.0, 1.0),
-        )
-        .unwrap()
-        .build()
+        )])
         .unwrap();
     control.start(frame).await.unwrap();
     server.settings.faulted.store(true, Ordering::Relaxed);
@@ -789,10 +780,7 @@ async fn ergonomic_control_surfaces_automatic_renewal_failure() {
         .await
         .expect("acquire control");
     let frame = group
-        .frame()
-        .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
-        .expect("assign target")
-        .build()
+        .frame([("coordinate_a", CoordinateTarget::damping(1.0))])
         .expect("build frame");
 
     tokio::time::timeout(Duration::from_secs(1), async {
@@ -830,10 +818,7 @@ async fn ergonomic_control_never_retries_after_a_rejected_running_command() {
     let group = robot.group(GROUP).expect("resolve group");
     let frame = || {
         group
-            .frame()
-            .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
-            .expect("assign target")
-            .build()
+            .frame([("coordinate_a", CoordinateTarget::damping(1.0))])
             .expect("build frame")
     };
     let mut control = group
@@ -887,10 +872,7 @@ async fn running_control(
     let group = robot.group(GROUP).unwrap();
     let mut control = group.control(options).await.unwrap();
     let frame = group
-        .frame()
-        .coordinate("coordinate_a", CoordinateTarget::damping(0.0))
-        .unwrap()
-        .build()
+        .frame([("coordinate_a", CoordinateTarget::damping(0.0))])
         .unwrap();
     control.start(frame.clone()).await.unwrap();
     (control, frame)
@@ -1015,10 +997,7 @@ async fn ergonomic_resume_rolls_an_ambiguous_start_back_to_damped() {
     let group = robot.group(GROUP).expect("resolve group");
     let frame = || {
         group
-            .frame()
-            .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
-            .expect("assign target")
-            .build()
+            .frame([("coordinate_a", CoordinateTarget::damping(1.0))])
             .expect("build frame")
     };
     let mut control = group
@@ -1043,10 +1022,7 @@ async fn rejected_disable_leaves_running_control_uncertain() {
     let group = robot.group(GROUP).unwrap();
     let mut control = group.control("rejected-disable").await.unwrap();
     let frame = group
-        .frame()
-        .coordinate("coordinate_a", CoordinateTarget::damping(0.0))
-        .unwrap()
-        .build()
+        .frame([("coordinate_a", CoordinateTarget::damping(0.0))])
         .unwrap();
     control.start(frame.clone()).await.unwrap();
     server.settings.faulted.store(true, Ordering::Relaxed);
@@ -1072,10 +1048,7 @@ async fn running_control_disables_directly_without_a_damping_stop() {
     let group = robot.group(GROUP).unwrap();
     let mut control = group.control("torque-release").await.unwrap();
     let frame = group
-        .frame()
-        .coordinate("coordinate_a", CoordinateTarget::damping(0.0))
-        .unwrap()
-        .build()
+        .frame([("coordinate_a", CoordinateTarget::damping(0.0))])
         .unwrap();
     control.start(frame.clone()).await.unwrap();
     control.send(frame).await.unwrap();
@@ -1106,10 +1079,7 @@ async fn release_preserves_damping_and_fault_without_disable() {
         let group = robot.group(GROUP).unwrap();
         let mut control = group.control("damping-release").await.unwrap();
         let frame = group
-            .frame()
-            .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
-            .unwrap()
-            .build()
+            .frame([("coordinate_a", CoordinateTarget::damping(1.0))])
             .unwrap();
         control.start(frame).await.unwrap();
         server.settings.faulted.store(faulted, Ordering::Relaxed);
@@ -1139,10 +1109,7 @@ async fn failed_start_rolls_back_to_damping() {
     let group = robot.group(GROUP).unwrap();
     let mut control = group.control("failed-start-damping").await.unwrap();
     let frame = group
-        .frame()
-        .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
-        .unwrap()
-        .build()
+        .frame([("coordinate_a", CoordinateTarget::damping(1.0))])
         .unwrap();
     server.settings.fail_start.store(true, Ordering::Relaxed);
     assert!(control.start(frame).await.is_err());

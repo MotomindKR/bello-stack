@@ -23,13 +23,11 @@ pub use control::{ControlOptions, ControlSession, ControlState};
 pub use endpoint::{ConnectOptions, TlsOptions};
 pub use enum_value::EnumValue;
 pub use error::Error;
-pub use frame::{CommandFrame, CommandFrameBuilder, CoordinateTarget};
+pub use frame::{CommandFrame, CoordinateTarget};
 pub use inventory::{DeviceStatus, Motor, MotorLimits};
+pub(crate) use lease::GroupLease;
 pub use lease::LeaseStatus;
-pub(crate) use lease::{GroupLease, LeaseDuration};
-pub use power::{
-    PowerBoard, PowerBoardSnapshot, PowerFlags, PowerReading, PowerSample, VoltageCurrent,
-};
+pub use power::{PowerBoard, PowerBoardSnapshot, PowerReading, PowerSample};
 pub use robot::{MotorGroup, Robot};
 pub use state::{
     CommandPolicySnapshot, GroupSnapshot, HealthSnapshot, ImuSnapshot, MotorSnapshot, Quaternion,

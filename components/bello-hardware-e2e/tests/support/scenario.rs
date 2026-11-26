@@ -291,17 +291,16 @@ fn ergonomic_frame(
     group: &bello_hardware_client::MotorGroup,
     position: f64,
 ) -> Result<CommandFrame> {
-    Ok(group
-        .frame()
-        .coordinate(
+    Ok(group.frame([
+        (
             "e2e_joint_1",
             CoordinateTarget::position(position).gains(20.0, 1.0),
-        )?
-        .coordinate(
+        ),
+        (
             "e2e_joint_2",
             CoordinateTarget::position(position).gains(20.0, 1.0),
-        )?
-        .build()?)
+        ),
+    ])?)
 }
 
 struct CommandStream(JoinHandle<()>);
