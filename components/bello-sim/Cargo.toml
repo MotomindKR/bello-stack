@@ -15,13 +15,13 @@ bello-camera-api = { path = "../bello-camera-api", features = ["gstreamer"] }
 gst = { package = "gstreamer", version = "0.25" }
 gst-app = { package = "gstreamer-app", version = "0.25" }
 rayon = "1"
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
+image = { version = "0.25", default-features = false }
 bello-robot-description.workspace = true
 clap = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_yaml.workspace = true
 serde_json = "1"
-gltf = { version = "1.4.1", default-features = false, features = ["utils", "names"] }
+gltf = { version = "1.4.1", default-features = false, features = ["utils"] }
 roxmltree.workspace = true
 xmltree = "0.12"
 nalgebra.workspace = true
@@ -43,3 +43,6 @@ mujoco-rs = { version = "=6.0.1", default-features = false }
 [target.'cfg(target_os = "linux")'.dependencies]
 socketcan.workspace = true
 khronos-egl = { version = "6", features = ["dynamic"] }
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["jpeg"] }

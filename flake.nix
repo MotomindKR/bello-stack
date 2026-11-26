@@ -1,7 +1,7 @@
 {
   description = "Development environment for the Bello hardware stack";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/06a21ded0b150acacc0d132ff61e6693d4c771de";
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
   outputs = { self, nixpkgs }:
     let
@@ -28,7 +28,6 @@
               clippy
               protobuf
               pkg-config
-              openssl
               grpcurl
               buf
               (python3.withPackages (python: with python; [
