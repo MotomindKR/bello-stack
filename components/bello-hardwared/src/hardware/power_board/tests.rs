@@ -140,7 +140,6 @@ fn hardware_button_mode_damps_on_either_current_warning_until_both_clear() {
         }),
     )
     .unwrap();
-    let initial = await_snapshot(&mut snapshots, |board| board.generation > 0);
     assert!(read_until(&mut master, b"sync\r\n").starts_with(b"sync\r\n"));
     send_iwc(&mut master, 3, 1 << 1);
     send_iwc(&mut master, 0, 1);
@@ -148,10 +147,26 @@ fn hardware_button_mode_damps_on_either_current_warning_until_both_clear() {
     send_iwc(&mut master, 0, 1 | (1 << 4));
     send_iwc(&mut master, 0, 1 << 4);
     assert!(rx.recv_timeout(Duration::from_secs(1)).unwrap());
-    handle.request_reconnect("test warning across reconnect");
-    await_snapshot(&mut snapshots, |board| {
-        board.generation > initial.generation && board.samples.is_empty()
+    let first = await_snapshot(&mut snapshots, |board| {
+        board
+            .samples
+            .iter()
+            .any(|s| matches!(s.reading, Reading::Iwc { warning: 16, .. }))
     });
+    handle.request_reconnect("test warning across reconnect");
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        let transport = handle.status();
+        if transport.state.is_online() && transport.transition_count > first.generation {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "serial transport did not reconnect"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+    read_until(&mut master, b"sync\r\n");
     assert!(rx.try_recv().is_err());
     send_iwc(&mut master, 0, 1 << 4);
     send_iwc(&mut master, 0, 0);
