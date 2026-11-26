@@ -6,7 +6,6 @@ use std::collections::VecDeque;
 use std::ffi::OsString;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, ErrorKind, Read, Write};
-use std::os::fd::AsRawFd;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, symlink};
 use std::path::{Path, PathBuf};
 
@@ -102,12 +101,9 @@ impl PtyLink {
         let master = File::from(pty.master);
         set_raw(&slave)?;
         for file in [&master, &slave] {
-            fcntl(
-                file.as_raw_fd(),
-                FcntlArg::F_SETFD(nix::fcntl::FdFlag::FD_CLOEXEC),
-            )?;
+            fcntl(file, FcntlArg::F_SETFD(nix::fcntl::FdFlag::FD_CLOEXEC))?;
         }
-        fcntl(master.as_raw_fd(), FcntlArg::F_SETFL(OFlag::O_NONBLOCK))?;
+        fcntl(&master, FcntlArg::F_SETFL(OFlag::O_NONBLOCK))?;
         let target = nix::unistd::ttyname(&slave)?;
         let staging = tempfile::tempdir_in(self.path.with_file_name("."))?;
         let staged = staging.path().join("tty");

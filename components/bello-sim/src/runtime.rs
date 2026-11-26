@@ -15,7 +15,7 @@ use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::io::IsTerminal;
 use std::net::SocketAddr;
-use std::os::fd::{AsFd, AsRawFd};
+use std::os::fd::AsFd;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
@@ -383,7 +383,7 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
                         .is_some_and(|f| f.contains(PollFlags::POLLIN))
                 {
                     let mut byte = [0];
-                    if nix::unistd::read(stdin.as_raw_fd(), &mut byte)? == 1
+                    if nix::unistd::read(&stdin, &mut byte)? == 1
                         && byte[0] == b'\n'
                         && let Some(guide) = &mut guide
                     {

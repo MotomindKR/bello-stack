@@ -39,7 +39,7 @@ clap = "4"
 crossbeam-channel = "0.5"
 futures-core = "0.3"
 gsusbio = { version = "0.1.0", default-features = false, features = ["tokio"] }
-nix = "0.29"
+nix = "0.32"
 parking_lot = "0.12"
 prost = "0.14"
 nalgebra = "0.34"
