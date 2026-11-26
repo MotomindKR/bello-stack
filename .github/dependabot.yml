@@ -1,7 +1,21 @@
 version: 2
 updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      rust-grpc:
+        patterns:
+          - "tonic*"
+          - "prost*"
+    ignore:
+      # Upgrade the bindings together with native MuJoCo in flake.nix.
+      - dependency-name: mujoco-rs
   - package-ecosystem: pip
-    directory: /components/bello-hardware-python
+    directories:
+      - /components/bello-hardware-python
+      - /components/bello-hand
     schedule:
       interval: weekly
     versioning-strategy: increase-if-necessary
@@ -10,3 +24,11 @@ updates:
         patterns:
           - grpcio
           - protobuf
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: nix
+    directory: /
+    schedule:
+      interval: weekly

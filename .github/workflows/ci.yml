@@ -67,6 +67,13 @@ jobs:
             "${metadata_command[@]}" "$artifact" "$metadata_pattern" |
               grep -Fx 'Classifier: Private :: Do Not Upload'
           done
+      - name: Install Python client wheel and import generated bindings
+        working-directory: components/bello-hardware-python
+        run: |
+          python3 -m venv "$RUNNER_TEMP/client-venv"
+          python="$RUNNER_TEMP/client-venv/bin/python"
+          "$python" -m pip install dist/*.whl
+          "$python" -I -c 'from bello_hardware._generated import hardware_pb2, hardware_pb2_grpc'
       - name: Create SocketCAN test interface
         run: |
           sudo modprobe vcan
