@@ -39,7 +39,7 @@ jobs:
         -p bello-hardware-api -p bello-pose-api -p bello-robot-description
         -p cog-protocol -p robstride-protocol -p bello-sim-can -p robstride-emulator
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
