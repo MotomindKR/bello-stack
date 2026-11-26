@@ -1,0 +1,12 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /components/bello-hardware-python
+    schedule:
+      interval: weekly
+    versioning-strategy: increase-if-necessary
+    groups:
+      grpc-runtime:
+        patterns:
+          - grpcio
+          - protobuf
