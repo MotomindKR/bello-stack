@@ -284,6 +284,10 @@ async fn run_ergonomic_smoke(endpoint: &str) -> Result<()> {
     control.send(ergonomic_frame(&group, 0.01)?).await?;
     let ack = control.try_submit(ergonomic_frame(&group, 0.0)?)?;
     ack.await?;
+    control.stop().await?;
+    control.stop().await?;
+    control.resume(ergonomic_frame(&group, 0.0)?).await?;
+    control.disable().await?;
     control.shutdown().await?;
     Ok(())
 }

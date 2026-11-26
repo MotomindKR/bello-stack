@@ -250,7 +250,6 @@ impl ControlSession {
 
     fn running_stream(&self) -> Result<&CommandStream, Error> {
         self.require_state(ControlState::Running, "send a command")?;
-        self.check_renewal()?;
         self.command_stream
             .as_ref()
             .ok_or(Error::CommandStreamClosed)
@@ -261,6 +260,7 @@ impl ControlSession {
         frame: CommandFrame,
         slot: OwnedSemaphorePermit,
     ) -> Result<CommandReceipt, Error> {
+        self.check_renewal()?;
         active_health(&self.lease.health)?;
         let sequence = self.next_sequence.ok_or(Error::SequenceExhausted)?;
         let commands = frame.into_commands(self.group.name())?;
@@ -271,21 +271,17 @@ impl ControlSession {
             valid_for_ms: self.valid_for_ms,
             commands,
         };
-        let receipt =
-            self.running_stream()?
-                .submit(slot, request, self.options.acknowledgement_timeout)?;
+        let receipt = self
+            .command_stream
+            .as_ref()
+            .ok_or(Error::CommandStreamClosed)?
+            .submit(slot, request, self.options.acknowledgement_timeout)?;
         self.next_sequence = sequence.checked_add(1);
         Ok(receipt)
     }
 
     /// Stops periodic control and leaves the group damped under the current lease.
     pub async fn stop(&mut self) -> Result<(), Error> {
-        if !matches!(
-            self.state(),
-            ControlState::Running | ControlState::Uncertain
-        ) {
-            return Err(self.invalid_state("stop"));
-        }
         self.command_stream.take();
         self.state = ControlState::Uncertain;
         self.lease.stop().await?;
@@ -293,16 +289,8 @@ impl ControlSession {
         Ok(())
     }
 
-    /// Disables a ready, running, or damped group and returns to `Ready`.
-    /// Running control goes directly to Idle, without inserting damping commands.
-    /// The session is `Uncertain` until the daemon confirms `Idle`.
+    /// Disables the group directly and returns to `Ready` once the daemon confirms Idle.
     pub async fn disable(&mut self) -> Result<(), Error> {
-        if !matches!(
-            self.state(),
-            ControlState::Ready | ControlState::Running | ControlState::Damped
-        ) {
-            return Err(self.invalid_state("disable"));
-        }
         self.command_stream.take();
         self.state = ControlState::Uncertain;
         self.lease.disable().await?;
@@ -312,10 +300,8 @@ impl ControlSession {
 
     /// Recovers a faulted group and returns the session to `Ready`.
     pub async fn recover(&mut self) -> Result<(), Error> {
-        if self.state() == ControlState::Closed {
-            return Err(self.invalid_state("recover"));
-        }
         self.command_stream.take();
+        self.state = ControlState::Uncertain;
         self.check_renewal()?;
         self.lease.recover().await?;
         self.state = ControlState::Ready;

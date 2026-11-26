@@ -15,7 +15,10 @@ from bello_hardware.power import _decode_sample
 from .conftest import FakeHardware
 
 
-def test_power_reader_uses_telemetry_without_control_or_state_frame() -> None:
+@pytest.mark.parametrize("boards", [(), ("power", "power")])
+def test_power_reader_uses_telemetry_without_control_or_state_frame(
+    boards: tuple[str, ...],
+) -> None:
     class BoardHardware(FakeHardware):
         def ListHardware(self, request: Any, context: Any) -> proto.ListHardwareResponse:
             response = proto.ListHardwareResponse()
@@ -55,7 +58,7 @@ def test_power_reader_uses_telemetry_without_control_or_state_frame() -> None:
     server.start()
     try:
         with Robot.connect(f"http://127.0.0.1:{port}") as robot:
-            (snapshot,) = robot.power().read(timeout=1)
+            (snapshot,) = robot.power(boards=boards).read(timeout=1)
             assert snapshot.connection_generation == 2
             assert snapshot.samples[0].reading == PowerBattery(
                 voltage_v=48.5, current_a=-1.25, soc_percent=73

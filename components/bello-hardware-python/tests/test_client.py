@@ -512,6 +512,22 @@ def test_renewal_failure_is_reported(hardware_server: RunningServer) -> None:
             control.recover()
 
 
+def test_disable_can_retry_after_an_unconfirmed_reply(hardware_server: RunningServer) -> None:
+    with (
+        Robot.connect(hardware_server.endpoint) as robot,
+        robot.group("leg").control("pytest") as control,
+    ):
+        control.start(frame())
+        hardware_server.service.disable_failure = grpc.StatusCode.UNAVAILABLE
+        with pytest.raises(ControlRequestError) as failure:
+            control.disable()
+        assert failure.value.code == "UNAVAILABLE"
+        assert_control_state(control.state, ControlState.UNCERTAIN)
+        hardware_server.service.disable_failure = None
+        control.disable()
+        assert_control_state(control.state, ControlState.READY)
+
+
 def test_cleanup_preserves_structured_errors(hardware_server: RunningServer) -> None:
     with Robot.connect(hardware_server.endpoint) as robot:
         control = robot.group("leg").control("pytest")

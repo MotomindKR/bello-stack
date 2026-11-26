@@ -1054,6 +1054,9 @@ async fn rejected_disable_leaves_running_control_uncertain() {
         control.send(frame).await,
         Err(Error::InvalidSessionState { .. })
     ));
+    server.settings.faulted.store(false, Ordering::Relaxed);
+    control.disable().await.unwrap();
+    assert_eq!(control.state(), ControlState::Ready);
     control.release().await.unwrap();
     server.stop().await;
 }

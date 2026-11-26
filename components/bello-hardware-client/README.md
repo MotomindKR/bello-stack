@@ -50,7 +50,8 @@ async fn main() -> Result<(), bello_hardware_client::Error> {
 | --- | --- |
 | `send(frame).await?` | Wait for capacity and daemon acknowledgement. |
 | `try_submit(frame)?` | Return an awaitable receipt or `Error::QueueFull`. Default capacity is one. |
-| `stop().await?` / `resume(frame).await?` | Keep the lease while damped, then restart with a fresh frame. |
+| `stop().await?` / `resume(frame).await?` | Hold damping or resume with fresh targets. Repeated stops keep the group damped. |
+| `disable().await?` | Disable the motors directly and keep the lease. |
 | `shutdown().await?` / `release().await?` | Shut down to disable and release. Use release alone to leave a running group damped. |
 
 A rejection closes the command stream. Resume after confirmed damping. Check group state before recovery after an ambiguous result. [Control and safety](../../docs/control-and-safety.md) · [Direct RPCs](../../docs/api.md#direct-clients)

@@ -406,8 +406,7 @@ class ControlSession:
 
     def stop(self) -> None:
         with self._operation_lock:
-            self._require(ControlState.RUNNING, "stop")
-            self._close_stream()
+            self._begin_transition("stop")
             response = self._unary(
                 "stop control",
                 self._group._robot._stub.StopControl,
@@ -418,9 +417,7 @@ class ControlSession:
 
     def disable(self) -> None:
         with self._operation_lock:
-            if self.state not in (ControlState.READY, ControlState.DAMPED):
-                raise self._invalid("disable")
-            self._close_stream()
+            self._begin_transition("disable")
             response = self._unary(
                 "disable group",
                 self._group._robot._stub.DisableGroup,
@@ -431,9 +428,7 @@ class ControlSession:
 
     def recover(self) -> None:
         with self._operation_lock:
-            if self.state == ControlState.CLOSED:
-                raise self._invalid("recover")
-            self._close_stream()
+            self._begin_transition("recover")
             self._check_renewal()
             response = self._unary(
                 "recover group",
@@ -623,6 +618,12 @@ class ControlSession:
                     and error.state == proto.GROUP_STATE_DAMPED
                     else ControlState.UNCERTAIN
                 )
+
+    def _begin_transition(self, operation: str) -> None:
+        if self.state == ControlState.CLOSED:
+            raise self._invalid(operation)
+        self._close_stream()
+        self._set_state(ControlState.UNCERTAIN)
 
     def _close_stream(self) -> None:
         with self._state_lock:

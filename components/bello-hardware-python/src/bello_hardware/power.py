@@ -187,9 +187,10 @@ class PowerBoardReader:
     def __init__(self, robot: Robot, boards: tuple[str, ...]) -> None:
         self._robot = robot
         known = {b.name: b for b in robot.inventory.power_boards}
-        if len(set(boards)) != len(boards) or set(boards) - known.keys():
-            raise ValueError("unknown or duplicate power board selector")
-        self._boards = {n: known[n] for n in boards} if boards else known
+        try:
+            self._boards = {name: known[name] for name in boards} if boards else known
+        except KeyError as error:
+            raise ValueError(f"unknown power board {error}") from error
 
     def read(self, timeout: float | None = None) -> tuple[PowerBoardSnapshot, ...]:
         self._robot._ensure_open()

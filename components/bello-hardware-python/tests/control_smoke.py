@@ -31,6 +31,10 @@ def main(endpoint: str) -> None:
             control.start(frame)
             control.send(frame)
             control.try_submit(frame).result()
+            control.stop()
+            control.stop()
+            control.resume(frame)
+            control.disable()
 
 
 if __name__ == "__main__":

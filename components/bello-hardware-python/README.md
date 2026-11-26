@@ -45,7 +45,8 @@ with Robot.connect() as robot:
 | --- | --- |
 | `control.send(targets)` | Wait for capacity and daemon acknowledgement. |
 | `control.try_submit(targets)` | Return a receipt or raise `CommandQueueFullError`. Call `receipt.result()` to wait. Default capacity is one. |
-| `control.stop()` / `control.resume(targets)` | Keep the lease while damped, then restart with fresh targets. |
+| `control.stop()` / `control.resume(targets)` | Hold damping or resume with fresh targets. Repeated stops keep the group damped. |
+| `control.disable()` | Disable the motors directly and keep the lease. |
 | Exit the control context | Stop, disable, and release. Use `control.close(preserve_damping=True)` to release with damping. |
 
 A rejection closes the command stream. Resume after confirmed damping. Check group state before recovery after an ambiguous result. [Control and safety](../../docs/control-and-safety.md)
