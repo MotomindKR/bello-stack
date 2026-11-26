@@ -26,7 +26,7 @@ from .errors import (
     ProtocolError,
     control_rpc_error,
 )
-from .types import CommandResult, ControlState, CoordinateTarget, GroupState
+from .types import ControlState, CoordinateTarget
 
 if TYPE_CHECKING:
     from ._inventory import MotorGroup
@@ -83,11 +83,9 @@ class CommandReceipt:
 
 
 class _CommandStream:
-    _SENTINEL = object()
-
-    def __init__(self, stub: Any, group: str, token: str) -> None:
+    def __init__(self, stub: Any, group: str) -> None:
         self._group = group
-        self._requests: queue.Queue[object] = queue.Queue(maxsize=1)
+        self._requests: queue.Queue[proto.StreamCommandsRequest | None] = queue.Queue(maxsize=1)
         self._pending: dict[int, _Pending] = {}
         self._lock = threading.Lock()
         self._fatal: BaseException | None = None
@@ -101,12 +99,7 @@ class _CommandStream:
         self._receiver.start()
 
     def _request_iterator(self) -> Iterator[proto.StreamCommandsRequest]:
-        while True:
-            request = self._requests.get()
-            if request is self._SENTINEL:
-                return
-            if not isinstance(request, proto.StreamCommandsRequest):
-                raise ProtocolError("invalid value in the command request queue")
+        while (request := self._requests.get()) is not None:
             yield request
 
     def submit(self, request: proto.StreamCommandsRequest, timeout: float) -> _Pending:
@@ -137,10 +130,6 @@ class _CommandStream:
             if pending.error is not None:
                 raise pending.error
             return pending.response
-
-    def send(self, request: proto.StreamCommandsRequest, timeout: float) -> Any:
-        pending = self.submit(request, timeout)
-        return self.wait(request.sequence, pending, time.monotonic() + timeout)
 
     def _receive(self) -> None:
         try:
@@ -195,7 +184,7 @@ class _CommandStream:
             self._closing = True
             self._fail_pending(AcknowledgementError("command stream closed"))
         with suppress(queue.Full):
-            self._requests.put_nowait(self._SENTINEL)
+            self._requests.put_nowait(None)
         self._call.cancel()
         if self._receiver is not threading.current_thread():
             self._receiver.join(timeout=timeout)
@@ -249,8 +238,6 @@ class ControlSession:
         acknowledgement_timeout: float,
         rpc_timeout: float,
     ) -> ControlSession:
-        if not owner.strip():
-            raise ValueError("owner must be non-empty")
         if acknowledgement_timeout <= 0.0 or rpc_timeout <= 0.0:
             raise ValueError("acknowledgement and RPC timeouts must be positive")
         lease_duration_ms = _milliseconds(lease_duration, "lease duration")
@@ -317,12 +304,10 @@ class ControlSession:
                 self._group._robot._stub.EnableGroup,
                 proto.EnableGroupRequest(group=self._group.name, lease_token=self._token),
             )
-            self._expect("enable", GroupState.DAMPED, response.state)
+            self._expect("enable", proto.GROUP_STATE_DAMPED, response.state)
             self._set_state(ControlState.DAMPED)
             try:
-                self._stream = _CommandStream(
-                    self._group._robot._new_stub(), self._group.name, self._token
-                )
+                self._stream = _CommandStream(self._group._robot._new_stub(), self._group.name)
                 response = self._unary(
                     "start control",
                     self._group._robot._stub.StartControl,
@@ -333,7 +318,7 @@ class ControlSession:
                         commands=commands,
                     ),
                 )
-                self._expect("start", GroupState.RUNNING, response.state)
+                self._expect("start", proto.GROUP_STATE_RUNNING, response.state)
                 self._set_state(ControlState.RUNNING)
             except BaseException as primary:
                 self._close_stream()
@@ -343,7 +328,7 @@ class ControlSession:
                         self._group._robot._stub.DisableGroup,
                         proto.DisableGroupRequest(group=self._group.name, lease_token=self._token),
                     )
-                    self._expect("rollback start", GroupState.IDLE, response.state)
+                    self._expect("rollback start", proto.GROUP_STATE_IDLE, response.state)
                     self._set_state(ControlState.READY)
                 except BaseException as cleanup:
                     self._set_state(ControlState.UNCERTAIN)
@@ -355,9 +340,7 @@ class ControlSession:
         with self._operation_lock:
             self._require(ControlState.DAMPED, "resume")
             self._check_renewal()
-            self._stream = _CommandStream(
-                self._group._robot._new_stub(), self._group.name, self._token
-            )
+            self._stream = _CommandStream(self._group._robot._new_stub(), self._group.name)
             try:
                 response = self._unary(
                     "resume control",
@@ -369,7 +352,7 @@ class ControlSession:
                         commands=commands,
                     ),
                 )
-                self._expect("resume", GroupState.RUNNING, response.state)
+                self._expect("resume", proto.GROUP_STATE_RUNNING, response.state)
                 self._set_state(ControlState.RUNNING)
             except BaseException as primary:
                 self._close_stream()
@@ -379,7 +362,7 @@ class ControlSession:
                         self._group._robot._stub.StopControl,
                         proto.StopControlRequest(group=self._group.name, lease_token=self._token),
                     )
-                    self._expect("rollback resume", GroupState.DAMPED, response.state)
+                    self._expect("rollback resume", proto.GROUP_STATE_DAMPED, response.state)
                     self._set_state(ControlState.DAMPED)
                 except BaseException as cleanup:
                     self._set_state(ControlState.UNCERTAIN)
@@ -391,40 +374,18 @@ class ControlSession:
         with self._operation_lock:
             self._require(ControlState.RUNNING, "send a command")
             try:
-                self._check_renewal()
-                self._send_and_confirm(commands)
+                receipt = self._submit(commands)
             except BaseException as error:
                 self._handle_command_error(error)
                 raise
+            receipt.result()
 
     def send_async(self, targets: Mapping[str, CoordinateTarget]) -> CommandReceipt:
         """Submit a complete target batch and return immediately with its receipt."""
         commands = self._group._commands(targets)
         with self._operation_lock:
             self._require(ControlState.RUNNING, "send a command")
-            self._check_renewal()
-            stream = self._stream
-            if stream is None:
-                raise self._invalid("send a command")
-            sequence = self._next_sequence
-            if sequence > 0xFFFF_FFFF_FFFF_FFFF:
-                raise ControlError("command sequence is exhausted")
-            self._next_sequence += 1
-            request = proto.StreamCommandsRequest(
-                group=self._group.name,
-                lease_token=self._token,
-                sequence=sequence,
-                valid_for_ms=self._command_validity_ms,
-                commands=commands,
-            )
-            pending = stream.submit(request, self._acknowledgement_timeout)
-            return CommandReceipt(
-                self,
-                stream,
-                sequence,
-                pending,
-                time.monotonic() + self._acknowledgement_timeout,
-            )
+            return self._submit(commands)
 
     def stop(self) -> None:
         with self._operation_lock:
@@ -435,7 +396,7 @@ class ControlSession:
                 self._group._robot._stub.StopControl,
                 proto.StopControlRequest(group=self._group.name, lease_token=self._token),
             )
-            self._expect("stop", GroupState.DAMPED, response.state)
+            self._expect("stop", proto.GROUP_STATE_DAMPED, response.state)
             self._set_state(ControlState.DAMPED)
 
     def disable(self) -> None:
@@ -448,7 +409,7 @@ class ControlSession:
                 self._group._robot._stub.DisableGroup,
                 proto.DisableGroupRequest(group=self._group.name, lease_token=self._token),
             )
-            self._expect("disable", GroupState.IDLE, response.state)
+            self._expect("disable", proto.GROUP_STATE_IDLE, response.state)
             self._set_state(ControlState.READY)
 
     def recover(self) -> None:
@@ -462,7 +423,7 @@ class ControlSession:
                 self._group._robot._stub.RecoverGroup,
                 proto.RecoverGroupRequest(group=self._group.name, lease_token=self._token),
             )
-            self._expect("recover", GroupState.IDLE, response.state)
+            self._expect("recover", proto.GROUP_STATE_IDLE, response.state)
             self._set_state(ControlState.READY)
 
     def close(self, *, preserve_damping: bool = False) -> None:
@@ -479,7 +440,7 @@ class ControlSession:
                         self._group._robot._stub.StopControl,
                         proto.StopControlRequest(group=self._group.name, lease_token=self._token),
                     )
-                    self._expect("stop", GroupState.DAMPED, response.state)
+                    self._expect("stop", proto.GROUP_STATE_DAMPED, response.state)
                 except BaseException as error:
                     errors.append(error)
             if not preserve_damping:
@@ -489,7 +450,7 @@ class ControlSession:
                         self._group._robot._stub.DisableGroup,
                         proto.DisableGroupRequest(group=self._group.name, lease_token=self._token),
                     )
-                    self._expect("disable", GroupState.IDLE, response.state)
+                    self._expect("disable", proto.GROUP_STATE_IDLE, response.state)
                 except BaseException as error:
                     errors.append(error)
 
@@ -504,9 +465,9 @@ class ControlSession:
                         proto.ReleaseLeaseRequest(token=self._token),
                     )
                 expected = (
-                    (GroupState.IDLE, GroupState.DAMPED, GroupState.FAULT)
+                    (proto.GROUP_STATE_IDLE, proto.GROUP_STATE_DAMPED, proto.GROUP_STATE_FAULT)
                     if preserve_damping
-                    else (GroupState.IDLE,)
+                    else (proto.GROUP_STATE_IDLE,)
                 )
                 self._expect_any("release", expected, response.state)
             except BaseException as error:
@@ -531,7 +492,7 @@ class ControlSession:
                 warnings.warn(str(cleanup), RuntimeWarning, stacklevel=2)
         return False
 
-    def _send_and_confirm(self, commands: list[proto.MotorCommand]) -> None:
+    def _submit(self, commands: list[proto.MotorCommand]) -> CommandReceipt:
         self._check_renewal()
         stream = self._stream
         if stream is None:
@@ -540,18 +501,21 @@ class ControlSession:
         if sequence > 0xFFFF_FFFF_FFFF_FFFF:
             raise ControlError("command sequence is exhausted")
         self._next_sequence += 1
-        response = stream.send(
-            proto.StreamCommandsRequest(
-                group=self._group.name,
-                lease_token=self._token,
-                sequence=sequence,
-                valid_for_ms=self._command_validity_ms,
-                commands=commands,
-            ),
-            self._acknowledgement_timeout,
+        request = proto.StreamCommandsRequest(
+            group=self._group.name,
+            lease_token=self._token,
+            sequence=sequence,
+            valid_for_ms=self._command_validity_ms,
+            commands=commands,
         )
-        self._validate_response(sequence, response)
-        self._check_renewal()
+        pending = stream.submit(request, self._acknowledgement_timeout)
+        return CommandReceipt(
+            self,
+            stream,
+            sequence,
+            pending,
+            time.monotonic() + self._acknowledgement_timeout,
+        )
 
     def _resolve_receipt(self, receipt: CommandReceipt) -> None:
         try:
@@ -560,7 +524,7 @@ class ControlSession:
                 receipt._pending,
                 receipt._deadline,
             )
-            self._validate_response(receipt._sequence, response)
+            self._validate_response(response)
             self._check_renewal()
         except BaseException as error:
             with self._operation_lock:
@@ -568,23 +532,18 @@ class ControlSession:
                     self._handle_command_error(error)
             raise
 
-    def _validate_response(self, sequence: int, response: Any) -> None:
-        if response.sequence != sequence:
-            raise AcknowledgementError(
-                f"received acknowledgement {response.sequence}, expected {sequence}"
-            )
-        try:
-            result = CommandResult(response.result)
-            state = GroupState(response.state)
-        except ValueError as error:
-            raise ProtocolError("command acknowledgement contains an unknown enum value") from error
-        if result != CommandResult.ACCEPTED:
+    def _validate_response(self, response: proto.StreamCommandsResponse) -> None:
+        if response.state not in proto.GroupState.DESCRIPTOR.values_by_number:
+            raise ProtocolError(f"unknown command acknowledgement state {response.state}")
+        if response.result != proto.COMMAND_RESULT_ACCEPTED:
+            if response.result not in proto.CommandResult.DESCRIPTOR.values_by_number:
+                raise ProtocolError(f"unknown command result {response.result}")
             raise CommandRejectedError(
                 group=self._group.name,
-                sequence=sequence,
-                result=result,
+                sequence=response.sequence,
+                result=response.result,
                 detail=response.detail,
-                state=state,
+                state=response.state,
             )
 
     def _renewal_loop(self) -> None:
@@ -639,25 +598,19 @@ class ControlSession:
         except grpc.RpcError as error:
             raise control_rpc_error(operation, error) from error
 
-    def _expect(self, operation: str, expected: GroupState, actual_value: int) -> None:
+    def _expect(self, operation: str, expected: proto.GroupState, actual_value: int) -> None:
         self._expect_any(operation, (expected,), actual_value)
 
     def _expect_any(
         self,
         operation: str,
-        expected: tuple[GroupState, ...],
+        expected: tuple[proto.GroupState, ...],
         actual_value: int,
     ) -> None:
-        try:
-            actual = GroupState(actual_value)
-        except ValueError as error:
-            raise ProtocolError(
-                f"{operation} returned unknown group state {actual_value}"
-            ) from error
-        if actual not in expected:
-            names = ", ".join(state.name for state in expected)
+        if actual_value not in expected:
+            names = ", ".join(proto.GroupState.Name(state) for state in expected)
             raise ControlError(
-                f"{operation} for {self._group.name!r} returned {actual.name}, "
+                f"{operation} for {self._group.name!r} returned state {actual_value}, "
                 f"expected one of {names}"
             )
 
@@ -683,9 +636,9 @@ class ControlSession:
     @staticmethod
     def _state_after_command_error(error: BaseException) -> ControlState:
         if isinstance(error, CommandRejectedError):
-            if error.state == GroupState.RUNNING:
+            if error.state == proto.GROUP_STATE_RUNNING:
                 return ControlState.RUNNING
-            if error.state == GroupState.DAMPED:
+            if error.state == proto.GROUP_STATE_DAMPED:
                 return ControlState.DAMPED
         return ControlState.UNCERTAIN
 

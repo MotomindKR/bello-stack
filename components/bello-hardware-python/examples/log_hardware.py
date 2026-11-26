@@ -7,13 +7,20 @@ import argparse
 import json
 import sys
 import time
+from collections.abc import Callable
 from contextlib import nullcontext
 from datetime import datetime, timezone
-from enum import Enum
 from pathlib import Path
 from typing import IO, Any
 
-from bello_hardware import DeviceStatus, HardwareStateFrame, Robot
+from bello_hardware import (
+    DeviceState,
+    DeviceStatus,
+    GroupCause,
+    GroupState,
+    HardwareStateFrame,
+    Robot,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,15 +67,18 @@ def default_output_path() -> Path:
     return Path(f"hardware-{stamp}.jsonl")
 
 
-def enum_name(value: Enum) -> str:
-    return value.name.lower()
+def enum_name(name: Callable[[int], str], value: int, prefix: str) -> str:
+    try:
+        return name(value).removeprefix(prefix).lower()
+    except ValueError:
+        return str(value)
 
 
 def device_status(status: DeviceStatus | None) -> dict[str, Any] | None:
     if status is None:
         return None
     return {
-        "state": enum_name(status.state),
+        "state": enum_name(DeviceState.Name, status.state, "DEVICE_STATE_"),
         "detail": status.detail,
         "transition_count": status.transition_count,
     }
@@ -111,7 +121,9 @@ def inventory_record(robot: Robot, endpoint: str) -> dict[str, Any]:
             {
                 "name": name,
                 "control_rate_hz": robot.group(name).control_rate_hz,
-                "initial_state": enum_name(robot.group(name).initial_state),
+                "initial_state": enum_name(
+                    GroupState.Name, robot.group(name).initial_state, "GROUP_STATE_"
+                ),
                 "motors": [motor.name for motor in robot.group(name).motors],
             }
             for name in robot.group_names
@@ -162,9 +174,9 @@ def snapshot_record(frame: HardwareStateFrame) -> dict[str, Any]:
         "groups": [
             {
                 "group": group.group,
-                "state": enum_name(group.state),
+                "state": enum_name(GroupState.Name, group.state, "GROUP_STATE_"),
                 "detail": group.detail,
-                "cause": enum_name(group.cause),
+                "cause": enum_name(GroupCause.Name, group.cause, "GROUP_CAUSE_"),
                 "command_count": group.command_count,
                 "control_tick": group.control_tick,
                 "jitter_us": group.jitter_us,

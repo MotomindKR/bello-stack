@@ -3,11 +3,11 @@ use std::{env, path::PathBuf, process::Command, time::Duration};
 use anyhow::{Context, Result, anyhow, bail};
 use bello_hardware_client::raw::proto::watch_telemetry_response::Payload;
 use bello_hardware_client::raw::proto::{
-    DeviceState, GetStateFrameRequest, GroupCause, GroupState, MotorCommand,
+    DeviceState, GetStateFrameRequest, GroupCause, GroupState, MotorCommand, WatchTelemetryRequest,
 };
 use bello_hardware_client::raw::{
     CommandStreamOptions, CommandValidity, EnumValue, GroupLease, HardwareClient, LeaseDuration,
-    TelemetryFilter, TelemetryStream,
+    TelemetryStream,
 };
 use bello_hardware_client::{CommandFrame, ControlOptions, CoordinateTarget, Robot};
 use robstride_protocol::{Feedback, Frame, MotorParams, feedback_frame};
@@ -130,13 +130,13 @@ pub async fn run(
     emulator: &mut ManagedProcess,
 ) -> Result<()> {
     let mut telemetry = client
-        .watch(
-            TelemetryFilter::default()
-                .selected_groups([GROUP])
-                .include_motors(true)
-                .include_health(true)
-                .include_command_policy_events(true),
-        )
+        .watch(WatchTelemetryRequest {
+            groups: vec![GROUP.into()],
+            include_motors: true,
+            include_health: true,
+            include_command_policy_events: true,
+            ..Default::default()
+        })
         .await?;
 
     wait_for_motors_online(&client, timeout_duration, hardwared, emulator).await?;

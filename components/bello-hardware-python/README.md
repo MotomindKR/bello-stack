@@ -35,10 +35,14 @@ with Robot.connect("http://127.0.0.1:50051") as robot:
         )
 ```
 
-`Robot.connect()` defaults to `http://127.0.0.1:50051` and validates the inventory
-before returning. Check each IMU's `output_frame` before using its readings.
+`Robot.connect()` defaults to `http://127.0.0.1:50051` and caches the daemon’s inventory
+on connection. Check each IMU's `output_frame` before using its readings.
 
 ## Read state
+
+Compare a group state with `GroupState.GROUP_STATE_IDLE` from `bello_hardware`.
+State fields hold protobuf integer values. `GroupState.Name(value)` returns the
+symbolic name for a known value.
 
 `Robot.states()` creates a synchronous reader. Each `read()` returns one
 immutable frame built from the latest samples for every selected motor, IMU,

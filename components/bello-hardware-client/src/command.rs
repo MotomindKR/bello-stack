@@ -12,7 +12,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tonic::Streaming;
 
 use crate::duration::positive_milliseconds;
-use crate::lease::{GroupLease, LeaseHealth, LeaseStatus, mark_lease_lost, observe_lease_health};
+use crate::lease::{GroupLease, LeaseHealth, active_health, mark_lease_lost};
 use crate::{EnumValue, Error};
 
 /// Freshness assigned to a command batch when it reaches the daemon.
@@ -107,25 +107,20 @@ impl CommandSender {
         validity: CommandValidity,
         commands: Vec<MotorCommand>,
     ) -> Result<u64, Error> {
+        let mut health_changed = self.lease_health.subscribe();
         let permit = loop {
-            let health = observe_lease_health(&self.lease_health);
-            ensure_lease_active(&self.lease_health)?;
-            let mut health_changed = self.lease_health.subscribe();
-            ensure_lease_active(&self.lease_health)?;
+            let health = active_health(&self.lease_health)?;
             tokio::select! {
                 permit = self.inner.reserve() => {
                     break permit.map_err(|_| Error::CommandStreamClosed)?;
                 }
                 changed = health_changed.changed() => {
                     changed.map_err(|_| Error::CommandStreamClosed)?;
-                    ensure_lease_active(&self.lease_health)?;
                 }
-                _ = tokio::time::sleep_until(tokio::time::Instant::from_std(health.expires_at)) => {
-                    ensure_lease_active(&self.lease_health)?;
-                }
+                _ = tokio::time::sleep_until(tokio::time::Instant::from_std(health.expires_at)) => {}
             }
         };
-        ensure_lease_active(&self.lease_health)?;
+        active_health(&self.lease_health)?;
         if self.sequence_exhausted.load(Ordering::Relaxed) {
             return Err(Error::SequenceExhausted);
         }
@@ -312,15 +307,6 @@ struct CommandStreamClaim {
 impl Drop for CommandStreamClaim {
     fn drop(&mut self) {
         self.open.store(false, Ordering::Release);
-    }
-}
-
-fn ensure_lease_active(health: &watch::Sender<LeaseHealth>) -> Result<(), Error> {
-    let status = observe_lease_health(health).status;
-    if status == LeaseStatus::Active {
-        Ok(())
-    } else {
-        Err(Error::LeaseInactive(status))
     }
 }
 

@@ -14,13 +14,16 @@ mod power;
 mod robot;
 mod state;
 mod telemetry;
-mod types;
 
+pub use bello_hardware_api::{
+    CommandBehavior, CommandPolicyCheck, CommandResult, DeviceState, FaultResponse, GroupCause,
+    GroupState,
+};
 pub(crate) use client::HardwareClient;
 pub(crate) use command::{CommandStream, CommandStreamOptions, CommandValidity};
 pub use control::{ControlOptions, ControlSession, ControlState};
 pub use endpoint::{ConnectOptions, TlsOptions};
-pub(crate) use enum_value::EnumValue;
+pub use enum_value::EnumValue;
 pub use error::Error;
 pub use frame::{CommandFrame, CommandFrameBuilder, CoordinateTarget};
 pub use inventory::{Bus, DeviceStatus, Imu, Motor, MotorLimits, SerialDevice};
@@ -33,11 +36,7 @@ pub use state::{
     CommandPolicySnapshot, GroupSnapshot, HealthSnapshot, ImuSnapshot, MotorSnapshot, Quaternion,
     RobotState, RobotStateChange, RobotStates, StateStreamOptions, Vector3,
 };
-pub(crate) use telemetry::{TelemetryEvent, TelemetryFilter, TelemetryStream};
-pub use types::{
-    CommandBehavior, CommandPolicyCheck, CommandResult, DeviceState, FaultResponse, GroupCause,
-    GroupState,
-};
+pub(crate) use telemetry::{TelemetryEvent, TelemetryStream};
 
 /// Low-level protobuf, lease, command-stream, and telemetry primitives.
 pub mod raw {
@@ -50,5 +49,5 @@ pub mod raw {
     };
     pub use crate::enum_value::EnumValue;
     pub use crate::lease::{GroupLease, LeaseDeadline, LeaseDuration, LeaseRenewer, LeaseStatus};
-    pub use crate::telemetry::{TelemetryEvent, TelemetryFilter, TelemetryStream};
+    pub use crate::telemetry::{TelemetryEvent, TelemetryStream};
 }

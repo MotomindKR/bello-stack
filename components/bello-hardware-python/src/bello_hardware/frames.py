@@ -8,8 +8,6 @@ import grpc  # type: ignore[import-untyped]
 from ._generated import hardware_pb2 as proto
 from .errors import ProtocolError, rpc_error
 from .types import (
-    GroupCause,
-    GroupState,
     HardwareStateFrame,
     Quaternion,
     StateFrameGroup,
@@ -34,25 +32,12 @@ class RobotStateReader:
         groups: tuple[str, ...],
         imus: tuple[str, ...],
     ) -> None:
-        if len(set(groups)) != len(groups):
-            raise ValueError("state frame groups must be unique")
-        if len(set(imus)) != len(imus):
-            raise ValueError("state frame IMUs must be unique")
-        unknown_groups = sorted(set(groups) - set(robot.group_names))
-        known_imus = {imu.name for imu in robot.inventory.imus}
-        unknown_imus = sorted(set(imus) - known_imus)
-        if unknown_groups:
-            raise ValueError(f"unknown state frame groups: {unknown_groups}")
-        if unknown_imus:
-            raise ValueError(f"unknown state frame IMUs: {unknown_imus}")
-
-        selected_groups = set(groups) if groups else set(robot.group_names)
-        selected_imus = set(imus) if imus else known_imus
+        selected_groups = set(groups or robot.group_names)
         self._expected_motors = {
             motor.name for motor in robot.inventory.motors if motor.group in selected_groups
         }
         self._expected_groups = selected_groups
-        self._expected_imus = selected_imus
+        self._expected_imus = set(imus) if imus else {imu.name for imu in robot.inventory.imus}
         self._robot = robot
         self._request = proto.GetStateFrameRequest(groups=groups, imus=imus)
 
@@ -104,49 +89,21 @@ class RobotStateReader:
         self._require_complete("group", group_names, self._expected_groups)
         self._require_complete("IMU", imu_names, self._expected_imus)
 
-        motors = tuple(
-            self._decode_motor(motor, response.captured_monotonic_ns) for motor in response.motors
-        )
-        groups = tuple(
-            self._decode_group(group, response.captured_monotonic_ns) for group in response.groups
-        )
-        imus = tuple(self._decode_imu(imu, response.captured_monotonic_ns) for imu in response.imus)
-        sample_times = [
-            *(motor.sample_monotonic_ns for motor in motors),
-            *(imu.sample_monotonic_ns for imu in imus),
-            *(group.sample_monotonic_ns for group in groups),
-        ]
-        oldest = min(sample_times, default=response.captured_monotonic_ns)
-        newest = max(sample_times, default=response.captured_monotonic_ns)
-        if response.oldest_sample_age_ns != response.captured_monotonic_ns - oldest:
-            raise ProtocolError("state frame oldest sample age is inconsistent")
-        if response.sample_span_ns != newest - oldest:
-            raise ProtocolError("state frame sample span is inconsistent")
-
         return HardwareStateFrame(
             captured_monotonic_ns=response.captured_monotonic_ns,
             received_monotonic_ns=received_monotonic_ns,
             round_trip_ns=round_trip_ns,
-            motors=motors,
-            imus=imus,
-            groups=groups,
+            motors=tuple(self._decode_motor(motor) for motor in response.motors),
+            imus=tuple(self._decode_imu(imu) for imu in response.imus),
+            groups=tuple(self._decode_group(group) for group in response.groups),
             oldest_sample_age_ns=response.oldest_sample_age_ns,
             sample_span_ns=response.sample_span_ns,
         )
 
-    def _decode_motor(
-        self,
-        motor: proto.StateMotor,
-        captured_monotonic_ns: int,
-    ) -> StateFrameMotor:
+    def _decode_motor(self, motor: proto.StateMotor) -> StateFrameMotor:
         configured = self._robot.inventory._motors.get(motor.motor_name)
         if configured is None or configured.group != motor.group:
             raise ProtocolError(f"state frame references invalid motor {motor.motor_name!r}")
-        self._validate_sample_time(
-            motor.sample_monotonic_ns,
-            motor.sample_age_ns,
-            captured_monotonic_ns,
-        )
         return StateFrameMotor(
             sample_monotonic_ns=motor.sample_monotonic_ns,
             sample_age_ns=motor.sample_age_ns,
@@ -162,48 +119,27 @@ class RobotStateReader:
         )
 
     @staticmethod
-    def _decode_group(
-        group: proto.StateGroup,
-        captured_monotonic_ns: int,
-    ) -> StateFrameGroup:
-        RobotStateReader._validate_sample_time(
-            group.sample_monotonic_ns,
-            group.sample_age_ns,
-            captured_monotonic_ns,
-        )
-        try:
-            state = GroupState(group.state)
-            cause = GroupCause(group.cause)
-        except ValueError as error:
-            raise ProtocolError("state frame group contains an unknown enum value") from error
+    def _decode_group(group: proto.StateGroup) -> StateFrameGroup:
         return StateFrameGroup(
             sample_monotonic_ns=group.sample_monotonic_ns,
             sample_age_ns=group.sample_age_ns,
             group=group.group,
-            state=state,
+            state=group.state,
             detail=group.detail,
-            cause=cause,
+            cause=group.cause,
             command_count=group.command_count,
             control_tick=group.control_tick,
             jitter_us=group.jitter_us,
         )
 
     @staticmethod
-    def _decode_imu(
-        imu: proto.StateImu,
-        captured_monotonic_ns: int,
-    ) -> StateFrameImu:
+    def _decode_imu(imu: proto.StateImu) -> StateFrameImu:
         if not (
             imu.HasField("orientation")
             and imu.HasField("angular_velocity")
             and imu.HasField("linear_acceleration")
         ):
             raise ProtocolError(f"state frame IMU {imu.imu_name!r} is incomplete")
-        RobotStateReader._validate_sample_time(
-            imu.sample_monotonic_ns,
-            imu.sample_age_ns,
-            captured_monotonic_ns,
-        )
         return StateFrameImu(
             sample_monotonic_ns=imu.sample_monotonic_ns,
             sample_age_ns=imu.sample_age_ns,
@@ -228,21 +164,10 @@ class RobotStateReader:
         )
 
     @staticmethod
-    def _validate_sample_time(
-        sample_monotonic_ns: int,
-        sample_age_ns: int,
-        captured_monotonic_ns: int,
-    ) -> None:
-        if sample_monotonic_ns > captured_monotonic_ns:
-            raise ProtocolError("state frame sample timestamp is later than capture")
-        if captured_monotonic_ns - sample_monotonic_ns != sample_age_ns:
-            raise ProtocolError("state frame sample timestamp and age are inconsistent")
-
-    @staticmethod
     def _require_complete(kind: str, received: list[str], expected: set[str]) -> None:
-        if len(received) != len(set(received)):
-            raise ProtocolError(f"state frame contains duplicate {kind} entries")
         actual = set(received)
+        if len(received) != len(actual):
+            raise ProtocolError(f"state frame contains duplicate {kind} entries")
         if actual != expected:
             raise ProtocolError(
                 f"state frame {kind} set is incomplete: missing={sorted(expected - actual)}, "

@@ -10,7 +10,6 @@ use bello_hardware_client::raw::proto::watch_telemetry_response::Payload;
 use bello_hardware_client::raw::proto::*;
 use bello_hardware_client::raw::{
     CommandStreamOptions, CommandValidity, EnumValue, HardwareClient, LeaseDuration, LeaseStatus,
-    TelemetryFilter,
 };
 use bello_hardware_client::{ControlOptions, ControlState, CoordinateTarget, Error, Robot};
 use tokio::net::TcpListener;
@@ -542,11 +541,13 @@ async fn canonical_workflow_binds_group_token_sequences_and_filters() {
     let inventory = client.inventory().await.expect("read inventory");
     assert_eq!(inventory.groups[0].name, GROUP);
 
-    let filter = TelemetryFilter::default()
-        .selected_groups([GROUP])
-        .include_motors(true)
-        .include_health(true)
-        .include_command_policy_events(true);
+    let filter = WatchTelemetryRequest {
+        groups: vec![GROUP.into()],
+        include_motors: true,
+        include_health: true,
+        include_command_policy_events: true,
+        ..Default::default()
+    };
     let mut telemetry = client.watch(filter).await.expect("watch telemetry");
     let event = telemetry
         .message()
@@ -1049,7 +1050,7 @@ async fn ergonomic_robot_api_hides_lease_stream_and_acknowledgement_workflow() {
     assert_eq!(bus.host_id(), 127);
     assert_eq!(
         bus.initial_status().map(|status| status.state()),
-        Some(bello_hardware_client::DeviceState::Online)
+        Some(EnumValue::Known(bello_hardware_client::DeviceState::Online))
     );
     let serial = robot
         .serial_devices()
@@ -1130,7 +1131,10 @@ async fn ergonomic_state_stream_aggregates_events_without_protobuf_matching() {
         .expect("state event");
     let group = state.group(GROUP).expect("aggregated group state");
     assert_eq!(group.monotonic_ns, 42);
-    assert_eq!(group.state, bello_hardware_client::GroupState::Idle);
+    assert_eq!(
+        group.state,
+        EnumValue::Known(bello_hardware_client::GroupState::Idle)
+    );
     assert!(matches!(
         state.last_change(),
         Some(bello_hardware_client::RobotStateChange::Group(changed))
@@ -1173,7 +1177,9 @@ async fn ergonomic_state_stream_aggregates_events_without_protobuf_matching() {
     assert_eq!(health.dropped_events, 7);
     assert_eq!(
         health.status.as_ref().map(|status| status.state()),
-        Some(bello_hardware_client::DeviceState::Degraded)
+        Some(EnumValue::Known(
+            bello_hardware_client::DeviceState::Degraded
+        ))
     );
     assert_eq!(state.health_snapshots().count(), 1);
     assert!(matches!(
@@ -1190,11 +1196,11 @@ async fn ergonomic_state_stream_aggregates_events_without_protobuf_matching() {
     assert_eq!(policies.len(), 1);
     assert_eq!(
         policies[0].check,
-        bello_hardware_client::CommandPolicyCheck::Limit
+        EnumValue::Known(bello_hardware_client::CommandPolicyCheck::Limit)
     );
     assert_eq!(
         policies[0].behavior,
-        bello_hardware_client::CommandBehavior::Clamp
+        EnumValue::Known(bello_hardware_client::CommandBehavior::Clamp)
     );
     assert!(policies[0].command_modified);
     assert!(!policies[0].command_rejected);

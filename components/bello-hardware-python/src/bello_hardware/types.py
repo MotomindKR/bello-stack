@@ -2,65 +2,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from enum import Enum, IntEnum
+from enum import Enum
 
-
-class DeviceState(IntEnum):
-    UNSPECIFIED = 0
-    STARTING = 1
-    CONNECTING = 2
-    ONLINE = 3
-    DEGRADED = 4
-    RECONNECTING = 5
-    FAULT = 6
-    SHUTDOWN = 7
-
-
-class GroupState(IntEnum):
-    UNSPECIFIED = 0
-    IDLE = 1
-    RUNNING = 3
-    FAULT = 4
-    SHUTDOWN = 5
-    DAMPED = 6
-    CONFIGURING = 7
-
-
-class CommandResult(IntEnum):
-    UNSPECIFIED = 0
-    ACCEPTED = 1
-    UNKNOWN_GROUP = 2
-    LEASE_LOST = 3
-    INVALID_STATE = 4
-    INCOMPLETE_GROUP = 5
-    STALE_SEQUENCE = 6
-    UNSAFE = 7
-    SUPERSEDED = 8
-    CONTROLLER_STOPPED = 9
-    EXPIRED = 10
-
-
-class GroupCause(IntEnum):
-    UNSPECIFIED = 0
-    ENABLE = 1
-    START = 2
-    STOP = 3
-    COMMAND_TIMEOUT = 4
-    DISABLE = 5
-    RECOVER = 6
-    COMMAND_LIMIT = 7
-    COMMAND_POSITION_STEP = 8
-    SAFE_POSITION = 9
-    STALE_FEEDBACK = 10
-    TEMPERATURE = 11
-    REPORTED_MOTOR_FAULT = 12
-    MODE_STATUS = 13
-    COMMUNICATION = 14
-    TRANSMISSION = 15
-    LEASE_LOSS = 16
-    EXIT = 17
-    INTERNAL = 18
-    CONFIGURATION = 19
+from ._generated.hardware_pb2 import DeviceState, GroupCause, GroupState
 
 
 class ControlState(Enum):
@@ -90,19 +34,6 @@ class MotorLimits:
     kp_max: float
     kd_min: float
     kd_max: float
-
-    def __post_init__(self) -> None:
-        for name, minimum, maximum in (
-            ("position", self.position_min, self.position_max),
-            ("velocity", self.velocity_min, self.velocity_max),
-            ("torque", self.torque_min, self.torque_max),
-            ("kp", self.kp_min, self.kp_max),
-            ("kd", self.kd_min, self.kd_max),
-        ):
-            if not math.isfinite(minimum) or not math.isfinite(maximum) or minimum >= maximum:
-                raise ValueError(f"{name} limits must be a finite increasing range")
-        if self.kp_min < 0.0 or self.kd_min < 0.0:
-            raise ValueError("gain limits must be non-negative")
 
 
 @dataclass(frozen=True, slots=True)

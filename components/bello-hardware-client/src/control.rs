@@ -5,8 +5,8 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
 use crate::{
-    CommandFrame, CommandResult, CommandStream, CommandStreamOptions, CommandValidity, Error,
-    GroupLease, GroupState, LeaseDuration, MotorGroup,
+    CommandFrame, CommandResult, CommandStream, CommandStreamOptions, CommandValidity, EnumValue,
+    Error, GroupLease, GroupState, LeaseDuration, MotorGroup,
 };
 
 #[derive(Clone, Debug)]
@@ -157,7 +157,7 @@ impl ControlSession {
         let initial = initial.into_commands(self.group.name())?;
         self.check_renewal()?;
         self.state = ControlState::Uncertain;
-        let actual = GroupState::from_wire(self.lease.enable().await?);
+        let actual = self.lease.enable().await?;
         self.expect_state("enable", GroupState::Damped, actual)?;
         self.state = ControlState::Damped;
 
@@ -167,7 +167,7 @@ impl ControlSession {
             .await;
         self.command_stream = match stream {
             Ok(stream) => Some(stream),
-            Err(error) => return Err(self.rollback_start(error).await),
+            Err(error) => return Err(self.rollback("start", error).await),
         };
 
         self.state = ControlState::Uncertain;
@@ -176,11 +176,11 @@ impl ControlSession {
             .start(self.options.command_validity, initial)
             .await
         {
-            Ok(state) => GroupState::from_wire(state),
-            Err(error) => return Err(self.rollback_start(error).await),
+            Ok(state) => state,
+            Err(error) => return Err(self.rollback("start", error).await),
         };
         if let Err(error) = self.expect_state("start", GroupState::Running, actual) {
-            return Err(self.rollback_start(error).await);
+            return Err(self.rollback("start", error).await);
         }
         self.state = ControlState::Running;
         Ok(())
@@ -202,13 +202,13 @@ impl ControlSession {
             .start(self.options.command_validity, initial)
             .await
         {
-            Ok(state) => GroupState::from_wire(state),
+            Ok(state) => state,
             Err(error) => {
-                return Err(self.rollback_resume(error).await);
+                return Err(self.rollback("resume", error).await);
             }
         };
         if let Err(error) = self.expect_state("resume", GroupState::Running, actual) {
-            return Err(self.rollback_resume(error).await);
+            return Err(self.rollback("resume", error).await);
         }
         self.state = ControlState::Running;
         Ok(())
@@ -229,7 +229,7 @@ impl ControlSession {
                 self.state = if matches!(
                     &error,
                     Error::RejectedCommand {
-                        state: GroupState::Damped,
+                        state: EnumValue::Known(GroupState::Damped),
                         ..
                     }
                 ) {
@@ -249,7 +249,7 @@ impl ControlSession {
         }
         self.command_stream.take();
         self.state = ControlState::Uncertain;
-        let actual = GroupState::from_wire(self.lease.stop().await?);
+        let actual = self.lease.stop().await?;
         self.expect_state("stop", GroupState::Damped, actual)?;
         self.state = ControlState::Damped;
         Ok(())
@@ -267,7 +267,7 @@ impl ControlSession {
         }
         self.command_stream.take();
         self.state = ControlState::Uncertain;
-        let actual = GroupState::from_wire(self.lease.disable().await?);
+        let actual = self.lease.disable().await?;
         self.expect_state("disable", GroupState::Idle, actual)?;
         self.state = ControlState::Ready;
         Ok(())
@@ -280,7 +280,7 @@ impl ControlSession {
         }
         self.command_stream.take();
         self.check_renewal()?;
-        let actual = GroupState::from_wire(self.lease.recover().await?);
+        let actual = self.lease.recover().await?;
         self.expect_state("recover", GroupState::Idle, actual)?;
         self.state = ControlState::Ready;
         Ok(())
@@ -293,10 +293,10 @@ impl ControlSession {
         self.stop_renewal().await;
         let result = self.lease.release().await;
         self.state = ControlState::Closed;
-        let actual = GroupState::from_wire(result?);
+        let actual = result?;
         if matches!(
             actual,
-            GroupState::Idle | GroupState::Damped | GroupState::Fault
+            EnumValue::Known(GroupState::Idle | GroupState::Damped | GroupState::Fault)
         ) {
             Ok(())
         } else {
@@ -317,8 +317,7 @@ impl ControlSession {
 
         if self.state == ControlState::Running {
             match self.lease.stop().await {
-                Ok(state) => {
-                    let actual = GroupState::from_wire(state);
+                Ok(actual) => {
                     if let Err(error) = self.expect_state("stop", GroupState::Damped, actual) {
                         errors.push(error.to_string());
                     }
@@ -335,8 +334,7 @@ impl ControlSession {
         // authoritative daemon, including after an ambiguous lifecycle error.
         if !faulted {
             match self.lease.disable().await {
-                Ok(state) => {
-                    let actual = GroupState::from_wire(state);
+                Ok(actual) => {
                     if let Err(error) = self.expect_state("disable", GroupState::Idle, actual) {
                         errors.push(error.to_string());
                     }
@@ -352,9 +350,10 @@ impl ControlSession {
 
         self.stop_renewal().await;
         match self.lease.release().await {
-            Ok(state) => {
-                let actual = GroupState::from_wire(state);
-                if actual != GroupState::Idle && !(faulted && actual == GroupState::Fault) {
+            Ok(actual) => {
+                if actual != EnumValue::Known(GroupState::Idle)
+                    && !(faulted && actual == EnumValue::Known(GroupState::Fault))
+                {
                     errors.push(
                         Error::UnexpectedGroupState {
                             group: self.group.name().into(),
@@ -436,53 +435,31 @@ impl ControlSession {
                 actual: acknowledgement.sequence,
             });
         }
-        let result = CommandResult::from_wire(acknowledgement.result);
-        if result != CommandResult::Accepted {
+        let result = acknowledgement.result;
+        if result != EnumValue::Known(CommandResult::Accepted) {
             return Err(Error::RejectedCommand {
                 group,
                 sequence,
                 result,
                 detail: acknowledgement.detail,
-                state: GroupState::from_wire(acknowledgement.state),
+                state: acknowledgement.state,
             });
         }
         self.check_renewal()?;
         Ok(stream)
     }
 
-    async fn rollback_start(&mut self, primary: Error) -> Error {
+    async fn rollback(&mut self, operation: &str, primary: Error) -> Error {
         self.command_stream.take();
         self.state = ControlState::Uncertain;
         match self.lease.stop().await {
-            Ok(state) if GroupState::from_wire(state) == GroupState::Damped => {
+            Ok(EnumValue::Known(GroupState::Damped)) => {
                 self.state = ControlState::Damped;
                 primary
             }
             Ok(state) => Error::CleanupFailed(vec![
                 primary.to_string(),
-                format!(
-                    "start rollback returned {:?} instead of Damped",
-                    GroupState::from_wire(state)
-                ),
-            ]),
-            Err(cleanup) => Error::CleanupFailed(vec![primary.to_string(), cleanup.to_string()]),
-        }
-    }
-
-    async fn rollback_resume(&mut self, primary: Error) -> Error {
-        self.command_stream.take();
-        self.state = ControlState::Uncertain;
-        match self.lease.stop().await {
-            Ok(state) if GroupState::from_wire(state) == GroupState::Damped => {
-                self.state = ControlState::Damped;
-                primary
-            }
-            Ok(state) => Error::CleanupFailed(vec![
-                primary.to_string(),
-                format!(
-                    "resume rollback returned {:?} instead of Damped",
-                    GroupState::from_wire(state)
-                ),
+                format!("{operation} rollback returned {state:?} instead of Damped"),
             ]),
             Err(cleanup) => Error::CleanupFailed(vec![primary.to_string(), cleanup.to_string()]),
         }
@@ -520,9 +497,9 @@ impl ControlSession {
         &self,
         operation: &'static str,
         expected: GroupState,
-        actual: GroupState,
+        actual: EnumValue<GroupState>,
     ) -> Result<(), Error> {
-        if actual == expected {
+        if actual == EnumValue::Known(expected) {
             Ok(())
         } else {
             Err(Error::UnexpectedGroupState {

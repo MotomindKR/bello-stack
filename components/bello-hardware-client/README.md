@@ -134,8 +134,8 @@ for motor in robot.motors() {
     println!(
         "{} torque range: {}..={} Nm",
         motor.name(),
-        motor.limits().torque_min(),
-        motor.limits().torque_max(),
+        motor.limits().torque_min,
+        motor.limits().torque_max,
     );
 }
 # Ok(())
@@ -147,6 +147,10 @@ connection time. Live lifecycle changes are available through the health
 snapshots described below.
 
 ## Robot state
+
+Compare reported states with `EnumValue::Known(GroupState::Idle)` or call
+`.known()` to obtain `Option<GroupState>`. `EnumValue::Unknown(i32)` preserves
+values introduced by a newer daemon.
 
 ```rust,no_run
 use bello_hardware_client::{Robot, RobotStateChange};
@@ -224,12 +228,15 @@ Performance probes and protocol-aware integrations can opt into the lower
 layer explicitly:
 
 ```rust,no_run
-use bello_hardware_client::raw::{HardwareClient, TelemetryFilter};
+use bello_hardware_client::raw::{HardwareClient, proto::WatchTelemetryRequest};
 
 # async fn example() -> Result<(), bello_hardware_client::Error> {
 let hardware = HardwareClient::connect("http://127.0.0.1:50051").await?;
 let inventory = hardware.inventory().await?;
-let telemetry = hardware.watch(TelemetryFilter::all()).await?;
+let telemetry = hardware.watch(WatchTelemetryRequest {
+    include_motors: true,
+    ..Default::default()
+}).await?;
 # let _ = (inventory, telemetry);
 # Ok(())
 # }

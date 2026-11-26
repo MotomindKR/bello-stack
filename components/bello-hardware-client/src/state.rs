@@ -1,13 +1,14 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use bello_hardware_api::WatchTelemetryRequest;
 use bello_hardware_api::watch_telemetry_response::Payload;
 use tonic::Code;
 
 use crate::inventory::DeviceStatus;
 use crate::{
-    CommandBehavior, CommandPolicyCheck, Error, FaultResponse, GroupCause, GroupState, Robot,
-    TelemetryFilter, TelemetryStream,
+    CommandBehavior, CommandPolicyCheck, EnumValue, Error, FaultResponse, GroupCause, GroupState,
+    Robot, TelemetryStream,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -55,9 +56,9 @@ pub struct ImuSnapshot {
 pub struct GroupSnapshot {
     pub monotonic_ns: u64,
     pub group: String,
-    pub state: GroupState,
+    pub state: EnumValue<GroupState>,
     pub detail: String,
-    pub cause: GroupCause,
+    pub cause: EnumValue<GroupCause>,
     pub command_count: u64,
     pub control_tick: u64,
     pub jitter_us: i64,
@@ -76,12 +77,12 @@ pub struct CommandPolicySnapshot {
     pub monotonic_ns: u64,
     pub group: String,
     pub motor: String,
-    pub check: CommandPolicyCheck,
-    pub behavior: CommandBehavior,
+    pub check: EnumValue<CommandPolicyCheck>,
+    pub behavior: EnumValue<CommandBehavior>,
     pub detail: String,
     pub command_modified: bool,
     pub command_rejected: bool,
-    pub fault_response: FaultResponse,
+    pub fault_response: EnumValue<FaultResponse>,
 }
 
 /// Exact aggregate entry updated by the most recently received telemetry event.
@@ -99,25 +100,6 @@ pub enum RobotStateChange {
     CommandPolicy(CommandPolicySnapshot),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum CommandPolicySlot {
-    Unspecified,
-    Limit,
-    PositionStep,
-    Unknown,
-}
-
-impl From<CommandPolicyCheck> for CommandPolicySlot {
-    fn from(check: CommandPolicyCheck) -> Self {
-        match check {
-            CommandPolicyCheck::Unspecified => Self::Unspecified,
-            CommandPolicyCheck::Limit => Self::Limit,
-            CommandPolicyCheck::PositionStep => Self::PositionStep,
-            CommandPolicyCheck::Unknown(_) => Self::Unknown,
-        }
-    }
-}
-
 /// Latest-value aggregate built from the event-based telemetry stream.
 #[derive(Clone, Debug)]
 pub struct RobotState {
@@ -129,7 +111,7 @@ pub struct RobotState {
     imus: BTreeMap<String, ImuSnapshot>,
     power_boards: BTreeMap<String, crate::PowerBoardSnapshot>,
     health: BTreeMap<String, HealthSnapshot>,
-    command_policies: BTreeMap<(String, CommandPolicySlot), CommandPolicySnapshot>,
+    command_policies: BTreeMap<(String, Option<CommandPolicyCheck>), CommandPolicySnapshot>,
     last_change: Option<RobotStateChange>,
 }
 
@@ -366,9 +348,9 @@ impl RobotState {
                 let snapshot = GroupSnapshot {
                     monotonic_ns: event.monotonic_ns,
                     group: group.group,
-                    state: GroupState::from_raw(group.state),
+                    state: EnumValue::from_raw(group.state),
                     detail: group.detail,
-                    cause: GroupCause::from_raw(group.cause),
+                    cause: EnumValue::from_raw(group.cause),
                     command_count: group.command_count,
                     control_tick: group.control_tick,
                     jitter_us: group.jitter_us,
@@ -408,19 +390,19 @@ impl RobotState {
                         configured.group()
                     )));
                 }
-                let check = CommandPolicyCheck::from_raw(policy.check);
+                let check = EnumValue::from_raw(policy.check);
                 let snapshot = CommandPolicySnapshot {
                     monotonic_ns: event.monotonic_ns,
                     group: policy.group,
                     motor: policy.motor_name,
                     check,
-                    behavior: CommandBehavior::from_raw(policy.behavior),
+                    behavior: EnumValue::from_raw(policy.behavior),
                     detail: policy.detail,
                     command_modified: policy.command_modified,
                     command_rejected: policy.command_rejected,
-                    fault_response: FaultResponse::from_raw(policy.fault_response),
+                    fault_response: EnumValue::from_raw(policy.fault_response),
                 };
-                let key = (snapshot.motor.clone(), snapshot.check.into());
+                let key = (snapshot.motor.clone(), snapshot.check.known());
                 self.command_policies.insert(key, snapshot.clone());
                 self.last_change = Some(RobotStateChange::CommandPolicy(snapshot));
             }
@@ -528,13 +510,15 @@ impl RobotStates {
     }
 }
 
-fn state_filter() -> TelemetryFilter {
-    TelemetryFilter::default()
-        .include_motors(true)
-        .include_imu(true)
-        .include_power_boards(true)
-        .include_health(true)
-        .include_command_policy_events(true)
+fn state_filter() -> WatchTelemetryRequest {
+    WatchTelemetryRequest {
+        include_motors: true,
+        include_imu: true,
+        include_health: true,
+        include_command_policy_events: true,
+        include_power_boards: true,
+        ..Default::default()
+    }
 }
 
 impl std::fmt::Debug for RobotStates {
@@ -554,17 +538,4 @@ fn is_retryable_stream_error(error: &Error) -> bool {
             Code::Unavailable | Code::Cancelled | Code::DeadlineExceeded | Code::Unknown
         )
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn unknown_command_policy_values_share_one_bounded_slot() {
-        assert_eq!(
-            CommandPolicySlot::from(CommandPolicyCheck::Unknown(17)),
-            CommandPolicySlot::from(CommandPolicyCheck::Unknown(99))
-        );
-    }
 }

@@ -1,19 +1,20 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, btree_map::Entry};
 use std::sync::Arc;
 
 use bello_hardware_api as proto;
+pub use proto::MotorLimits;
 
-use crate::{DeviceState, Error, GroupState};
+use crate::{DeviceState, EnumValue, Error, GroupState};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeviceStatus {
-    state: DeviceState,
+    state: EnumValue<DeviceState>,
     detail: String,
     transition_count: u64,
 }
 
 impl DeviceStatus {
-    pub fn state(&self) -> DeviceState {
+    pub fn state(&self) -> EnumValue<DeviceState> {
         self.state
     }
 
@@ -29,103 +30,10 @@ impl DeviceStatus {
 impl From<proto::DeviceStatus> for DeviceStatus {
     fn from(status: proto::DeviceStatus) -> Self {
         Self {
-            state: DeviceState::from_raw(status.state),
+            state: EnumValue::from_raw(status.state),
             detail: status.detail,
             transition_count: status.transition_count,
         }
-    }
-}
-
-/// Resolved command bounds for one motor, expressed in coordinate-space SI units.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct MotorLimits {
-    pub(crate) position_min: f64,
-    pub(crate) position_max: f64,
-    pub(crate) velocity_min: f64,
-    pub(crate) velocity_max: f64,
-    pub(crate) torque_min: f64,
-    pub(crate) torque_max: f64,
-    pub(crate) kp_min: f64,
-    pub(crate) kp_max: f64,
-    pub(crate) kd_min: f64,
-    pub(crate) kd_max: f64,
-}
-
-impl MotorLimits {
-    pub fn position_min(&self) -> f64 {
-        self.position_min
-    }
-
-    pub fn position_max(&self) -> f64 {
-        self.position_max
-    }
-
-    pub fn velocity_min(&self) -> f64 {
-        self.velocity_min
-    }
-
-    pub fn velocity_max(&self) -> f64 {
-        self.velocity_max
-    }
-
-    pub fn torque_min(&self) -> f64 {
-        self.torque_min
-    }
-
-    pub fn torque_max(&self) -> f64 {
-        self.torque_max
-    }
-
-    pub fn kp_min(&self) -> f64 {
-        self.kp_min
-    }
-
-    pub fn kp_max(&self) -> f64 {
-        self.kp_max
-    }
-
-    pub fn kd_min(&self) -> f64 {
-        self.kd_min
-    }
-
-    pub fn kd_max(&self) -> f64 {
-        self.kd_max
-    }
-
-    fn from_proto(limits: proto::MotorLimits) -> Result<Self, &'static str> {
-        let resolved = Self {
-            position_min: limits.position_min,
-            position_max: limits.position_max,
-            velocity_min: limits.velocity_min,
-            velocity_max: limits.velocity_max,
-            torque_min: limits.torque_min,
-            torque_max: limits.torque_max,
-            kp_min: limits.kp_min,
-            kp_max: limits.kp_max,
-            kd_min: limits.kd_min,
-            kd_max: limits.kd_max,
-        };
-        for (name, minimum, maximum) in [
-            ("position", resolved.position_min, resolved.position_max),
-            ("velocity", resolved.velocity_min, resolved.velocity_max),
-            ("torque", resolved.torque_min, resolved.torque_max),
-            ("kp", resolved.kp_min, resolved.kp_max),
-            ("kd", resolved.kd_min, resolved.kd_max),
-        ] {
-            if !minimum.is_finite() || !maximum.is_finite() || minimum >= maximum {
-                return Err(match name {
-                    "position" => "invalid position limits",
-                    "velocity" => "invalid velocity limits",
-                    "torque" => "invalid torque limits",
-                    "kp" => "invalid kp limits",
-                    _ => "invalid kd limits",
-                });
-            }
-        }
-        if resolved.kp_min < 0.0 || resolved.kd_min < 0.0 {
-            return Err("gain limits must be non-negative");
-        }
-        Ok(resolved)
     }
 }
 
@@ -275,7 +183,7 @@ impl Imu {
 pub(crate) struct GroupDefinition {
     pub(crate) name: String,
     pub(crate) control_rate_hz: f64,
-    pub(crate) initial_state: GroupState,
+    pub(crate) initial_state: EnumValue<GroupState>,
     pub(crate) motors: Arc<[Motor]>,
     pub(crate) coordinate_indices: BTreeMap<String, usize>,
 }
@@ -291,124 +199,80 @@ pub(crate) struct Inventory {
     pub(crate) power_boards: BTreeMap<String, crate::PowerBoard>,
 }
 
+fn insert_named<T>(
+    index: &mut BTreeMap<String, T>,
+    kind: &str,
+    name: String,
+    value: T,
+) -> Result<(), Error> {
+    if name.trim().is_empty() {
+        return Err(Error::InvalidInventory(format!("{kind} has an empty name")));
+    }
+    match index.entry(name) {
+        Entry::Vacant(entry) => {
+            entry.insert(value);
+            Ok(())
+        }
+        Entry::Occupied(entry) => Err(Error::InvalidInventory(format!(
+            "duplicate {kind} {:?}",
+            entry.key()
+        ))),
+    }
+}
+
 impl Inventory {
     pub(crate) fn from_proto(response: proto::ListHardwareResponse) -> Result<Self, Error> {
         let mut buses = BTreeMap::new();
         for bus in response.buses {
-            if bus.name.trim().is_empty() || bus.transport.trim().is_empty() {
-                return Err(Error::InvalidInventory(
-                    "bus name and transport must be non-empty".into(),
-                ));
-            }
-            let resolved = Bus {
-                name: bus.name,
-                transport: bus.transport,
-                host_id: bus.host_id,
-                initial_status: bus.status.map(Into::into),
-            };
-            let name = resolved.name.clone();
-            if buses.insert(name.clone(), resolved).is_some() {
-                return Err(Error::InvalidInventory(format!(
-                    "bus {name:?} appears more than once"
-                )));
-            }
+            insert_named(
+                &mut buses,
+                "bus",
+                bus.name.clone(),
+                Bus {
+                    name: bus.name,
+                    transport: bus.transport,
+                    host_id: bus.host_id,
+                    initial_status: bus.status.map(Into::into),
+                },
+            )?;
         }
 
         let mut serial_devices = BTreeMap::new();
         for serial in response.serial_devices {
-            if serial.name.trim().is_empty() || serial.port.trim().is_empty() {
-                return Err(Error::InvalidInventory(
-                    "serial device name and port must be non-empty".into(),
-                ));
-            }
-            if serial.baud_rate == 0 {
-                return Err(Error::InvalidInventory(format!(
-                    "serial device {:?} has zero baud rate",
-                    serial.name
-                )));
-            }
-            let resolved = SerialDevice {
-                name: serial.name,
-                port: serial.port,
-                baud_rate: serial.baud_rate,
-                initial_status: serial.status.map(Into::into),
-            };
-            let name = resolved.name.clone();
-            if serial_devices.insert(name.clone(), resolved).is_some() {
-                return Err(Error::InvalidInventory(format!(
-                    "serial device {name:?} appears more than once"
-                )));
-            }
-        }
-
-        let mut group_info = BTreeMap::new();
-        for group in response.groups {
-            if group.name.trim().is_empty() {
-                return Err(Error::InvalidInventory(
-                    "motor group has an empty name".into(),
-                ));
-            }
-            let name = group.name.clone();
-            if group_info.insert(name.clone(), group).is_some() {
-                return Err(Error::InvalidInventory(format!(
-                    "motor group {name:?} appears more than once"
-                )));
-            }
+            insert_named(
+                &mut serial_devices,
+                "serial device",
+                serial.name.clone(),
+                SerialDevice {
+                    name: serial.name,
+                    port: serial.port,
+                    baud_rate: serial.baud_rate,
+                    initial_status: serial.status.map(Into::into),
+                },
+            )?;
         }
 
         let mut motors = BTreeMap::new();
         let mut coordinates = BTreeMap::new();
         let mut grouped: BTreeMap<String, Vec<Motor>> = BTreeMap::new();
         for motor in response.motors {
-            if motor.name.trim().is_empty()
-                || motor.coordinate.trim().is_empty()
-                || motor.group.trim().is_empty()
-            {
-                return Err(Error::InvalidInventory(
-                    "motor name, coordinate, and group must be non-empty".into(),
-                ));
-            }
-            if !group_info.contains_key(&motor.group) {
-                return Err(Error::InvalidInventory(format!(
-                    "motor {:?} references unknown group {:?}",
-                    motor.name, motor.group
-                )));
-            }
             let address = motor.address.ok_or_else(|| {
                 Error::InvalidInventory(format!("motor {:?} has no bus address", motor.name))
             })?;
-            if address.bus.trim().is_empty() {
-                return Err(Error::InvalidInventory(format!(
-                    "motor {:?} has an empty bus name",
-                    motor.name
-                )));
-            }
-            if !buses.contains_key(&address.bus) {
-                return Err(Error::InvalidInventory(format!(
-                    "motor {:?} references unknown bus {:?}",
-                    motor.name, address.bus
-                )));
-            }
-            let raw_limits = motor.limits.ok_or_else(|| {
+            let limits = motor.limits.ok_or_else(|| {
                 Error::InvalidInventory(format!(
                     "motor {:?} has no resolved command limits",
                     motor.name
                 ))
             })?;
-            let limits = MotorLimits::from_proto(raw_limits).map_err(|detail| {
-                Error::InvalidInventory(format!("motor {:?} has {detail}", motor.name))
-            })?;
-            if coordinates
-                .insert(motor.coordinate.clone(), motor.name.clone())
-                .is_some()
-            {
-                return Err(Error::InvalidInventory(format!(
-                    "coordinate {:?} is assigned to multiple motors",
-                    motor.coordinate
-                )));
-            }
+            insert_named(
+                &mut coordinates,
+                "coordinate",
+                motor.coordinate.clone(),
+                motor.name.clone(),
+            )?;
             let resolved = Motor {
-                name: motor.name.clone(),
+                name: motor.name,
                 coordinate: motor.coordinate,
                 group: motor.group.clone(),
                 bus: address.bus,
@@ -419,125 +283,73 @@ impl Inventory {
                 limits,
                 initial_status: motor.status.map(Into::into),
             };
-            if motors
-                .insert(resolved.name.clone(), resolved.clone())
-                .is_some()
-            {
-                return Err(Error::InvalidInventory(format!(
-                    "motor {:?} appears more than once",
-                    resolved.name
-                )));
-            }
+            insert_named(
+                &mut motors,
+                "motor",
+                resolved.name.clone(),
+                resolved.clone(),
+            )?;
             grouped.entry(motor.group).or_default().push(resolved);
         }
 
         let mut groups = BTreeMap::new();
-        for (name, info) in group_info {
-            if !info.control_rate_hz.is_finite() || info.control_rate_hz <= 0.0 {
-                return Err(Error::InvalidInventory(format!(
-                    "motor group {name:?} has invalid control rate {}",
-                    info.control_rate_hz
-                )));
-            }
-            let mut members = grouped.remove(&name).unwrap_or_default();
-            if members.is_empty() {
-                return Err(Error::InvalidInventory(format!(
-                    "motor group {name:?} has no motors"
-                )));
-            }
+        for group in response.groups {
+            let mut members = grouped.remove(&group.name).unwrap_or_default();
             members.sort_by(|left, right| left.name.cmp(&right.name));
-
-            let reported_count = info.motors.len();
-            let reported: BTreeSet<_> = info
-                .motors
-                .into_iter()
-                .map(|address| (address.bus, address.id))
-                .collect();
-            let resolved: BTreeSet<_> = members
-                .iter()
-                .map(|motor| (motor.bus.clone(), motor.id))
-                .collect();
-            if reported_count != members.len() || reported != resolved {
-                return Err(Error::InvalidInventory(format!(
-                    "motor group {name:?} address membership disagrees with motor inventory"
-                )));
-            }
-
             let coordinate_indices = members
                 .iter()
                 .enumerate()
                 .map(|(index, motor)| (motor.coordinate.clone(), index))
                 .collect();
-            groups.insert(
-                name.clone(),
+            insert_named(
+                &mut groups,
+                "group",
+                group.name.clone(),
                 Arc::new(GroupDefinition {
-                    name,
-                    control_rate_hz: info.control_rate_hz,
-                    initial_state: GroupState::from_raw(info.state),
+                    name: group.name,
+                    control_rate_hz: group.control_rate_hz,
+                    initial_state: EnumValue::from_raw(group.state),
                     motors: members.into(),
                     coordinate_indices,
                 }),
-            );
+            )?;
+        }
+        if let Some(name) = grouped.keys().next() {
+            return Err(Error::InvalidInventory(format!(
+                "motor references unknown group {name:?}"
+            )));
         }
 
         let mut imus = BTreeMap::new();
         for imu in response.imus {
-            if imu.name.trim().is_empty()
-                || imu.serial_device.trim().is_empty()
-                || imu.source_frame.trim().is_empty()
-                || imu.output_frame.trim().is_empty()
-            {
-                return Err(Error::InvalidInventory(
-                    "IMU name, serial device, source frame, and output frame must be non-empty"
-                        .into(),
-                ));
-            }
-            if !serial_devices.contains_key(&imu.serial_device) {
-                return Err(Error::InvalidInventory(format!(
-                    "IMU {:?} references unknown serial device {:?}",
-                    imu.name, imu.serial_device
-                )));
-            }
-            let resolved = Imu {
-                name: imu.name,
-                serial_device: imu.serial_device,
-                source_frame: imu.source_frame,
-                output_frame: imu.output_frame,
-                initial_status: imu.status.map(Into::into),
-            };
-            let name = resolved.name.clone();
-            if imus.insert(name.clone(), resolved).is_some() {
-                return Err(Error::InvalidInventory(format!(
-                    "IMU {name:?} appears more than once"
-                )));
-            }
+            insert_named(
+                &mut imus,
+                "IMU",
+                imu.name.clone(),
+                Imu {
+                    name: imu.name,
+                    serial_device: imu.serial_device,
+                    source_frame: imu.source_frame,
+                    output_frame: imu.output_frame,
+                    initial_status: imu.status.map(Into::into),
+                },
+            )?;
         }
         let mut power_boards = BTreeMap::new();
-        let mut claimed: std::collections::BTreeSet<_> =
-            imus.values().map(|imu| imu.serial_device.clone()).collect();
         for board in response.power_boards {
-            if board.name.trim().is_empty()
-                || !serial_devices.contains_key(&board.serial_device)
-                || !claimed.insert(board.serial_device.clone())
-                || !matches!(board.profile.as_str(), "agx" | "nano_nx")
-                || board.stale_timeout_ms == 0
-            {
-                return Err(Error::InvalidInventory(
-                    "invalid power board or serial ownership".into(),
-                ));
-            }
-            let name = board.name.clone();
-            let value = crate::PowerBoard {
-                name: board.name,
-                serial_device: board.serial_device,
-                profile: board.profile,
-                stale_timeout: std::time::Duration::from_millis(board.stale_timeout_ms),
-                sync_period: std::time::Duration::from_millis(board.sync_period_ms),
-                initial_status: board.status.map(Into::into),
-            };
-            if power_boards.insert(name, value).is_some() {
-                return Err(Error::InvalidInventory("duplicate power board".into()));
-            }
+            insert_named(
+                &mut power_boards,
+                "power board",
+                board.name.clone(),
+                crate::PowerBoard {
+                    name: board.name,
+                    serial_device: board.serial_device,
+                    profile: board.profile,
+                    stale_timeout: std::time::Duration::from_millis(board.stale_timeout_ms),
+                    sync_period: std::time::Duration::from_millis(board.sync_period_ms),
+                    initial_status: board.status.map(Into::into),
+                },
+            )?;
         }
         Ok(Self {
             buses,
@@ -556,146 +368,45 @@ mod tests {
     use super::*;
 
     fn inventory() -> proto::ListHardwareResponse {
+        let motor = |name: &str, coordinate: &str| proto::MotorInfo {
+            name: name.into(),
+            coordinate: coordinate.into(),
+            group: "arms".into(),
+            address: Some(proto::MotorAddress::default()),
+            limits: Some(proto::MotorLimits::default()),
+            ..Default::default()
+        };
         proto::ListHardwareResponse {
-            power_boards: vec![],
-            buses: vec![proto::BusInfo {
-                name: "can0".into(),
-                transport: "socketcan:vcan0".into(),
-                host_id: 127,
-                status: Some(proto::DeviceStatus {
-                    state: proto::DeviceState::Online as i32,
-                    detail: "online".into(),
-                    transition_count: 3,
-                }),
-            }],
             groups: vec![proto::GroupInfo {
                 name: "arms".into(),
-                control_rate_hz: 250.0,
-                state: proto::GroupState::Idle as i32,
-                motors: vec![proto::MotorAddress {
-                    bus: "can0".into(),
-                    id: 1,
-                }],
+                ..Default::default()
             }],
-            motors: vec![proto::MotorInfo {
-                name: "shoulder_motor".into(),
-                coordinate: "shoulder".into(),
-                group: "arms".into(),
-                address: Some(proto::MotorAddress {
-                    bus: "can0".into(),
-                    id: 1,
-                }),
-                model: "RS_03".into(),
-                firmware_version: None,
-                direction: 1,
-                status: None,
-                limits: Some(proto::MotorLimits {
-                    position_min: -1.0,
-                    position_max: 1.0,
-                    velocity_min: -2.0,
-                    velocity_max: 2.0,
-                    torque_min: -3.0,
-                    torque_max: 3.0,
-                    kp_min: 0.0,
-                    kp_max: 100.0,
-                    kd_min: 0.0,
-                    kd_max: 10.0,
-                }),
-            }],
-            serial_devices: vec![proto::SerialDeviceInfo {
-                name: "imu_serial".into(),
-                port: "/dev/ttyUSB0".into(),
-                baud_rate: 921_600,
-                status: None,
-            }],
-            imus: vec![proto::ImuInfo {
-                name: "body".into(),
-                serial_device: "imu_serial".into(),
-                status: None,
-                source_frame: "imu_sensor_link".into(),
-                output_frame: "imu_link".into(),
-            }],
+            motors: vec![
+                motor("shoulder_motor", "shoulder"),
+                motor("elbow_motor", "elbow"),
+            ],
+            ..Default::default()
         }
     }
 
     #[test]
-    fn resolves_group_membership_by_coordinate() {
+    fn resolves_coordinates_after_sorting_group_members() {
         let inventory = Inventory::from_proto(inventory()).unwrap();
-        let group = inventory.groups.get("arms").unwrap();
-        assert_eq!(group.motors[0].coordinate(), "shoulder");
-        assert_eq!(group.coordinate_indices["shoulder"], 0);
-        assert_eq!(group.motors[0].limits().torque_max(), 3.0);
-        let bus = &inventory.buses["can0"];
-        assert_eq!(bus.transport(), "socketcan:vcan0");
-        assert_eq!(bus.host_id(), 127);
+        let group = &inventory.groups["arms"];
+        assert_eq!(group.motors[0].name(), "elbow_motor");
         assert_eq!(
-            bus.initial_status().map(DeviceStatus::transition_count),
-            Some(3)
+            group.motors[group.coordinate_indices["shoulder"]].name(),
+            "shoulder_motor"
         );
-        assert_eq!(inventory.serial_devices["imu_serial"].baud_rate(), 921_600);
-        assert_eq!(inventory.imus["body"].serial_device(), "imu_serial");
-        assert_eq!(inventory.imus["body"].source_frame(), "imu_sensor_link");
-        assert_eq!(inventory.imus["body"].output_frame(), "imu_link");
     }
 
     #[test]
-    fn rejects_disagreement_between_group_and_motor_inventory() {
-        let mut inventory = inventory();
-        inventory.groups[0].motors[0].id = 2;
-        assert!(matches!(
-            Inventory::from_proto(inventory),
-            Err(Error::InvalidInventory(_))
-        ));
-    }
-
-    #[test]
-    fn rejects_unknown_bus_and_serial_references() {
-        let mut unknown_bus = inventory();
-        unknown_bus.motors[0].address.as_mut().unwrap().bus = "missing".into();
-        assert!(matches!(
-            Inventory::from_proto(unknown_bus),
-            Err(Error::InvalidInventory(detail)) if detail.contains("unknown bus")
-        ));
-
-        let mut unknown_serial = inventory();
-        unknown_serial.imus[0].serial_device = "missing".into();
-        assert!(matches!(
-            Inventory::from_proto(unknown_serial),
-            Err(Error::InvalidInventory(detail)) if detail.contains("unknown serial device")
-        ));
-    }
-
-    #[test]
-    fn rejects_missing_imu_frames() {
-        let mut missing_source = inventory();
-        missing_source.imus[0].source_frame.clear();
-        assert!(matches!(
-            Inventory::from_proto(missing_source),
-            Err(Error::InvalidInventory(detail)) if detail.contains("source frame")
-        ));
-
-        let mut missing_output = inventory();
-        missing_output.imus[0].output_frame.clear();
-        assert!(matches!(
-            Inventory::from_proto(missing_output),
-            Err(Error::InvalidInventory(detail)) if detail.contains("output frame")
-        ));
-    }
-
-    #[test]
-    fn rejects_missing_or_invalid_motor_limits() {
+    fn rejects_missing_motor_limits() {
         let mut missing = inventory();
         missing.motors[0].limits = None;
         assert!(matches!(
             Inventory::from_proto(missing),
             Err(Error::InvalidInventory(detail)) if detail.contains("no resolved command limits")
-        ));
-
-        let mut invalid = inventory();
-        invalid.motors[0].limits.as_mut().unwrap().kp_max = 0.0;
-        assert!(matches!(
-            Inventory::from_proto(invalid),
-            Err(Error::InvalidInventory(detail)) if detail.contains("invalid kp limits")
         ));
     }
 }

@@ -23,7 +23,7 @@ class _Closeable(Protocol):
 
 
 class Robot:
-    """Connected robot with a cached, validated hardware inventory."""
+    """Connected robot with a cached hardware inventory."""
 
     def __init__(
         self,

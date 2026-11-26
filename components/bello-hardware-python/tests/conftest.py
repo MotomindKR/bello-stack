@@ -104,7 +104,7 @@ class FakeHardware:
         self.renew_count = 0
         self.release_count = 0
         self.disable_count = 0
-        self.reject_next = False
+        self.next_command_result: proto.CommandResult | None = None
         self.command_delay = 0.0
         self.command_ack_gate: threading.Event | None = None
         self.before_start_control: Callable[[], None] | None = None
@@ -199,15 +199,15 @@ class FakeHardware:
                 time.sleep(self.command_delay)
             with self.lock:
                 self.command_count += 1
-                reject = self.reject_next
-                self.reject_next = False
+                override = self.next_command_result
+                self.next_command_result = None
                 state = self.state
             names = {command.motor_name for command in request.commands}
             complete = names == {"hip_motor", "knee_motor"}
             result = proto.COMMAND_RESULT_ACCEPTED
             detail = ""
-            if reject:
-                result = proto.COMMAND_RESULT_UNSAFE
+            if override is not None:
+                result = override
                 detail = "test rejection"
             elif not complete:
                 result = proto.COMMAND_RESULT_INCOMPLETE_GROUP

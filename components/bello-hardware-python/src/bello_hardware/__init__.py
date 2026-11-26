@@ -1,5 +1,6 @@
 """Blocking Python interface to the Bello hardware daemon."""
 
+from ._generated.hardware_pb2 import CommandResult, DeviceState, GroupCause, GroupState
 from ._inventory import Inventory, MotorGroup
 from .control import CommandPipeline, CommandReceipt, ControlSession
 from .errors import (
@@ -37,13 +38,9 @@ from .robot import Robot
 from .tls import TlsCredentials
 from .types import (
     Bus,
-    CommandResult,
     ControlState,
     CoordinateTarget,
-    DeviceState,
     DeviceStatus,
-    GroupCause,
-    GroupState,
     HardwareStateFrame,
     Imu,
     Motor,

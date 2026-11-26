@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import cast
 
 import grpc  # type: ignore[import-untyped]
 import pytest
@@ -17,6 +18,7 @@ from bello_hardware import (
     CoordinateTarget,
     InvalidTargetError,
     LeaseLostError,
+    ProtocolError,
     Robot,
     RpcError,
 )
@@ -232,12 +234,30 @@ def test_async_rejection_preserves_running_session_state(
         robot.group("leg").control("pytest") as control,
     ):
         control.start(frame())
-        hardware_server.service.reject_next = True
+        hardware_server.service.next_command_result = proto.COMMAND_RESULT_UNSAFE
         receipt = control.send_async(frame(0.1))
         with pytest.raises(CommandRejectedError):
             receipt.result()
         assert control.state is ControlState.RUNNING
         control.send(frame(0.2))
+
+
+@pytest.mark.parametrize("unknown_field", ["result", "state"])
+def test_unknown_acknowledgement_makes_session_uncertain(
+    hardware_server: RunningServer, unknown_field: str
+) -> None:
+    with (
+        Robot.connect(hardware_server.endpoint) as robot,
+        robot.group("leg").control("pytest") as control,
+    ):
+        control.start(frame())
+        if unknown_field == "result":
+            hardware_server.service.next_command_result = cast(proto.CommandResult, 1234)
+        else:
+            hardware_server.service.state = cast(proto.GroupState, 1234)
+        with pytest.raises(ProtocolError, match="1234"):
+            control.send(frame())
+        assert control.state is ControlState.UNCERTAIN
 
 
 def test_lease_is_renewed_in_the_background(hardware_server: RunningServer) -> None:
@@ -257,7 +277,7 @@ def test_rejected_command_preserves_running_session_state(
         robot.group("leg").control("pytest") as control,
     ):
         control.start(frame())
-        hardware_server.service.reject_next = True
+        hardware_server.service.next_command_result = proto.COMMAND_RESULT_UNSAFE
         with pytest.raises(CommandRejectedError):
             control.send(frame(0.1))
         assert control.state is ControlState.RUNNING
@@ -289,7 +309,7 @@ def test_complete_state_frame_uses_one_synchronous_rpc(
         positions = {motor.coordinate: motor.position for motor in state.motors}
         assert positions == pytest.approx({"hip": 0.25, "knee": -0.5})
         assert state.imus[0].orientation.w == pytest.approx(1.0)
-        assert state.groups[0].state.name == "IDLE"
+        assert state.groups[0].state == proto.GROUP_STATE_IDLE
         assert state.groups[0].sample_age_ns == 500
         assert state.oldest_sample_age_ns == 1_000
         assert state.sample_span_ns == 500

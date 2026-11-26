@@ -284,7 +284,7 @@ mod tests {
         Arc::new(GroupDefinition {
             name: "pair".into(),
             control_rate_hz: 250.0,
-            initial_state: GroupState::Idle,
+            initial_state: crate::EnumValue::Known(GroupState::Idle),
             coordinate_indices: motors
                 .iter()
                 .enumerate()

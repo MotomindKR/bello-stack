@@ -4,6 +4,8 @@ from collections.abc import Sequence
 
 import grpc  # type: ignore[import-untyped]
 
+from ._generated import hardware_pb2 as proto
+
 
 class BelloError(Exception):
     """Base class for all package errors."""
@@ -69,17 +71,17 @@ class CommandRejectedError(ControlError):
         *,
         group: str,
         sequence: int,
-        result: object,
+        result: proto.CommandResult,
         detail: str,
-        state: object,
+        state: proto.GroupState,
     ) -> None:
         self.group = group
         self.sequence = sequence
         self.result = result
         self.detail = detail
         self.state = state
-        result_name = getattr(result, "name", str(result))
-        state_name = getattr(state, "name", str(state))
+        result_name = proto.CommandResult.Name(result)
+        state_name = proto.GroupState.Name(state)
         super().__init__(
             f"command {sequence} for {group!r} was rejected as {result_name} "
             f"in {state_name}: {detail}"

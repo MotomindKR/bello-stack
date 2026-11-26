@@ -122,17 +122,17 @@ impl GroupLease {
     }
 
     pub fn status(&self) -> LeaseStatus {
-        self.current_health().status
+        current_health(&self.health).status
     }
 
     pub fn deadline(&self) -> LeaseDeadline {
         LeaseDeadline {
-            expires_at: self.current_health().expires_at,
+            expires_at: current_health(&self.health).expires_at,
         }
     }
 
     pub fn remaining(&self) -> Duration {
-        let health = self.current_health();
+        let health = current_health(&self.health);
         if health.status == LeaseStatus::Active {
             health.expires_at.saturating_duration_since(Instant::now())
         } else {
@@ -160,7 +160,7 @@ impl GroupLease {
     }
 
     pub async fn enable(&self) -> Result<EnumValue<GroupState>, Error> {
-        self.ensure_active()?;
+        active_health(&self.health)?;
         let mut client = self.client.inner.clone();
         let response = client
             .enable_group(EnableGroupRequest {
@@ -178,7 +178,7 @@ impl GroupLease {
         validity: CommandValidity,
         commands: Vec<MotorCommand>,
     ) -> Result<EnumValue<GroupState>, Error> {
-        self.ensure_active()?;
+        active_health(&self.health)?;
         let mut client = self.client.inner.clone();
         let response = client
             .start_control(StartControlRequest {
@@ -194,7 +194,7 @@ impl GroupLease {
     }
 
     pub async fn stop(&self) -> Result<EnumValue<GroupState>, Error> {
-        self.ensure_cleanup_authority()?;
+        ensure_owned(&self.health)?;
         let mut client = self.client.inner.clone();
         let response = client
             .stop_control(StopControlRequest {
@@ -208,7 +208,7 @@ impl GroupLease {
     }
 
     pub async fn disable(&self) -> Result<EnumValue<GroupState>, Error> {
-        self.ensure_cleanup_authority()?;
+        ensure_owned(&self.health)?;
         let mut client = self.client.inner.clone();
         let response = client
             .disable_group(DisableGroupRequest {
@@ -222,7 +222,7 @@ impl GroupLease {
     }
 
     pub async fn recover(&self) -> Result<EnumValue<GroupState>, Error> {
-        self.ensure_cleanup_authority()?;
+        ensure_owned(&self.health)?;
         let mut client = self.client.inner.clone();
         let response = client
             .recover_group(RecoverGroupRequest {
@@ -239,7 +239,7 @@ impl GroupLease {
     /// reaction. Normally call `stop`, then `disable`, before this operation.
     pub async fn release(&mut self) -> Result<EnumValue<GroupState>, Error> {
         let _renew = self.renew_lock.lock().await;
-        self.ensure_cleanup_authority()?;
+        ensure_owned(&self.health)?;
         self.health.send_if_modified(|health| {
             if matches!(health.status, LeaseStatus::Active | LeaseStatus::Expired) {
                 health.status = LeaseStatus::Releasing;
@@ -269,7 +269,7 @@ impl GroupLease {
         &self,
         options: CommandStreamOptions,
     ) -> Result<CommandStream, Error> {
-        self.ensure_active()?;
+        active_health(&self.health)?;
         command::open(self, options).await
     }
 
@@ -296,34 +296,8 @@ impl GroupLease {
         )
     }
 
-    fn current_health(&self) -> LeaseHealth {
-        current_health(&self.health)
-    }
-
-    fn ensure_active(&self) -> Result<(), Error> {
-        let status = self.current_health().status;
-        if status == LeaseStatus::Active {
-            Ok(())
-        } else {
-            Err(Error::LeaseInactive(status))
-        }
-    }
-
-    fn ensure_cleanup_authority(&self) -> Result<(), Error> {
-        let status = self.current_health().status;
-        if matches!(status, LeaseStatus::Active | LeaseStatus::Expired) {
-            Ok(())
-        } else {
-            Err(Error::LeaseInactive(status))
-        }
-    }
-
-    fn record_rpc_failure(&self, status: &tonic::Status) {
-        record_rpc_failure(&self.health, status);
-    }
-
     fn rpc_error(&self, status: tonic::Status) -> Error {
-        self.record_rpc_failure(&status);
+        record_rpc_failure(&self.health, &status);
         status.into()
     }
 
@@ -370,7 +344,7 @@ impl LeaseRenewer {
 
     pub async fn renew(&self, duration: LeaseDuration) -> Result<LeaseDeadline, Error> {
         let _renew = self.renew_lock.lock().await;
-        ensure_renewable(&self.health)?;
+        ensure_owned(&self.health)?;
         let requested_duration_ms = duration.to_milliseconds()?;
         let request_started = Instant::now();
         let mut client = self.client.inner.clone();
@@ -408,7 +382,7 @@ impl LeaseRenewer {
                 false
             }
         });
-        ensure_active(&self.health)?;
+        active_health(&self.health)?;
         Ok(self.deadline())
     }
 }
@@ -460,16 +434,16 @@ fn current_health(sender: &watch::Sender<LeaseHealth>) -> LeaseHealth {
     }
 }
 
-fn ensure_active(sender: &watch::Sender<LeaseHealth>) -> Result<(), Error> {
-    let status = current_health(sender).status;
-    if status == LeaseStatus::Active {
-        Ok(())
+pub(crate) fn active_health(sender: &watch::Sender<LeaseHealth>) -> Result<LeaseHealth, Error> {
+    let health = current_health(sender);
+    if health.status == LeaseStatus::Active {
+        Ok(health)
     } else {
-        Err(Error::LeaseInactive(status))
+        Err(Error::LeaseInactive(health.status))
     }
 }
 
-fn ensure_renewable(sender: &watch::Sender<LeaseHealth>) -> Result<(), Error> {
+fn ensure_owned(sender: &watch::Sender<LeaseHealth>) -> Result<(), Error> {
     let status = current_health(sender).status;
     if matches!(status, LeaseStatus::Active | LeaseStatus::Expired) {
         Ok(())
@@ -500,8 +474,4 @@ fn set_terminal(sender: &watch::Sender<LeaseHealth>, status: LeaseStatus) {
 
 pub(crate) fn mark_lease_lost(sender: &watch::Sender<LeaseHealth>) {
     set_terminal(sender, LeaseStatus::Lost);
-}
-
-pub(crate) fn observe_lease_health(sender: &watch::Sender<LeaseHealth>) -> LeaseHealth {
-    current_health(sender)
 }

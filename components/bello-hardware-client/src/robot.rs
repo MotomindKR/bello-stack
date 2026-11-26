@@ -2,9 +2,11 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::inventory::{Bus, GroupDefinition, Imu, Inventory, Motor, SerialDevice};
-use crate::{ConnectOptions, Error, GroupState, HardwareClient, RobotStates, StateStreamOptions};
+use crate::{
+    ConnectOptions, EnumValue, Error, GroupState, HardwareClient, RobotStates, StateStreamOptions,
+};
 
-/// Connected robot with a validated, cached hardware inventory.
+/// Connected robot with a cached hardware inventory.
 #[derive(Clone)]
 pub struct Robot {
     pub(crate) inner: Arc<RobotInner>,
@@ -16,7 +18,7 @@ pub(crate) struct RobotInner {
 }
 
 impl Robot {
-    /// Connects to the daemon and validates its complete inventory before returning.
+    /// Connects to the daemon and caches its hardware inventory before returning.
     pub async fn connect(endpoint: impl Into<String>) -> Result<Self, Error> {
         let hardware = HardwareClient::connect(endpoint).await?;
         Self::from_hardware_client(hardware).await
@@ -121,7 +123,7 @@ impl MotorGroup {
         self.definition.control_rate_hz
     }
 
-    pub fn initial_state(&self) -> GroupState {
+    pub fn initial_state(&self) -> EnumValue<GroupState> {
         self.definition.initial_state
     }
 

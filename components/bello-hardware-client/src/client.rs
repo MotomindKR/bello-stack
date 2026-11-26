@@ -2,11 +2,13 @@ use std::fmt;
 use std::time::{Duration, Instant};
 
 use bello_hardware_api::hardware_service_client::HardwareServiceClient;
-use bello_hardware_api::{AcquireLeaseRequest, ListHardwareRequest, ListHardwareResponse};
+use bello_hardware_api::{
+    AcquireLeaseRequest, ListHardwareRequest, ListHardwareResponse, WatchTelemetryRequest,
+};
 use tonic::transport::{Channel, Endpoint};
 
 use crate::lease::GroupLease;
-use crate::telemetry::{TelemetryFilter, TelemetryStream};
+use crate::telemetry::TelemetryStream;
 use crate::{ConnectOptions, Error, LeaseDuration};
 
 #[derive(Clone)]
@@ -54,8 +56,8 @@ impl HardwareClient {
             .into_inner())
     }
 
-    pub async fn watch(&self, filter: TelemetryFilter) -> Result<TelemetryStream, Error> {
-        TelemetryStream::open(self, filter).await
+    pub async fn watch(&self, request: WatchTelemetryRequest) -> Result<TelemetryStream, Error> {
+        TelemetryStream::open(self, request).await
     }
 
     /// Renew before [`GroupLease::deadline`], including during long lifecycle calls.
@@ -66,16 +68,13 @@ impl HardwareClient {
         duration: LeaseDuration,
     ) -> Result<GroupLease, Error> {
         let group = group.into();
-        let client_name = client_name.into();
-        require_nonempty(&group, "group")?;
-        require_nonempty(&client_name, "client_name")?;
         let requested_duration_ms = duration.to_milliseconds()?;
         let request_started = Instant::now();
         let mut client = self.inner.clone();
         let response = client
             .acquire_lease(AcquireLeaseRequest {
                 group: group.clone(),
-                client_name,
+                client_name: client_name.into(),
                 requested_duration_ms,
             })
             .await?
@@ -96,14 +95,6 @@ pub(crate) fn conservative_deadline(
     request_started
         .checked_add(Duration::from_millis(expires_in_ms))
         .ok_or_else(|| Error::Protocol("lease deadline exceeds local Instant range".into()))
-}
-
-pub(crate) fn require_nonempty(value: &str, field: &str) -> Result<(), Error> {
-    if value.trim().is_empty() {
-        Err(Error::InvalidArgument(format!("{field} must be non-empty")))
-    } else {
-        Ok(())
-    }
 }
 
 #[cfg(test)]

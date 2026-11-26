@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use crate::lease::LeaseStatus;
-use crate::{CommandResult, GroupState};
+use crate::{CommandResult, EnumValue, GroupState};
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
@@ -47,7 +47,7 @@ pub enum Error {
         group: String,
         operation: &'static str,
         expected: GroupState,
-        actual: GroupState,
+        actual: EnumValue<GroupState>,
     },
     #[error(
         "command {sequence} for motor group {group:?} was rejected as {result:?} in {state:?}: {detail}"
@@ -55,9 +55,9 @@ pub enum Error {
     RejectedCommand {
         group: String,
         sequence: u64,
-        result: CommandResult,
+        result: EnumValue<CommandResult>,
         detail: String,
-        state: GroupState,
+        state: EnumValue<GroupState>,
     },
     #[error("command acknowledgement stream for motor group {0:?} closed")]
     AcknowledgementStreamClosed(String),
