@@ -2,8 +2,9 @@
   description = "Development environment for the Bello hardware stack";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs.nixpkgs-mujoco.url = "github:NixOS/nixpkgs/06a21ded0b150acacc0d132ff61e6693d4c771de";
 
-  outputs = { self, nixpkgs }:
+  outputs = { self, nixpkgs, nixpkgs-mujoco }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
@@ -11,12 +12,13 @@
       devShells = forAllSystems (system:
         let
           pkgs = import nixpkgs { inherit system; };
+          mujoco = nixpkgs-mujoco.legacyPackages.${system}.mujoco;
           inherit (pkgs.stdenv.hostPlatform) isLinux;
           mediaPlugins = with pkgs.gst_all_1; [ gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad ];
-          runtimeLibraries = with pkgs; [
-            stdenv.cc.cc.lib
-            libglvnd
-            mesa
+          runtimeLibraries = [
+            pkgs.stdenv.cc.cc.lib
+            pkgs.libglvnd
+            pkgs.mesa
             mujoco
           ];
         in {
@@ -39,12 +41,12 @@
               ]))
               ruff
               uv
-            ] ++ mediaPlugins ++ pkgs.lib.optionals isLinux (with pkgs; [
-              can-utils
-              ffmpeg
-              iproute2
+            ] ++ mediaPlugins ++ pkgs.lib.optionals isLinux [
+              pkgs.can-utils
+              pkgs.ffmpeg
+              pkgs.iproute2
               mujoco
-            ]);
+            ];
             GST_PLUGIN_SYSTEM_PATH_1_0 = pkgs.lib.makeSearchPath "lib/gstreamer-1.0" mediaPlugins;
             RUST_BACKTRACE = "1";
             # Path flakes copy in-tree Cargo artifacts into the Nix store.
@@ -55,8 +57,8 @@
               export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibraries}:''${LD_LIBRARY_PATH:-}"
             '';
           } // pkgs.lib.optionalAttrs isLinux {
-            MUJOCO_DYNAMIC_LINK_DIR = assert pkgs.mujoco.version == "3.12.0";
-              "${pkgs.lib.getLib pkgs.mujoco}/lib";
+            MUJOCO_DYNAMIC_LINK_DIR = assert mujoco.version == "3.12.0";
+              "${pkgs.lib.getLib mujoco}/lib";
           });
         });
     };

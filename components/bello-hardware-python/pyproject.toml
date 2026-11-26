@@ -12,7 +12,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 classifiers = ["Private :: Do Not Upload"]
 dependencies = [
-  "grpcio>=1.83,<2",
+  "grpcio>=1.84.1,<2",
   "protobuf>=7.35.1,<8",
 ]
 
