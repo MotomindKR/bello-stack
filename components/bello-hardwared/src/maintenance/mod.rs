@@ -62,21 +62,6 @@ pub(crate) fn execute(
     link.execute(p, before_write, progress)
 }
 
-pub(crate) fn verify_after_interruption(
-    bus: &MaintenanceBus,
-    motor: &MotorSpec,
-    host: u8,
-    uuid: [u8; 8],
-    expected_version: &str,
-    require_zero: bool,
-) -> Result<()> {
-    let version: Version = expected_version.parse()?;
-    version.check_model(&motor.model)?;
-    let link = Link::new(bus, motor, host);
-    link.discard_pending()?;
-    link.verify(uuid, version, require_zero)
-}
-
 trait Wire {
     fn send(&self, frame: Frame) -> Result<()>;
     fn recv(&self, timeout: Duration) -> Result<Option<Frame>>;

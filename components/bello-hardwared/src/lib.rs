@@ -10,4 +10,4 @@ mod maintenance;
 mod mechanics;
 mod telemetry;
 
-pub use app::{check, run, verify_motor_configuration};
+pub use app::{check, run};

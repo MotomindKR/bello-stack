@@ -194,3 +194,76 @@ async fn re_zero_and_update_with_another_group_on_the_bus() -> Result<()> {
     }
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn lost_readback_faults_the_group_until_the_operator_recovers_it() -> Result<()> {
+    let [host, peer] = sim::available_ports()?;
+    let host_socket = serde_yaml::from_str::<SimBus>(&format!("{{ {host} }}"))?.open_simulator()?;
+    let peer_socket = serde_yaml::from_str::<SimBus>(&format!("{{ {peer} }}"))?.open_daemon()?;
+    host_socket.set_nonblocking(true)?;
+    peer_socket.set_nonblocking(true)?;
+    let (reconnect, reconnected) = tokio::sync::watch::channel(false);
+    let bridge = tokio::spawn(async move {
+        let mut zero_sent = false;
+        loop {
+            while let Ok(frame) = host_socket.recv() {
+                zero_sent |= frame.id >> 24 == 6;
+                peer_socket.send(frame).unwrap();
+            }
+            while let Ok(frame) = peer_socket.recv() {
+                if !zero_sent || *reconnected.borrow() {
+                    host_socket.send(frame).unwrap();
+                }
+            }
+            sleep(Duration::from_millis(1)).await;
+        }
+    });
+
+    let (_directory, endpoint, mut daemon, mut emulator) =
+        spawn_pair_with_transports(&host, &peer)?;
+    let deadline = Duration::from_secs(8);
+    let client =
+        support::scenario::connect(&endpoint, deadline, &mut daemon, &mut emulator).await?;
+    support::scenario::wait_for_motors_online(&client, deadline, &mut daemon, &mut emulator)
+        .await?;
+    let mut api = MotorConfigurationServiceClient::connect(endpoint).await?;
+    let id = api
+        .prepare_motor_configuration(PrepareMotorConfigurationRequest {
+            motor: "e2e_motor_1".into(),
+            kind: Kind::Zero as i32,
+        })
+        .await?
+        .into_inner()
+        .id;
+    wait_phase(&mut api, &id, Phase::Ready).await?;
+    api.commit_motor_configuration(CommitMotorConfigurationRequest { id: id.clone() })
+        .await?;
+    wait_phase(&mut api, &id, Phase::Unverified).await?;
+    assert_eq!(
+        client.inventory().await?.groups[0].state,
+        GroupState::Fault as i32
+    );
+
+    let lease = client
+        .acquire_lease(
+            "e2e_group",
+            "operator",
+            LeaseDuration::For(Duration::from_secs(20)),
+        )
+        .await?;
+    assert!(lease.enable().await.is_err());
+    assert_eq!(lease.recover().await?, EnumValue::Known(GroupState::Fault));
+    reconnect.send(true)?;
+    support::scenario::wait_for_motors_online(&client, deadline, &mut daemon, &mut emulator)
+        .await?;
+    assert_eq!(lease.recover().await?, EnumValue::Known(GroupState::Idle));
+    assert_eq!(
+        api.get_motor_configuration(GetMotorConfigurationRequest { id })
+            .await?
+            .into_inner()
+            .phase(),
+        Phase::Unverified
+    );
+    bridge.abort();
+    Ok(())
+}

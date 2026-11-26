@@ -30,7 +30,6 @@ use configuration::ConfigurationJobs;
 
 pub struct HardwareDaemon {
     configuration: Arc<ConfigurationJobs>,
-    state_directory: std::path::PathBuf,
     pub topology: ResolvedTopology,
     pub(crate) groups: HashMap<GroupName, GroupHandle>,
     leases: Arc<LeaseManager>,
@@ -54,10 +53,7 @@ impl HardwareDaemon {
         telemetry: Telemetry,
         state_directory: std::path::PathBuf,
     ) -> Result<Arc<Self>> {
-        let ownership = super::journal::claim_transports(&state_directory, &topology)?;
-        for (_, bus) in topology.buses() {
-            super::journal::check_clear(&super::journal::journal_path(&state_directory, bus))?;
-        }
+        let ownership = super::transport_ownership::claim_transports(&state_directory, &topology)?;
         let bus_workers = BusManager::start(&topology, telemetry.clone())?;
         let motor_workers = MotorManager::start(&topology, &bus_workers, telemetry.clone())?;
         let serial_workers = SerialManager::start(&topology, telemetry.clone())?;
@@ -90,7 +86,6 @@ impl HardwareDaemon {
             .any(|(_, board)| board.emergency_stop == EmergencyStopMode::Damping);
         let daemon = Arc::new(Self {
             configuration: Arc::new(ConfigurationJobs::default()),
-            state_directory,
             topology,
             groups,
             leases: Arc::new(leases),

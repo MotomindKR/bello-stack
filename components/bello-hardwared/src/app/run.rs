@@ -26,7 +26,7 @@ pub fn check(config_path: impl AsRef<Path>) -> Result<()> {
 pub async fn run(config_path: impl AsRef<Path>) -> Result<()> {
     let topology = ResolvedTopology::load(config_path)?;
     topology.validate_platform()?;
-    let directory = super::journal::state_directory()?;
+    let directory = super::transport_ownership::state_directory()?;
     let listen = topology.grpc().listen().to_vec();
     let mut listeners = Vec::with_capacity(listen.len());
     for spec in &listen {

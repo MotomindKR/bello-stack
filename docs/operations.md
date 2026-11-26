@@ -330,10 +330,4 @@ motor_config GetMotorConfiguration '{"id":"<operation ID>"}'
 
 A prepared operation expires after two minutes. Use `CancelMotorConfiguration` to release it earlier. After committing, poll the same ID until the result is terminal. Disconnecting the client leaves the write running. Check the group state before acquiring a new motion lease.
 
-If the result is `UNVERIFIED`, stop hardwared and leave the motor powered. Run the following command under the same service account and state directory. It checks the recorded UUID, firmware, and stopped feedback. Re-zero also requires a near-zero reading. It clears the pending write only after verification succeeds.
-
-```sh
-bello-hardwared --config <deployment.yaml> --verify-motor-configuration
-```
-
-Hardwared stores pending writes under `bello-hardwared` in `XDG_STATE_HOME`, `LOCALAPPDATA`, or `~/.local/state`. Restarting with another profile using the same transport still checks that record. If the motor cannot boot its application after an interrupted flash, use the vendor's bootloader recovery procedure before running verification again.
+An `UNVERIFIED` result means hardwared started the write and could not confirm its outcome. The affected groups enter `FAULT` and the CAN bus resumes monitoring. Check the motor's firmware or mechanical zero, then acquire a lease and call `RecoverGroup` for each faulted group. Recovery requires healthy, stopped feedback and returns the group to `IDLE`. The operation retains its `UNVERIFIED` result. Restarting hardwared clears the in-memory operation and fault.

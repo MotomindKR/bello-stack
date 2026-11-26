@@ -12,11 +12,9 @@ use parking_lot::{Condvar, Mutex};
 use tonic::Status;
 
 use super::HardwareDaemon;
-use crate::app::journal::{Journal, PendingWrite};
 use crate::config::BusTransportConfig;
 use crate::control::GroupState;
 use crate::domain::{GroupName, MotorName};
-use crate::hardware::can::MaintenanceBus;
 use crate::maintenance;
 
 const REVIEW_TIMEOUT: Duration = Duration::from_secs(120);
@@ -26,7 +24,6 @@ struct Job {
     groups: Vec<GroupName>,
     working: bool,
     cancel: bool,
-    quarantine: Option<(MaintenanceBus, Journal)>,
 }
 
 #[derive(Default)]
@@ -37,9 +34,10 @@ pub(super) struct ConfigurationJobs {
 
 impl ConfigurationJobs {
     pub(super) fn blocks(&self, group: &GroupName) -> bool {
-        self.jobs.lock().values().any(|job| {
-            (job.working || job.status.phase() == Phase::Unverified) && job.groups.contains(group)
-        })
+        self.jobs
+            .lock()
+            .values()
+            .any(|job| job.working && job.groups.contains(group))
     }
 
     pub(super) fn cancel_pending(&self) {
@@ -98,10 +96,9 @@ impl HardwareDaemon {
             if handle.snapshot.read().state != GroupState::Idle
                 || handle.emergency_pending()
                 || self.leases.occupied(group)
-                || jobs.values().any(|job| {
-                    (job.working || job.status.phase() == Phase::Unverified)
-                        && job.groups.contains(group)
-                })
+                || jobs
+                    .values()
+                    .any(|job| job.working && job.groups.contains(group))
             {
                 return Err(Status::failed_precondition(format!(
                     "group {group} must be idle and unleased"
@@ -123,7 +120,6 @@ impl HardwareDaemon {
                 groups,
                 working: true,
                 cancel: false,
-                quarantine: None,
             },
         );
         let daemon = self.clone();
@@ -183,7 +179,7 @@ impl HardwareDaemon {
         let groups = self.configuration.jobs.lock()[id].groups.clone();
         let mut entered = Vec::new();
         let mut session = None;
-        let mut journal = None;
+        let mut write_started = false;
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<Phase> {
             for group in &groups {
                 self.groups[group]
@@ -241,41 +237,20 @@ impl HardwareDaemon {
                         .wait_for(&mut jobs, remaining.min(Duration::from_millis(100)));
                 }
             }
-            let record = PendingWrite {
-                id: id.into(),
-                motor: name.to_string(),
-                bus: motor.address.bus.to_string(),
-                address: motor.address.id,
-                uuid: prepared.uuid,
-                expected_version: prepared
-                    .target_version
-                    .as_ref()
-                    .unwrap_or(&prepared.current_version)
-                    .clone(),
-                zero: kind == Kind::Zero,
-            };
             maintenance::execute(
                 bus,
                 motor,
                 host,
                 &prepared,
                 || {
-                    let pending = Journal::begin(
-                        &crate::app::journal::journal_path(&self.state_directory, &handle.spec),
-                        &record,
-                    )?;
-                    let authorized = {
-                        let _gate = self.lease_gate.lock();
+                    let _gate = self.lease_gate.lock();
+                    ensure!(
                         !self.shutting_down.load(Ordering::Acquire)
                             && !self.emergency_blocked.load(Ordering::Acquire)
-                            && !self.configuration.jobs.lock()[id].cancel
-                    };
-                    journal = Some(pending);
-                    if !authorized {
-                        journal.as_ref().unwrap().clear()?;
-                        journal = None;
-                        anyhow::bail!("configuration interrupted before write");
-                    }
+                            && !self.configuration.jobs.lock()[id].cancel,
+                        "configuration interrupted before write"
+                    );
+                    write_started = true;
                     Ok(())
                 },
                 |value| {
@@ -288,29 +263,19 @@ impl HardwareDaemon {
                         .progress_percent = value;
                 },
             )?;
-            journal
-                .as_ref()
-                .context("missing configuration journal")?
-                .clear()?;
-            journal = None;
             Ok(Phase::Succeeded)
         }))
         .unwrap_or_else(|_| Err(anyhow!("motor configuration worker panicked")));
         let (mut phase, mut detail) = match result {
             Ok(phase) => (phase, String::new()),
-            Err(err) if journal.is_some() => (
-                Phase::Unverified,
-                format!("{err:#}. Stop hardwared and run --verify-motor-configuration"),
-            ),
+            Err(err) if write_started => (Phase::Unverified, format!("{err:#}")),
             Err(err) => (Phase::Failed, format!("{err:#}")),
         };
         let check_health = session.is_some()
             && phase != Phase::Unverified
             && !self.shutting_down.load(Ordering::Acquire);
         let released = Instant::now();
-        if phase != Phase::Unverified {
-            drop(session.take());
-        }
+        drop(session);
         for group in entered {
             let mut state = if phase == Phase::Unverified {
                 GroupState::Fault
@@ -336,7 +301,6 @@ impl HardwareDaemon {
         }
         let mut jobs = self.configuration.jobs.lock();
         let job = jobs.get_mut(id).unwrap();
-        job.quarantine = session.zip(journal);
         job.status.phase = phase as i32;
         job.status.detail = detail;
         job.working = false;

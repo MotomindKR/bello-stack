@@ -324,7 +324,7 @@ fn execute_blocks_writes_if_identity_version_or_bus_activity_changes() {
 }
 
 #[test]
-fn re_zero_requires_stationary_position_readback_and_recovery_never_writes_zero() {
+fn re_zero_requires_stationary_position_readback() {
     let wire = RefCell::new(MotorOnWire {
         accept_zero: false,
         ..MotorOnWire::default()
@@ -335,12 +335,8 @@ fn re_zero_requires_stationary_position_readback_and_recovery_never_writes_zero(
     assert_eq!(prepared.target_version, None);
     assert!(link.execute(&prepared, || Ok(()), |_| {}).is_err());
 
-    let version = Version([0, 3, 0, 1]);
-    assert!(link.verify(UUID, version, true).is_err());
     assert_eq!(write_kinds(&wire), [6]);
     wire.borrow_mut().accept_zero = true;
     link.execute(&prepared, || Ok(()), |_| {}).unwrap();
-    link.verify(UUID, version, true).unwrap();
-    assert!(link.verify([0; 8], version, true).is_err());
     assert_eq!(write_kinds(&wire), [6, 6]);
 }
