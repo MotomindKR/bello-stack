@@ -4,11 +4,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bello_hardware_client::EnumValue;
-use bello_hardware_client::proto::hardware_service_server::{
-    HardwareService, HardwareServiceServer,
-};
-use bello_hardware_client::proto::watch_telemetry_response::Payload;
-use bello_hardware_client::proto::*;
+use bello_hardware_client::api::hardware_service_server::{HardwareService, HardwareServiceServer};
+use bello_hardware_client::api::watch_telemetry_response::Payload;
+use bello_hardware_client::api::*;
 use bello_hardware_client::{ControlOptions, ControlState, CoordinateTarget, Error, Robot};
 use tokio::net::TcpListener;
 use tokio::sync::{Notify, oneshot};

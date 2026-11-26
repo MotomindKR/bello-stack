@@ -1,6 +1,6 @@
 """Blocking Python interface to the Bello hardware daemon."""
 
-from ._generated import hardware_pb2 as proto
+from ._generated import hardware_pb2 as api
 from ._generated.hardware_pb2 import CommandResult, DeviceState, GroupCause, GroupState
 from ._inventory import Inventory, MotorGroup
 from .control import CommandReceipt, ControlSession
@@ -88,5 +88,5 @@ __all__ = [
     "StateFrameMotor",
     "TlsCredentials",
     "Vector3",
-    "proto",
+    "api",
 ]

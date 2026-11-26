@@ -68,7 +68,7 @@ Rust `Robot::power_boards()` returns metadata; `Robot::states()` includes latest
 board snapshots. Python `robot.power().read(timeout=1)` returns bounded
 snapshots without acquiring control. Rust sample readings use the generated
 `PowerReading` variants, such as `PowerReading::Battery(battery)`. Python
-`sample.reading` holds a generated `bello_hardware.proto` message or an integer
+`sample.reading` holds a generated `bello_hardware.api` message or an integer
 tick count. Use `reading.HasField("soc_percent")` or
 `reading.HasField("second_bits")` to distinguish an absent value from zero.
 

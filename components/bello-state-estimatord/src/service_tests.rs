@@ -1,6 +1,6 @@
 use super::*;
-use bello_hardware_client::proto as p;
-use p::hardware_service_server::{HardwareService, HardwareServiceServer};
+use api::hardware_service_server::{HardwareService, HardwareServiceServer};
+use bello_hardware_client::api;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio_stream::StreamExt;
 
@@ -8,30 +8,30 @@ use tokio_stream::StreamExt;
 struct Hardware {
     mode: Arc<AtomicUsize>,
     inventories: Arc<AtomicUsize>,
-    inventory: p::ListHardwareResponse,
-    telemetry: Option<Vec<p::WatchTelemetryResponse>>,
+    inventory: api::ListHardwareResponse,
+    telemetry: Option<Vec<api::WatchTelemetryResponse>>,
 }
 
 #[tonic::async_trait]
 impl HardwareService for Hardware {
     type WatchTelemetryStream =
-        Pin<Box<dyn Stream<Item = Result<p::WatchTelemetryResponse, Status>> + Send>>;
+        Pin<Box<dyn Stream<Item = Result<api::WatchTelemetryResponse, Status>> + Send>>;
     type StreamCommandsStream =
-        Pin<Box<dyn Stream<Item = Result<p::StreamCommandsResponse, Status>> + Send>>;
+        Pin<Box<dyn Stream<Item = Result<api::StreamCommandsResponse, Status>> + Send>>;
 
     async fn list_hardware(
         &self,
-        _: Request<p::ListHardwareRequest>,
-    ) -> Result<Response<p::ListHardwareResponse>, Status> {
+        _: Request<api::ListHardwareRequest>,
+    ) -> Result<Response<api::ListHardwareResponse>, Status> {
         self.inventories.fetch_add(1, Ordering::SeqCst);
-        Ok(Response::new(p::ListHardwareResponse {
-            serial_devices: vec![p::SerialDeviceInfo {
+        Ok(Response::new(api::ListHardwareResponse {
+            serial_devices: vec![api::SerialDeviceInfo {
                 name: "serial".into(),
                 port: "none".into(),
                 baud_rate: 115200,
                 ..Default::default()
             }],
-            imus: vec![p::ImuInfo {
+            imus: vec![api::ImuInfo {
                 name: "imu".into(),
                 serial_device: "serial".into(),
                 source_frame: "pelvis".into(),
@@ -44,7 +44,7 @@ impl HardwareService for Hardware {
 
     async fn watch_telemetry(
         &self,
-        _: Request<p::WatchTelemetryRequest>,
+        _: Request<api::WatchTelemetryRequest>,
     ) -> Result<Response<Self::WatchTelemetryStream>, Status> {
         if let Some(telemetry) = &self.telemetry {
             return Ok(Response::new(Box::pin(tokio_stream::iter(
@@ -62,12 +62,12 @@ impl HardwareService for Hardware {
                     _ => {}
                 }
                 timestamp += 10_000_000;
-                yield p::WatchTelemetryResponse { monotonic_ns: timestamp,
-                    payload: Some(p::watch_telemetry_response::Payload::Imu(p::ImuTelemetry {
+                yield api::WatchTelemetryResponse { monotonic_ns: timestamp,
+                    payload: Some(api::watch_telemetry_response::Payload::Imu(api::ImuTelemetry {
                         imu_name: "imu".into(),
-                        orientation: Some(p::Quaternion { w: 1., ..Default::default() }),
-                        angular_velocity: Some(p::Vector3::default()),
-                        linear_acceleration: Some(p::Vector3 { z: 9.81, ..Default::default() }),
+                        orientation: Some(api::Quaternion { w: 1., ..Default::default() }),
+                        angular_velocity: Some(api::Vector3::default()),
+                        linear_acceleration: Some(api::Vector3 { z: 9.81, ..Default::default() }),
                         ..Default::default()
                     }))
                 };
@@ -78,61 +78,61 @@ impl HardwareService for Hardware {
 
     async fn get_state_frame(
         &self,
-        _: Request<p::GetStateFrameRequest>,
-    ) -> Result<Response<p::GetStateFrameResponse>, Status> {
+        _: Request<api::GetStateFrameRequest>,
+    ) -> Result<Response<api::GetStateFrameResponse>, Status> {
         unreachable!()
     }
     async fn acquire_lease(
         &self,
-        _: Request<p::AcquireLeaseRequest>,
-    ) -> Result<Response<p::AcquireLeaseResponse>, Status> {
+        _: Request<api::AcquireLeaseRequest>,
+    ) -> Result<Response<api::AcquireLeaseResponse>, Status> {
         unreachable!()
     }
     async fn renew_lease(
         &self,
-        _: Request<p::RenewLeaseRequest>,
-    ) -> Result<Response<p::RenewLeaseResponse>, Status> {
+        _: Request<api::RenewLeaseRequest>,
+    ) -> Result<Response<api::RenewLeaseResponse>, Status> {
         unreachable!()
     }
     async fn release_lease(
         &self,
-        _: Request<p::ReleaseLeaseRequest>,
-    ) -> Result<Response<p::ReleaseLeaseResponse>, Status> {
+        _: Request<api::ReleaseLeaseRequest>,
+    ) -> Result<Response<api::ReleaseLeaseResponse>, Status> {
         unreachable!()
     }
     async fn enable_group(
         &self,
-        _: Request<p::EnableGroupRequest>,
-    ) -> Result<Response<p::EnableGroupResponse>, Status> {
+        _: Request<api::EnableGroupRequest>,
+    ) -> Result<Response<api::EnableGroupResponse>, Status> {
         unreachable!()
     }
     async fn start_control(
         &self,
-        _: Request<p::StartControlRequest>,
-    ) -> Result<Response<p::StartControlResponse>, Status> {
+        _: Request<api::StartControlRequest>,
+    ) -> Result<Response<api::StartControlResponse>, Status> {
         unreachable!()
     }
     async fn stop_control(
         &self,
-        _: Request<p::StopControlRequest>,
-    ) -> Result<Response<p::StopControlResponse>, Status> {
+        _: Request<api::StopControlRequest>,
+    ) -> Result<Response<api::StopControlResponse>, Status> {
         unreachable!()
     }
     async fn disable_group(
         &self,
-        _: Request<p::DisableGroupRequest>,
-    ) -> Result<Response<p::DisableGroupResponse>, Status> {
+        _: Request<api::DisableGroupRequest>,
+    ) -> Result<Response<api::DisableGroupResponse>, Status> {
         unreachable!()
     }
     async fn recover_group(
         &self,
-        _: Request<p::RecoverGroupRequest>,
-    ) -> Result<Response<p::RecoverGroupResponse>, Status> {
+        _: Request<api::RecoverGroupRequest>,
+    ) -> Result<Response<api::RecoverGroupResponse>, Status> {
         unreachable!()
     }
     async fn stream_commands(
         &self,
-        _: Request<tonic::Streaming<p::StreamCommandsRequest>>,
+        _: Request<tonic::Streaming<api::StreamCommandsRequest>>,
     ) -> Result<Response<Self::StreamCommandsStream>, Status> {
         unreachable!()
     }
@@ -232,27 +232,27 @@ ground_height_m: 0
 
 #[tokio::test]
 async fn watch_pose_reports_age_of_oldest_encoder_used() {
-    use p::watch_telemetry_response::Payload;
+    use api::watch_telemetry_response::Payload;
 
-    let motor = |event_ms, feedback_age_ms| p::WatchTelemetryResponse {
+    let motor = |event_ms, feedback_age_ms| api::WatchTelemetryResponse {
         monotonic_ns: event_ms * 1_000_000_u64,
-        payload: Some(Payload::Motor(p::MotorTelemetry {
+        payload: Some(Payload::Motor(api::MotorTelemetry {
             group: "legs".into(),
             motor_name: "motor".into(),
             feedback_age_ms,
             ..Default::default()
         })),
     };
-    let imu = |event_ms, sample_age_ms| p::WatchTelemetryResponse {
+    let imu = |event_ms, sample_age_ms| api::WatchTelemetryResponse {
         monotonic_ns: event_ms * 1_000_000_u64,
-        payload: Some(Payload::Imu(p::ImuTelemetry {
+        payload: Some(Payload::Imu(api::ImuTelemetry {
             imu_name: "imu".into(),
-            orientation: Some(p::Quaternion {
+            orientation: Some(api::Quaternion {
                 w: 1.0,
                 ..Default::default()
             }),
-            angular_velocity: Some(p::Vector3::default()),
-            linear_acceleration: Some(p::Vector3 {
+            angular_velocity: Some(api::Vector3::default()),
+            linear_acceleration: Some(api::Vector3 {
                 z: 9.81,
                 ..Default::default()
             }),
@@ -260,29 +260,29 @@ async fn watch_pose_reports_age_of_oldest_encoder_used() {
             ..Default::default()
         })),
     };
-    let address = p::MotorAddress {
+    let address = api::MotorAddress {
         bus: "bus".into(),
         id: 1,
     };
     let hardware = Hardware {
-        inventory: p::ListHardwareResponse {
-            buses: vec![p::BusInfo {
+        inventory: api::ListHardwareResponse {
+            buses: vec![api::BusInfo {
                 name: "bus".into(),
                 transport: "test".into(),
                 ..Default::default()
             }],
-            groups: vec![p::GroupInfo {
+            groups: vec![api::GroupInfo {
                 name: "legs".into(),
                 control_rate_hz: 100.0,
                 motors: vec![address.clone()],
                 ..Default::default()
             }],
-            motors: vec![p::MotorInfo {
+            motors: vec![api::MotorInfo {
                 name: "motor".into(),
                 coordinate: "left_joint".into(),
                 group: "legs".into(),
                 address: Some(address),
-                limits: Some(p::MotorLimits {
+                limits: Some(api::MotorLimits {
                     position_min: -1.0,
                     position_max: 1.0,
                     velocity_min: -1.0,

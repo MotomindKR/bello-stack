@@ -62,17 +62,17 @@ impl Robot {
     }
 
     /// Returns configured CAN buses in stable name order.
-    pub fn buses(&self) -> impl ExactSizeIterator<Item = &crate::proto::BusInfo> {
+    pub fn buses(&self) -> impl ExactSizeIterator<Item = &crate::api::BusInfo> {
         self.inner.inventory.buses.values()
     }
 
     /// Returns configured serial transports in stable name order.
-    pub fn serial_devices(&self) -> impl ExactSizeIterator<Item = &crate::proto::SerialDeviceInfo> {
+    pub fn serial_devices(&self) -> impl ExactSizeIterator<Item = &crate::api::SerialDeviceInfo> {
         self.inner.inventory.serial_devices.values()
     }
 
     /// Returns configured IMUs in stable name order.
-    pub fn imus(&self) -> impl ExactSizeIterator<Item = &crate::proto::ImuInfo> {
+    pub fn imus(&self) -> impl ExactSizeIterator<Item = &crate::api::ImuInfo> {
         self.inner.inventory.imus.values()
     }
 

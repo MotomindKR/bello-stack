@@ -38,8 +38,14 @@ with Robot.connect("http://127.0.0.1:50051") as robot:
 `Robot.connect()` defaults to `http://127.0.0.1:50051` and caches the daemon’s inventory
 on connection. Check each IMU's `output_frame` before using its readings.
 
-Use `robot.grpc_client()` and the generated messages in `bello_hardware.proto`
-for direct hardware RPCs on the same connection.
+For direct gRPC calls on the same connection, use the generated request types.
+
+```python
+from bello_hardware import Robot, api
+
+with Robot.connect() as robot:
+    inventory = robot.grpc_client().ListHardware(api.ListHardwareRequest())
+```
 
 ## Read state
 
@@ -69,9 +75,8 @@ RPC round-trip duration. A control loop can conservatively add that duration
 and any time since receipt to its freshness checks, covering transport and
 Python scheduling delays without synchronized clocks. Apply those checks to
 motor, IMU, and group ages, and reject a sample span wider than the control
-loop's coherence budget. The raw `WatchTelemetry` protocol stream remains
-available to protocol-level diagnostics that require event history, health, or
-command-policy events.
+loop's coherence budget. Use `robot.grpc_client().WatchTelemetry(...)` for
+event history, health, or command-policy events.
 
 For temporary debugging, `examples/log_hardware.py` records complete state
 frames as newline-delimited JSON at 50 Hz by default:

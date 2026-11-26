@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::time::{Duration, Instant};
 
-use bello_hardware_client::{Robot, proto};
+use bello_hardware_client::{Robot, api};
 
 #[tokio::main(worker_threads = 2)]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Robot::connect("http://127.0.0.1:50051").await?,
         Robot::connect("unix:///run/user/1000/bello-hardwared.sock").await?,
     ];
-    let request = proto::GetStateFrameRequest {
+    let request = api::GetStateFrameRequest {
         groups: vec!["lower_body".into(), "upper_body".into()],
         imus: vec!["imu".into()],
     };

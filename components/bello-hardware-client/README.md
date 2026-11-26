@@ -221,16 +221,16 @@ Dropping `ControlSession` aborts its local renewal task but cannot perform async
 network cleanup; call and await `shutdown` during normal operation. The daemon's
 command-timeout and lease-loss damping remain the final safety backstop.
 
-## Raw access
+## Direct gRPC calls
 
-Use the generated gRPC client for individual protocol calls.
+Use request types from `bello_hardware_client::api` with `Robot::grpc_client()`.
 
 ```rust,no_run
-use bello_hardware_client::{Robot, proto::GetStateFrameRequest};
+use bello_hardware_client::{Robot, api};
 
 # async fn example() -> Result<(), bello_hardware_client::Error> {
 let robot = Robot::connect("http://127.0.0.1:50051").await?;
-let frame = robot.grpc_client().get_state_frame(GetStateFrameRequest::default()).await?.into_inner();
+let frame = robot.grpc_client().get_state_frame(api::GetStateFrameRequest::default()).await?.into_inner();
 # let _ = frame;
 # Ok(())
 # }

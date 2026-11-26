@@ -13,7 +13,7 @@ mod power;
 mod robot;
 mod state;
 
-pub use bello_hardware_api as proto;
+pub use bello_hardware_api as api;
 pub use bello_hardware_api::{
     CommandBehavior, CommandPolicyCheck, CommandResult, DeviceState, FaultResponse, GroupCause,
     GroupState,
