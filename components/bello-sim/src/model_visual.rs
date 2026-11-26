@@ -225,14 +225,12 @@ fn collect(
                 .context("visual GLB requires indexed triangles")?
                 .into_u32()
                 .collect::<Vec<_>>();
-            ensure!(
-                indices.len().is_multiple_of(3),
-                "incomplete visual triangle"
-            );
+            let (triangles, remainder) = indices.as_chunks::<3>();
+            ensure!(remainder.is_empty(), "incomplete visual triangle");
             let group = groups
                 .entry(material.index())
                 .or_insert_with(|| (pbr.base_color_factor(), Vec::new()));
-            for indices in indices.chunks_exact(3) {
+            for indices in triangles {
                 let mut triangle = [[0.; 3]; 3];
                 for (i, &vertex) in indices.iter().enumerate() {
                     triangle[i] = *vertices
