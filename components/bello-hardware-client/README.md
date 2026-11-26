@@ -32,7 +32,7 @@ let tls = TlsOptions::new()
         std::fs::read("/etc/bello/tls/client.key")?,
     );
 let options = ConnectOptions::new("https://robot.example:50051").tls(tls);
-let robot = Robot::connect_with(options).await?;
+let robot = Robot::connect(options).await?;
 # let _ = robot;
 # Ok(())
 # }
@@ -69,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     let mut control = group
-        .control_with(
+        .control(
             ControlOptions::new("example-controller")
                 .command_validity(Duration::from_millis(100)),
         )
@@ -116,18 +116,18 @@ Inspect the inventory returned at connection:
 let robot = Robot::connect("http://127.0.0.1:50051").await?;
 
 for bus in robot.buses() {
-    println!("{}: {} host {}", bus.name(), bus.transport(), bus.host_id());
+    println!("{}: {} host {}", bus.name, bus.transport, bus.host_id);
 }
 for serial in robot.serial_devices() {
-    println!("{}: {} at {} baud", serial.name(), serial.port(), serial.baud_rate());
+    println!("{}: {} at {} baud", serial.name, serial.port, serial.baud_rate);
 }
 for imu in robot.imus() {
     println!(
         "{} uses {} and publishes {} from {}",
-        imu.name(),
-        imu.serial_device(),
-        imu.output_frame(),
-        imu.source_frame(),
+        imu.name,
+        imu.serial_device,
+        imu.output_frame,
+        imu.source_frame,
     );
 }
 for motor in robot.motors() {
@@ -142,9 +142,8 @@ for motor in robot.motors() {
 # }
 ```
 
-Each device exposes `initial_status()`, the status captured by `ListHardware` at
-connection time. Live lifecycle changes are available through the health
-snapshots described below.
+Inventory reports the status captured by `ListHardware` at connection time.
+Telemetry carries subsequent status changes.
 
 ## Robot state
 
@@ -158,7 +157,7 @@ use bello_hardware_client::{Robot, RobotStateChange};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let robot = Robot::connect("http://127.0.0.1:50051").await?;
-    let mut states = robot.states().await?;
+    let mut states = robot.states(Default::default()).await?;
 
     while let Some(state) = states.changed().await? {
         match state.last_change() {
@@ -194,12 +193,15 @@ to identify the new stream. Normal server EOF remains visible as `None`.
 ## Control semantics
 
 - `MotorGroup::control` acquires exclusive write ownership and immediately
-  starts automatic renewal. `control_with` customizes lease duration, command
-  validity, acknowledgement timeout, and bounded task shutdown.
+  starts automatic renewal. Pass an owner name or `ControlOptions` to configure
+  lease duration, command validity, acknowledgement timeout, and pending capacity.
 - `ControlSession::start` enables the group into `Damped` and atomically starts
   it with the complete initial frame.
-- `ControlSession::send` allocates the sequence, submits one bounded request,
-  correlates the response, and returns only for `ACCEPTED`.
+- `control.send(frame).await` waits for capacity and the daemon's acknowledgement.
+  `control.try_submit(frame)` returns an awaitable receipt immediately or
+  `Error::QueueFull`. The default is one outstanding acknowledgement. Set
+  `ControlOptions::max_pending(n)` for a pipelined loop. Dropping the receipt
+  leaves the command and its acknowledgement deadline active.
 - `ControlSession::stop` leaves the group `Damped` while retaining ownership.
 - `ControlSession::resume` atomically starts a damped group with a fresh
   complete frame.
@@ -215,34 +217,26 @@ to identify the new stream. Normal server EOF remains visible as `None`.
 
 Motion is never transparently reacquired, reconnected, or replayed. A renewal,
 lease, command-stream, or acknowledgement failure is returned to the caller.
-A rejected command whose acknowledgement reports daemon state `Damped` moves
-the session to `Damped`; other ambiguous or rejected running commands move it
-to `Uncertain`. Both close the command stream.
+A rejection closes the command stream. Confirmed damping leaves the session
+in `Damped`. Lease loss and ambiguous outcomes leave it in `Uncertain`.
 Dropping `ControlSession` aborts its local renewal task but cannot perform async
 network cleanup; call and await `shutdown` during normal operation. The daemon's
 command-timeout and lease-loss damping remain the final safety backstop.
 
 ## Raw access
 
-Performance probes and protocol-aware integrations can opt into the lower
-layer explicitly:
+Use the generated gRPC client for individual protocol calls.
 
 ```rust,no_run
-use bello_hardware_client::raw::{HardwareClient, proto::WatchTelemetryRequest};
+use bello_hardware_client::{Robot, proto::GetStateFrameRequest};
 
 # async fn example() -> Result<(), bello_hardware_client::Error> {
-let hardware = HardwareClient::connect("http://127.0.0.1:50051").await?;
-let inventory = hardware.inventory().await?;
-let telemetry = hardware.watch(WatchTelemetryRequest {
-    include_motors: true,
-    ..Default::default()
-}).await?;
-# let _ = (inventory, telemetry);
+let robot = Robot::connect("http://127.0.0.1:50051").await?;
+let frame = robot.grpc_client().get_state_frame(GetStateFrameRequest::default()).await?.into_inner();
+# let _ = frame;
 # Ok(())
 # }
 ```
-
-Generated protobuf types are available at `bello_hardware_client::raw::proto`.
 
 See the repository [API guide](../../docs/api.md) and
 [control and safety](../../docs/control-and-safety.md) for server behavior.

@@ -211,8 +211,8 @@ fn validate_inventory(
     }
     let imu_output_frame = robot
         .imus()
-        .find(|imu| imu.name() == config.imu)
-        .map(|imu| imu.output_frame());
+        .find(|imu| imu.name.as_str() == config.imu)
+        .map(|imu| imu.output_frame.as_str());
     validate_imu_output_frame(&config.imu, &config.imu_frame, imu_output_frame)?;
     Ok(())
 }
@@ -316,7 +316,7 @@ async fn consume_hardware(
 ) -> anyhow::Result<()> {
     let mut states = tokio::time::timeout(
         Duration::from_secs(3),
-        robot.states_with(StateStreamOptions::default().reconnect_on_unavailable(false)),
+        robot.states(StateStreamOptions::default().reconnect_on_unavailable(false)),
     )
     .await
     .map_err(|_| HardwareError::Rpc(Status::deadline_exceeded("open hardware stream timed out")))?

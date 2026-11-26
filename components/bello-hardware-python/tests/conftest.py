@@ -106,6 +106,7 @@ class FakeHardware:
         self.disable_count = 0
         self.next_command_result: proto.CommandResult | None = None
         self.command_delay = 0.0
+        self.close_stream_gate: threading.Event | None = None
         self.command_ack_gate: threading.Event | None = None
         self.before_start_control: Callable[[], None] | None = None
         self.renew_failure: grpc.StatusCode | None = None
@@ -191,7 +192,9 @@ class FakeHardware:
     def StreamCommands(
         self, requests: Iterator[proto.StreamCommandsRequest], context: Any
     ) -> Iterator[proto.StreamCommandsResponse]:
-        del context
+        if self.close_stream_gate is not None:
+            assert self.close_stream_gate.wait(5)
+            return
         for request in requests:
             if self.command_ack_gate is not None:
                 self.command_ack_gate.wait(2.0)

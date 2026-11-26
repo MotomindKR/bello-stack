@@ -185,15 +185,17 @@ class MotorGroup:
         lease_duration: float | None = None,
         command_validity: float | None = None,
         acknowledgement_timeout: float = 1.0,
+        max_pending: int = 1,
         rpc_timeout: float = 5.0,
     ) -> ControlSession:
         from .control import ControlSession
 
-        return ControlSession.acquire(
+        return ControlSession._acquire(
             self,
             owner,
             lease_duration=lease_duration,
             command_validity=command_validity,
+            max_pending=max_pending,
             acknowledgement_timeout=acknowledgement_timeout,
             rpc_timeout=rpc_timeout,
         )

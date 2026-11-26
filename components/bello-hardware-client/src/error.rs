@@ -18,8 +18,8 @@ pub enum Error {
     LeaseInactive(LeaseStatus),
     #[error("command request stream is closed")]
     CommandStreamClosed,
-    #[error("this group lease already has an open command stream")]
-    CommandStreamAlreadyOpen,
+    #[error("command queue is full")]
+    QueueFull,
     #[error("command sequence is exhausted")]
     SequenceExhausted,
     #[error("hardware inventory is inconsistent: {0}")]
@@ -63,14 +63,6 @@ pub enum Error {
     AcknowledgementStreamClosed(String),
     #[error("timed out waiting for command acknowledgement from motor group {group:?}")]
     AcknowledgementTimeout { group: String },
-    #[error(
-        "motor group {group:?} acknowledged command {actual}, but command {expected} was pending"
-    )]
-    AcknowledgementMismatch {
-        group: String,
-        expected: u64,
-        actual: u64,
-    },
     #[error("automatic lease renewal for motor group {group:?} failed: {detail}")]
     RenewalFailed { group: String, detail: String },
     #[error("control cleanup encountered errors: {0:?}")]

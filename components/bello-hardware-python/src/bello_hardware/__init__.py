@@ -1,12 +1,14 @@
 """Blocking Python interface to the Bello hardware daemon."""
 
+from ._generated import hardware_pb2 as proto
 from ._generated.hardware_pb2 import CommandResult, DeviceState, GroupCause, GroupState
 from ._inventory import Inventory, MotorGroup
-from .control import CommandPipeline, CommandReceipt, ControlSession
+from .control import CommandReceipt, ControlSession
 from .errors import (
     AcknowledgementError,
     BelloError,
     CleanupError,
+    CommandQueueFullError,
     CommandRejectedError,
     ConnectionError,
     ControlError,
@@ -59,7 +61,7 @@ __all__ = [
     "BelloError",
     "Bus",
     "CleanupError",
-    "CommandPipeline",
+    "CommandQueueFullError",
     "CommandReceipt",
     "CommandRejectedError",
     "CommandResult",
@@ -108,4 +110,5 @@ __all__ = [
     "TlsCredentials",
     "Vector3",
     "VoltageCurrent",
+    "proto",
 ]

@@ -32,7 +32,7 @@ class RobotStateReader:
         groups: tuple[str, ...],
         imus: tuple[str, ...],
     ) -> None:
-        selected_groups = set(groups or robot.group_names)
+        selected_groups = set(groups or robot.inventory.group_names)
         self._expected_motors = {
             motor.name for motor in robot.inventory.motors if motor.group in selected_groups
         }

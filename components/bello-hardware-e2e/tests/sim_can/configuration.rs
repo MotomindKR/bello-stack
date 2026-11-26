@@ -34,10 +34,10 @@ async fn wait_phase(
     .await?
 }
 
-async fn wait_for_versions(client: &HardwareClient, target: &str) -> Result<()> {
+async fn wait_for_versions(client: &Robot, target: &str) -> Result<()> {
     timeout(Duration::from_secs(8), async {
         loop {
-            let inventory = client.inventory().await?;
+            let inventory = inventory(client).await?;
             let version = |name| {
                 inventory
                     .motors
@@ -113,13 +113,7 @@ async fn re_zero_and_update_with_another_group_on_the_bus() -> Result<()> {
     };
     wait_for_frame(&client, |f| position_is(f, 0.4)).await?;
     wait_for_versions(&client, "0.3.0.1").await?;
-    let mut peer_lease = client
-        .acquire_lease(
-            "peer",
-            "operator",
-            LeaseDuration::For(Duration::from_secs(5)),
-        )
-        .await?;
+    let peer_lease = client.group("peer")?.control("operator").await?;
     assert_eq!(
         api.prepare_motor_configuration(request(Kind::Zero))
             .await
@@ -142,19 +136,13 @@ async fn re_zero_and_update_with_another_group_on_the_bus() -> Result<()> {
             .id;
         let reviewed = wait_phase(&mut api, &id, Phase::Ready).await?;
         assert!(
-            client
-                .inventory()
+            inventory(&client)
                 .await?
                 .groups
                 .iter()
                 .all(|g| g.state == GroupState::Configuring as i32)
         );
-        assert!(
-            client
-                .acquire_lease("peer", "other", LeaseDuration::For(Duration::from_secs(1)))
-                .await
-                .is_err()
-        );
+        assert!(client.group("peer")?.control("other").await.is_err());
         if uuid.is_empty() {
             uuid.clone_from(&reviewed.motor_uuid);
         }
@@ -184,8 +172,7 @@ async fn re_zero_and_update_with_another_group_on_the_bus() -> Result<()> {
             wait_for_frame(&client, |f| position_is(f, 0.0)).await?;
         }
         assert!(
-            client
-                .inventory()
+            inventory(&client)
                 .await?
                 .groups
                 .iter()
@@ -240,23 +227,17 @@ async fn lost_readback_faults_the_group_until_the_operator_recovers_it() -> Resu
         .await?;
     wait_phase(&mut api, &id, Phase::Unverified).await?;
     assert_eq!(
-        client.inventory().await?.groups[0].state,
+        inventory(&client).await?.groups[0].state,
         GroupState::Fault as i32
     );
 
-    let lease = client
-        .acquire_lease(
-            "e2e_group",
-            "operator",
-            LeaseDuration::For(Duration::from_secs(20)),
-        )
-        .await?;
-    assert!(lease.enable().await.is_err());
-    assert_eq!(lease.recover().await?, EnumValue::Known(GroupState::Fault));
+    let lease = acquire(&client, "e2e_group", "operator", 20000).await?;
+    assert!(enable(&client, &lease).await.is_err());
+    assert_eq!(recover(&client, &lease).await?, GroupState::Fault);
     reconnect.send(true)?;
     support::scenario::wait_for_motors_online(&client, deadline, &mut daemon, &mut emulator)
         .await?;
-    assert_eq!(lease.recover().await?, EnumValue::Known(GroupState::Idle));
+    assert_eq!(recover(&client, &lease).await?, GroupState::Idle);
     assert_eq!(
         api.get_motor_configuration(GetMotorConfigurationRequest { id })
             .await?
@@ -347,7 +328,7 @@ async fn verified_flash_preserves_its_result_when_a_milly_peer_stops_reporting()
         api.commit_motor_configuration(CommitMotorConfigurationRequest { id: id.clone() })
             .await?;
         let result = wait_phase(&mut api, &id, Phase::Succeeded).await?;
-        let inventory = client.inventory().await?;
+        let inventory = inventory(&client).await?;
         assert_eq!(
             inventory.groups[0].state, expected_state as i32,
             "{}",

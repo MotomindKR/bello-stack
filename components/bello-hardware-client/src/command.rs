@@ -1,341 +1,290 @@
-use std::fmt;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::collections::BTreeMap;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use bello_hardware_api::{
-    CommandResult, GroupState, MotorCommand, StreamCommandsRequest, StreamCommandsResponse,
+    CommandResult, GroupState, StreamCommandsRequest, StreamCommandsResponse,
 };
-use thiserror::Error as ThisError;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore, TryAcquireError, mpsc, oneshot};
+use tokio::task::JoinHandle;
+use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::Streaming;
 
-use crate::duration::positive_milliseconds;
+use crate::control::RenewalStatus;
 use crate::lease::{GroupLease, LeaseHealth, active_health, mark_lease_lost};
-use crate::{EnumValue, Error};
+use crate::{ControlState, EnumValue, Error};
 
-/// Freshness assigned to a command batch when it reaches the daemon.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum CommandValidity {
-    /// Use the motor group's configured command timeout.
-    #[default]
-    GroupDefault,
-    For(Duration),
-}
+/// Resolves when the daemon acknowledges this command. Dropping it only stops observation.
+#[derive(Debug)]
+#[must_use = "await the receipt to observe the command result"]
+pub struct CommandReceipt(oneshot::Receiver<Result<(), Error>>);
 
-impl CommandValidity {
-    pub(crate) fn to_milliseconds(self) -> Result<u64, Error> {
-        match self {
-            Self::GroupDefault => Ok(0),
-            Self::For(duration) => positive_milliseconds(duration, "command validity"),
-        }
+impl Future for CommandReceipt {
+    type Output = Result<(), Error>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(&mut self.0)
+            .poll(cx)
+            .map(|reply| reply.unwrap_or(Err(Error::CommandStreamClosed)))
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct CommandStreamOptions {
-    queue_capacity: usize,
+struct Pending {
+    deadline: Instant,
+    result: oneshot::Sender<Result<(), Error>>,
+    slot: OwnedSemaphorePermit,
 }
 
-impl Default for CommandStreamOptions {
-    fn default() -> Self {
-        Self { queue_capacity: 1 }
-    }
+struct PendingCommands {
+    entries: BTreeMap<u64, Pending>,
+    state: ControlState,
 }
 
-impl CommandStreamOptions {
-    /// Queued commands begin their validity period when the daemon receives them.
-    pub fn queue_capacity(mut self, capacity: usize) -> Self {
-        self.queue_capacity = capacity;
-        self
-    }
-}
-
-/// A bound command sender and its independent acknowledgement stream.
-pub struct CommandStream {
-    sender: CommandSender,
-    responses: CommandResponses,
+pub(crate) struct CommandStream {
+    requests: mpsc::Sender<StreamCommandsRequest>,
+    pending: Arc<Mutex<PendingCommands>>,
+    slots: Arc<Semaphore>,
+    changed: Arc<Notify>,
+    receiver: JoinHandle<()>,
 }
 
 impl CommandStream {
-    pub fn split(self) -> (CommandSender, CommandResponses) {
-        (self.sender, self.responses)
-    }
-
-    pub async fn send(
-        &mut self,
-        validity: CommandValidity,
-        commands: Vec<MotorCommand>,
-    ) -> Result<u64, Error> {
-        self.sender.send(validity, commands).await
-    }
-
-    pub async fn message(&mut self) -> Result<Option<CommandAcknowledgement>, Error> {
-        self.responses.message().await
-    }
-
-    /// Closes the request side while retaining responses already in flight.
-    pub fn close(self) -> CommandResponses {
-        let Self { sender, responses } = self;
-        drop(sender);
-        responses
-    }
-}
-
-impl fmt::Debug for CommandStream {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("CommandStream { .. }")
-    }
-}
-
-/// Single-producer sender that owns monotonically increasing command sequence
-/// allocation for one group lease.
-pub struct CommandSender {
-    inner: mpsc::Sender<StreamCommandsRequest>,
-    group: String,
-    token: String,
-    next_sequence: Arc<AtomicU64>,
-    sequence_exhausted: Arc<AtomicBool>,
-    lease_health: watch::Sender<LeaseHealth>,
-    _claim: Arc<CommandStreamClaim>,
-}
-
-impl CommandSender {
-    pub async fn send(
-        &mut self,
-        validity: CommandValidity,
-        commands: Vec<MotorCommand>,
-    ) -> Result<u64, Error> {
-        let mut health_changed = self.lease_health.subscribe();
-        let permit = loop {
-            let health = active_health(&self.lease_health)?;
-            tokio::select! {
-                permit = self.inner.reserve() => {
-                    break permit.map_err(|_| Error::CommandStreamClosed)?;
-                }
-                changed = health_changed.changed() => {
-                    changed.map_err(|_| Error::CommandStreamClosed)?;
-                }
-                _ = tokio::time::sleep_until(tokio::time::Instant::from_std(health.expires_at)) => {}
-            }
-        };
-        active_health(&self.lease_health)?;
-        if self.sequence_exhausted.load(Ordering::Relaxed) {
-            return Err(Error::SequenceExhausted);
-        }
-        let sequence = self.next_sequence.load(Ordering::Relaxed);
-        let request = StreamCommandsRequest {
-            group: self.group.clone(),
-            lease_token: self.token.clone(),
-            sequence,
-            valid_for_ms: validity.to_milliseconds()?,
-            commands,
-        };
-        permit.send(request);
-        if let Some(next) = sequence.checked_add(1) {
-            self.next_sequence.store(next, Ordering::Relaxed);
-        } else {
-            self.sequence_exhausted.store(true, Ordering::Relaxed);
-        }
-        Ok(sequence)
-    }
-
-    pub fn next_sequence(&self) -> Option<u64> {
-        (!self.sequence_exhausted.load(Ordering::Relaxed))
-            .then(|| self.next_sequence.load(Ordering::Relaxed))
-    }
-}
-
-impl fmt::Debug for CommandSender {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("CommandSender")
-            .field("group", &self.group)
-            .field("token", &"<redacted>")
-            .field("next_sequence", &self.next_sequence())
-            .finish()
-    }
-}
-
-pub struct CommandResponses {
-    inner: Streaming<StreamCommandsResponse>,
-    group: String,
-    lease_health: watch::Sender<LeaseHealth>,
-    claim: Option<Arc<CommandStreamClaim>>,
-}
-
-impl CommandResponses {
-    /// Receives the next acknowledgement. Domain rejection is represented by
-    /// `acknowledgement.result`; it does not become a gRPC error.
-    pub async fn message(&mut self) -> Result<Option<CommandAcknowledgement>, Error> {
-        let response = match self.inner.message().await {
-            Ok(response) => response,
-            Err(status) => {
-                self.claim.take();
-                if status.code() == tonic::Code::PermissionDenied {
-                    mark_lease_lost(&self.lease_health);
-                }
-                return Err(status.into());
-            }
-        };
-        let Some(response) = response else {
-            self.claim.take();
-            return Ok(None);
-        };
-        if response.group != self.group {
-            return Err(Error::Protocol(format!(
-                "command response group {:?} does not match stream group {:?}",
-                response.group, self.group
-            )));
-        }
-        let result = EnumValue::from_raw(response.result);
-        if result == EnumValue::Known(CommandResult::LeaseLost) {
-            mark_lease_lost(&self.lease_health);
-        }
-        Ok(Some(CommandAcknowledgement {
-            group: response.group,
-            sequence: response.sequence,
-            result,
-            detail: response.detail,
-            state: EnumValue::from_raw(response.state),
-        }))
-    }
-
-    pub fn into_inner(self) -> Streaming<StreamCommandsResponse> {
-        self.inner
-    }
-}
-
-impl fmt::Debug for CommandResponses {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("CommandResponses")
-            .field("group", &self.group)
-            .finish_non_exhaustive()
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CommandAcknowledgement {
-    pub group: String,
-    pub sequence: u64,
-    pub result: EnumValue<CommandResult>,
-    pub detail: String,
-    pub state: EnumValue<GroupState>,
-}
-
-impl CommandAcknowledgement {
-    pub fn is_accepted(&self) -> bool {
-        self.result == EnumValue::Known(CommandResult::Accepted)
-    }
-
-    pub fn require_accepted(self) -> Result<Self, CommandRejected> {
-        if self.is_accepted() {
-            Ok(self)
-        } else {
-            Err(CommandRejected {
-                acknowledgement: self,
-            })
-        }
-    }
-}
-
-#[derive(Clone, Debug, ThisError)]
-#[error(
-    "command {sequence} for {group} was rejected as {result:?}: {detail}",
-    group = .acknowledgement.group,
-    sequence = .acknowledgement.sequence,
-    result = .acknowledgement.result,
-    detail = .acknowledgement.detail
-)]
-pub struct CommandRejected {
-    pub acknowledgement: CommandAcknowledgement,
-}
-
-pub(crate) async fn open(
-    lease: &GroupLease,
-    options: CommandStreamOptions,
-) -> Result<CommandStream, Error> {
-    if options.queue_capacity == 0 {
-        return Err(Error::InvalidArgument(
-            "command queue capacity must be positive".into(),
+    pub(crate) async fn open(
+        lease: &GroupLease,
+        capacity: usize,
+        renewal: tokio::sync::watch::Receiver<RenewalStatus>,
+    ) -> Result<Self, Error> {
+        active_health(&lease.health)?;
+        let (requests, rx) = mpsc::channel(capacity);
+        let responses = lease
+            .client
+            .clone()
+            .stream_commands(ReceiverStream::new(rx))
+            .await?
+            .into_inner();
+        let pending = Arc::new(Mutex::new(PendingCommands {
+            entries: BTreeMap::new(),
+            state: ControlState::Running,
+        }));
+        let slots = Arc::new(Semaphore::new(capacity));
+        let changed = Arc::new(Notify::new());
+        let receiver = tokio::spawn(receive(
+            responses,
+            lease.group.clone(),
+            lease.health.clone(),
+            renewal,
+            Arc::clone(&pending),
+            Arc::clone(&slots),
+            Arc::clone(&changed),
         ));
+        Ok(Self {
+            requests,
+            pending,
+            slots,
+            changed,
+            receiver,
+        })
     }
-    let open = lease.command_stream_open_flag();
-    if open
-        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-        .is_err()
-    {
-        return Err(Error::CommandStreamAlreadyOpen);
+
+    pub(crate) fn state(&self) -> ControlState {
+        self.pending.lock().unwrap().state
     }
-    let claim = Arc::new(CommandStreamClaim { open });
-    let (sender, receiver) = mpsc::channel(options.queue_capacity);
-    let mut client = lease.client().inner.clone();
-    let inner = match client.stream_commands(ReceiverStream::new(receiver)).await {
-        Ok(response) => response.into_inner(),
-        Err(status) => {
-            drop(claim);
-            return Err(status.into());
+
+    pub(crate) fn try_slot(&self) -> Result<OwnedSemaphorePermit, Error> {
+        self.slots
+            .clone()
+            .try_acquire_owned()
+            .map_err(|error| match error {
+                TryAcquireError::NoPermits => Error::QueueFull,
+                TryAcquireError::Closed => Error::CommandStreamClosed,
+            })
+    }
+
+    pub(crate) async fn slot(&self) -> Result<OwnedSemaphorePermit, Error> {
+        self.slots
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| Error::CommandStreamClosed)
+    }
+
+    pub(crate) fn submit(
+        &self,
+        slot: OwnedSemaphorePermit,
+        request: StreamCommandsRequest,
+        timeout: Duration,
+    ) -> Result<CommandReceipt, Error> {
+        let mut pending = self.pending.lock().unwrap();
+        if pending.state != ControlState::Running {
+            return Err(Error::CommandStreamClosed);
+        }
+        let permit = self.requests.try_reserve().map_err(|err| match err {
+            mpsc::error::TrySendError::Full(_) => Error::QueueFull,
+            mpsc::error::TrySendError::Closed(_) => Error::CommandStreamClosed,
+        })?;
+        let (result, reply) = oneshot::channel();
+        let deadline = Instant::now().checked_add(timeout).ok_or_else(|| {
+            Error::InvalidArgument("acknowledgement deadline exceeds local clock range".into())
+        })?;
+        pending.entries.insert(
+            request.sequence,
+            Pending {
+                deadline,
+                result,
+                slot,
+            },
+        );
+        permit.send(request);
+        self.changed.notify_one();
+        Ok(CommandReceipt(reply))
+    }
+}
+
+impl Drop for CommandStream {
+    fn drop(&mut self) {
+        self.receiver.abort();
+        self.pending.lock().unwrap().entries.clear();
+    }
+}
+
+async fn receive(
+    mut responses: tonic::Streaming<StreamCommandsResponse>,
+    group: String,
+    health: tokio::sync::watch::Sender<LeaseHealth>,
+    mut renewal: tokio::sync::watch::Receiver<RenewalStatus>,
+    pending: Arc<Mutex<PendingCommands>>,
+    slots: Arc<Semaphore>,
+    changed: Arc<Notify>,
+) {
+    let mut health_changed = health.subscribe();
+    let (failed_sequence, error) = loop {
+        let lease = match active_health(&health) {
+            Ok(lease) => lease,
+            Err(error) => break (None, error),
+        };
+        let lease_deadline = Instant::from_std(lease.expires_at);
+        let next = pending
+            .lock()
+            .unwrap()
+            .entries
+            .first_key_value()
+            .map(|(&seq, cmd)| (seq, cmd.deadline));
+        let deadline = next.map_or(lease_deadline, |(_, deadline)| deadline.min(lease_deadline));
+        if let Some((seq, deadline)) = next
+            && Instant::now() >= deadline
+        {
+            break (
+                Some(seq),
+                Error::AcknowledgementTimeout {
+                    group: group.clone(),
+                },
+            );
+        }
+        let response = tokio::select! {
+            biased;
+            _ = tokio::time::sleep_until(deadline) => continue,
+            _ = health_changed.changed() => continue,
+            changed = renewal.changed() => {
+                let detail = match (changed, &*renewal.borrow()) {
+                    (Ok(()), RenewalStatus::Failed(detail)) => detail.clone(),
+                    _ => "renewal task stopped unexpectedly".into(),
+                };
+                break (None, Error::RenewalFailed { group: group.clone(), detail });
+            }
+            response = responses.message() => response,
+            _ = changed.notified() => continue,
+        };
+        let ack = match response {
+            Ok(Some(ack)) => ack,
+            Ok(None) => break (None, Error::AcknowledgementStreamClosed(group.clone())),
+            Err(status) => {
+                if status.code() == tonic::Code::PermissionDenied {
+                    mark_lease_lost(&health);
+                }
+                break (None, status.into());
+            }
+        };
+        let sequence = ack.sequence;
+        let mut commands = pending.lock().unwrap();
+        if let Err(error) = commands.acknowledge(ack, &group, &health) {
+            commands.close(Some(sequence), error, &slots);
+            return;
         }
     };
-    let group = lease.group().to_owned();
-    let (next_sequence, sequence_exhausted) = lease.command_sequence();
-    Ok(CommandStream {
-        sender: CommandSender {
-            inner: sender,
-            group: group.clone(),
-            token: lease.token().to_owned(),
-            next_sequence,
-            sequence_exhausted,
-            lease_health: lease.health_sender(),
-            _claim: Arc::clone(&claim),
-        },
-        responses: CommandResponses {
-            inner,
-            group,
-            lease_health: lease.health_sender(),
-            claim: Some(claim),
-        },
-    })
+    pending
+        .lock()
+        .unwrap()
+        .close(failed_sequence, error, &slots);
 }
 
-struct CommandStreamClaim {
-    open: Arc<AtomicBool>,
-}
-
-impl Drop for CommandStreamClaim {
-    fn drop(&mut self) {
-        self.open.store(false, Ordering::Release);
+impl PendingCommands {
+    fn acknowledge(
+        &mut self,
+        ack: StreamCommandsResponse,
+        group: &str,
+        health: &tokio::sync::watch::Sender<LeaseHealth>,
+    ) -> Result<(), Error> {
+        if ack.group != group {
+            return Err(Error::Protocol(format!(
+                "command acknowledgement for unexpected group {:?}",
+                ack.group
+            )));
+        }
+        let command = self.entries.get(&ack.sequence).ok_or_else(|| {
+            Error::Protocol(format!(
+                "unsolicited command acknowledgement {}",
+                ack.sequence
+            ))
+        })?;
+        if Instant::now() >= command.deadline {
+            return Err(Error::AcknowledgementTimeout {
+                group: group.into(),
+            });
+        }
+        if ack.result != CommandResult::Accepted as i32 {
+            if ack.result == CommandResult::LeaseLost as i32 {
+                mark_lease_lost(health);
+            }
+            return Err(Error::RejectedCommand {
+                group: ack.group,
+                sequence: ack.sequence,
+                result: EnumValue::from_raw(ack.result),
+                detail: ack.detail,
+                state: EnumValue::from_raw(ack.state),
+            });
+        }
+        if GroupState::try_from(ack.state).is_err() {
+            return Err(Error::Protocol(format!(
+                "accepted command returned unknown state {}",
+                ack.state
+            )));
+        }
+        active_health(health)?;
+        let entry = self.entries.remove(&ack.sequence).expect("matched command");
+        drop(entry.slot);
+        let _ = entry.result.send(Ok(()));
+        Ok(())
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rejection_preserves_the_complete_acknowledgement() {
-        let acknowledgement = CommandAcknowledgement {
-            group: "leg".into(),
-            sequence: 7,
-            result: EnumValue::Known(CommandResult::Unsafe),
-            detail: "limit".into(),
-            state: EnumValue::Known(GroupState::Fault),
+    fn close(&mut self, failed_sequence: Option<u64>, error: Error, slots: &Semaphore) {
+        self.state = match &error {
+            Error::RejectedCommand {
+                state: EnumValue::Known(GroupState::Damped),
+                result: EnumValue::Known(result),
+                ..
+            } if *result != CommandResult::LeaseLost => ControlState::Damped,
+            _ => ControlState::Uncertain,
         };
-        let rejected = acknowledgement.require_accepted().unwrap_err();
-        assert_eq!(rejected.acknowledgement.sequence, 7);
-        assert_eq!(
-            rejected.acknowledgement.result,
-            EnumValue::Known(CommandResult::Unsafe)
-        );
-    }
-
-    #[test]
-    fn unknown_enums_are_not_rewritten_as_unspecified() {
-        assert_eq!(
-            EnumValue::<CommandResult>::from_raw(10_000),
-            EnumValue::Unknown(10_000)
-        );
+        slots.close();
+        let sequence = failed_sequence
+            .filter(|seq| self.entries.contains_key(seq))
+            .or_else(|| self.entries.keys().next().copied());
+        if let Some(cmd) = sequence.and_then(|seq| self.entries.remove(&seq)) {
+            let _ = cmd.result.send(Err(error));
+        }
+        self.entries.clear();
     }
 }

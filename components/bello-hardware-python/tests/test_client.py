@@ -11,11 +11,12 @@ import pytest
 from bello_hardware import (
     AcknowledgementError,
     CleanupError,
-    CommandPipeline,
+    CommandQueueFullError,
     CommandRejectedError,
     ControlRpcError,
     ControlState,
     CoordinateTarget,
+    InvalidSessionStateError,
     InvalidTargetError,
     LeaseLostError,
     ProtocolError,
@@ -40,7 +41,7 @@ def assert_control_state(actual: ControlState, expected: ControlState) -> None:
 
 def test_blocking_control_lifecycle_is_small(hardware_server: RunningServer) -> None:
     with Robot.connect(hardware_server.endpoint) as robot:
-        assert robot.group_names == ("leg",)
+        assert robot.inventory.group_names == ("leg",)
         group = robot.group("leg")
         assert group.coordinates == ("hip", "knee")
         assert group.motors[0].limits.torque_max == 60.0
@@ -74,21 +75,20 @@ def test_async_commands_pipeline_before_acknowledgements(
 ) -> None:
     with (
         Robot.connect(hardware_server.endpoint) as robot,
-        robot.group("leg").control("pytest", acknowledgement_timeout=0.5) as control,
+        robot.group("leg").control("pytest", max_pending=3) as control,
     ):
         control.start(frame())
-        hardware_server.service.command_delay = 0.04
-        started = time.monotonic()
-        receipts = [control.send_async(frame(value)) for value in (0.1, 0.2, 0.3)]
-        submit_elapsed = time.monotonic() - started
-        assert submit_elapsed < 0.04
-        assert receipts[-1].acknowledgement_latency_ms is None
+        gate = threading.Event()
+        hardware_server.service.command_ack_gate = gate
+        try:
+            receipts = [control.try_submit(frame(value)) for value in (0.1, 0.2, 0.3)]
+            assert all(not receipt.done() for receipt in receipts)
+        finally:
+            gate.set()
         for receipt in receipts:
             receipt.result()
-        assert all(receipt.done() for receipt in receipts)
-        assert all(receipt.acknowledgement_latency_ms is not None for receipt in receipts)
-        assert receipts[0].acknowledgement_latency_ms is not None
-        assert receipts[0].acknowledgement_latency_ms >= 30.0
+            assert receipt.done()
+            assert receipt.acknowledgement_latency_ms is not None
 
     assert hardware_server.service.command_count == 4
 
@@ -109,7 +109,7 @@ def test_async_receipt_uses_acknowledgement_deadline(
         if not late:
             acknowledge.set()
         hardware_server.service.command_ack_gate = acknowledge
-        receipt = control.send_async(frame(0.1))
+        receipt = control.try_submit(frame(0.1))
         deadline = time.monotonic() + acknowledgement_timeout
 
         if late:
@@ -121,15 +121,14 @@ def test_async_receipt_uses_acknowledgement_deadline(
             time.sleep(0.001)
         assert receipt.done()
         latency_ms = receipt.acknowledgement_latency_ms
-        assert latency_ms is not None
 
         if late:
-            assert latency_ms > acknowledgement_timeout * 1000
+            assert latency_ms is None
             with pytest.raises(AcknowledgementError):
                 receipt.result()
             assert control.state is ControlState.UNCERTAIN
         else:
-            assert latency_ms < acknowledgement_timeout * 1000
+            assert latency_ms is not None and latency_ms < acknowledgement_timeout * 1000
             time.sleep(max(0.0, deadline - time.monotonic()))
             receipt.result()
             assert control.state is ControlState.RUNNING
@@ -149,7 +148,7 @@ def test_closed_stream_receipt_preserves_resumed_control(
         control.start(frame())
         acknowledge = threading.Event()
         hardware_server.service.command_ack_gate = acknowledge
-        receipt = control.send_async(frame(0.1))
+        receipt = control.try_submit(frame(0.1))
         assert not receipt.done()
         control.stop()
         acknowledge.set()
@@ -188,58 +187,86 @@ def test_closed_stream_receipt_preserves_resumed_control(
         control.send(frame(0.2))
 
 
-def test_bounded_command_pipeline_preserves_fixed_rate_submission(
+def test_full_queue_rejects_try_submit_and_send_waits_for_capacity(
     hardware_server: RunningServer,
 ) -> None:
     with (
         Robot.connect(hardware_server.endpoint) as robot,
-        robot.group("leg").control("pytest", acknowledgement_timeout=0.5) as control,
+        robot.group("leg").control("pytest", max_pending=1, acknowledgement_timeout=2) as control,
     ):
         control.start(frame())
-        hardware_server.service.command_delay = 0.04
-        pipeline = CommandPipeline(control, max_pending=4)
+        gate = threading.Event()
+        hardware_server.service.command_ack_gate = gate
+        receipt = control.try_submit(frame(0.1))
+        started = threading.Event()
 
-        started = time.monotonic()
-        for value in (0.1, 0.2, 0.3):
-            pipeline.send(frame(value))
-        assert time.monotonic() - started < 0.04
-        assert pipeline.pending_count == 3
+        def send() -> None:
+            started.set()
+            control.send(frame(0.2))
 
-        pipeline.drain()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            try:
+                waiting = executor.submit(send)
+                assert started.wait(1)
+                with pytest.raises(CommandQueueFullError):
+                    control.try_submit(frame(0.3))
+                assert not waiting.done()
+            finally:
+                gate.set()
+            waiting.result(timeout=2)
+        receipt.result()
+        assert hardware_server.service.command_count == 3
 
-        assert pipeline.pending_count == 0
-        assert len(pipeline.acknowledgement_latencies_ms) == 3
-        assert max(pipeline.acknowledgement_latencies_ms) >= 30.0
-        assert pipeline.maximum_submission_latency_ms < 40.0
+
+def test_dropped_receipt_timeout_marks_session_uncertain(hardware_server: RunningServer) -> None:
+    with (
+        Robot.connect(hardware_server.endpoint) as robot,
+        robot.group("leg").control("pytest", acknowledgement_timeout=0.025) as control,
+    ):
+        control.start(frame())
+        gate = threading.Event()
+        hardware_server.service.command_ack_gate = gate
+        try:
+            control.try_submit(frame(0.1))
+            until = time.monotonic() + 2
+            while control.state is ControlState.RUNNING and time.monotonic() < until:
+                time.sleep(0.005)
+            assert control.state is ControlState.UNCERTAIN
+        finally:
+            gate.set()
 
 
-def test_command_pipeline_rejects_invalid_pending_bound(
+@pytest.mark.parametrize(
+    "group_state, result, expected",
+    [
+        (proto.GROUP_STATE_RUNNING, proto.COMMAND_RESULT_UNSAFE, ControlState.UNCERTAIN),
+        (proto.GROUP_STATE_DAMPED, proto.COMMAND_RESULT_UNSAFE, ControlState.DAMPED),
+        (proto.GROUP_STATE_DAMPED, proto.COMMAND_RESULT_LEASE_LOST, ControlState.UNCERTAIN),
+    ],
+)
+def test_async_rejection_updates_control_before_receipt_is_observed(
     hardware_server: RunningServer,
+    group_state: proto.GroupState,
+    result: proto.CommandResult,
+    expected: ControlState,
 ) -> None:
     with (
         Robot.connect(hardware_server.endpoint) as robot,
         robot.group("leg").control("pytest") as control,
     ):
-        with pytest.raises(ValueError, match="positive"):
-            CommandPipeline(control, max_pending=0)
-        with pytest.raises(TypeError, match="integer"):
-            CommandPipeline(control, max_pending=True)
-
-
-def test_async_rejection_preserves_running_session_state(
-    hardware_server: RunningServer,
-) -> None:
-    with (
-        Robot.connect(hardware_server.endpoint) as robot,
-        robot.group("leg").control("pytest") as control,
-    ):
         control.start(frame())
-        hardware_server.service.next_command_result = proto.COMMAND_RESULT_UNSAFE
-        receipt = control.send_async(frame(0.1))
-        with pytest.raises(CommandRejectedError):
+        hardware_server.service.next_command_result = result
+        hardware_server.service.state = group_state
+        receipt = control.try_submit(frame(0.1))
+        until = time.monotonic() + 2
+        while control.state is ControlState.RUNNING and time.monotonic() < until:
+            time.sleep(0.005)
+        assert control.state is expected
+        with pytest.raises(CommandRejectedError) as rejected:
             receipt.result()
-        assert control.state is ControlState.RUNNING
-        control.send(frame(0.2))
+        assert rejected.value.result == result
+        with pytest.raises(InvalidSessionStateError):
+            control.try_submit(frame(0.2))
 
 
 @pytest.mark.parametrize("unknown_field", ["result", "state"])
@@ -269,7 +296,7 @@ def test_lease_is_renewed_in_the_background(hardware_server: RunningServer) -> N
     assert hardware_server.service.renew_count >= 1
 
 
-def test_rejected_command_preserves_running_session_state(
+def test_rejected_blocking_command_requires_explicit_recovery(
     hardware_server: RunningServer,
 ) -> None:
     with (
@@ -280,8 +307,9 @@ def test_rejected_command_preserves_running_session_state(
         hardware_server.service.next_command_result = proto.COMMAND_RESULT_UNSAFE
         with pytest.raises(CommandRejectedError):
             control.send(frame(0.1))
-        assert control.state is ControlState.RUNNING
-        control.send(frame(0.2))
+        assert control.state is ControlState.UNCERTAIN
+        with pytest.raises(InvalidSessionStateError):
+            control.send(frame(0.2))
 
 
 def test_incomplete_frames_fail_before_transmission(hardware_server: RunningServer) -> None:
@@ -375,6 +403,41 @@ def test_target_validation() -> None:
         CoordinateTarget.position(float("nan"), kp=1.0, kd=1.0)
     with pytest.raises(ValueError, match="non-negative"):
         CoordinateTarget.damping(-1.0)
+
+
+@pytest.mark.parametrize("resuming", [False, True])
+def test_start_cannot_mark_a_closed_stream_running(
+    hardware_server: RunningServer, resuming: bool
+) -> None:
+    with (
+        Robot.connect(hardware_server.endpoint) as robot,
+        robot.group("leg").control("pytest") as control,
+    ):
+        if resuming:
+            control.start(frame())
+            control.stop()
+        close_stream = threading.Event()
+        allow_start_reply = threading.Event()
+        hardware_server.service.close_stream_gate = close_stream
+
+        def delay_start_reply() -> None:
+            close_stream.set()
+            assert allow_start_reply.wait(5)
+
+        hardware_server.service.before_start_control = delay_start_reply
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            attempt = executor.submit(control.resume if resuming else control.start, frame())
+            try:
+                assert close_stream.wait(5)
+                until = time.monotonic() + 3
+                while control.state is ControlState.DAMPED and time.monotonic() < until:
+                    time.sleep(0.005)
+                assert control.state is ControlState.UNCERTAIN
+            finally:
+                allow_start_reply.set()
+            with pytest.raises(AcknowledgementError):
+                attempt.result(timeout=3)
+        assert_control_state(control.state, ControlState.DAMPED if resuming else ControlState.READY)
 
 
 def test_acknowledgement_timeout_makes_session_uncertain(

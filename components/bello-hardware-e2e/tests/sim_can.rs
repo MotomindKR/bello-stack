@@ -21,9 +21,10 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use bello_hardware_api::{GetStateFrameRequest, GetStateFrameResponse, GroupState, MotorCommand};
-use bello_hardware_client::raw::{CommandValidity, EnumValue, HardwareClient, LeaseDuration};
+use bello_hardware_client::Robot;
 use bello_sim_can::SimBus;
 use support::process::ManagedProcess;
+use support::scenario::{acquire, disable, enable, inventory, recover, start_control};
 use tokio::time::{sleep, timeout};
 
 #[tokio::test]
@@ -55,14 +56,8 @@ async fn simulated_can_delivers_motion_and_faults_when_emulator_stops() -> Resul
     support::scenario::wait_for_motors_online(&client, deadline, &mut daemon, &mut emulator)
         .await?;
     let group = "e2e_group";
-    let lease = client
-        .acquire_lease(
-            group,
-            "sim-can-test",
-            LeaseDuration::For(Duration::from_secs(30)),
-        )
-        .await?;
-    lease.enable().await?;
+    let lease = acquire(&client, group, "sim-can-test", 30000).await?;
+    enable(&client, &lease).await?;
     let commands = [("e2e_motor_1", 0.1), ("e2e_motor_2", -0.1)]
         .into_iter()
         .map(|(motor, position)| MotorCommand {
@@ -73,9 +68,7 @@ async fn simulated_can_delivers_motion_and_faults_when_emulator_stops() -> Resul
             ..Default::default()
         })
         .collect();
-    lease
-        .start(CommandValidity::For(Duration::from_millis(200)), commands)
-        .await?;
+    start_control(&client, &lease, 200, commands).await?;
     wait_for_frame(&client, |frame| {
         frame
             .motors
@@ -91,7 +84,7 @@ async fn simulated_can_delivers_motion_and_faults_when_emulator_stops() -> Resul
     emulator.stop();
     timeout(deadline, async {
         loop {
-            if client.inventory().await?.groups[0].state == GroupState::Fault as i32 {
+            if inventory(&client).await?.groups[0].state == GroupState::Fault as i32 {
                 return anyhow::Ok(());
             }
             sleep(Duration::from_millis(10)).await;
@@ -116,15 +109,15 @@ async fn simulated_can_delivers_motion_and_faults_when_emulator_stops() -> Resul
     .await
     .context("waiting for fresh feedback from the restarted emulator")?;
     assert_eq!(
-        client.inventory().await?.groups[0].state,
+        inventory(&client).await?.groups[0].state,
         GroupState::Fault as i32
     );
-    assert_eq!(lease.recover().await?, EnumValue::Known(GroupState::Idle));
+    assert_eq!(recover(&client, &lease).await?, GroupState::Idle);
     Ok(())
 }
 
 async fn wait_for_frame(
-    client: &HardwareClient,
+    client: &Robot,
     ready: impl Fn(&GetStateFrameResponse) -> bool,
 ) -> Result<()> {
     timeout(Duration::from_secs(5), async {

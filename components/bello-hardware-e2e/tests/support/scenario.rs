@@ -1,18 +1,16 @@
 use std::{env, path::PathBuf, process::Command, time::Duration};
 
 use anyhow::{Context, Result, anyhow, bail};
-use bello_hardware_client::raw::proto::watch_telemetry_response::Payload;
-use bello_hardware_client::raw::proto::{
-    DeviceState, GetStateFrameRequest, GroupCause, GroupState, MotorCommand, WatchTelemetryRequest,
-};
-use bello_hardware_client::raw::{
-    CommandStreamOptions, CommandValidity, EnumValue, GroupLease, HardwareClient, LeaseDuration,
-    TelemetryStream,
+use bello_hardware_api::{
+    self as proto, AcquireLeaseResponse, DeviceState, GetStateFrameRequest, GroupCause, GroupState,
+    MotorCommand, WatchTelemetryRequest, watch_telemetry_response::Payload,
 };
 use bello_hardware_client::{CommandFrame, ControlOptions, CoordinateTarget, Robot};
 use robstride_protocol::{Feedback, Frame, MotorParams, feedback_frame};
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, sleep, timeout};
+use tokio_stream::wrappers::ReceiverStream;
 
 use super::process::ManagedProcess;
 
@@ -25,12 +23,12 @@ pub async fn connect(
     deadline: Duration,
     hardwared: &mut ManagedProcess,
     emulator: &mut ManagedProcess,
-) -> Result<HardwareClient> {
+) -> Result<Robot> {
     let deadline = Instant::now() + deadline;
     loop {
         hardwared.ensure_running()?;
         emulator.ensure_running()?;
-        match HardwareClient::connect(endpoint.to_owned()).await {
+        match Robot::connect(endpoint.to_owned()).await {
             Ok(client) => return Ok(client),
             Err(error) if Instant::now() < deadline => {
                 let _ = error;
@@ -50,10 +48,8 @@ pub async fn queued_feedback_keeps_its_age(
     let deadline = Duration::from_secs(5);
     let client = connect(endpoint, deadline, daemon, emulator).await?;
     wait_for_motors_online(&client, deadline, daemon, emulator).await?;
-    let lease = client
-        .acquire_lease(GROUP, "queued-feedback", LeaseDuration::For(deadline * 2))
-        .await?;
-    require_state(lease.enable().await?, GroupState::Damped)?;
+    let lease = acquire(&client, GROUP, "queued-feedback", 10_000).await?;
+    require_state(enable(&client, &lease).await?, GroupState::Damped)?;
 
     let before_pause = Instant::now();
     let captured_before_pause = client
@@ -123,44 +119,38 @@ pub async fn queued_feedback_keeps_its_age(
 }
 
 pub async fn run(
-    client: HardwareClient,
+    client: Robot,
     endpoint: &str,
     timeout_duration: Duration,
     hardwared: &mut ManagedProcess,
     emulator: &mut ManagedProcess,
 ) -> Result<()> {
     let mut telemetry = client
-        .watch(WatchTelemetryRequest {
+        .grpc_client()
+        .watch_telemetry(WatchTelemetryRequest {
             groups: vec![GROUP.into()],
             include_motors: true,
             include_health: true,
             include_command_policy_events: true,
             ..Default::default()
         })
-        .await?;
+        .await?
+        .into_inner();
 
     wait_for_motors_online(&client, timeout_duration, hardwared, emulator).await?;
     run_ergonomic_smoke(&client).await?;
     run_python_smoke(endpoint).await?;
 
-    let mut lease = client
-        .acquire_lease(
-            GROUP,
-            "bello-hardware-e2e",
-            LeaseDuration::For(Duration::from_secs(10)),
-        )
-        .await?;
+    let lease = acquire(&client, GROUP, "bello-hardware-e2e", 10000).await?;
 
-    require_state(lease.enable().await?, GroupState::Damped)?;
+    require_state(enable(&client, &lease).await?, GroupState::Damped)?;
     wait_for_motors_online(&client, timeout_duration, hardwared, emulator).await?;
 
     require_state(
-        lease
-            .start(CommandValidity::For(Duration::from_millis(200)), command())
-            .await?,
+        start_control(&client, &lease, 200, command()).await?,
         GroupState::Running,
     )?;
-    let commands = CommandStream::start(&lease).await?;
+    let commands = CommandStream::start(&client, &lease).await?;
 
     // Suspending the process preserves actuator state while making the test,
     // rather than emulator startup timing, own the feedback-loss phase.
@@ -180,20 +170,22 @@ pub async fn run(
     wait_for_motors_online(&client, timeout_duration, hardwared, emulator).await?;
     require_group_state(&client, GroupState::Fault).await?;
 
-    lease
-        .renew(LeaseDuration::For(Duration::from_secs(10)))
+    client
+        .grpc_client()
+        .renew_lease(proto::RenewLeaseRequest {
+            token: lease.token.clone(),
+            requested_duration_ms: 10_000,
+        })
         .await?;
 
-    require_state(lease.recover().await?, GroupState::Idle)?;
-    require_state(lease.enable().await?, GroupState::Damped)?;
+    require_state(recover(&client, &lease).await?, GroupState::Idle)?;
+    require_state(enable(&client, &lease).await?, GroupState::Damped)?;
 
     require_state(
-        lease
-            .start(CommandValidity::For(Duration::from_millis(200)), command())
-            .await?,
+        start_control(&client, &lease, 200, command()).await?,
         GroupState::Running,
     )?;
-    let timeout_commands = CommandStream::start(&lease).await?;
+    let timeout_commands = CommandStream::start(&client, &lease).await?;
     drop(timeout_commands);
     let timeout_fault = wait_for_fault(
         &mut telemetry,
@@ -206,31 +198,31 @@ pub async fn run(
     .await?;
 
     require_state(
-        lease
-            .start(CommandValidity::For(Duration::from_millis(200)), command())
-            .await?,
+        start_control(&client, &lease, 200, command()).await?,
         GroupState::Running,
     )?;
-    require_state(lease.stop().await?, GroupState::Damped)?;
-    require_state(lease.enable().await?, GroupState::Damped)?;
-    require_state(lease.disable().await?, GroupState::Idle)?;
-    require_state(lease.release().await?, GroupState::Idle)?;
-
-    let expiring = client
-        .acquire_lease(
-            GROUP,
-            "bello-hardware-e2e-expiry",
-            LeaseDuration::For(Duration::from_millis(300)),
-        )
-        .await?;
-    require_state(expiring.enable().await?, GroupState::Damped)?;
+    require_state(stop(&client, &lease).await?, GroupState::Damped)?;
+    require_state(enable(&client, &lease).await?, GroupState::Damped)?;
+    require_state(disable(&client, &lease).await?, GroupState::Idle)?;
     require_state(
-        expiring
-            .start(CommandValidity::For(Duration::from_millis(200)), command())
-            .await?,
+        client
+            .grpc_client()
+            .release_lease(proto::ReleaseLeaseRequest {
+                token: lease.token.clone(),
+            })
+            .await?
+            .into_inner()
+            .state(),
+        GroupState::Idle,
+    )?;
+
+    let expiring = acquire(&client, GROUP, "bello-hardware-e2e-expiry", 300).await?;
+    require_state(enable(&client, &expiring).await?, GroupState::Damped)?;
+    require_state(
+        start_control(&client, &expiring, 200, command()).await?,
         GroupState::Running,
     )?;
-    let lease_commands = CommandStream::start(&expiring).await?;
+    let lease_commands = CommandStream::start(&client, &expiring).await?;
     let lease_fault = wait_for_fault(
         &mut telemetry,
         timeout_duration,
@@ -278,11 +270,10 @@ async fn run_python_smoke(endpoint: &str) -> Result<()> {
     .context("joining the Python gRPC smoke client")?
 }
 
-pub(crate) async fn run_ergonomic_smoke(client: &HardwareClient) -> Result<()> {
-    let robot = Robot::from_hardware_client(client.clone()).await?;
-    let group = robot.group(GROUP)?;
+pub(crate) async fn run_ergonomic_smoke(client: &Robot) -> Result<()> {
+    let group = client.group(GROUP)?;
     let mut control = group
-        .control_with(
+        .control(
             ControlOptions::new("bello-hardware-e2e-ergonomic")
                 .lease_duration(Duration::from_secs(10))
                 .command_validity(Duration::from_millis(200)),
@@ -290,6 +281,8 @@ pub(crate) async fn run_ergonomic_smoke(client: &HardwareClient) -> Result<()> {
         .await?;
     control.start(ergonomic_frame(&group, 0.0)?).await?;
     control.send(ergonomic_frame(&group, 0.01)?).await?;
+    let ack = control.try_submit(ergonomic_frame(&group, 0.0)?)?;
+    ack.await?;
     control.shutdown().await?;
     Ok(())
 }
@@ -311,50 +304,138 @@ fn ergonomic_frame(
         .build()?)
 }
 
-struct CommandStream {
-    sender: JoinHandle<()>,
-    receiver: JoinHandle<()>,
-}
+struct CommandStream(JoinHandle<()>);
 
 impl CommandStream {
-    async fn start(lease: &GroupLease) -> Result<Self> {
-        let (mut commands, mut responses) = lease
-            .open_command_stream(CommandStreamOptions::default())
+    async fn start(robot: &Robot, lease: &AcquireLeaseResponse) -> Result<Self> {
+        let (tx, rx) = mpsc::channel(1);
+        let mut replies = robot
+            .grpc_client()
+            .stream_commands(ReceiverStream::new(rx))
             .await?
-            .split();
-        commands
-            .send(CommandValidity::For(Duration::from_millis(200)), command())
-            .await?;
-        let acknowledgement = timeout(Duration::from_secs(1), responses.message())
-            .await
-            .context("waiting for initial command acknowledgement")??
-            .ok_or_else(|| anyhow!("command response stream closed"))?;
-        acknowledgement.require_accepted()?;
-
-        let sender = tokio::spawn(async move {
-            let mut timer = tokio::time::interval(Duration::from_millis(20));
+            .into_inner();
+        let mut request = proto::StreamCommandsRequest {
+            group: lease.group.clone(),
+            lease_token: lease.token.clone(),
+            sequence: 1,
+            valid_for_ms: 200,
+            commands: command(),
+        };
+        tx.send(request.clone()).await?;
+        require_accepted(&mut replies, request.sequence).await?;
+        Ok(Self(tokio::spawn(async move {
+            let mut ticks = tokio::time::interval(Duration::from_millis(20));
             loop {
-                timer.tick().await;
-                if commands
-                    .send(CommandValidity::For(Duration::from_millis(200)), command())
-                    .await
-                    .is_err()
+                ticks.tick().await;
+                request.sequence += 1;
+                if tx.send(request.clone()).await.is_err()
+                    || require_accepted(&mut replies, request.sequence)
+                        .await
+                        .is_err()
                 {
                     break;
                 }
             }
-        });
-        let receiver =
-            tokio::spawn(async move { while let Ok(Some(_)) = responses.message().await {} });
-        Ok(Self { sender, receiver })
+        })))
     }
 }
 
 impl Drop for CommandStream {
     fn drop(&mut self) {
-        self.sender.abort();
-        self.receiver.abort();
+        self.0.abort();
     }
+}
+
+pub async fn acquire(
+    robot: &Robot,
+    group: &str,
+    owner: &str,
+    duration_ms: u64,
+) -> Result<AcquireLeaseResponse> {
+    Ok(robot
+        .grpc_client()
+        .acquire_lease(proto::AcquireLeaseRequest {
+            group: group.into(),
+            client_name: owner.into(),
+            requested_duration_ms: duration_ms,
+        })
+        .await?
+        .into_inner())
+}
+
+pub async fn inventory(robot: &Robot) -> Result<proto::ListHardwareResponse> {
+    Ok(robot
+        .grpc_client()
+        .list_hardware(bello_hardware_api::ListHardwareRequest {})
+        .await?
+        .into_inner())
+}
+
+pub async fn enable(robot: &Robot, lease: &AcquireLeaseResponse) -> Result<GroupState> {
+    Ok(robot
+        .grpc_client()
+        .enable_group(proto::EnableGroupRequest {
+            group: lease.group.clone(),
+            lease_token: lease.token.clone(),
+        })
+        .await?
+        .into_inner()
+        .state())
+}
+
+pub async fn recover(robot: &Robot, lease: &AcquireLeaseResponse) -> Result<GroupState> {
+    Ok(robot
+        .grpc_client()
+        .recover_group(proto::RecoverGroupRequest {
+            group: lease.group.clone(),
+            lease_token: lease.token.clone(),
+        })
+        .await?
+        .into_inner()
+        .state())
+}
+
+pub async fn disable(robot: &Robot, lease: &AcquireLeaseResponse) -> Result<GroupState> {
+    Ok(robot
+        .grpc_client()
+        .disable_group(proto::DisableGroupRequest {
+            group: lease.group.clone(),
+            lease_token: lease.token.clone(),
+        })
+        .await?
+        .into_inner()
+        .state())
+}
+
+pub async fn stop(robot: &Robot, lease: &AcquireLeaseResponse) -> Result<GroupState> {
+    Ok(robot
+        .grpc_client()
+        .stop_control(proto::StopControlRequest {
+            group: lease.group.clone(),
+            lease_token: lease.token.clone(),
+        })
+        .await?
+        .into_inner()
+        .state())
+}
+
+pub async fn start_control(
+    robot: &Robot,
+    lease: &AcquireLeaseResponse,
+    valid_for_ms: u64,
+    commands: Vec<MotorCommand>,
+) -> Result<GroupState> {
+    Ok(robot
+        .grpc_client()
+        .start_control(proto::StartControlRequest {
+            group: lease.group.clone(),
+            lease_token: lease.token.clone(),
+            valid_for_ms,
+            commands,
+        })
+        .await?
+        .into_inner()
+        .state())
 }
 
 fn command() -> Vec<MotorCommand> {
@@ -372,7 +453,7 @@ fn command() -> Vec<MotorCommand> {
 }
 
 async fn wait_for_fault(
-    telemetry: &mut TelemetryStream,
+    telemetry: &mut tonic::Streaming<proto::WatchTelemetryResponse>,
     duration: Duration,
     expected_state: GroupState,
     expected: GroupCause,
@@ -389,7 +470,7 @@ async fn wait_for_fault(
             Ok(result) => {
                 let event =
                     result?.ok_or_else(|| anyhow!("telemetry stream closed before group state"))?;
-                if let Payload::Group(group) = event.payload
+                if let Some(Payload::Group(group)) = event.payload
                     && group.group == GROUP
                 {
                     if group.state == expected_state as i32 {
@@ -425,7 +506,7 @@ async fn wait_for_fault(
 }
 
 async fn wait_for_graceful_shutdown(
-    telemetry: &mut TelemetryStream,
+    telemetry: &mut tonic::Streaming<proto::WatchTelemetryResponse>,
     duration: Duration,
 ) -> Result<()> {
     let deadline = Instant::now() + duration;
@@ -437,7 +518,7 @@ async fn wait_for_graceful_shutdown(
         }
         match timeout(remaining, telemetry.message()).await?? {
             Some(event) => {
-                if let Payload::Group(group) = event.payload
+                if let Some(Payload::Group(group)) = event.payload
                     && group.group == GROUP
                     && group.state == GroupState::Shutdown as i32
                 {
@@ -451,7 +532,7 @@ async fn wait_for_graceful_shutdown(
 }
 
 pub async fn wait_for_motors_online(
-    client: &HardwareClient,
+    client: &Robot,
     duration: Duration,
     hardwared: &mut ManagedProcess,
     emulator: &mut ManagedProcess,
@@ -470,8 +551,8 @@ pub async fn wait_for_motors_online(
     }
 }
 
-async fn motors_online(client: &HardwareClient) -> Result<bool> {
-    let inventory = client.inventory().await?;
+async fn motors_online(client: &Robot) -> Result<bool> {
+    let inventory = inventory(client).await?;
     Ok(MOTORS.iter().all(|expected| {
         inventory.motors.iter().any(|motor| {
             motor.name == *expected
@@ -483,8 +564,8 @@ async fn motors_online(client: &HardwareClient) -> Result<bool> {
     }))
 }
 
-async fn require_group_state(client: &HardwareClient, expected: GroupState) -> Result<()> {
-    let inventory = client.inventory().await?;
+async fn require_group_state(client: &Robot, expected: GroupState) -> Result<()> {
+    let inventory = inventory(client).await?;
     let group = inventory
         .groups
         .iter()
@@ -496,8 +577,8 @@ async fn require_group_state(client: &HardwareClient, expected: GroupState) -> R
     Ok(())
 }
 
-fn require_state(actual: EnumValue<GroupState>, expected: GroupState) -> Result<()> {
-    if actual != EnumValue::Known(expected) {
+fn require_state(actual: GroupState, expected: GroupState) -> Result<()> {
+    if actual != expected {
         bail!("expected state {expected:?}, got {actual:?}");
     }
     Ok(())

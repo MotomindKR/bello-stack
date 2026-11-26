@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use tonic::transport::{Certificate, ClientTlsConfig, Endpoint, Identity};
 
-use crate::{Error, HardwareClient};
+use crate::Error;
 
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
@@ -64,6 +64,12 @@ struct Keepalive {
     while_idle: bool,
 }
 
+impl<T: Into<String>> From<T> for ConnectOptions {
+    fn from(endpoint: T) -> Self {
+        Self::new(endpoint)
+    }
+}
+
 impl ConnectOptions {
     pub fn new(endpoint: impl Into<String>) -> Self {
         Self {
@@ -108,10 +114,6 @@ impl ConnectOptions {
     pub fn tls(mut self, tls: TlsOptions) -> Self {
         self.tls = Some(tls);
         self
-    }
-
-    pub async fn connect(self) -> Result<HardwareClient, Error> {
-        HardwareClient::connect_with(self).await
     }
 
     /// Validates the connection options without opening a connection.

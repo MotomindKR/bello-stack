@@ -1,5 +1,5 @@
 use super::*;
-use bello_hardware_client::raw::proto as p;
+use bello_hardware_client::proto as p;
 use p::hardware_service_server::{HardwareService, HardwareServiceServer};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio_stream::StreamExt;

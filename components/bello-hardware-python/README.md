@@ -19,9 +19,9 @@ sessions are always closed:
 from bello_hardware import Robot
 
 with Robot.connect("http://127.0.0.1:50051") as robot:
-    print("groups:", robot.group_names)
+    print("groups:", robot.inventory.group_names)
 
-    for motor in robot.motors:
+    for motor in robot.inventory.motors:
         print(motor.name, "coordinate=", motor.coordinate, "torque=", motor.limits.torque_max)
 
     for imu in robot.inventory.imus:
@@ -37,6 +37,9 @@ with Robot.connect("http://127.0.0.1:50051") as robot:
 
 `Robot.connect()` defaults to `http://127.0.0.1:50051` and caches the daemon’s inventory
 on connection. Check each IMU's `output_frame` before using its readings.
+
+Use `robot.grpc_client()` and the generated messages in `bello_hardware.proto`
+for direct hardware RPCs on the same connection.
 
 ## Read state
 
@@ -140,25 +143,21 @@ group when possible and releases the lease without sending `DisableGroup`;
 daemon lease-loss handling retains damping. Call `control.disable()` explicitly
 only after the operator has confirmed that disabling the group is safe.
 
-Latency-sensitive fixed-rate loops can use a bounded pipeline so delayed
-acknowledgements do not directly schedule the next command:
+For a fixed-rate loop, configure `max_pending` when acquiring control. It defaults
+to one. `try_submit` returns a receipt immediately, or raises `CommandQueueFullError`
+when the pending limit is reached. `send` waits for a free slot and the reply.
 
 ```python
-from bello_hardware import CommandPipeline
-
-pipeline = CommandPipeline(control, max_pending=4)
-pipeline.send(target)
-pipeline.poll()
-pipeline.drain()
+with leg.control("policy", max_pending=4) as control:
+    control.start(initial)
+    receipt = control.try_submit(target)
+    receipt.result()
 ```
 
-`pipeline.send` uses `control.send_async` and waits only when the explicit
-pending bound is full. Recent submit-to-acknowledgement measurements are
-available through `pipeline.acknowledgement_latencies_ms`, while submission
-queue delay is exposed by `last_submission_latency_ms` and
-`maximum_submission_latency_ms`. Applications must call `poll()` every control
-tick and `drain()` during orderly shutdown. Asynchronous submission does not
-weaken the daemon's command-validity watchdog.
+A receipt acknowledges daemon acceptance. Its deadline starts at submission.
+The session tracks timeouts and stream failures even if the caller drops the receipt.
+A command rejection closes the command stream. A confirmed damped group can resume
+with a new frame. Other rejections and lease loss mark the session uncertain.
 
 Every `start` and `send` call must contain exactly one target for every coordinate in
 `leg.coordinates`. A partial command is rejected before it reaches the daemon.
@@ -241,7 +240,7 @@ tls = TlsCredentials.from_files(
 )
 
 with Robot.connect("https://robot.example:50051", tls=tls) as robot:
-    print(robot.group_names)
+    print(robot.inventory.group_names)
 ```
 
 For server-only TLS, omit both client identity fields. TLS credentials are

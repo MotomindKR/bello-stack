@@ -1,30 +1,16 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use bello_hardware_api::WatchTelemetryRequest;
 use bello_hardware_api::watch_telemetry_response::Payload;
+pub use bello_hardware_api::{Quaternion, Vector3};
+use bello_hardware_api::{WatchTelemetryRequest, WatchTelemetryResponse};
 use tonic::Code;
 
 use crate::inventory::DeviceStatus;
 use crate::{
     CommandBehavior, CommandPolicyCheck, EnumValue, Error, FaultResponse, GroupCause, GroupState,
-    Robot, TelemetryStream,
+    Robot,
 };
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Quaternion {
-    pub x: f64,
-    pub y: f64,
-    pub z: f64,
-    pub w: f64,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Vector3 {
-    pub x: f64,
-    pub y: f64,
-    pub z: f64,
-}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MotorSnapshot {
@@ -244,9 +230,12 @@ impl RobotState {
         self.last_change = None;
     }
 
-    fn apply(&mut self, event: crate::TelemetryEvent) -> Result<(), Error> {
+    fn apply(&mut self, event: WatchTelemetryResponse) -> Result<(), Error> {
         self.monotonic_ns = event.monotonic_ns;
-        match event.payload {
+        match event
+            .payload
+            .ok_or_else(|| Error::Protocol("telemetry response has no payload".into()))?
+        {
             Payload::PowerBoard(value) => {
                 let board = self
                     .robot
@@ -316,22 +305,9 @@ impl RobotState {
                 let snapshot = ImuSnapshot {
                     monotonic_ns: event.monotonic_ns,
                     imu: imu.imu_name,
-                    orientation: Quaternion {
-                        x: orientation.x,
-                        y: orientation.y,
-                        z: orientation.z,
-                        w: orientation.w,
-                    },
-                    angular_velocity: Vector3 {
-                        x: angular_velocity.x,
-                        y: angular_velocity.y,
-                        z: angular_velocity.z,
-                    },
-                    linear_acceleration: Vector3 {
-                        x: linear_acceleration.x,
-                        y: linear_acceleration.y,
-                        z: linear_acceleration.z,
-                    },
+                    orientation,
+                    angular_velocity,
+                    linear_acceleration,
                     device_timestamp: Duration::from_millis(imu.device_timestamp_ms),
                     sample_age: Duration::from_millis(imu.sample_age_ms),
                 };
@@ -453,14 +429,18 @@ impl StateStreamOptions {
 pub struct RobotStates {
     robot: Robot,
     options: StateStreamOptions,
-    stream: TelemetryStream,
+    stream: tonic::Streaming<WatchTelemetryResponse>,
     state: RobotState,
 }
 
 impl RobotStates {
     pub(crate) async fn open(robot: Robot, options: StateStreamOptions) -> Result<Self, Error> {
         let options = options.validate()?;
-        let stream = robot.inner.hardware.watch(state_filter()).await?;
+        let stream = robot
+            .grpc_client()
+            .watch_telemetry(state_filter())
+            .await?
+            .into_inner();
         let state = RobotState::new(robot.clone());
         Ok(Self {
             robot,
@@ -489,7 +469,7 @@ impl RobotStates {
                 {
                     self.reconnect().await?;
                 }
-                Err(error) => return Err(error),
+                Err(error) => return Err(error.into()),
             }
         }
     }
@@ -497,14 +477,19 @@ impl RobotStates {
     async fn reconnect(&mut self) -> Result<(), Error> {
         loop {
             tokio::time::sleep(self.options.reconnect_delay).await;
-            match self.robot.inner.hardware.watch(state_filter()).await {
+            match self
+                .robot
+                .grpc_client()
+                .watch_telemetry(state_filter())
+                .await
+            {
                 Ok(stream) => {
-                    self.stream = stream;
+                    self.stream = stream.into_inner();
                     self.state.clear_after_reconnect();
                     return Ok(());
                 }
                 Err(error) if is_retryable_stream_error(&error) => {}
-                Err(error) => return Err(error),
+                Err(error) => return Err(error.into()),
             }
         }
     }
@@ -531,11 +516,9 @@ impl std::fmt::Debug for RobotStates {
     }
 }
 
-fn is_retryable_stream_error(error: &Error) -> bool {
-    error.rpc_status().is_some_and(|status| {
-        matches!(
-            status.code(),
-            Code::Unavailable | Code::Cancelled | Code::DeadlineExceeded | Code::Unknown
-        )
-    })
+fn is_retryable_stream_error(status: &tonic::Status) -> bool {
+    matches!(
+        status.code(),
+        Code::Unavailable | Code::Cancelled | Code::DeadlineExceeded | Code::Unknown
+    )
 }

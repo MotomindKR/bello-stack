@@ -126,7 +126,7 @@ def inventory_record(robot: Robot, endpoint: str) -> dict[str, Any]:
                 ),
                 "motors": [motor.name for motor in robot.group(name).motors],
             }
-            for name in robot.group_names
+            for name in robot.inventory.group_names
         ],
         "motors": [
             {
@@ -139,7 +139,7 @@ def inventory_record(robot: Robot, endpoint: str) -> dict[str, Any]:
                 "direction": motor.direction,
                 "status": device_status(motor.status),
             }
-            for motor in robot.motors
+            for motor in robot.inventory.motors
         ],
     }
 

@@ -15,7 +15,6 @@ from .errors import BelloError, RobotCleanupError, rpc_error
 from .frames import RobotStateReader
 from .power import PowerBoardReader
 from .tls import TlsCredentials
-from .types import Motor
 
 
 class _Closeable(Protocol):
@@ -33,7 +32,7 @@ class Robot:
         rpc_timeout: float,
     ) -> None:
         self._channel: Any = channel
-        self._stub: Any = hardware_pb2_grpc.HardwareServiceStub(  # type: ignore[no-untyped-call]
+        self._stub = hardware_pb2_grpc.HardwareServiceStub(  # type: ignore[no-untyped-call]
             channel
         )
         self.inventory = inventory
@@ -67,13 +66,10 @@ class Robot:
             raise
         return cls(channel, inventory, rpc_timeout=timeout)
 
-    @property
-    def group_names(self) -> tuple[str, ...]:
-        return self.inventory.group_names
-
-    @property
-    def motors(self) -> tuple[Motor, ...]:
-        return self.inventory.motors
+    def grpc_client(self) -> hardware_pb2_grpc.HardwareServiceStub:
+        """Return the generated hardware service client on this connection."""
+        self._ensure_open()
+        return self._stub
 
     def group(self, name: str) -> MotorGroup:
         definition = self.inventory._definitions.get(name)
@@ -145,14 +141,6 @@ class Robot:
             with suppress(Warning):
                 warnings.warn(str(cleanup), RuntimeWarning, stacklevel=2)
         return False
-
-    def _new_stub(self) -> Any:
-        with self._lifecycle:
-            if self._state == "closed":
-                raise BelloError("robot connection is closed")
-        return hardware_pb2_grpc.HardwareServiceStub(  # type: ignore[no-untyped-call]
-            self._channel
-        )
 
     def _begin_child(self) -> None:
         with self._lifecycle:

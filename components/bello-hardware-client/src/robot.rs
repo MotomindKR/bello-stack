@@ -1,10 +1,12 @@
 use std::fmt;
 use std::sync::Arc;
 
-use crate::inventory::{Bus, GroupDefinition, Imu, Inventory, Motor, SerialDevice};
-use crate::{
-    ConnectOptions, EnumValue, Error, GroupState, HardwareClient, RobotStates, StateStreamOptions,
-};
+use bello_hardware_api::ListHardwareRequest;
+use bello_hardware_api::hardware_service_client::HardwareServiceClient;
+use tonic::transport::Channel;
+
+use crate::inventory::{GroupDefinition, Inventory, Motor};
+use crate::{ConnectOptions, EnumValue, Error, GroupState, RobotStates, StateStreamOptions};
 
 /// Connected robot with a cached hardware inventory.
 #[derive(Clone)]
@@ -13,24 +15,21 @@ pub struct Robot {
 }
 
 pub(crate) struct RobotInner {
-    pub(crate) hardware: HardwareClient,
+    hardware: HardwareServiceClient<Channel>,
     pub(crate) inventory: Inventory,
 }
 
 impl Robot {
     /// Connects to the daemon and caches its hardware inventory before returning.
-    pub async fn connect(endpoint: impl Into<String>) -> Result<Self, Error> {
-        let hardware = HardwareClient::connect(endpoint).await?;
-        Self::from_hardware_client(hardware).await
-    }
-
-    pub async fn connect_with(options: ConnectOptions) -> Result<Self, Error> {
-        let hardware = HardwareClient::connect_with(options).await?;
-        Self::from_hardware_client(hardware).await
-    }
-
-    pub async fn from_hardware_client(hardware: HardwareClient) -> Result<Self, Error> {
-        let inventory = Inventory::from_proto(hardware.inventory().await?)?;
+    pub async fn connect(options: impl Into<ConnectOptions>) -> Result<Self, Error> {
+        let channel = options.into().into_endpoint()?.connect().await?;
+        let mut hardware = HardwareServiceClient::new(channel);
+        let inventory = Inventory::from_proto(
+            hardware
+                .list_hardware(ListHardwareRequest {})
+                .await?
+                .into_inner(),
+        )?;
         Ok(Self {
             inner: Arc::new(RobotInner {
                 hardware,
@@ -63,17 +62,17 @@ impl Robot {
     }
 
     /// Returns configured CAN buses in stable name order.
-    pub fn buses(&self) -> impl ExactSizeIterator<Item = &Bus> {
+    pub fn buses(&self) -> impl ExactSizeIterator<Item = &crate::proto::BusInfo> {
         self.inner.inventory.buses.values()
     }
 
     /// Returns configured serial transports in stable name order.
-    pub fn serial_devices(&self) -> impl ExactSizeIterator<Item = &SerialDevice> {
+    pub fn serial_devices(&self) -> impl ExactSizeIterator<Item = &crate::proto::SerialDeviceInfo> {
         self.inner.inventory.serial_devices.values()
     }
 
     /// Returns configured IMUs in stable name order.
-    pub fn imus(&self) -> impl ExactSizeIterator<Item = &Imu> {
+    pub fn imus(&self) -> impl ExactSizeIterator<Item = &crate::proto::ImuInfo> {
         self.inner.inventory.imus.values()
     }
 
@@ -82,15 +81,11 @@ impl Robot {
     }
 
     /// Opens an aggregated stream of the latest robot state.
-    pub async fn states(&self) -> Result<RobotStates, Error> {
-        self.states_with(StateStreamOptions::default()).await
-    }
-
-    pub async fn states_with(&self, options: StateStreamOptions) -> Result<RobotStates, Error> {
+    pub async fn states(&self, options: StateStreamOptions) -> Result<RobotStates, Error> {
         RobotStates::open(self.clone(), options).await
     }
 
-    pub fn raw_client(&self) -> HardwareClient {
+    pub fn grpc_client(&self) -> HardwareServiceClient<Channel> {
         self.inner.hardware.clone()
     }
 }

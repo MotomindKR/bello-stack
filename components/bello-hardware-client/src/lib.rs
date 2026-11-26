@@ -1,6 +1,5 @@
-//! Use [`Robot`] for group control and [`raw`] for protobuf and lease access.
+//! Use [`Robot`] for managed group control and [`Robot::grpc_client`] for direct RPCs.
 
-mod client;
 mod command;
 mod control;
 mod duration;
@@ -13,20 +12,20 @@ mod lease;
 mod power;
 mod robot;
 mod state;
-mod telemetry;
 
+pub use bello_hardware_api as proto;
 pub use bello_hardware_api::{
     CommandBehavior, CommandPolicyCheck, CommandResult, DeviceState, FaultResponse, GroupCause,
     GroupState,
 };
-pub(crate) use client::HardwareClient;
-pub(crate) use command::{CommandStream, CommandStreamOptions, CommandValidity};
+pub use command::CommandReceipt;
 pub use control::{ControlOptions, ControlSession, ControlState};
 pub use endpoint::{ConnectOptions, TlsOptions};
 pub use enum_value::EnumValue;
 pub use error::Error;
 pub use frame::{CommandFrame, CommandFrameBuilder, CoordinateTarget};
-pub use inventory::{Bus, DeviceStatus, Imu, Motor, MotorLimits, SerialDevice};
+pub use inventory::{DeviceStatus, Motor, MotorLimits};
+pub use lease::LeaseStatus;
 pub(crate) use lease::{GroupLease, LeaseDuration};
 pub use power::{
     PowerBoard, PowerBoardSnapshot, PowerFlags, PowerReading, PowerSample, VoltageCurrent,
@@ -36,18 +35,3 @@ pub use state::{
     CommandPolicySnapshot, GroupSnapshot, HealthSnapshot, ImuSnapshot, MotorSnapshot, Quaternion,
     RobotState, RobotStateChange, RobotStates, StateStreamOptions, Vector3,
 };
-pub(crate) use telemetry::{TelemetryEvent, TelemetryStream};
-
-/// Low-level protobuf, lease, command-stream, and telemetry primitives.
-pub mod raw {
-    pub use bello_hardware_api as proto;
-
-    pub use crate::client::HardwareClient;
-    pub use crate::command::{
-        CommandAcknowledgement, CommandRejected, CommandResponses, CommandSender, CommandStream,
-        CommandStreamOptions, CommandValidity,
-    };
-    pub use crate::enum_value::EnumValue;
-    pub use crate::lease::{GroupLease, LeaseDeadline, LeaseDuration, LeaseRenewer, LeaseStatus};
-    pub use crate::telemetry::{TelemetryEvent, TelemetryStream};
-}

@@ -1,19 +1,22 @@
+use crate::command::{CommandReceipt, CommandStream};
+use crate::duration::positive_milliseconds;
+use crate::lease::active_health;
+use bello_hardware_api::StreamCommandsRequest;
 use std::fmt;
 use std::time::Duration;
+use tokio::sync::OwnedSemaphorePermit;
 
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
-use crate::{
-    CommandFrame, CommandResult, CommandStream, CommandStreamOptions, CommandValidity, EnumValue,
-    Error, GroupLease, GroupState, LeaseDuration, MotorGroup,
-};
+use crate::{CommandFrame, EnumValue, Error, GroupLease, GroupState, LeaseDuration, MotorGroup};
 
 #[derive(Clone, Debug)]
 pub struct ControlOptions {
     owner: String,
     lease_duration: LeaseDuration,
-    command_validity: CommandValidity,
+    command_validity: Option<Duration>,
+    max_pending: usize,
     acknowledgement_timeout: Duration,
     task_shutdown_timeout: Duration,
 }
@@ -23,7 +26,8 @@ impl ControlOptions {
         Self {
             owner: owner.into(),
             lease_duration: LeaseDuration::ServerDefault,
-            command_validity: CommandValidity::GroupDefault,
+            command_validity: None,
+            max_pending: 1,
             acknowledgement_timeout: Duration::from_secs(1),
             task_shutdown_timeout: Duration::from_secs(1),
         }
@@ -35,7 +39,13 @@ impl ControlOptions {
     }
 
     pub fn command_validity(mut self, duration: Duration) -> Self {
-        self.command_validity = CommandValidity::For(duration);
+        self.command_validity = Some(duration);
+        self
+    }
+
+    /// Bound on submitted commands whose acknowledgements have not arrived.
+    pub fn max_pending(mut self, count: usize) -> Self {
+        self.max_pending = count;
         self
     }
 
@@ -50,6 +60,11 @@ impl ControlOptions {
     }
 
     fn validate(&self) -> Result<(), Error> {
+        if !(1..=tokio::sync::Semaphore::MAX_PERMITS).contains(&self.max_pending) {
+            return Err(Error::InvalidArgument(
+                "max_pending exceeds the command queue bounds".into(),
+            ));
+        }
         if self.acknowledgement_timeout.is_zero() {
             return Err(Error::InvalidArgument(
                 "acknowledgement timeout must be positive".into(),
@@ -86,7 +101,7 @@ impl ControlState {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum RenewalStatus {
+pub(crate) enum RenewalStatus {
     Running,
     Failed(String),
 }
@@ -98,24 +113,38 @@ pub struct ControlSession {
     lease: GroupLease,
     command_stream: Option<CommandStream>,
     state: ControlState,
+    next_sequence: Option<u64>,
+    valid_for_ms: u64,
     renewal_cancel: watch::Sender<bool>,
     renewal_status: watch::Receiver<RenewalStatus>,
     renewal_task: Option<JoinHandle<()>>,
 }
 
-impl MotorGroup {
-    pub async fn control(&self, owner: impl Into<String>) -> Result<ControlSession, Error> {
-        self.control_with(ControlOptions::new(owner)).await
+impl<T: Into<String>> From<T> for ControlOptions {
+    fn from(owner: T) -> Self {
+        Self::new(owner)
     }
+}
 
-    pub async fn control_with(&self, options: ControlOptions) -> Result<ControlSession, Error> {
+impl MotorGroup {
+    pub async fn control(
+        &self,
+        options: impl Into<ControlOptions>,
+    ) -> Result<ControlSession, Error> {
+        let options = options.into();
         options.validate()?;
-        let lease = self
-            .robot
-            .inner
-            .hardware
-            .acquire_lease(self.name(), &options.owner, options.lease_duration)
-            .await?;
+        let valid_for_ms = options
+            .command_validity
+            .map(|v| positive_milliseconds(v, "command validity"))
+            .transpose()?
+            .unwrap_or_default();
+        let lease = GroupLease::acquire(
+            self.robot.grpc_client(),
+            self.name(),
+            &options.owner,
+            options.lease_duration,
+        )
+        .await?;
         let renewer = lease.renewer();
         let renewal_duration = options.lease_duration;
         let (renewal_cancel, cancel_receiver) = watch::channel(false);
@@ -135,6 +164,8 @@ impl MotorGroup {
             lease,
             command_stream: None,
             state: ControlState::Ready,
+            next_sequence: Some(1),
+            valid_for_ms,
             renewal_cancel,
             renewal_status,
             renewal_task: Some(renewal_task),
@@ -148,7 +179,13 @@ impl ControlSession {
     }
 
     pub fn state(&self) -> ControlState {
-        self.state
+        if self.state == ControlState::Running {
+            self.command_stream
+                .as_ref()
+                .map_or(ControlState::Uncertain, CommandStream::state)
+        } else {
+            self.state
+        }
     }
 
     /// Enables damping, then atomically starts control with the initial frame.
@@ -161,21 +198,19 @@ impl ControlSession {
         self.expect_state("enable", GroupState::Damped, actual)?;
         self.state = ControlState::Damped;
 
-        let stream = self
-            .lease
-            .open_command_stream(CommandStreamOptions::default())
-            .await;
+        let stream = CommandStream::open(
+            &self.lease,
+            self.options.max_pending,
+            self.renewal_status.clone(),
+        )
+        .await;
         self.command_stream = match stream {
             Ok(stream) => Some(stream),
             Err(error) => return Err(self.rollback("start", error).await),
         };
 
         self.state = ControlState::Uncertain;
-        let actual = match self
-            .lease
-            .start(self.options.command_validity, initial)
-            .await
-        {
+        let actual = match self.lease.start(self.valid_for_ms, initial).await {
             Ok(state) => state,
             Err(error) => return Err(self.rollback("start", error).await),
         };
@@ -192,16 +227,15 @@ impl ControlSession {
         let initial = initial.into_commands(self.group.name())?;
         self.check_renewal()?;
         self.command_stream = Some(
-            self.lease
-                .open_command_stream(CommandStreamOptions::default())
-                .await?,
+            CommandStream::open(
+                &self.lease,
+                self.options.max_pending,
+                self.renewal_status.clone(),
+            )
+            .await?,
         );
         self.state = ControlState::Uncertain;
-        let actual = match self
-            .lease
-            .start(self.options.command_validity, initial)
-            .await
-        {
+        let actual = match self.lease.start(self.valid_for_ms, initial).await {
             Ok(state) => state,
             Err(error) => {
                 return Err(self.rollback("resume", error).await);
@@ -214,37 +248,54 @@ impl ControlSession {
         Ok(())
     }
 
-    /// Submits one complete frame and waits until the daemon accepts or rejects it.
-    /// Cancelling an in-flight send closes the stream and leaves the session `Uncertain`.
+    /// Waits for queue capacity, submits the frame, and waits for acknowledgement.
     pub async fn send(&mut self, frame: CommandFrame) -> Result<(), Error> {
+        let slot = self.running_stream()?.slot().await?;
+        self.submit(frame, slot)?.await
+    }
+
+    /// Submits immediately or returns `QueueFull`. The receipt resolves on acknowledgement.
+    pub fn try_submit(&mut self, frame: CommandFrame) -> Result<CommandReceipt, Error> {
+        let slot = self.running_stream()?.try_slot()?;
+        self.submit(frame, slot)
+    }
+
+    fn running_stream(&self) -> Result<&CommandStream, Error> {
         self.require_state(ControlState::Running, "send a command")?;
+        self.check_renewal()?;
+        self.command_stream
+            .as_ref()
+            .ok_or(Error::CommandStreamClosed)
+    }
+
+    fn submit(
+        &mut self,
+        frame: CommandFrame,
+        slot: OwnedSemaphorePermit,
+    ) -> Result<CommandReceipt, Error> {
+        active_health(&self.lease.health)?;
+        let sequence = self.next_sequence.ok_or(Error::SequenceExhausted)?;
         let commands = frame.into_commands(self.group.name())?;
-        match self.send_and_confirm(commands).await {
-            Ok(stream) => {
-                self.command_stream = Some(stream);
-                self.state = ControlState::Running;
-                Ok(())
-            }
-            Err(error) => {
-                self.state = if matches!(
-                    &error,
-                    Error::RejectedCommand {
-                        state: EnumValue::Known(GroupState::Damped),
-                        ..
-                    }
-                ) {
-                    ControlState::Damped
-                } else {
-                    ControlState::Uncertain
-                };
-                Err(error)
-            }
-        }
+        let request = StreamCommandsRequest {
+            group: self.group.name().into(),
+            lease_token: self.lease.token.clone(),
+            sequence,
+            valid_for_ms: self.valid_for_ms,
+            commands,
+        };
+        let receipt =
+            self.running_stream()?
+                .submit(slot, request, self.options.acknowledgement_timeout)?;
+        self.next_sequence = sequence.checked_add(1);
+        Ok(receipt)
     }
 
     /// Stops periodic control and leaves the group damped under the current lease.
     pub async fn stop(&mut self) -> Result<(), Error> {
-        if !matches!(self.state, ControlState::Running | ControlState::Uncertain) {
+        if !matches!(
+            self.state(),
+            ControlState::Running | ControlState::Uncertain
+        ) {
             return Err(self.invalid_state("stop"));
         }
         self.command_stream.take();
@@ -260,7 +311,7 @@ impl ControlSession {
     /// The session is `Uncertain` until the daemon confirms `Idle`.
     pub async fn disable(&mut self) -> Result<(), Error> {
         if !matches!(
-            self.state,
+            self.state(),
             ControlState::Ready | ControlState::Running | ControlState::Damped
         ) {
             return Err(self.invalid_state("disable"));
@@ -275,7 +326,7 @@ impl ControlSession {
 
     /// Recovers a faulted group and returns the session to `Ready`.
     pub async fn recover(&mut self) -> Result<(), Error> {
-        if self.state == ControlState::Closed {
+        if self.state() == ControlState::Closed {
             return Err(self.invalid_state("recover"));
         }
         self.command_stream.take();
@@ -311,6 +362,7 @@ impl ControlSession {
 
     /// Stops motion if needed, disables the group, stops renewal, and releases ownership.
     pub async fn shutdown(mut self) -> Result<(), Error> {
+        self.state = self.state();
         self.command_stream.take();
         let mut errors = Vec::new();
         let mut faulted = false;
@@ -386,67 +438,15 @@ impl ControlSession {
         // must preserve it; recovery is a separate, explicit operator action.
         self.group
             .robot
-            .inner
-            .hardware
-            .inventory()
+            .grpc_client()
+            .list_hardware(bello_hardware_api::ListHardwareRequest {})
             .await
             .is_ok_and(|inventory| {
-                inventory.groups.iter().any(|group| {
+                inventory.into_inner().groups.iter().any(|group| {
                     group.name == self.group.name()
                         && group.state == bello_hardware_api::GroupState::Fault as i32
                 })
             })
-    }
-
-    async fn send_and_confirm(
-        &mut self,
-        commands: Vec<bello_hardware_api::MotorCommand>,
-    ) -> Result<CommandStream, Error> {
-        let stream = self.command_stream.take();
-        self.check_renewal()?;
-        let mut stream = stream.ok_or_else(|| self.invalid_state("send a command"))?;
-        self.state = ControlState::Uncertain;
-        let sequence = stream.send(self.options.command_validity, commands).await?;
-        let group = self.group.name().to_owned();
-        let timeout = self.options.acknowledgement_timeout;
-        let renewal = &mut self.renewal_status;
-        let acknowledgement = tokio::select! {
-            response = tokio::time::timeout(timeout, stream.message()) => {
-                response
-                    .map_err(|_| Error::AcknowledgementTimeout { group: group.clone() })??
-                    .ok_or_else(|| Error::AcknowledgementStreamClosed(group.clone()))?
-            }
-            changed = renewal.changed() => {
-                let detail = if changed.is_err() {
-                    "renewal task stopped unexpectedly".into()
-                } else {
-                    match renewal.borrow().clone() {
-                        RenewalStatus::Running => "renewal state changed unexpectedly".into(),
-                        RenewalStatus::Failed(detail) => detail,
-                    }
-                };
-                return Err(Error::RenewalFailed { group, detail });
-            }
-        };
-        if acknowledgement.sequence != sequence {
-            return Err(Error::AcknowledgementMismatch {
-                group,
-                expected: sequence,
-                actual: acknowledgement.sequence,
-            });
-        }
-        let result = acknowledgement.result;
-        if result != EnumValue::Known(CommandResult::Accepted) {
-            return Err(Error::RejectedCommand {
-                group,
-                sequence,
-                result,
-                detail: acknowledgement.detail,
-                state: acknowledgement.state,
-            });
-        }
-        self.check_renewal()?;
-        Ok(stream)
     }
 
     async fn rollback(&mut self, operation: &str, primary: Error) -> Error {
@@ -512,7 +512,7 @@ impl ControlSession {
     }
 
     fn require_state(&self, expected: ControlState, operation: &'static str) -> Result<(), Error> {
-        if self.state == expected {
+        if self.state() == expected {
             Ok(())
         } else {
             Err(self.invalid_state(operation))
@@ -523,7 +523,7 @@ impl ControlSession {
         Error::InvalidSessionState {
             group: self.group.name().into(),
             operation,
-            state: self.state.description(),
+            state: self.state().description(),
         }
     }
 }
@@ -533,7 +533,7 @@ impl fmt::Debug for ControlSession {
         formatter
             .debug_struct("ControlSession")
             .field("group", &self.group.name())
-            .field("state", &self.state)
+            .field("state", &self.state())
             .field("lease", &self.lease)
             .finish_non_exhaustive()
     }
@@ -555,7 +555,7 @@ async fn renewal_loop(
     status: watch::Sender<RenewalStatus>,
 ) {
     loop {
-        let wait = (renewer.deadline().remaining() / 2).max(Duration::from_millis(1));
+        let wait = (renewer.remaining() / 2).max(Duration::from_millis(1));
         tokio::select! {
             changed = cancel.changed() => {
                 if changed.is_err() || *cancel.borrow() {

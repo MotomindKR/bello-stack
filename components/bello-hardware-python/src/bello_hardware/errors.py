@@ -59,6 +59,10 @@ class LeaseLostError(ControlError):
     """Exclusive control authority expired or was rejected."""
 
 
+class CommandQueueFullError(ControlError):
+    """All pending-command slots are occupied."""
+
+
 class AcknowledgementError(ControlError):
     """A command acknowledgement was missing, late, or inconsistent."""
 

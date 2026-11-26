@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, btree_map::Entry};
 use std::sync::Arc;
 
 use bello_hardware_api as proto;
-pub use proto::MotorLimits;
+pub use proto::{BusInfo, ImuInfo, MotorLimits, SerialDeviceInfo};
 
 use crate::{DeviceState, EnumValue, Error, GroupState};
 
@@ -93,92 +93,6 @@ impl Motor {
     }
 }
 
-/// Configured CAN bus metadata and its status at inventory time.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Bus {
-    pub(crate) name: String,
-    pub(crate) transport: String,
-    pub(crate) host_id: u32,
-    pub(crate) initial_status: Option<DeviceStatus>,
-}
-
-impl Bus {
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn transport(&self) -> &str {
-        &self.transport
-    }
-
-    pub fn host_id(&self) -> u32 {
-        self.host_id
-    }
-
-    pub fn initial_status(&self) -> Option<&DeviceStatus> {
-        self.initial_status.as_ref()
-    }
-}
-
-/// Configured serial transport metadata and its status at inventory time.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SerialDevice {
-    pub(crate) name: String,
-    pub(crate) port: String,
-    pub(crate) baud_rate: u32,
-    pub(crate) initial_status: Option<DeviceStatus>,
-}
-
-impl SerialDevice {
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn port(&self) -> &str {
-        &self.port
-    }
-
-    pub fn baud_rate(&self) -> u32 {
-        self.baud_rate
-    }
-
-    pub fn initial_status(&self) -> Option<&DeviceStatus> {
-        self.initial_status.as_ref()
-    }
-}
-
-/// Configured IMU metadata and its status at inventory time.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Imu {
-    pub(crate) name: String,
-    pub(crate) serial_device: String,
-    pub(crate) source_frame: String,
-    pub(crate) output_frame: String,
-    pub(crate) initial_status: Option<DeviceStatus>,
-}
-
-impl Imu {
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn serial_device(&self) -> &str {
-        &self.serial_device
-    }
-
-    pub fn source_frame(&self) -> &str {
-        &self.source_frame
-    }
-
-    pub fn output_frame(&self) -> &str {
-        &self.output_frame
-    }
-
-    pub fn initial_status(&self) -> Option<&DeviceStatus> {
-        self.initial_status.as_ref()
-    }
-}
-
 #[derive(Clone, Debug)]
 pub(crate) struct GroupDefinition {
     pub(crate) name: String,
@@ -190,12 +104,12 @@ pub(crate) struct GroupDefinition {
 
 #[derive(Debug)]
 pub(crate) struct Inventory {
-    pub(crate) buses: BTreeMap<String, Bus>,
+    pub(crate) buses: BTreeMap<String, BusInfo>,
     pub(crate) groups: BTreeMap<String, Arc<GroupDefinition>>,
     pub(crate) motors: BTreeMap<String, Motor>,
     pub(crate) coordinates: BTreeMap<String, String>,
-    pub(crate) serial_devices: BTreeMap<String, SerialDevice>,
-    pub(crate) imus: BTreeMap<String, Imu>,
+    pub(crate) serial_devices: BTreeMap<String, SerialDeviceInfo>,
+    pub(crate) imus: BTreeMap<String, ImuInfo>,
     pub(crate) power_boards: BTreeMap<String, crate::PowerBoard>,
 }
 
@@ -224,17 +138,7 @@ impl Inventory {
     pub(crate) fn from_proto(response: proto::ListHardwareResponse) -> Result<Self, Error> {
         let mut buses = BTreeMap::new();
         for bus in response.buses {
-            insert_named(
-                &mut buses,
-                "bus",
-                bus.name.clone(),
-                Bus {
-                    name: bus.name,
-                    transport: bus.transport,
-                    host_id: bus.host_id,
-                    initial_status: bus.status.map(Into::into),
-                },
-            )?;
+            insert_named(&mut buses, "bus", bus.name.clone(), bus)?;
         }
 
         let mut serial_devices = BTreeMap::new();
@@ -243,12 +147,7 @@ impl Inventory {
                 &mut serial_devices,
                 "serial device",
                 serial.name.clone(),
-                SerialDevice {
-                    name: serial.name,
-                    port: serial.port,
-                    baud_rate: serial.baud_rate,
-                    initial_status: serial.status.map(Into::into),
-                },
+                serial,
             )?;
         }
 
@@ -322,18 +221,7 @@ impl Inventory {
 
         let mut imus = BTreeMap::new();
         for imu in response.imus {
-            insert_named(
-                &mut imus,
-                "IMU",
-                imu.name.clone(),
-                Imu {
-                    name: imu.name,
-                    serial_device: imu.serial_device,
-                    source_frame: imu.source_frame,
-                    output_frame: imu.output_frame,
-                    initial_status: imu.status.map(Into::into),
-                },
-            )?;
+            insert_named(&mut imus, "IMU", imu.name.clone(), imu)?;
         }
         let mut power_boards = BTreeMap::new();
         for board in response.power_boards {
