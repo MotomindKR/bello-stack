@@ -7,6 +7,7 @@ use anyhow::{Context, Result, ensure};
 use super::{Link, Version};
 
 const RELEASES: &[(&str, &str, &[u8])] = include!(concat!(env!("OUT_DIR"), "/firmware.rs"));
+const START_ACK_TIMEOUT: Duration = Duration::from_secs(3);
 const ACK_TIMEOUT: Duration = Duration::from_secs(2);
 const ACK_ATTEMPTS: usize = 3;
 const MAX_RESUMES: usize = 30;
@@ -120,9 +121,14 @@ struct Ack {
 }
 
 fn exchange(link: &Link<'_>, kind: u8, field: u16, data: [u8; 8]) -> Result<Option<Ack>> {
+    let timeout = if kind == START {
+        START_ACK_TIMEOUT
+    } else {
+        ACK_TIMEOUT
+    };
     for attempt in 0..ACK_ATTEMPTS {
         link.send(kind, field, data)?;
-        if let Some(ack) = link.wait_for(ACK_TIMEOUT, |frame| {
+        if let Some(ack) = link.wait_for(timeout, |frame| {
             link.is_reply(frame, kind).then_some(Ack {
                 status: (frame.id >> 16) as u8,
                 data: frame.data,
