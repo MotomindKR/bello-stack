@@ -63,6 +63,14 @@ pub(crate) fn execute(
 }
 
 trait Wire {
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+
+    fn sleep(&self, duration: Duration) {
+        thread::sleep(duration);
+    }
+
     fn send(&self, frame: Frame) -> Result<()>;
     fn recv(&self, timeout: Duration) -> Result<Option<Frame>>;
 }
@@ -161,7 +169,7 @@ impl<'a> Link<'a> {
                 .context("Firmware transfer completed but readback did not verify")?;
         } else {
             self.send(SET_ZERO, self.host.into(), [1, 0, 0, 0, 0, 0, 0, 0])?;
-            thread::sleep(Duration::from_millis(30));
+            self.wire.sleep(Duration::from_millis(30));
             self.verify(uuid, installed, true)
                 .context("Re-zero command sent but readback did not verify")?;
         }
@@ -232,7 +240,7 @@ impl<'a> Link<'a> {
 
     fn wait_for_restart(&self, simulation: bool) -> Result<()> {
         if !simulation {
-            thread::sleep(Duration::from_secs(2));
+            self.wire.sleep(Duration::from_secs(2));
         }
         for _ in 0..10 {
             if self.version()?.is_some() {
@@ -240,7 +248,7 @@ impl<'a> Link<'a> {
                     .send(active_report_frame(self.host, self.id, false))?;
                 return Ok(());
             }
-            thread::sleep(Duration::from_millis(300));
+            self.wire.sleep(Duration::from_millis(300));
         }
         anyhow::bail!("Motor did not report its firmware after OTA")
     }
@@ -270,10 +278,13 @@ impl<'a> Link<'a> {
     }
 
     fn stationary(&self) -> Result<Feedback> {
-        let deadline = Instant::now() + STOP_TIMEOUT;
+        let deadline = self.wire.now() + STOP_TIMEOUT;
         let params = self.motor.params;
         let mut check = StationaryCheck::new(params.position_max - params.position_min);
-        while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+        while let Some(remaining) = deadline
+            .checked_duration_since(self.wire.now())
+            .filter(|remaining| !remaining.is_zero())
+        {
             self.wire.send(stop_frame(self.host, self.id, false))?;
             let feedback = self.wait_for(remaining.min(Duration::from_millis(100)), |frame| {
                 self.is_reply(frame, FEEDBACK)
@@ -286,14 +297,14 @@ impl<'a> Link<'a> {
                     "Motor reported faults 0x{:02x} during maintenance",
                     feedback.fault_bits
                 );
-                if check.observe(feedback, Instant::now()) {
+                if check.observe(feedback, self.wire.now()) {
                     return Ok(feedback);
                 }
             } else {
                 check.clear();
             }
-            thread::sleep(
-                Duration::from_millis(10).min(deadline.saturating_duration_since(Instant::now())),
+            self.wire.sleep(
+                Duration::from_millis(10).min(deadline.saturating_duration_since(self.wire.now())),
             );
         }
         anyhow::bail!("Could not confirm stopped mode and a stationary shaft")
@@ -341,8 +352,11 @@ impl<'a> Link<'a> {
         timeout: Duration,
         accept: impl Fn(Frame) -> Option<T>,
     ) -> Result<Option<T>> {
-        let deadline = Instant::now() + timeout;
-        while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+        let deadline = self.wire.now() + timeout;
+        while let Some(remaining) = deadline
+            .checked_duration_since(self.wire.now())
+            .filter(|remaining| !remaining.is_zero())
+        {
             let Some(frame) = self.wire.recv(remaining)? else {
                 break;
             };

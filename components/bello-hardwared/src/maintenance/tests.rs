@@ -18,6 +18,7 @@ fn motor() -> MotorSpec {
 }
 
 struct MotorOnWire {
+    now: Instant,
     received: VecDeque<Frame>,
     sent: Vec<Frame>,
     uuid: [u8; 8],
@@ -43,6 +44,7 @@ struct OtaBehavior {
 impl Default for MotorOnWire {
     fn default() -> Self {
         Self {
+            now: Instant::now(),
             received: VecDeque::new(),
             sent: Vec::new(),
             uuid: UUID,
@@ -71,6 +73,14 @@ impl MotorOnWire {
 }
 
 impl Wire for RefCell<MotorOnWire> {
+    fn now(&self) -> Instant {
+        self.borrow().now
+    }
+
+    fn sleep(&self, duration: Duration) {
+        self.borrow_mut().now += duration;
+    }
+
     fn send(&self, frame: Frame) -> Result<()> {
         let mut motor = self.borrow_mut();
         motor.sent.push(frame);
@@ -181,13 +191,19 @@ impl Wire for RefCell<MotorOnWire> {
 
     fn recv(&self, timeout: Duration) -> Result<Option<Frame>> {
         let mut motor = self.borrow_mut();
-        if motor.noisy && timeout > Duration::from_millis(400) {
+        if let Some(frame) = motor.received.pop_front() {
+            return Ok(Some(frame));
+        }
+        let noise_interval = Duration::from_millis(400);
+        if motor.noisy && timeout >= noise_interval {
+            motor.now += noise_interval;
             return Ok(Some(Frame {
                 id: 0x1800_08fd,
                 data: [0; 8],
             }));
         }
-        Ok(motor.received.pop_front())
+        motor.now += timeout;
+        Ok(None)
     }
 }
 
@@ -339,4 +355,16 @@ fn re_zero_requires_stationary_position_readback() {
     wire.borrow_mut().accept_zero = true;
     link.execute(&prepared, || Ok(()), |_| {}).unwrap();
     assert_eq!(write_kinds(&wire), [6, 6]);
+}
+
+#[test]
+fn feedback_after_a_long_gap_must_establish_a_new_stationary_window() {
+    let mut check = StationaryCheck::new(2.0 * std::f64::consts::TAU);
+    let start = Instant::now();
+    let mut observe = |ms| check.observe(Feedback::default(), start + Duration::from_millis(ms));
+
+    for ms in [0, 25, 50, 75, 200, 225, 250, 275] {
+        assert!(!observe(ms), "premature stationary verdict at {ms} ms");
+    }
+    assert!(observe(300));
 }

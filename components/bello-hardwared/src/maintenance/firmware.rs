@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::thread;
 use std::time::Duration;
 
 use anyhow::{Context, Result, ensure};
@@ -93,7 +92,7 @@ impl Image {
                 progress(percent);
                 reported = percent;
             }
-            thread::sleep(Duration::from_millis(1));
+            link.wire.sleep(Duration::from_millis(1));
         }
 
         let mut end = [0; 8];
@@ -139,7 +138,7 @@ fn exchange(link: &Link<'_>, kind: u8, field: u16, data: [u8; 8]) -> Result<Opti
             return Ok(Some(ack));
         }
         if attempt + 1 < ACK_ATTEMPTS {
-            thread::sleep(Duration::from_millis(50));
+            link.wire.sleep(Duration::from_millis(50));
         }
     }
     Ok(None)
