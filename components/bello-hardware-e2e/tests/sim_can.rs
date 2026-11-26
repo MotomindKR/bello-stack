@@ -9,7 +9,6 @@ mod sim;
 #[path = "sim_can/lower_body.rs"]
 mod lower_body;
 
-#[cfg(target_os = "linux")]
 #[path = "sim_can/power_warning.rs"]
 mod power_warning;
 

@@ -279,7 +279,6 @@ dependencies = [
  "robstride-protocol",
  "serde",
  "serde_yaml_ng",
- "serialport",
  "socketcan",
  "tempfile",
  "tokio",

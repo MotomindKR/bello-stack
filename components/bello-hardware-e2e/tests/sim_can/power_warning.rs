@@ -1,13 +1,12 @@
 use super::*;
 use bello_hardware_api::{AcquireLeaseRequest, GroupCause};
-use serialport::SerialPort;
 use std::io::Write;
 
 #[tokio::test]
 async fn cog_overcurrent_damps_running_motors_and_revokes_control() -> Result<()> {
-    let (mut board, uart) = serialport::TTYPort::pair()?;
-    let port = uart.name().context("PTY has no name")?;
-    drop(uart);
+    let pty = nix::pty::openpty(None, None)?;
+    let port = nix::unistd::ttyname(&pty.slave)?;
+    let mut board = fs::File::from(pty.master);
     let [ports] = sim::available_ports()?;
     let (_directory, endpoint, mut daemon, mut emulator) =
         spawn_pair_with_config(&ports, &ports, |dir| {
@@ -26,7 +25,8 @@ power_boards:
                 fs::OpenOptions::new()
                     .append(true)
                     .open(dir.join("hardwared.yaml"))?,
-                "\nserial_ports: {{uart: {port}}}\nenabled_power_boards: [agx]"
+                "\nsimulation: true\nserial_ports: {{uart: {}}}\nenabled_power_boards: [agx]",
+                port.display()
             )?;
             Ok(())
         })?;
