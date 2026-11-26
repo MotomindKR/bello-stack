@@ -104,8 +104,8 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
     socket.set_read_timeout(Duration::from_millis(10))?;
     let recorded = Arc::new(std::sync::Mutex::new(Vec::new()));
     let recording = recorded.clone();
-    let stop = Arc::new(AtomicBool::new(false));
-    let stopping = stop.clone();
+    let stop_capture = Arc::new(AtomicBool::new(false));
+    let stopping = stop_capture.clone();
     let worker = thread::spawn(move || {
         while !stopping.load(Ordering::Acquire) {
             if let Ok(frame) = socket.read_frame() {
@@ -131,7 +131,7 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
             }
         }
     }
-    let _capture = CaptureGuard(stop, Some(worker));
+    let _capture = CaptureGuard(stop_capture, Some(worker));
     let mut emulator = ManagedProcess::spawn(
         "emulator",
         env!("CARGO_BIN_EXE_robstride-emulator-e2e-fixture"),
