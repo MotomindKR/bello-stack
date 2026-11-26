@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::time::{Duration, Instant};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use parking_lot::{Mutex, RwLock, RwLockWriteGuard};
 use robstride_protocol::{
     ControlCommand, active_report_frame, control_frame, enable_frame, param_write_u8_frame,
@@ -12,12 +12,14 @@ use robstride_protocol::{
 
 use super::health::{MotorFaultCause, ThermalHealth, classify_feedback};
 use super::velocity::MotorVelocityFilter;
-use super::{Feedback, MotorSpec};
+use super::{Feedback, FirmwareVersion, MotorSpec};
 use crate::config::MotorVelocityFilterConfig;
 use crate::domain::{
     BusName, DeviceStatus, GroupName, ImpedanceCommand, MotorName, MotorTelemetry, TelemetryPayload,
 };
-use crate::hardware::can::{BusError, BusHandle, CanFrame, PendingBatch, PeriodicControl};
+use crate::hardware::can::{
+    BusError, BusHandle, CanFrame, FeedbackWindow, PendingBatch, PeriodicControl,
+};
 use crate::hardware::lifecycle::DeviceLifecycle;
 use crate::telemetry::Telemetry;
 
@@ -74,7 +76,7 @@ impl ControlBatcher {
         // A failed bus must not prevent the other buses from receiving this tick.
         let mut first_error = None;
         for (bus, frames) in batches.into_values() {
-            if let Err(error) = bus.enqueue_control_batch(frames, expires_at) {
+            if let Err(error) = bus.enqueue_control_batch(frames, started, expires_at) {
                 if first_error.is_none() {
                     first_error = Some(error);
                 } else {
@@ -105,11 +107,32 @@ struct OperatingFeedback {
 }
 
 #[derive(Default)]
+struct FirmwareDiscovery {
+    bus_transition: u64,
+    requested: Option<Instant>,
+    version: Option<FirmwareVersion>,
+}
+
 struct FeedbackState {
+    window: FeedbackWindow,
+    filter: MotorVelocityFilter,
     latest: Option<TimedFeedback>,
+    firmware: FirmwareDiscovery,
     operating: Option<OperatingFeedback>,
     current_fault: Option<MotorFault>,
     latched_fault: Option<MotorFault>,
+}
+
+impl FeedbackState {
+    fn refresh(&mut self, window: FeedbackWindow) {
+        if self.window != window {
+            self.window = window;
+            self.latest = None;
+            self.firmware = FirmwareDiscovery::default();
+            self.operating = None;
+            self.filter.reset();
+        }
+    }
 }
 
 pub(crate) struct MotorRecovery<'a> {
@@ -128,6 +151,12 @@ pub(super) struct FeedbackProcessingConfig {
     pub(super) velocity_filter: MotorVelocityFilterConfig,
 }
 
+struct MonitoringRequest {
+    window: FeedbackWindow,
+    bus_transition: u64,
+    requested: Instant,
+}
+
 #[derive(Clone)]
 pub(crate) struct MotorController {
     pub(crate) spec: MotorSpec,
@@ -135,8 +164,7 @@ pub(crate) struct MotorController {
     bus: BusHandle,
     control_batcher: Arc<ControlBatcher>,
     feedback: Arc<RwLock<FeedbackState>>,
-    velocity_filter: Arc<Mutex<MotorVelocityFilter>>,
-    monitoring_request: Arc<Mutex<Option<(u64, Instant)>>>,
+    monitoring_request: Arc<Mutex<Option<MonitoringRequest>>>,
     periodic_reporting: Arc<Mutex<bool>>,
     thermal_health: Arc<Mutex<ThermalHealth>>,
     feedback_timeout: Duration,
@@ -169,11 +197,18 @@ impl MotorController {
             group,
             bus,
             control_batcher,
-            feedback: Arc::new(RwLock::new(FeedbackState::default())),
-            velocity_filter: Arc::new(Mutex::new(MotorVelocityFilter::new(
-                feedback_processing.velocity_filter.cutoff_hz,
-                feedback_processing.timeout,
-            ))),
+            feedback: Arc::new(RwLock::new(FeedbackState {
+                window: FeedbackWindow::INITIAL,
+                filter: MotorVelocityFilter::new(
+                    feedback_processing.velocity_filter.cutoff_hz,
+                    feedback_processing.timeout,
+                ),
+                latest: None,
+                firmware: FirmwareDiscovery::default(),
+                operating: None,
+                current_fault: None,
+                latched_fault: None,
+            })),
             monitoring_request: Arc::new(Mutex::new(None)),
             periodic_reporting: Arc::new(Mutex::new(true)),
             thermal_health: Arc::new(Mutex::new(ThermalHealth::default())),
@@ -190,12 +225,123 @@ impl MotorController {
         self.lifecycle.status()
     }
 
+    pub(crate) fn firmware_version(&self) -> Option<String> {
+        let state = self.feedback.read();
+        self.current_version(&state, self.bus.feedback_window()?)
+            .map(|v| v.to_string())
+    }
+
+    fn current_version(
+        &self,
+        state: &FeedbackState,
+        window: FeedbackWindow,
+    ) -> Option<FirmwareVersion> {
+        let bus = self.bus.status();
+        (state.window == window
+            && bus.state.is_online()
+            && bus.transition_count == state.firmware.bus_transition
+            && state
+                .latest
+                .is_some_and(|sample| sample.received.elapsed() <= self.feedback_timeout))
+        .then_some(state.firmware.version)
+        .flatten()
+    }
+
+    pub(crate) fn verified_model_window(&self) -> Result<FeedbackWindow> {
+        let window = self
+            .bus
+            .feedback_window()
+            .ok_or_else(|| self.bus.maintenance_error())?;
+        let detail = || {
+            format!(
+                "motor {}: waiting for firmware identification of {}",
+                self.spec.name, self.spec.model
+            )
+        };
+        let version = self
+            .current_version(&self.feedback.read(), window)
+            .with_context(detail)?;
+        version
+            .check_model(&self.spec.model)
+            .with_context(|| format!("motor {}", self.spec.name))?;
+        Ok(window)
+    }
+
+    pub(super) fn record_version(&self, version: [u8; 4], received: Instant) {
+        let mut state = self.feedback.write();
+        if self.bus.feedback_window() == Some(state.window)
+            && state.window.accepts(received)
+            && self.bus.status().transition_count == state.firmware.bus_transition
+            && state.firmware.requested.is_some_and(|request| {
+                received
+                    .checked_duration_since(request)
+                    .is_some_and(|age| age <= Duration::from_millis(200))
+            })
+        {
+            state.firmware.version = Some(FirmwareVersion(version));
+            state.firmware.requested = None;
+            if let Some(sample) = state.latest {
+                self.update_health(&mut state, sample.value, sample.received);
+            }
+        }
+    }
+
+    fn probe_firmware_version(&self, window: FeedbackWindow, bus_transition: u64) {
+        let mut state = self.feedback.write();
+        if state.firmware.bus_transition != bus_transition {
+            state.firmware = FirmwareDiscovery {
+                bus_transition,
+                ..Default::default()
+            };
+        }
+        if state.window != window
+            || state.firmware.version.is_some()
+            || !state
+                .latest
+                .is_some_and(|sample| sample.received.elapsed() <= self.feedback_timeout)
+            || state
+                .firmware
+                .requested
+                .is_some_and(|request| request.elapsed() < Duration::from_millis(500))
+        {
+            return;
+        }
+        let request = robstride_protocol::firmware_version_request(
+            self.bus.spec.host_id,
+            self.spec.address.id,
+        );
+        let requested = Instant::now();
+        if self
+            .bus
+            .submit_configuration_batch(window, vec![request.into()])
+            .is_ok()
+        {
+            state.firmware.requested = Some(requested);
+        }
+    }
+
     pub(crate) fn feedback(&self) -> Option<TimedFeedback> {
-        self.feedback.read().latest
+        let state = self.feedback.read();
+        state.latest.filter(|feedback| {
+            self.bus
+                .feedback_window()
+                .is_some_and(|window| window == state.window && window.accepts(feedback.received))
+        })
     }
 
     pub(crate) fn control_fault(&self) -> Option<MotorFault> {
         let state = self.feedback.read();
+        if self.bus.feedback_window() != Some(state.window)
+            || (state.window != FeedbackWindow::INITIAL && state.latest.is_none())
+        {
+            return Some(MotorFault {
+                cause: MotorFaultCause::Communication,
+                detail: format!(
+                    "waiting for fresh feedback on CAN bus {}",
+                    self.bus.spec.name
+                ),
+            });
+        }
         if let Some(fault) = state
             .latched_fault
             .as_ref()
@@ -216,6 +362,7 @@ impl MotorController {
             return false;
         };
         operating.confirmed
+            && self.bus.feedback_window() == Some(state.window)
             && state.latched_fault.is_none()
             && self.lifecycle.state().is_online()
             && state.latest.is_some_and(|feedback| {
@@ -227,7 +374,8 @@ impl MotorController {
     pub(crate) fn recovery_feedback(&self) -> Option<MotorRecovery<'_>> {
         let state = self.feedback.write();
         let latest = state.latest?;
-        if !self.bus.status().state.is_online()
+        if self.bus.feedback_window() != Some(state.window)
+            || !self.bus.status().state.is_online()
             || !self.lifecycle.state().is_online()
             || state.current_fault.is_some()
             || latest.received.elapsed() > self.feedback_timeout
@@ -240,27 +388,35 @@ impl MotorController {
         })
     }
 
-    pub(crate) fn configure_enable(&self) -> Result<(), BusError> {
+    pub(crate) fn configure_enable(&self) -> Result<()> {
+        let window = self.verified_model_window()?;
         *self.periodic_reporting.lock() = true;
         *self.monitoring_request.lock() = None;
         {
             let mut state = self.feedback.write();
             state.latest = None;
             state.operating = None;
+            state.filter.reset();
         }
-        self.velocity_filter.lock().reset();
-        self.bus.enqueue_configuration_batch(vec![
-            param_write_u8_frame(
-                self.bus.spec.host_id,
-                self.spec.address.id,
-                RUN_MODE_INDEX,
-                IMPEDANCE_RUN_MODE,
-            )
-            .into(),
-            active_report_frame(self.bus.spec.host_id, self.spec.address.id, true).into(),
-            enable_frame(self.bus.spec.host_id, self.spec.address.id).into(),
-        ])?;
+        self.bus.enqueue_configuration_batch(
+            window,
+            vec![
+                param_write_u8_frame(
+                    self.bus.spec.host_id,
+                    self.spec.address.id,
+                    RUN_MODE_INDEX,
+                    IMPEDANCE_RUN_MODE,
+                )
+                .into(),
+                active_report_frame(self.bus.spec.host_id, self.spec.address.id, true).into(),
+                enable_frame(self.bus.spec.host_id, self.spec.address.id).into(),
+            ],
+        )?;
         let mut state = self.feedback.write();
+        if self.bus.feedback_window() != Some(window) {
+            return Err(self.bus.maintenance_error().into());
+        }
+        state.refresh(window);
         self.lifecycle
             .await_feedback("motor enabled; waiting for fresh operating feedback");
         state.operating = Some(OperatingFeedback {
@@ -272,17 +428,26 @@ impl MotorController {
 
     pub(crate) fn set_periodic_reporting(&self, enabled: bool) -> Result<(), BusError> {
         let mut desired = self.periodic_reporting.lock();
+        let window = self
+            .bus
+            .feedback_window()
+            .ok_or_else(|| self.bus.maintenance_error())?;
         if *desired == enabled {
             return Ok(());
         }
-        *desired = enabled;
-        *self.monitoring_request.lock() = None;
-        self.bus.enqueue_configuration_batch(vec![
-            active_report_frame(self.bus.spec.host_id, self.spec.address.id, enabled).into(),
-        ])?;
-        *self.monitoring_request.lock() =
-            Some((self.bus.status().transition_count, Instant::now()));
-        Ok(())
+        let result = self.bus.enqueue_configuration_batch(
+            window,
+            vec![active_report_frame(self.bus.spec.host_id, self.spec.address.id, enabled).into()],
+        );
+        if self.bus.feedback_window() == Some(window) {
+            *desired = enabled;
+            *self.monitoring_request.lock() = result.is_ok().then(|| MonitoringRequest {
+                window,
+                bus_transition: self.bus.status().transition_count,
+                requested: Instant::now(),
+            });
+        }
+        result
     }
 
     pub(crate) fn send_control(&self, command: ImpedanceCommand) -> Result<(), BusError> {
@@ -330,6 +495,10 @@ impl MotorController {
     }
 
     pub(super) fn sync_bus(&self) {
+        let Some(window) = self.bus.feedback_window() else {
+            return;
+        };
+        self.feedback.write().refresh(window);
         let bus = self.bus.status();
         if bus.state.is_online() {
             // Serialize with reporting changes; monitoring must not re-enable
@@ -338,19 +507,17 @@ impl MotorController {
             if !*periodic_reporting {
                 return;
             }
+            self.probe_firmware_version(window, bus.transition_count);
             let feedback_is_fresh = self
                 .feedback()
                 .is_some_and(|feedback| feedback.received.elapsed() <= self.feedback_timeout);
             let mut monitoring_request = self.monitoring_request.lock();
-            let request_generation_is_current = monitoring_request
-                .is_some_and(|(generation, _)| generation == bus.transition_count);
-            let request_is_current = monitoring_request.is_some_and(|(generation, requested)| {
-                generation == bus.transition_count && requested.elapsed() < self.feedback_timeout
+            let current_request = monitoring_request.as_ref().filter(|request| {
+                request.window == window && request.bus_transition == bus.transition_count
             });
-            if feedback_is_fresh && request_generation_is_current {
-                return;
-            }
-            if request_is_current {
+            if current_request.is_some_and(|request| {
+                feedback_is_fresh || request.requested.elapsed() < self.feedback_timeout
+            }) {
                 return;
             }
             let operating_feedback_expected = self.feedback.read().operating.is_some();
@@ -360,10 +527,18 @@ impl MotorController {
                     self.bus.spec.name
                 ));
             }
-            match self.bus.enqueue_configuration_batch(vec![
-                active_report_frame(self.bus.spec.host_id, self.spec.address.id, true).into(),
-            ]) {
-                Ok(()) => *monitoring_request = Some((bus.transition_count, Instant::now())),
+            match self.bus.enqueue_configuration_batch(
+                window,
+                vec![active_report_frame(self.bus.spec.host_id, self.spec.address.id, true).into()],
+            ) {
+                Ok(()) => {
+                    *monitoring_request = Some(MonitoringRequest {
+                        window,
+                        bus_transition: bus.transition_count,
+                        requested: Instant::now(),
+                    })
+                }
+                Err(BusError::Maintenance { .. }) => {}
                 Err(error) => self.lifecycle.degrade_or_update(format!(
                     "could not request active feedback on CAN bus {}: {error}",
                     self.bus.spec.name
@@ -377,6 +552,7 @@ impl MotorController {
             self.bus.spec.name, bus.state, bus.detail
         );
         let mut state = self.feedback.write();
+        state.firmware = FirmwareDiscovery::default();
         state.current_fault = Some(MotorFault {
             cause: MotorFaultCause::Communication,
             detail: detail.clone(),
@@ -389,7 +565,8 @@ impl MotorController {
     }
 
     fn check_feedback_age(&self, state: &mut FeedbackState) {
-        if !self.bus.status().state.is_online() {
+        if self.bus.feedback_window() != Some(state.window) || !self.bus.status().state.is_online()
+        {
             return;
         }
         let Some(operating) = &state.operating else {
@@ -414,16 +591,30 @@ impl MotorController {
     }
 
     pub(super) fn record_received_feedback(&self, value: Feedback, received: Instant) {
-        let published_velocity = self.velocity_filter.lock().apply(value.velocity, received);
-        {
+        let published_velocity = {
             let mut state = self.feedback.write();
+            let Some(window) = self
+                .bus
+                .feedback_window()
+                .filter(|window| window.accepts(received))
+            else {
+                return;
+            };
+            state.refresh(window);
+            if state.latest.is_some_and(|previous| {
+                received.saturating_duration_since(previous.received) > self.feedback_timeout
+            }) {
+                state.firmware = FirmwareDiscovery::default();
+            }
+            let published_velocity = state.filter.apply(value.velocity, received);
             state.latest = Some(TimedFeedback {
                 value,
                 published_velocity,
                 received,
             });
             self.update_health(&mut state, value, received);
-        }
+            published_velocity
+        };
         self.telemetry.send(TelemetryPayload::Motor(MotorTelemetry {
             group: self.group.clone(),
             motor: self.spec.name.clone(),
@@ -438,6 +629,21 @@ impl MotorController {
     }
 
     fn update_health(&self, state: &mut FeedbackState, value: Feedback, received: Instant) {
+        let Some(version) = state.firmware.version else {
+            if received.elapsed() >= self.feedback_timeout {
+                self.check_feedback_age(state);
+                return;
+            }
+            self.lifecycle.degrade_or_update(format!(
+                "waiting for firmware identification of {}",
+                self.spec.model
+            ));
+            return;
+        };
+        if let Err(error) = version.check_model(&self.spec.model) {
+            self.lifecycle.enter_fault(error.to_string());
+            return;
+        }
         let thermal_fault = self.thermal_health.lock().fault_detail(
             value.temperature,
             self.spec.health.maximum_temperature_c,

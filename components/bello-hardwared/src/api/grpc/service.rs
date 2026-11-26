@@ -14,7 +14,7 @@ use bello_hardware_api::*;
 
 #[derive(Clone)]
 pub struct HardwareGrpc {
-    daemon: Arc<HardwareDaemon>,
+    pub(super) daemon: Arc<HardwareDaemon>,
     shutdown: watch::Receiver<bool>,
 }
 

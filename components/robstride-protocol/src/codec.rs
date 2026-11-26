@@ -56,6 +56,18 @@ pub fn stop_frame(host: u8, motor: u8, clear_fault: bool) -> Frame {
     frame
 }
 
+pub fn firmware_version_request(host: u8, motor: u8) -> Frame {
+    let mut request = frame(CommType::MotorStop, host as u16, motor);
+    request.data[1] = 0xc4;
+    request
+}
+
+pub fn firmware_version_reply(frame: &Frame) -> Option<[u8; 4]> {
+    (CommType::from_id(frame.id) == Some(CommType::MotorFeedback)
+        && frame.data[..3] == [0, 0xc4, 0x56])
+    .then(|| frame.data[3..7].try_into().expect("four version bytes"))
+}
+
 pub fn active_report_frame(host: u8, motor: u8, enabled: bool) -> Frame {
     let mut frame = frame(CommType::ActiveReport, host as u16, motor);
     frame.data = [1, 2, 3, 4, 5, 6, u8::from(enabled), 0];
@@ -174,6 +186,9 @@ pub fn feedback_motor_id(frame: &Frame) -> Option<u8> {
 }
 
 pub fn parse_feedback(frame: &Frame, params: MotorParams) -> Option<Feedback> {
+    if firmware_version_reply(frame).is_some() {
+        return None;
+    }
     let motor_id = feedback_motor_id(frame)?;
     let field = data_field(frame.id);
     let direction = params.direction as f64;
@@ -194,7 +209,7 @@ pub fn parse_request(frame: &Frame) -> Option<Request> {
     let motor_id = frame_target(frame);
     match CommType::from_id(frame.id)? {
         CommType::MotorEnable => Some(Request::Enable { host_id, motor_id }),
-        CommType::MotorStop => Some(Request::Stop {
+        CommType::MotorStop if frame.data[1..] == [0; 7] => Some(Request::Stop {
             host_id,
             motor_id,
             clear_fault: frame.data[0] != 0,
@@ -220,6 +235,17 @@ mod tests {
 
     fn params() -> MotorParams {
         MotorParams::for_model("RS_03", -1).expect("known model")
+    }
+
+    #[test]
+    fn firmware_version_frames_neither_stop_the_motor_nor_report_motion() {
+        assert!(parse_request(&firmware_version_request(253, 7)).is_none());
+        let reply = Frame {
+            id: (2 << 24) | (7 << 8) | 253,
+            data: [0, 0xc4, 0x56, 0, 6, 0, 18, 0],
+        };
+        assert_eq!(firmware_version_reply(&reply), Some([0, 6, 0, 18]));
+        assert!(parse_feedback(&reply, params()).is_none());
     }
 
     #[test]

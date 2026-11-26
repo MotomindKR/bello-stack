@@ -14,6 +14,7 @@ use crate::api::grpc::HardwareGrpc;
 use crate::config::ResolvedTopology;
 use crate::telemetry::Telemetry;
 use bello_hardware_api::hardware_service_server::HardwareServiceServer;
+use bello_hardware_api::motor_configuration_service_server::MotorConfigurationServiceServer;
 
 pub fn check(config_path: impl AsRef<Path>) -> Result<()> {
     let config_path = config_path.as_ref();
@@ -25,6 +26,7 @@ pub fn check(config_path: impl AsRef<Path>) -> Result<()> {
 pub async fn run(config_path: impl AsRef<Path>) -> Result<()> {
     let topology = ResolvedTopology::load(config_path)?;
     topology.validate_platform()?;
+    let directory = super::transport_ownership::state_directory()?;
     let listen = topology.grpc().listen().to_vec();
     let mut listeners = Vec::with_capacity(listen.len());
     for spec in &listen {
@@ -42,13 +44,18 @@ pub async fn run(config_path: impl AsRef<Path>) -> Result<()> {
             }
             _ => {}
         }
-        listeners.push((GrpcIncoming::bind(spec)?, topology.grpc().server(spec)?));
+        let maintenance = !matches!(spec, GrpcListenSpec::Tcp(address) if !address.ip().is_loopback() && !topology.grpc().requires_client_certificate());
+        listeners.push((
+            GrpcIncoming::bind(spec)?,
+            topology.grpc().server(spec)?,
+            maintenance,
+        ));
     }
     let mut signals = ShutdownSignals::install()?;
     let telemetry = Telemetry::new(topology.telemetry_capacity());
     let (server_shutdown_tx, server_shutdown_rx) = watch::channel(false);
     let (watchdog_shutdown_tx, watchdog_shutdown_rx) = watch::channel(false);
-    let daemon = HardwareDaemon::start(topology, telemetry)?;
+    let daemon = HardwareDaemon::start(topology, telemetry, directory)?;
     let watchdog = tokio::spawn(HardwareDaemon::lease_watchdog(
         Arc::downgrade(&daemon),
         watchdog_shutdown_rx,
@@ -58,14 +65,16 @@ pub async fn run(config_path: impl AsRef<Path>) -> Result<()> {
     type ServerFuture =
         Pin<Box<dyn Future<Output = Result<(), tonic::transport::Error>> + Send + 'static>>;
     let mut servers = tokio::task::JoinSet::new();
-    for (incoming, mut server) in listeners {
+    for (incoming, mut server, maintenance) in listeners {
         let shutdown = server_shutdown_rx.clone();
-        let service =
-            HardwareServiceServer::new(HardwareGrpc::new(daemon.clone(), shutdown.clone()));
+        let grpc = HardwareGrpc::new(daemon.clone(), shutdown.clone());
+        let maintenance = maintenance.then(|| MotorConfigurationServiceServer::new(grpc.clone()));
+        let service = HardwareServiceServer::new(grpc);
         let future: ServerFuture = match incoming {
             GrpcIncoming::Tcp(incoming) => Box::pin(
                 server
                     .add_service(service)
+                    .add_optional_service(maintenance)
                     .serve_with_incoming_shutdown(incoming, wait_for_shutdown(shutdown)),
             ),
             #[cfg(unix)]
@@ -73,6 +82,7 @@ pub async fn run(config_path: impl AsRef<Path>) -> Result<()> {
                 let _socket = socket;
                 server
                     .add_service(service)
+                    .add_optional_service(maintenance)
                     .serve_with_incoming_shutdown(incoming, wait_for_shutdown(shutdown))
                     .await
             }),

@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use bello_sim_can::SimSocket;
 
+use super::super::BusAccess;
 use super::blocking::BlockingSocket;
 use super::{BusSpec, CanFrame, FrameWriter, ReceivedFrame, WriteFailure};
 use crate::config::BusTransportConfig;
@@ -18,6 +19,10 @@ impl FrameWriter for SimSocket {
             ),
             detail: format!("sim CAN write failed: {error}"),
         })
+    }
+
+    fn fence_writes(&self) -> Result<(), String> {
+        Ok(())
     }
 }
 
@@ -35,7 +40,7 @@ impl BlockingSocket for SimSocket {
         Ok((socket.try_clone()?, socket))
     }
 
-    fn receive(&self, bus: &BusName) -> io::Result<Option<ReceivedFrame>> {
+    fn receive(&self, bus: &BusName, _: &BusAccess) -> io::Result<Option<ReceivedFrame>> {
         let (frame, received) = self.recv_timestamped()?;
         Ok(Some(ReceivedFrame {
             bus: bus.clone(),

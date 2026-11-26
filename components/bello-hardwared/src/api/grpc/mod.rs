@@ -4,6 +4,7 @@ use futures_core::Stream;
 use tonic::Status;
 
 mod command_stream;
+mod configuration;
 mod conversion;
 mod inventory;
 mod power_board;

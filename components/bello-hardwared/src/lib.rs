@@ -6,6 +6,7 @@ mod control;
 mod domain;
 mod hardware;
 mod lease;
+mod maintenance;
 mod mechanics;
 mod telemetry;
 

@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::Sender;
 use parking_lot::Mutex;
 
-use super::CanFrame;
+use super::{BusAccess, BusGeneration, CanFrame};
 use crate::domain::{BusName, GroupName};
 
 // Allow isolated missed slots, but revoke targets after four refresh periods
@@ -13,6 +13,7 @@ use crate::domain::{BusName, GroupName};
 const MAXIMUM_SILENCE_PERIODS: u32 = 4;
 
 pub(super) struct PeriodicBatch {
+    pub(super) bus_generation: BusGeneration,
     pub(super) frames: Arc<[CanFrame]>,
     pub(super) expires_at: Instant,
     generation: u64,
@@ -53,6 +54,7 @@ pub(crate) struct PeriodicControl {
     shutdown: Arc<AtomicBool>,
     slot: Arc<Mutex<Slot>>,
     wake: Sender<()>,
+    access: Arc<BusAccess>,
 }
 
 impl PeriodicControl {
@@ -63,6 +65,7 @@ impl PeriodicControl {
         lease: Arc<AtomicU64>,
         shutdown: Arc<AtomicBool>,
         wake: Sender<()>,
+        access: Arc<BusAccess>,
     ) -> Self {
         Self {
             group,
@@ -72,11 +75,21 @@ impl PeriodicControl {
             shutdown,
             slot: Arc::new(Mutex::new(Slot::default())),
             wake,
+            access,
         }
     }
 
     pub(crate) fn publish(&self, frames: Vec<CanFrame>, expires_at: Instant, generation: u64) {
+        let started = Instant::now();
         let mut slot = self.slot.lock();
+        let Some((bus_generation, _)) = self
+            .access
+            .ordinary_traffic()
+            .filter(|(_, window)| window.accepts(started))
+        else {
+            return;
+        };
+        self.discard_old_targets(&mut slot, Some(bus_generation));
         // Updates share the activation guard, so revocation also cancels a
         // previous target set already held by TX. Start creates a fresh guard.
         let permitted = slot.batch.as_ref().map_or_else(
@@ -84,6 +97,7 @@ impl PeriodicControl {
             |batch| batch.permitted.clone(),
         );
         slot.batch = Some(Arc::new(PeriodicBatch {
+            bus_generation,
             frames: frames.into(),
             expires_at,
             generation,
@@ -114,8 +128,18 @@ impl PeriodicControl {
 
     pub(crate) fn failure(&self, now: Instant) -> Option<String> {
         let mut slot = self.slot.lock();
+        self.discard_old_targets(&mut slot, self.access.ordinary_generation());
         self.check_silence(&mut slot, now);
         slot.fault.clone()
+    }
+
+    fn discard_old_targets(&self, slot: &mut Slot, generation: Option<BusGeneration>) {
+        if let Some(batch) = &slot.batch
+            && Some(batch.bus_generation) != generation
+        {
+            batch.permitted.store(false, Ordering::Release);
+            *slot = Slot::default();
+        }
     }
 
     fn check_silence(&self, slot: &mut Slot, now: Instant) {
@@ -151,7 +175,8 @@ impl PeriodicControl {
     }
 
     pub(super) fn next_tick(&self, now: Instant) -> Option<Instant> {
-        let slot = self.slot.lock();
+        let mut slot = self.slot.lock();
+        self.discard_old_targets(&mut slot, self.access.ordinary_generation());
         slot.batch
             .as_ref()
             .filter(|batch| batch.valid(now))
@@ -224,6 +249,7 @@ mod tests {
             lease.clone(),
             shutdown.clone(),
             bounded(1).0,
+            Arc::new(BusAccess::default()),
         );
         (control, lease, shutdown)
     }

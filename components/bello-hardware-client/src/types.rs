@@ -8,6 +8,7 @@ pub enum GroupState {
     Unspecified,
     Idle,
     Damped,
+    Configuring,
     Running,
     Fault,
     Shutdown,
@@ -21,6 +22,7 @@ impl GroupState {
             Ok(proto::GroupState::Idle) => Self::Idle,
             Ok(proto::GroupState::Damped) => Self::Damped,
             Ok(proto::GroupState::Running) => Self::Running,
+            Ok(proto::GroupState::Configuring) => Self::Configuring,
             Ok(proto::GroupState::Fault) => Self::Fault,
             Ok(proto::GroupState::Shutdown) => Self::Shutdown,
             Err(_) => Self::Unknown(raw),
@@ -87,6 +89,7 @@ pub enum GroupCause {
     LeaseLoss,
     Exit,
     Internal,
+    Configuration,
     Unknown(i32),
 }
 
@@ -111,6 +114,7 @@ impl GroupCause {
             Ok(proto::GroupCause::Transmission) => Self::Transmission,
             Ok(proto::GroupCause::LeaseLoss) => Self::LeaseLoss,
             Ok(proto::GroupCause::Exit) => Self::Exit,
+            Ok(proto::GroupCause::Configuration) => Self::Configuration,
             Ok(proto::GroupCause::Internal) => Self::Internal,
             Err(_) => Self::Unknown(raw),
         }

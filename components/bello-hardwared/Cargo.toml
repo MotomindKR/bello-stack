@@ -21,6 +21,7 @@ futures-core.workspace = true
 nalgebra.workspace = true
 gsusbio.workspace = true
 parking_lot.workspace = true
+ring.workspace = true
 robstride-protocol.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_yaml.workspace = true
@@ -39,3 +40,8 @@ socketcan.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[build-dependencies]
+ring.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true

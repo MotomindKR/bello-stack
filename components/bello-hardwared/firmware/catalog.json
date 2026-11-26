@@ -1,0 +1,58 @@
+[
+  {
+    "model": "RS-00",
+    "version": "0.0.3.36",
+    "filename": "rs00_0.0.3.36.bin",
+    "url": "https://github.com/RobStride/Product_Information/releases/download/V26.05.19/rs00_0.0.3.36.bin",
+    "sha256": "3be57f55cf83ae8079be3750e5bc3d1d2fe122e2264571eb9fad439be931c85f"
+  },
+  {
+    "model": "RS-01",
+    "version": "0.1.3.21",
+    "filename": "rs01_0.1.3.21.bin",
+    "url": "https://github.com/RobStride/Product_Information/releases/download/V26.05.19/rs01_0.1.3.21.bin",
+    "sha256": "38178440e2e773e3a9e71700ac7b9d416bc4475bfd940c6135d0a81c55322dd3"
+  },
+  {
+    "model": "RS-02",
+    "version": "0.2.3.36",
+    "filename": "rs02_0.2.3.36.bin",
+    "url": "https://github.com/RobStride/Product_Information/releases/download/V26.05.19/rs02_0.2.3.36.bin",
+    "sha256": "dd34de7a472f75fb39c34d8f98b15059dadb10d02e9f89ac648d87465e3cc263"
+  },
+  {
+    "model": "RS-03",
+    "version": "0.3.1.50",
+    "filename": "rs03_0.3.1.50.bin",
+    "url": "https://github.com/RobStride/Product_Information/releases/download/V26.05.19/rs03_0.3.1.50.bin",
+    "sha256": "76a46c5cd3c029043491faba74a4645e3ce5b9de52c962f2969e176314aeb34a"
+  },
+  {
+    "model": "RS-04",
+    "version": "0.4.1.38",
+    "filename": "rs04_0.4.1.38.bin",
+    "url": "https://github.com/RobStride/Product_Information/releases/download/V26.05.19/rs04_0.4.1.38.bin",
+    "sha256": "a90d83b81455639ddbcf270cc491faa74a354bccbdd7d4322f5cb937bf0351a5"
+  },
+  {
+    "model": "RS-05",
+    "version": "0.5.0.17",
+    "filename": "rs05_0.5.0.17.bin",
+    "url": "https://github.com/RobStride/Product_Information/releases/download/V26.05.19/rs05_0.5.0.17.bin",
+    "sha256": "20a72fc80ab5c6da70ca684a76557b4e207c06f18a84eb119c4377981beb68ed"
+  },
+  {
+    "model": "RS-06",
+    "version": "0.6.0.18",
+    "filename": "rs06_0.6.0.18.bin",
+    "url": "https://github.com/RobStride/Product_Information/releases/download/V26.05.19/rs06_0.6.0.18.bin",
+    "sha256": "1c13a3a660e531dadbc6053b47fa8f80fa8c651df225ea467005ac632f804c69"
+  },
+  {
+    "model": "RS-10P",
+    "version": "0.10.0.6",
+    "filename": "rs10_0.10.0.6.bin",
+    "url": "https://github.com/RobStride/Product_Information/releases/download/V26.05.19/rs10_0.10.0.6.bin",
+    "sha256": "bc396bbd95f768b87743d836603cb4612566b62a72728171daccd3c04e194030"
+  }
+]

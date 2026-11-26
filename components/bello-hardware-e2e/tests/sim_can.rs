@@ -9,6 +9,12 @@ mod sim;
 #[path = "sim_can/lower_body.rs"]
 mod lower_body;
 
+#[path = "sim_can/configuration.rs"]
+mod configuration;
+
+#[path = "sim_can/model_identity.rs"]
+mod model_identity;
+
 use std::fs;
 use std::net::TcpListener;
 use std::time::Duration;
@@ -123,13 +129,15 @@ async fn wait_for_frame(
 ) -> Result<()> {
     timeout(Duration::from_secs(5), async {
         loop {
-            let frame = client
+            match client
                 .grpc_client()
                 .get_state_frame(GetStateFrameRequest::default())
-                .await?
-                .into_inner();
-            if ready(&frame) {
-                return anyhow::Ok(());
+                .await
+            {
+                Ok(frame) if ready(frame.get_ref()) => return anyhow::Ok(()),
+                Ok(_) => (),
+                Err(status) if status.code() == tonic::Code::FailedPrecondition => (),
+                Err(status) => return Err(status.into()),
             }
             sleep(Duration::from_millis(10)).await;
         }
@@ -154,6 +162,13 @@ fn spawn_pair() -> Result<(tempfile::TempDir, String, ManagedProcess, ManagedPro
 fn spawn_pair_on_ports(
     ports: &str,
 ) -> Result<(tempfile::TempDir, String, ManagedProcess, ManagedProcess)> {
+    spawn_pair_with_transports(ports, ports)
+}
+
+fn spawn_pair_with_transports(
+    ports: &str,
+    emulator_ports: &str,
+) -> Result<(tempfile::TempDir, String, ManagedProcess, ManagedProcess)> {
     let directory = tempfile::tempdir()?;
     let deployment = directory.path().join("hardwared.yaml");
     let emulator_config = directory.path().join("emulator.yaml");
@@ -166,7 +181,7 @@ fn spawn_pair_on_ports(
     )?;
     fs::write(
         &emulator_config,
-        support::config::emulator(&format!("{{ {ports} }}")),
+        support::config::emulator(&format!("{{ {emulator_ports} }}")),
     )?;
     let daemon = ManagedProcess::spawn(
         "hardwared",

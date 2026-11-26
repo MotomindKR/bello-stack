@@ -16,10 +16,13 @@ use crate::domain::{BusName, GroupName};
 use crate::hardware::lifecycle::{DeviceLifecycle, DeviceState, DeviceStatus};
 use crate::telemetry::Telemetry;
 
+mod maintenance;
 mod periodic;
 mod spec;
 mod supervisor;
 
+use maintenance::{BusAccess, BusGeneration, MaintenanceRequest};
+pub(crate) use maintenance::{FeedbackWindow, MaintenanceBus};
 pub(crate) use periodic::PeriodicControl;
 pub(crate) use spec::BusSpec;
 
@@ -40,6 +43,8 @@ pub(crate) struct ReceivedFrame {
 pub(crate) enum BusError {
     #[error("bus {bus} is unavailable ({state})")]
     Unavailable { bus: BusName, state: DeviceState },
+    #[error("bus {bus} ordinary traffic interrupted by maintenance")]
+    Maintenance { bus: BusName },
     #[error("bus {bus} control batch expired before transmission")]
     ControlBatchExpired { bus: BusName },
     #[error("group {group} started a new control batch before completing the previous batch")]
@@ -82,17 +87,20 @@ impl std::fmt::Display for PriorityBatchKind {
 }
 
 pub(super) struct ControlBatch {
+    generation: BusGeneration,
     pub(super) frames: Vec<CanFrame>,
     pub(super) expires_at: Instant,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum BatchFailure {
+    Maintenance,
     Expired,
     Transmit(String),
 }
 
 pub(super) struct PriorityBatch {
+    generation: BusGeneration,
     pub(super) kind: PriorityBatchKind,
     pub(super) frames: Vec<CanFrame>,
     pub(super) expires_at: Instant,
@@ -101,6 +109,8 @@ pub(super) struct PriorityBatch {
 
 #[derive(Clone)]
 pub(super) struct BusTxQueues {
+    access: Arc<BusAccess>,
+    maintenance: Receiver<MaintenanceRequest>,
     pub(super) safety: Receiver<PriorityBatch>,
     pub(super) configuration: Receiver<PriorityBatch>,
     pub(super) control: Receiver<ControlBatch>,
@@ -122,6 +132,7 @@ impl PendingBatch {
         };
         match completion.recv() {
             Ok(Ok(())) => Ok(()),
+            Ok(Err(BatchFailure::Maintenance)) => Err(BusError::Maintenance { bus: self.bus }),
             Ok(Err(BatchFailure::Expired)) => Err(BusError::PriorityBatchExpired {
                 bus: self.bus,
                 kind: self.kind,
@@ -140,6 +151,8 @@ impl PendingBatch {
 pub(crate) struct BusHandle {
     pub(crate) spec: BusSpec,
     lifecycle: DeviceLifecycle,
+    access: Arc<BusAccess>,
+    maintenance_tx: Sender<MaintenanceRequest>,
     control_tx: Sender<ControlBatch>,
     configuration_tx: Sender<PriorityBatch>,
     safety_tx: Sender<PriorityBatch>,
@@ -148,6 +161,21 @@ pub(crate) struct BusHandle {
 }
 
 impl BusHandle {
+    pub(crate) fn reserve_maintenance(&self) -> anyhow::Result<MaintenanceBus> {
+        self.access
+            .reserve(self.spec.name.clone(), self.maintenance_tx.clone())
+    }
+
+    pub(crate) fn feedback_window(&self) -> Option<FeedbackWindow> {
+        self.access.feedback_window()
+    }
+
+    pub(crate) fn maintenance_error(&self) -> BusError {
+        BusError::Maintenance {
+            bus: self.spec.name.clone(),
+        }
+    }
+
     pub(crate) fn periodic_control(
         &self,
         group: &GroupName,
@@ -166,6 +194,7 @@ impl BusHandle {
                     lease,
                     shutdown,
                     self.wake.clone(),
+                    self.access.clone(),
                 )
             })
             .clone()
@@ -190,8 +219,14 @@ impl BusHandle {
     pub(crate) fn enqueue_control_batch(
         &self,
         frames: Vec<CanFrame>,
+        started: Instant,
         expires_at: Instant,
     ) -> Result<(), BusError> {
+        let (generation, _) = self
+            .access
+            .ordinary_traffic()
+            .filter(|(_, window)| window.accepts(started))
+            .ok_or_else(|| self.maintenance_error())?;
         self.ensure_online()?;
         if frames.is_empty() {
             return Ok(());
@@ -204,7 +239,11 @@ impl BusHandle {
         };
         enqueue_control(
             &self.control_tx,
-            ControlBatch { frames, expires_at },
+            ControlBatch {
+                generation,
+                frames,
+                expires_at,
+            },
             enqueue_by,
         )
         .map_err(|error| match error {
@@ -219,24 +258,38 @@ impl BusHandle {
 
     pub(crate) fn enqueue_configuration_batch(
         &self,
+        window: FeedbackWindow,
         frames: Vec<CanFrame>,
     ) -> Result<(), BusError> {
-        self.submit_priority_batch(PriorityBatchKind::Configuration, frames)?
-            .wait()
+        self.submit_configuration_batch(window, frames)?.wait()
+    }
+
+    pub(crate) fn submit_configuration_batch(
+        &self,
+        window: FeedbackWindow,
+        frames: Vec<CanFrame>,
+    ) -> Result<PendingBatch, BusError> {
+        self.submit_priority_batch(PriorityBatchKind::Configuration, Some(window), frames)
     }
 
     pub(crate) fn submit_safety_batch(
         &self,
         frames: Vec<CanFrame>,
     ) -> Result<PendingBatch, BusError> {
-        self.submit_priority_batch(PriorityBatchKind::SafetyBarrier, frames)
+        self.submit_priority_batch(PriorityBatchKind::SafetyBarrier, None, frames)
     }
 
     fn submit_priority_batch(
         &self,
         kind: PriorityBatchKind,
+        window: Option<FeedbackWindow>,
         frames: Vec<CanFrame>,
     ) -> Result<PendingBatch, BusError> {
+        let (generation, _) = self
+            .access
+            .ordinary_traffic()
+            .filter(|(_, current)| window.is_none_or(|expected| expected == *current))
+            .ok_or_else(|| self.maintenance_error())?;
         self.ensure_online()?;
         if frames.is_empty() {
             return Ok(PendingBatch {
@@ -254,6 +307,7 @@ impl BusHandle {
         };
         queue
             .try_send(PriorityBatch {
+                generation,
                 kind,
                 frames,
                 expires_at,
@@ -331,6 +385,8 @@ impl BusManager {
             let (safety_tx, safety_rx) = bounded(priority_capacity);
             let (wake_tx, wake_rx) = bounded(1);
             let periodic = Arc::new(Mutex::new(BTreeMap::new()));
+            let access = Arc::new(BusAccess::default());
+            let (maintenance_tx, maintenance_rx) = bounded(1);
             let lifecycle = DeviceLifecycle::new(
                 format!("can/{}", bus.name),
                 DeviceState::Starting,
@@ -342,6 +398,8 @@ impl BusManager {
                 BusHandle {
                     spec: bus.clone(),
                     lifecycle: lifecycle.clone(),
+                    access: access.clone(),
+                    maintenance_tx,
                     control_tx,
                     configuration_tx,
                     safety_tx,
@@ -353,6 +411,7 @@ impl BusManager {
             let frames = frame_tx.clone();
             let shutdown = manager.shutdown.clone();
             let panic_lifecycle = lifecycle.clone();
+            let worker_access = access.clone();
             manager.threads.push(
                 thread::Builder::new()
                     .name(format!("{}-supervisor", bus.name))
@@ -361,6 +420,8 @@ impl BusManager {
                             supervisor::run(
                                 spec,
                                 BusTxQueues {
+                                    access: worker_access,
+                                    maintenance: maintenance_rx,
                                     safety: safety_rx,
                                     configuration: configuration_rx,
                                     control: control_rx,
@@ -373,6 +434,7 @@ impl BusManager {
                             );
                         }));
                         if result.is_err() {
+                            access.disconnected("CAN supervisor panicked");
                             panic_lifecycle.enter_fault("CAN supervisor panicked");
                         }
                     })?,
@@ -417,6 +479,7 @@ mod tests {
 
     fn batch(id: u32) -> ControlBatch {
         ControlBatch {
+            generation: BusGeneration::INITIAL,
             frames: vec![CanFrame { id, data: [0; 8] }],
             expires_at: Instant::now() + std::time::Duration::from_secs(1),
         }
@@ -478,3 +541,6 @@ mod tests {
         ));
     }
 }
+
+#[cfg(test)]
+mod maintenance_tests;

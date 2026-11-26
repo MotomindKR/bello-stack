@@ -8,6 +8,23 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
+class MotorConfigurationKind(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    MOTOR_CONFIGURATION_KIND_UNSPECIFIED: _ClassVar[MotorConfigurationKind]
+    MOTOR_CONFIGURATION_KIND_ZERO: _ClassVar[MotorConfigurationKind]
+    MOTOR_CONFIGURATION_KIND_FIRMWARE: _ClassVar[MotorConfigurationKind]
+
+class MotorConfigurationPhase(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    MOTOR_CONFIGURATION_PHASE_UNSPECIFIED: _ClassVar[MotorConfigurationPhase]
+    MOTOR_CONFIGURATION_PHASE_PREPARING: _ClassVar[MotorConfigurationPhase]
+    MOTOR_CONFIGURATION_PHASE_READY: _ClassVar[MotorConfigurationPhase]
+    MOTOR_CONFIGURATION_PHASE_WRITING: _ClassVar[MotorConfigurationPhase]
+    MOTOR_CONFIGURATION_PHASE_SUCCEEDED: _ClassVar[MotorConfigurationPhase]
+    MOTOR_CONFIGURATION_PHASE_CANCELLED: _ClassVar[MotorConfigurationPhase]
+    MOTOR_CONFIGURATION_PHASE_FAILED: _ClassVar[MotorConfigurationPhase]
+    MOTOR_CONFIGURATION_PHASE_UNVERIFIED: _ClassVar[MotorConfigurationPhase]
+
 class DeviceState(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
     DEVICE_STATE_UNSPECIFIED: _ClassVar[DeviceState]
@@ -27,6 +44,7 @@ class GroupState(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     GROUP_STATE_FAULT: _ClassVar[GroupState]
     GROUP_STATE_SHUTDOWN: _ClassVar[GroupState]
     GROUP_STATE_DAMPED: _ClassVar[GroupState]
+    GROUP_STATE_CONFIGURING: _ClassVar[GroupState]
 
 class CommandPolicyCheck(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -69,6 +87,7 @@ class GroupCause(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     GROUP_CAUSE_LEASE_LOSS: _ClassVar[GroupCause]
     GROUP_CAUSE_EXIT: _ClassVar[GroupCause]
     GROUP_CAUSE_INTERNAL: _ClassVar[GroupCause]
+    GROUP_CAUSE_CONFIGURATION: _ClassVar[GroupCause]
 
 class CommandResult(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -83,6 +102,17 @@ class CommandResult(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     COMMAND_RESULT_SUPERSEDED: _ClassVar[CommandResult]
     COMMAND_RESULT_CONTROLLER_STOPPED: _ClassVar[CommandResult]
     COMMAND_RESULT_EXPIRED: _ClassVar[CommandResult]
+MOTOR_CONFIGURATION_KIND_UNSPECIFIED: MotorConfigurationKind
+MOTOR_CONFIGURATION_KIND_ZERO: MotorConfigurationKind
+MOTOR_CONFIGURATION_KIND_FIRMWARE: MotorConfigurationKind
+MOTOR_CONFIGURATION_PHASE_UNSPECIFIED: MotorConfigurationPhase
+MOTOR_CONFIGURATION_PHASE_PREPARING: MotorConfigurationPhase
+MOTOR_CONFIGURATION_PHASE_READY: MotorConfigurationPhase
+MOTOR_CONFIGURATION_PHASE_WRITING: MotorConfigurationPhase
+MOTOR_CONFIGURATION_PHASE_SUCCEEDED: MotorConfigurationPhase
+MOTOR_CONFIGURATION_PHASE_CANCELLED: MotorConfigurationPhase
+MOTOR_CONFIGURATION_PHASE_FAILED: MotorConfigurationPhase
+MOTOR_CONFIGURATION_PHASE_UNVERIFIED: MotorConfigurationPhase
 DEVICE_STATE_UNSPECIFIED: DeviceState
 DEVICE_STATE_STARTING: DeviceState
 DEVICE_STATE_CONNECTING: DeviceState
@@ -97,6 +127,7 @@ GROUP_STATE_RUNNING: GroupState
 GROUP_STATE_FAULT: GroupState
 GROUP_STATE_SHUTDOWN: GroupState
 GROUP_STATE_DAMPED: GroupState
+GROUP_STATE_CONFIGURING: GroupState
 COMMAND_POLICY_CHECK_UNSPECIFIED: CommandPolicyCheck
 COMMAND_POLICY_CHECK_LIMIT: CommandPolicyCheck
 COMMAND_POLICY_CHECK_POSITION_STEP: CommandPolicyCheck
@@ -127,6 +158,7 @@ GROUP_CAUSE_TRANSMISSION: GroupCause
 GROUP_CAUSE_LEASE_LOSS: GroupCause
 GROUP_CAUSE_EXIT: GroupCause
 GROUP_CAUSE_INTERNAL: GroupCause
+GROUP_CAUSE_CONFIGURATION: GroupCause
 COMMAND_RESULT_UNSPECIFIED: CommandResult
 COMMAND_RESULT_ACCEPTED: CommandResult
 COMMAND_RESULT_UNKNOWN_GROUP: CommandResult
@@ -138,6 +170,70 @@ COMMAND_RESULT_UNSAFE: CommandResult
 COMMAND_RESULT_SUPERSEDED: CommandResult
 COMMAND_RESULT_CONTROLLER_STOPPED: CommandResult
 COMMAND_RESULT_EXPIRED: CommandResult
+
+class PrepareMotorConfigurationRequest(_message.Message):
+    __slots__ = ("motor", "kind")
+    MOTOR_FIELD_NUMBER: _ClassVar[int]
+    KIND_FIELD_NUMBER: _ClassVar[int]
+    motor: str
+    kind: MotorConfigurationKind
+    def __init__(self, motor: _Optional[str] = ..., kind: _Optional[_Union[MotorConfigurationKind, str]] = ...) -> None: ...
+
+class PrepareMotorConfigurationResponse(_message.Message):
+    __slots__ = ("id",)
+    ID_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    def __init__(self, id: _Optional[str] = ...) -> None: ...
+
+class CommitMotorConfigurationRequest(_message.Message):
+    __slots__ = ("id",)
+    ID_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    def __init__(self, id: _Optional[str] = ...) -> None: ...
+
+class CommitMotorConfigurationResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class CancelMotorConfigurationRequest(_message.Message):
+    __slots__ = ("id",)
+    ID_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    def __init__(self, id: _Optional[str] = ...) -> None: ...
+
+class CancelMotorConfigurationResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class GetMotorConfigurationRequest(_message.Message):
+    __slots__ = ("id",)
+    ID_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    def __init__(self, id: _Optional[str] = ...) -> None: ...
+
+class GetMotorConfigurationResponse(_message.Message):
+    __slots__ = ("id", "motor", "kind", "phase", "motor_uuid", "current_version", "target_version", "progress_percent", "detail", "reviewed_position_rad")
+    ID_FIELD_NUMBER: _ClassVar[int]
+    MOTOR_FIELD_NUMBER: _ClassVar[int]
+    KIND_FIELD_NUMBER: _ClassVar[int]
+    PHASE_FIELD_NUMBER: _ClassVar[int]
+    MOTOR_UUID_FIELD_NUMBER: _ClassVar[int]
+    CURRENT_VERSION_FIELD_NUMBER: _ClassVar[int]
+    TARGET_VERSION_FIELD_NUMBER: _ClassVar[int]
+    PROGRESS_PERCENT_FIELD_NUMBER: _ClassVar[int]
+    DETAIL_FIELD_NUMBER: _ClassVar[int]
+    REVIEWED_POSITION_RAD_FIELD_NUMBER: _ClassVar[int]
+    id: str
+    motor: str
+    kind: MotorConfigurationKind
+    phase: MotorConfigurationPhase
+    motor_uuid: bytes
+    current_version: str
+    target_version: str
+    progress_percent: int
+    detail: str
+    reviewed_position_rad: float
+    def __init__(self, id: _Optional[str] = ..., motor: _Optional[str] = ..., kind: _Optional[_Union[MotorConfigurationKind, str]] = ..., phase: _Optional[_Union[MotorConfigurationPhase, str]] = ..., motor_uuid: _Optional[bytes] = ..., current_version: _Optional[str] = ..., target_version: _Optional[str] = ..., progress_percent: _Optional[int] = ..., detail: _Optional[str] = ..., reviewed_position_rad: _Optional[float] = ...) -> None: ...
 
 class DeviceStatus(_message.Message):
     __slots__ = ("state", "detail", "transition_count")
@@ -220,7 +316,7 @@ class MotorLimits(_message.Message):
     def __init__(self, position_min: _Optional[float] = ..., position_max: _Optional[float] = ..., velocity_min: _Optional[float] = ..., velocity_max: _Optional[float] = ..., torque_min: _Optional[float] = ..., torque_max: _Optional[float] = ..., kp_min: _Optional[float] = ..., kp_max: _Optional[float] = ..., kd_min: _Optional[float] = ..., kd_max: _Optional[float] = ...) -> None: ...
 
 class MotorInfo(_message.Message):
-    __slots__ = ("name", "coordinate", "group", "address", "model", "direction", "status", "limits")
+    __slots__ = ("name", "coordinate", "group", "address", "model", "direction", "status", "limits", "firmware_version")
     NAME_FIELD_NUMBER: _ClassVar[int]
     COORDINATE_FIELD_NUMBER: _ClassVar[int]
     GROUP_FIELD_NUMBER: _ClassVar[int]
@@ -229,6 +325,7 @@ class MotorInfo(_message.Message):
     DIRECTION_FIELD_NUMBER: _ClassVar[int]
     STATUS_FIELD_NUMBER: _ClassVar[int]
     LIMITS_FIELD_NUMBER: _ClassVar[int]
+    FIRMWARE_VERSION_FIELD_NUMBER: _ClassVar[int]
     name: str
     coordinate: str
     group: str
@@ -237,7 +334,8 @@ class MotorInfo(_message.Message):
     direction: int
     status: DeviceStatus
     limits: MotorLimits
-    def __init__(self, name: _Optional[str] = ..., coordinate: _Optional[str] = ..., group: _Optional[str] = ..., address: _Optional[_Union[MotorAddress, _Mapping]] = ..., model: _Optional[str] = ..., direction: _Optional[int] = ..., status: _Optional[_Union[DeviceStatus, _Mapping]] = ..., limits: _Optional[_Union[MotorLimits, _Mapping]] = ...) -> None: ...
+    firmware_version: str
+    def __init__(self, name: _Optional[str] = ..., coordinate: _Optional[str] = ..., group: _Optional[str] = ..., address: _Optional[_Union[MotorAddress, _Mapping]] = ..., model: _Optional[str] = ..., direction: _Optional[int] = ..., status: _Optional[_Union[DeviceStatus, _Mapping]] = ..., limits: _Optional[_Union[MotorLimits, _Mapping]] = ..., firmware_version: _Optional[str] = ...) -> None: ...
 
 class GroupInfo(_message.Message):
     __slots__ = ("name", "control_rate_hz", "state", "motors")

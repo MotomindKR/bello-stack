@@ -295,3 +295,39 @@ Common failure checks:
 Use `RUST_LOG=bello_hardwared=debug` for daemon diagnostics. For emulator
 diagnostics, set `RUST_LOG=debug` in the emulator terminal. Avoid debug logging on
 a production control path until its timing impact has been evaluated.
+
+## Re-zero a motor or update its firmware
+
+Support the mechanism at its intended motor-zero pose before disabling torque. Disable and release every group sharing the target CAN bus. Stop other CAN tools and hand drivers on that bus. Hardwared confirms every configured motor on that bus reports stopped and fault-free before suspending feedback. Daemons using the same state directory claim each transport exclusively. A group spanning two buses stays unavailable for motion while either bus is reserved.
+
+Use `MotorConfigurationService` on a loopback TCP, Unix socket, or mutually authenticated TLS listener. For example, from the repository root with the Milly simulator running on localhost:
+
+```sh
+motor_config() {
+  grpcurl -plaintext -import-path components/bello-hardware-api/proto \
+    -proto bello/hardware/v1/hardware.proto -d "$2" 127.0.0.1:50051 \
+    "bello.hardware.v1.MotorConfigurationService/$1"
+}
+motor_config PrepareMotorConfiguration '{"motor":"joint_1","kind":"MOTOR_CONFIGURATION_KIND_ZERO"}'
+```
+
+To read installed firmware without preparing an operation, call `HardwareService/ListHardware`. At startup and after a reconnect, hardwared queries each motor and checks the reported firmware family against its configured model. Each motor reports `firmwareVersion` when it answers. A missing or mismatched identity keeps its group idle and appears in the motor status detail. Other verified groups can enable normally. The field is absent when the version is unknown, feedback is stale, or the bus is reserved for maintenance.
+
+```sh
+grpcurl -plaintext -import-path components/bello-hardware-api/proto \
+  -proto bello/hardware/v1/hardware.proto 127.0.0.1:50051 \
+  bello.hardware.v1.HardwareService/ListHardware |
+  jq '.motors[] | {name, firmwareVersion}'
+```
+
+Use the returned ID in `GetMotorConfiguration`. At `READY`, review the motor UUID and shaft angle. Commit sets the motor's current position to zero. For firmware, prepare with `MOTOR_CONFIGURATION_KIND_FIRMWARE` and review the installed and target versions. Hardwared embeds the RobStride images listed in the [setup tool catalog](https://github.com/MotomindKR/motor-setup-tool/blob/3437f89e0969b394fc729ec5945d29065eef6985/src/firmware_catalog.json). The build verifies their SHA-256 hashes. A weekly CI job checks the vendor release for changes. Firmware updates work offline. RobStride bootloader frames use host ID 0xFD. Normal control and post-update readback use the configured bus host ID. The simulated CAN transport uses a small fixture image and the emulator keeps its calibration and firmware version in memory.
+
+```sh
+motor_config GetMotorConfiguration '{"id":"<operation ID>"}'
+motor_config CommitMotorConfiguration '{"id":"<operation ID>"}'
+motor_config GetMotorConfiguration '{"id":"<operation ID>"}'
+```
+
+A prepared operation expires after two minutes. Use `CancelMotorConfiguration` to release it earlier. After committing, poll the same ID until the result is terminal. Disconnecting the client leaves the write running. A verified write reports `SUCCEEDED`. If a group cannot resume healthy, stopped feedback afterward, it enters `FAULT` and the operation detail identifies the motor and reason. Check the group state before acquiring a new motion lease.
+
+An `UNVERIFIED` result means hardwared started the write and could not confirm its outcome. The affected groups enter `FAULT` and the CAN bus resumes monitoring. Check the motor's firmware or mechanical zero, then acquire a lease and call `RecoverGroup` for each faulted group. Recovery requires healthy, stopped feedback and returns the group to `IDLE`. The operation retains its `UNVERIFIED` result. Restarting hardwared clears the in-memory operation and fault.

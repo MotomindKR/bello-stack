@@ -23,6 +23,7 @@ class GroupState(IntEnum):
     FAULT = 4
     SHUTDOWN = 5
     DAMPED = 6
+    CONFIGURING = 7
 
 
 class CommandResult(IntEnum):
@@ -59,6 +60,7 @@ class GroupCause(IntEnum):
     LEASE_LOSS = 16
     EXIT = 17
     INTERNAL = 18
+    CONFIGURATION = 19
 
 
 class ControlState(Enum):
@@ -114,6 +116,7 @@ class Motor:
     direction: int
     limits: MotorLimits
     status: DeviceStatus | None
+    firmware_version: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

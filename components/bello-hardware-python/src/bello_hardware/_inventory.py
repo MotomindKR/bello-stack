@@ -242,6 +242,7 @@ class Inventory:
                 item.direction,
                 limits,
                 _optional_status(item, "status"),
+                item.firmware_version if item.HasField("firmware_version") else None,
             )
             motors[motor.name] = motor
             coordinates[motor.coordinate] = motor.name

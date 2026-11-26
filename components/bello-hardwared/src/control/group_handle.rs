@@ -44,6 +44,11 @@ pub(crate) enum GroupQueueError {
 }
 
 pub(super) enum LifecycleRequest {
+    Configuration {
+        to: GroupState,
+        detail: String,
+        reply: oneshot::Sender<Transition>,
+    },
     Operation {
         action: LifecycleAction,
         lease_generation: u64,
@@ -72,6 +77,14 @@ pub struct GroupHandle {
 }
 
 impl GroupHandle {
+    pub(crate) fn request_shutdown(&self) {
+        self.shutdown.store(true, Ordering::Release);
+        if let Some(pending) = self.command_mailbox.lock().take() {
+            let _ = pending.reply.send(Err(CommandError::ControllerStopped));
+        }
+        let _ = self.wake_tx.try_send(());
+    }
+
     #[cfg(test)]
     pub(crate) fn lease_generation_for_test(&self) -> u64 {
         self.lease_generation.load(Ordering::Acquire)
@@ -85,6 +98,21 @@ impl GroupHandle {
 
     pub(crate) fn emergency_pending(&self) -> bool {
         self.emergency_pending.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn configure(&self, to: GroupState, detail: &str) -> anyhow::Result<()> {
+        let (reply, result) = oneshot::channel();
+        self.lifecycle_tx
+            .send(LifecycleRequest::Configuration {
+                to,
+                detail: detail.into(),
+                reply,
+            })
+            .map_err(|_| GroupQueueError::Stopped)?;
+        let _ = self.wake_tx.try_send(());
+        let result = result.blocking_recv()?;
+        anyhow::ensure!(result.ok, "{}", result.message);
+        Ok(())
     }
 
     pub(crate) fn activate_lease(&self, generation: u64) {

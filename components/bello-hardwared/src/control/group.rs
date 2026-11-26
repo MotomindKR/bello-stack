@@ -286,7 +286,7 @@ impl GroupController {
                     tracing::error!(group=%self.spec.name, %error, "emergency damping failed in fault state");
                 }
             }
-            GroupState::Idle | GroupState::Shutdown => {}
+            GroupState::Idle | GroupState::Configuring | GroupState::Shutdown => {}
         }
         self.update_snapshot(0);
         self.emergency_pending.store(false, Ordering::Release);
@@ -304,6 +304,14 @@ impl GroupController {
 
     fn handle(&mut self, request: LifecycleRequest) {
         match request {
+            LifecycleRequest::Configuration { to, detail, reply } => {
+                let transition = self.fsm.configure(to, detail);
+                if transition.ok {
+                    self.clear_command_state();
+                    self.update_snapshot(0);
+                }
+                let _ = reply.send(transition);
+            }
             LifecycleRequest::Operation {
                 action,
                 lease_generation,
@@ -337,6 +345,8 @@ impl GroupController {
                     rejection
                 } else if self.fsm.state() == GroupState::Damped {
                     self.fsm.enable()
+                } else if let Err(error) = self.verify_motor_models() {
+                    self.fsm.reject(format!("{error:#}"))
                 } else {
                     self.clear_command_state();
                     match self.enable_hardware() {
@@ -509,6 +519,12 @@ impl GroupController {
     pub(super) fn handle_worker_panic(&mut self) {
         self.enter_fault(FaultCause::Internal, "group controller panicked".into());
         self.update_snapshot(0);
+    }
+
+    fn verify_motor_models(&self) -> anyhow::Result<()> {
+        self.motors
+            .iter()
+            .try_for_each(|motor| motor.controller.verified_model_window().map(|_| ()))
     }
 
     fn enable_hardware(&mut self) -> Result<(), EnableFailure> {
@@ -943,6 +959,9 @@ impl GroupController {
         }
     }
     fn response(&self, cause: FaultCause) -> FaultResponse {
+        if matches!(cause, FaultCause::Enable) && self.verify_motor_models().is_err() {
+            return FaultResponse::Disable;
+        }
         self.spec.fault_policy.response(cause)
     }
     fn publish_command_policy_event(

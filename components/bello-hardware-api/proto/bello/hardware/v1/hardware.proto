@@ -18,6 +18,69 @@ service HardwareService {
   rpc StreamCommands(stream StreamCommandsRequest) returns (stream StreamCommandsResponse);
 }
 
+// Inspect and maintain stopped RobStride motors under an exclusive CAN bus reservation.
+service MotorConfigurationService {
+  rpc PrepareMotorConfiguration(PrepareMotorConfigurationRequest) returns (PrepareMotorConfigurationResponse);
+  rpc CommitMotorConfiguration(CommitMotorConfigurationRequest) returns (CommitMotorConfigurationResponse);
+  rpc GetMotorConfiguration(GetMotorConfigurationRequest) returns (GetMotorConfigurationResponse);
+  rpc CancelMotorConfiguration(CancelMotorConfigurationRequest) returns (CancelMotorConfigurationResponse);
+}
+
+enum MotorConfigurationKind {
+  MOTOR_CONFIGURATION_KIND_UNSPECIFIED = 0;
+  MOTOR_CONFIGURATION_KIND_ZERO = 1;
+  MOTOR_CONFIGURATION_KIND_FIRMWARE = 2;
+}
+
+enum MotorConfigurationPhase {
+  MOTOR_CONFIGURATION_PHASE_UNSPECIFIED = 0;
+  MOTOR_CONFIGURATION_PHASE_PREPARING = 1;
+  MOTOR_CONFIGURATION_PHASE_READY = 2;
+  MOTOR_CONFIGURATION_PHASE_WRITING = 3;
+  MOTOR_CONFIGURATION_PHASE_SUCCEEDED = 4;
+  MOTOR_CONFIGURATION_PHASE_CANCELLED = 5;
+  MOTOR_CONFIGURATION_PHASE_FAILED = 6;
+  MOTOR_CONFIGURATION_PHASE_UNVERIFIED = 7;
+}
+
+message PrepareMotorConfigurationRequest {
+  string motor = 1;
+  MotorConfigurationKind kind = 2;
+}
+
+message PrepareMotorConfigurationResponse {
+  string id = 1;
+}
+
+message CommitMotorConfigurationRequest {
+  string id = 1;
+}
+
+message CommitMotorConfigurationResponse {}
+
+message CancelMotorConfigurationRequest {
+  string id = 1;
+}
+
+message CancelMotorConfigurationResponse {}
+
+message GetMotorConfigurationRequest {
+  string id = 1;
+}
+
+message GetMotorConfigurationResponse {
+  string id = 1;
+  string motor = 2;
+  MotorConfigurationKind kind = 3;
+  MotorConfigurationPhase phase = 4;
+  bytes motor_uuid = 5;
+  string current_version = 6;
+  optional string target_version = 7;
+  uint32 progress_percent = 8;
+  string detail = 9;
+  optional double reviewed_position_rad = 10;
+}
+
 enum DeviceState {
   DEVICE_STATE_UNSPECIFIED = 0;
   DEVICE_STATE_STARTING = 1;
@@ -38,6 +101,7 @@ enum GroupState {
   GROUP_STATE_FAULT = 4;
   GROUP_STATE_SHUTDOWN = 5;
   GROUP_STATE_DAMPED = 6;
+  GROUP_STATE_CONFIGURING = 7;
 }
 
 enum CommandPolicyCheck {
@@ -80,6 +144,7 @@ enum GroupCause {
   GROUP_CAUSE_LEASE_LOSS = 16;
   GROUP_CAUSE_EXIT = 17;
   GROUP_CAUSE_INTERNAL = 18;
+  GROUP_CAUSE_CONFIGURATION = 19;
 }
 
 enum CommandResult {
@@ -151,6 +216,7 @@ message MotorInfo {
   int32 direction = 6;
   DeviceStatus status = 7;
   MotorLimits limits = 8;
+  optional string firmware_version = 9;
 }
 
 message GroupInfo {

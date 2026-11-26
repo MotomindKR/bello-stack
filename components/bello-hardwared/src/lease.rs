@@ -42,6 +42,10 @@ pub struct LeaseManager {
 }
 
 impl LeaseManager {
+    pub(crate) fn occupied(&self, group: &GroupName) -> bool {
+        self.leases.lock().contains_key(group)
+    }
+
     pub(crate) fn revoke_all(&self) {
         self.leases.lock().clear();
     }
