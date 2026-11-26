@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, ensure};
 
+use robstride_protocol::OTA_HOST_ID;
+
 use super::{Link, Version};
 
 const RELEASES: &[(&str, &str, &[u8])] = include!(concat!(env!("OUT_DIR"), "/firmware.rs"));
@@ -53,7 +55,7 @@ impl Image {
         uuid: [u8; 8],
         progress: &impl Fn(u32),
     ) -> Result<()> {
-        let host = u16::from(link.host);
+        let host = u16::from(OTA_HOST_ID);
         require_ack(link, START, host, uuid)?;
 
         let count = self.bytes.len().div_ceil(8);
@@ -129,7 +131,7 @@ fn exchange(link: &Link<'_>, kind: u8, field: u16, data: [u8; 8]) -> Result<Opti
     for attempt in 0..ACK_ATTEMPTS {
         link.send(kind, field, data)?;
         if let Some(ack) = link.wait_for(timeout, |frame| {
-            link.is_reply(frame, kind).then_some(Ack {
+            link.is_reply_to(frame, kind, OTA_HOST_ID).then_some(Ack {
                 status: (frame.id >> 16) as u8,
                 data: frame.data,
             })

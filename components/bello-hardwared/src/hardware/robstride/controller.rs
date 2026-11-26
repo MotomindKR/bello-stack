@@ -287,38 +287,37 @@ impl MotorController {
     }
 
     fn probe_firmware_version(&self, window: FeedbackWindow, bus_transition: u64) {
-        {
-            let mut state = self.feedback.write();
-            if state.firmware.bus_transition != bus_transition {
-                state.firmware = FirmwareDiscovery {
-                    bus_transition,
-                    ..Default::default()
-                };
-            }
-            if state.window != window
-                || state.firmware.version.is_some()
-                || !state
-                    .latest
-                    .is_some_and(|sample| sample.received.elapsed() <= self.feedback_timeout)
-                || state
-                    .firmware
-                    .requested
-                    .is_some_and(|request| request.elapsed() < Duration::from_millis(500))
-            {
-                return;
-            }
-            state.firmware.requested = Some(Instant::now());
+        let mut state = self.feedback.write();
+        if state.firmware.bus_transition != bus_transition {
+            state.firmware = FirmwareDiscovery {
+                bus_transition,
+                ..Default::default()
+            };
         }
-        let _ = self.bus.submit_configuration_batch(
-            window,
-            vec![
-                robstride_protocol::firmware_version_request(
-                    self.bus.spec.host_id,
-                    self.spec.address.id,
-                )
-                .into(),
-            ],
+        if state.window != window
+            || state.firmware.version.is_some()
+            || !state
+                .latest
+                .is_some_and(|sample| sample.received.elapsed() <= self.feedback_timeout)
+            || state
+                .firmware
+                .requested
+                .is_some_and(|request| request.elapsed() < Duration::from_millis(500))
+        {
+            return;
+        }
+        let request = robstride_protocol::firmware_version_request(
+            self.bus.spec.host_id,
+            self.spec.address.id,
         );
+        let requested = Instant::now();
+        if self
+            .bus
+            .submit_configuration_batch(window, vec![request.into()])
+            .is_ok()
+        {
+            state.firmware.requested = Some(requested);
+        }
     }
 
     pub(crate) fn feedback(&self) -> Option<TimedFeedback> {

@@ -320,7 +320,7 @@ grpcurl -plaintext -import-path components/bello-hardware-api/proto \
   jq '.motors[] | {name, firmwareVersion}'
 ```
 
-Use the returned ID in `GetMotorConfiguration`. At `READY`, review the motor UUID and shaft angle. Commit sets the motor's current position to zero. For firmware, prepare with `MOTOR_CONFIGURATION_KIND_FIRMWARE` and review the installed and target versions. Hardwared embeds the RobStride images listed in the [setup tool catalog](https://github.com/MotomindKR/motor-setup-tool/blob/3437f89e0969b394fc729ec5945d29065eef6985/src/firmware_catalog.json). The build verifies their SHA-256 hashes. A weekly CI job checks the vendor release for changes. Firmware updates work offline. The simulated CAN transport uses a small fixture image and the emulator keeps its calibration and firmware version in memory.
+Use the returned ID in `GetMotorConfiguration`. At `READY`, review the motor UUID and shaft angle. Commit sets the motor's current position to zero. For firmware, prepare with `MOTOR_CONFIGURATION_KIND_FIRMWARE` and review the installed and target versions. Hardwared embeds the RobStride images listed in the [setup tool catalog](https://github.com/MotomindKR/motor-setup-tool/blob/3437f89e0969b394fc729ec5945d29065eef6985/src/firmware_catalog.json). The build verifies their SHA-256 hashes. A weekly CI job checks the vendor release for changes. Firmware updates work offline. RobStride bootloader frames use host ID 0xFD. Normal control and post-update readback use the configured bus host ID. The simulated CAN transport uses a small fixture image and the emulator keeps its calibration and firmware version in memory.
 
 ```sh
 motor_config GetMotorConfiguration '{"id":"<operation ID>"}'
@@ -328,6 +328,6 @@ motor_config CommitMotorConfiguration '{"id":"<operation ID>"}'
 motor_config GetMotorConfiguration '{"id":"<operation ID>"}'
 ```
 
-A prepared operation expires after two minutes. Use `CancelMotorConfiguration` to release it earlier. After committing, poll the same ID until the result is terminal. Disconnecting the client leaves the write running. Check the group state before acquiring a new motion lease.
+A prepared operation expires after two minutes. Use `CancelMotorConfiguration` to release it earlier. After committing, poll the same ID until the result is terminal. Disconnecting the client leaves the write running. A verified write reports `SUCCEEDED`. If a group cannot resume healthy, stopped feedback afterward, it enters `FAULT` and the operation detail identifies the motor and reason. Check the group state before acquiring a new motion lease.
 
 An `UNVERIFIED` result means hardwared started the write and could not confirm its outcome. The affected groups enter `FAULT` and the CAN bus resumes monitoring. Check the motor's firmware or mechanical zero, then acquire a lease and call `RecoverGroup` for each faulted group. Recovery requires healthy, stopped feedback and returns the group to `IDLE`. The operation retains its `UNVERIFIED` result. Restarting hardwared clears the in-memory operation and fault.

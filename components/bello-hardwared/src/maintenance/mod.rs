@@ -307,13 +307,19 @@ impl<'a> Link<'a> {
     }
 
     fn is_reply(&self, frame: Frame, kind: u8) -> bool {
+        self.is_reply_to(frame, kind, self.host)
+    }
+
+    fn is_reply_to(&self, frame: Frame, kind: u8, host: u8) -> bool {
         frame.id >> 24 == u32::from(kind)
             && (frame.id >> 8) as u8 == self.id
-            && frame.id as u8 == self.host
+            && frame.id as u8 == host
     }
 
     fn check_fault(&self, frame: Frame) -> Result<()> {
-        if self.is_reply(frame, FAULT) {
+        if self.is_reply(frame, FAULT)
+            || self.is_reply_to(frame, FAULT, robstride_protocol::OTA_HOST_ID)
+        {
             let faults = u32::from_le_bytes(frame.data[..4].try_into().expect("four fault bytes"));
             ensure!(faults == 0, "Motor reported type-21 fault 0x{faults:08x}");
         }

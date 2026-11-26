@@ -12,3 +12,5 @@ pub use model::{
     CONTROL_POSITION_MAX, CONTROL_POSITION_MIN, CONTROL_POSITION_SPAN, MAX_MOTOR_ID, MODEL_NAMES,
     ModelHardware, ModelLimits, MotorParams, model_limits,
 };
+
+pub const OTA_HOST_ID: u8 = 0xfd;

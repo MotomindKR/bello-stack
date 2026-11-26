@@ -266,7 +266,7 @@ impl HardwareDaemon {
             Ok(Phase::Succeeded)
         }))
         .unwrap_or_else(|_| Err(anyhow!("motor configuration worker panicked")));
-        let (mut phase, mut detail) = match result {
+        let (phase, detail) = match result {
             Ok(phase) => (phase, String::new()),
             Err(err) if write_started => (Phase::Unverified, format!("{err:#}")),
             Err(err) => (Phase::Failed, format!("{err:#}")),
@@ -276,33 +276,32 @@ impl HardwareDaemon {
             && !self.shutting_down.load(Ordering::Acquire);
         let released = Instant::now();
         drop(session);
+        let mut details = Vec::new();
+        if !detail.is_empty() {
+            details.push(detail.clone());
+        }
         for group in entered {
-            let mut state = if phase == Phase::Unverified {
-                GroupState::Fault
-            } else {
-                GroupState::Idle
-            };
-            if check_health
+            let (state, group_detail) = if check_health
                 && let Err(error) = self.wait_for_configuration_feedback(&group, released)
             {
-                state = GroupState::Fault;
-                detail = format!("{detail} group {group}: {error:#}").trim().into();
-                if phase == Phase::Succeeded {
-                    phase = Phase::Failed;
-                }
-            }
-            if let Err(error) = self.groups[&group].configure(state, &detail) {
-                detail =
-                    format!("group {group} could not leave configuration: {error:#}. {detail}");
-                if phase != Phase::Unverified {
-                    phase = Phase::Failed;
-                }
+                let reason = format!("group {group}: {error:#}");
+                details.push(reason.clone());
+                (GroupState::Fault, reason)
+            } else if phase == Phase::Unverified {
+                (GroupState::Fault, detail.clone())
+            } else {
+                (GroupState::Idle, detail.clone())
+            };
+            if let Err(error) = self.groups[&group].configure(state, &group_detail) {
+                details.push(format!(
+                    "group {group} could not leave configuration: {error:#}"
+                ));
             }
         }
         let mut jobs = self.configuration.jobs.lock();
         let job = jobs.get_mut(id).unwrap();
         job.status.phase = phase as i32;
-        job.status.detail = detail;
+        job.status.detail = details.join(". ");
         job.working = false;
         self.configuration.changed.notify_all();
     }
@@ -315,29 +314,54 @@ impl HardwareDaemon {
             .context("missing motor group")?;
         let deadline = Instant::now() + group.enable_timeout;
         loop {
-            let mut feedback = HashMap::new();
-            for name in &group.motors {
-                if let Some(sample) = self.motor_feedback(name)
-                    && sample.received >= since
-                    && sample.received.elapsed() <= group.feedback_timeout
-                    && sample.value.mode_status == 0
-                    && sample.value.fault_bits == 0
-                    && self.motor_status(name).is_some_and(|s| s.state.is_online())
-                {
-                    feedback.insert(name.clone(), sample.value);
+            let samples = group
+                .motors
+                .iter()
+                .map(|motor| {
+                    let feedback = self
+                        .stopped_feedback_since(motor, since, group.feedback_timeout)
+                        .with_context(|| format!("motor {motor}"))?;
+                    Ok((motor.clone(), feedback))
+                })
+                .collect::<Result<HashMap<_, _>>>();
+            match samples {
+                Ok(feedback) => {
+                    return group
+                        .mechanical
+                        .validate_feedback_positions(&feedback)
+                        .map_err(|v| anyhow!(v.detail));
                 }
+                Err(reason) if Instant::now() >= deadline => return Err(reason),
+                Err(_) => std::thread::sleep(Duration::from_millis(5)),
             }
-            if feedback.len() == group.motors.len() {
-                return group
-                    .mechanical
-                    .validate_feedback_positions(&feedback)
-                    .map_err(|v| anyhow!(v.detail));
-            }
-            ensure!(
-                Instant::now() < deadline,
-                "missing fresh, healthy stopped feedback"
-            );
-            std::thread::sleep(Duration::from_millis(5));
         }
+    }
+
+    fn stopped_feedback_since(
+        &self,
+        motor: &MotorName,
+        since: Instant,
+        timeout: Duration,
+    ) -> Result<robstride_protocol::Feedback> {
+        let sample = self
+            .motor_feedback(motor)
+            .context("no feedback after maintenance")?;
+        ensure!(
+            sample.received >= since && sample.received.elapsed() <= timeout,
+            "stale feedback"
+        );
+        ensure!(
+            sample.value.fault_bits == 0,
+            "fault bits {:#x}",
+            sample.value.fault_bits
+        );
+        ensure!(
+            sample.value.mode_status == 0,
+            "motor is in mode {}",
+            sample.value.mode_status
+        );
+        let status = self.motor_status(motor).context("motor unavailable")?;
+        ensure!(status.state.is_online(), "{}", status.detail);
+        Ok(sample.value)
     }
 }

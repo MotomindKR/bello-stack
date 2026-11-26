@@ -1,4 +1,4 @@
-use robstride_protocol::Frame;
+use robstride_protocol::{Frame, OTA_HOST_ID};
 
 const SIM_FIRMWARE_PREFIX: &[u8] = b"BELLO-SIM-FW/1\n";
 const MAX_SIM_FIRMWARE_BYTES: usize = SIM_FIRMWARE_PREFIX.len() + "255.255.255.255".len();
@@ -66,6 +66,11 @@ impl Maintenance {
         frame: Frame,
     ) -> Option<Frame> {
         let kind = (frame.id >> 24) as u8;
+        let host = if (11..=14).contains(&kind) {
+            OTA_HOST_ID
+        } else {
+            host
+        };
         let field = (frame.id >> 8) as u16;
         let (kind, status, data): (u8, u8, [u8; 8]) = match kind {
             0 if field == u16::from(host) && frame.data == [0; 8] => (0, 0, self.uuid),

@@ -267,3 +267,112 @@ async fn lost_readback_faults_the_group_until_the_operator_recovers_it() -> Resu
     bridge.abort();
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn verified_flash_preserves_its_result_when_a_milly_peer_stops_reporting() -> Result<()> {
+    let [host, peer] = sim::available_ports()?;
+    let host_socket = serde_yaml::from_str::<SimBus>(&format!("{{ {host} }}"))?.open_simulator()?;
+    let peer_socket = serde_yaml::from_str::<SimBus>(&format!("{{ {peer} }}"))?.open_daemon()?;
+    host_socket.set_nonblocking(true)?;
+    peer_socket.set_nonblocking(true)?;
+    let bridge = tokio::spawn(async move {
+        let mut gripper_silent = false;
+        loop {
+            while let Ok(frame) = host_socket.recv() {
+                // Disconnect the gripper when joint_2 finishes its transfer.
+                gripper_silent |= frame.id >> 24 == 14 && frame.id as u8 == 2;
+                peer_socket.send(frame).unwrap();
+            }
+            while let Ok(frame) = peer_socket.recv() {
+                if !gripper_silent || (frame.id >> 8) as u8 != 7 {
+                    host_socket.send(frame).unwrap();
+                }
+            }
+            sleep(Duration::from_millis(1)).await;
+        }
+    });
+
+    let directory = tempfile::tempdir()?;
+    let deployment = directory.path().join("hardwared.yaml");
+    let simulator = directory.path().join("emulator.yaml");
+    let grpc = TcpListener::bind(("127.0.0.1", 0))?.local_addr()?;
+    let description = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../descriptions/milly/hardware.yaml"
+    );
+    fs::write(
+        &deployment,
+        format!(
+            "description: {description}\ngrpc:\n  listen: [{{type: tcp, address: '{grpc}'}}]\nbus_transports:\n  can0: {{type: sim, {host}}}\nenabled_groups: [arm]\n"
+        ),
+    )?;
+    let actuators = include_str!("../../../motor-emulator/config/milly-vcan.yaml");
+    fs::write(
+        &simulator,
+        actuators.replace("interface: vcan0", &format!("interface: {{ {peer} }}")),
+    )?;
+    let mut daemon = ManagedProcess::spawn(
+        "hardwared",
+        env!("CARGO_BIN_EXE_hardwared-e2e-fixture"),
+        [&deployment],
+    )?;
+    let mut emulator = ManagedProcess::spawn(
+        "emulator",
+        env!("CARGO_BIN_EXE_robstride-emulator-e2e-fixture"),
+        [&simulator],
+    )?;
+    let endpoint = format!("http://{grpc}");
+    let client = support::scenario::connect(
+        &endpoint,
+        Duration::from_secs(5),
+        &mut daemon,
+        &mut emulator,
+    )
+    .await?;
+    let mut api = MotorConfigurationServiceClient::connect(endpoint).await?;
+
+    for (motor, version, expected_state) in [
+        ("joint_1", "0.6.0.2", GroupState::Idle),
+        ("joint_2", "0.3.0.2", GroupState::Fault),
+    ] {
+        let id = api
+            .prepare_motor_configuration(PrepareMotorConfigurationRequest {
+                motor: motor.into(),
+                kind: Kind::Firmware as i32,
+            })
+            .await?
+            .into_inner()
+            .id;
+        wait_phase(&mut api, &id, Phase::Ready).await?;
+        api.commit_motor_configuration(CommitMotorConfigurationRequest { id: id.clone() })
+            .await?;
+        let result = wait_phase(&mut api, &id, Phase::Succeeded).await?;
+        let inventory = client.inventory().await?;
+        assert_eq!(
+            inventory.groups[0].state, expected_state as i32,
+            "{}",
+            result.detail
+        );
+        assert_eq!(
+            inventory
+                .motors
+                .iter()
+                .find(|m| m.name == motor)
+                .unwrap()
+                .firmware_version
+                .as_deref(),
+            Some(version)
+        );
+        if expected_state == GroupState::Fault {
+            assert!(
+                result.detail.contains("gripper") && result.detail.contains("feedback"),
+                "{}",
+                result.detail
+            );
+        } else {
+            assert!(result.detail.is_empty(), "{}", result.detail);
+        }
+    }
+    bridge.abort();
+    Ok(())
+}

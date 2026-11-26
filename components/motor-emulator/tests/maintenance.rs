@@ -323,7 +323,8 @@ fn standalone_emulator_answers_maintenance_over_loopback_can() {
     daemon
         .set_read_timeout(Some(Duration::from_millis(100)))
         .unwrap();
-    let query = wire(4, HOST.into(), MOTOR, VERSION_QUERY);
+    let control_host = 0u8;
+    let query = wire(4, control_host.into(), MOTOR, VERSION_QUERY);
     daemon.send(query).unwrap();
     assert!(matches!(
         daemon.recv().unwrap_err().kind(),
@@ -340,13 +341,13 @@ fn standalone_emulator_answers_maintenance_over_loopback_can() {
     );
     writeln!(
         process.0.stdin.take().unwrap(),
-        "interface: {{ daemon_port: {}, simulator_port: {} }}\nactuators:\n  - {{ id: {MOTOR}, model: RS_06, initial_position: 1.25 }}",
+        "interface: {{ daemon_port: {}, simulator_port: {} }}\nhost_id: {control_host}\nactuators:\n  - {{ id: {MOTOR}, model: RS_06, initial_position: 1.25 }}",
         bus.daemon_port, bus.simulator_port
     )
     .unwrap();
 
-    let ping = wire(0, HOST.into(), MOTOR, [0; 8]);
-    let ping_id = wire(0, MOTOR.into(), HOST, [0; 8]).id;
+    let ping = wire(0, control_host.into(), MOTOR, [0; 8]);
+    let ping_id = wire(0, MOTOR.into(), control_host, [0; 8]).id;
     let deadline = Instant::now() + Duration::from_secs(3);
     let uuid = loop {
         daemon.send(ping).unwrap();
@@ -381,10 +382,10 @@ fn standalone_emulator_answers_maintenance_over_loopback_can() {
             );
         }
     };
-    let feedback_id = wire(2, MOTOR.into(), HOST, [0; 8]).id;
+    let feedback_id = wire(2, MOTOR.into(), control_host, [0; 8]).id;
     assert_eq!(exchange(query, feedback_id), [0, 0xc4, 0x56, 0, 6, 0, 1, 0]);
-    let stop = stop_frame(HOST, MOTOR, false);
-    let zero = wire(6, HOST.into(), MOTOR, ZERO);
+    let stop = stop_frame(control_host, MOTOR, false);
+    let zero = wire(6, control_host.into(), MOTOR, ZERO);
     let params = MotorParams::for_model("RS_06", 1).unwrap();
     exchange(stop, feedback_id);
     exchange(zero, feedback_id);
@@ -402,11 +403,11 @@ fn standalone_emulator_answers_maintenance_over_loopback_can() {
     let transfer = |kind, field, data| {
         exchange(
             wire(kind, field, MOTOR, data),
-            wire(kind, MOTOR.into(), HOST, [0; 8]).id,
+            wire(kind, MOTOR.into(), 0xfd, [0; 8]).id,
         )
     };
-    transfer(11, HOST.into(), uuid);
-    transfer(12, HOST.into(), info(IMAGE));
+    transfer(11, 0xfd, uuid);
+    transfer(12, 0xfd, info(IMAGE));
     for (index, bytes) in IMAGE.chunks(8).enumerate() {
         transfer(13, index as u16, packet(bytes));
     }
