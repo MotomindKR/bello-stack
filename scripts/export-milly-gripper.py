@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Export a standalone MuJoCo gripper with two native loop-closure constraints.
 
-uv run --with numpy --with scipy --with trimesh --with mujoco==3.16.0 \
+uv run --with numpy --with scipy --with mujoco==3.16.0 \
     scripts/export-milly-gripper.py --check
 """
 

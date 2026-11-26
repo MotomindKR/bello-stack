@@ -62,11 +62,10 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 uuid = "1"
 
-# The pure-Rust JPEG encoder is in the live stereo path. Unoptimized image code
-# can reduce simulated camera output below 10 Hz even for small frames.
+# The camera renderer uses image for RGB buffers and stereo packing.
 [profile.dev.package.image]
 opt-level = 3
 
-# Generic image encoding is monomorphized in this crate; optimize the caller too.
+# The simulator remaps fisheye pixels before handing frames to GStreamer.
 [profile.dev.package.bello-sim]
 opt-level = 3

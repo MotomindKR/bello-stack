@@ -28,7 +28,6 @@
               clippy
               protobuf
               pkg-config
-              openssl
               grpcurl
               buf
               (python3.withPackages (python: with python; [
