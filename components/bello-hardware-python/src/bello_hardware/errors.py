@@ -3,8 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import grpc  # type: ignore[import-untyped]
-
-from ._generated import hardware_pb2 as proto
+from bello_hardware_api import hardware_pb2 as proto
 
 
 class BelloError(Exception):
@@ -15,14 +14,14 @@ class ConnectionError(BelloError):
     """The daemon could not be reached."""
 
 
-class RpcError(BelloError):
-    """A gRPC operation failed."""
+class RequestError(BelloError):
+    """A request to the hardware daemon failed."""
 
-    def __init__(self, operation: str, code: grpc.StatusCode, detail: str) -> None:
+    def __init__(self, operation: str, code: str, detail: str) -> None:
         self.operation = operation
         self.code = code
         self.detail = detail
-        super().__init__(f"{operation} failed ({code.name}): {detail}")
+        super().__init__(f"{operation} failed ({code}): {detail}")
 
 
 class ProtocolError(BelloError):
@@ -41,14 +40,8 @@ class ControlError(BelloError):
     """A motor-group control operation failed."""
 
 
-class ControlRpcError(ControlError):
-    """A motor-group gRPC operation failed."""
-
-    def __init__(self, operation: str, code: grpc.StatusCode, detail: str) -> None:
-        self.operation = operation
-        self.code = code
-        self.detail = detail
-        super().__init__(f"{operation} failed ({code.name}): {detail}")
+class ControlRequestError(RequestError, ControlError):
+    """A request for motor-group control failed."""
 
 
 class InvalidSessionStateError(ControlError):
@@ -108,13 +101,13 @@ class RobotCleanupError(BelloError):
         super().__init__("robot cleanup failed: " + "; ".join(map(str, self.errors)))
 
 
-def rpc_error(operation: str, error: grpc.RpcError) -> RpcError:
-    code = error.code()
+def rpc_error(operation: str, error: grpc.RpcError) -> RequestError:
+    code = error.code().name
     detail = error.details() or str(error)
-    return RpcError(operation, code, detail)
+    return RequestError(operation, code, detail)
 
 
 def control_rpc_error(operation: str, error: grpc.RpcError) -> ControlError:
     if error.code() == grpc.StatusCode.PERMISSION_DENIED:
         return LeaseLostError(f"{operation} lost its motor-group lease: {error.details()}")
-    return ControlRpcError(operation, error.code(), error.details() or str(error))
+    return ControlRequestError(operation, error.code().name, error.details() or str(error))

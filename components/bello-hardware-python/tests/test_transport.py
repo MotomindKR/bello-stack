@@ -3,7 +3,7 @@ from typing import Protocol
 
 import pytest
 
-from bello_hardware import Robot, TlsCredentials, api
+from bello_hardware import Robot, TlsCredentials
 
 
 class _RunningServer(Protocol):
@@ -12,8 +12,7 @@ class _RunningServer(Protocol):
 
 def test_unix_socket_connection(unix_hardware_server: _RunningServer) -> None:
     with Robot.connect(unix_hardware_server.endpoint) as robot:
-        groups = robot.grpc_client().ListHardware(api.ListHardwareRequest()).groups
-        assert tuple(group.name for group in groups) == robot.inventory.group_names == ("leg",)
+        assert robot.inventory.group_names == ("leg",)
 
 
 def test_tls_credentials_require_a_complete_client_identity() -> None:

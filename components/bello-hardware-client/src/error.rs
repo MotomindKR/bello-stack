@@ -1,4 +1,5 @@
 use thiserror::Error;
+use tonic::Code;
 
 use crate::lease::LeaseStatus;
 use crate::{CommandResult, EnumValue, GroupState};
@@ -6,10 +7,12 @@ use crate::{CommandResult, EnumValue, GroupState};
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("hardware transport error: {0}")]
-    Transport(#[from] tonic::transport::Error),
-    #[error("hardware gRPC request failed: {0}")]
-    Rpc(#[from] tonic::Status),
+    #[error("hardware unavailable: {0}")]
+    Unavailable(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("hardware precondition failed: {0}")]
+    PreconditionFailed(String),
+    #[error("hardware request failed: {0}")]
+    RequestFailed(String),
     #[error("invalid client argument: {0}")]
     InvalidArgument(String),
     #[error("hardware server violated the client protocol: {0}")]
@@ -71,12 +74,25 @@ pub enum Error {
     StateUnavailable { kind: &'static str, name: String },
 }
 
-impl Error {
-    /// Returns the original gRPC status when the failure came from an RPC.
-    pub fn rpc_status(&self) -> Option<&tonic::Status> {
-        match self {
-            Self::Rpc(status) => Some(status),
-            _ => None,
+impl From<tonic::transport::Error> for Error {
+    fn from(error: tonic::transport::Error) -> Self {
+        Self::Unavailable(Box::new(error))
+    }
+}
+
+impl From<tonic::Status> for Error {
+    fn from(status: tonic::Status) -> Self {
+        match status.code() {
+            tonic::Code::FailedPrecondition => Self::PreconditionFailed(status.message().into()),
+            _ if is_unavailable(&status) => Self::Unavailable(Box::new(status)),
+            _ => Self::RequestFailed(status.to_string()),
         }
     }
+}
+
+pub(crate) fn is_unavailable(status: &tonic::Status) -> bool {
+    matches!(
+        status.code(),
+        Code::Unavailable | Code::Cancelled | Code::DeadlineExceeded | Code::Unknown
+    )
 }

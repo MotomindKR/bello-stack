@@ -8,8 +8,8 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 import grpc  # type: ignore[import-untyped]
+from bello_hardware_api import hardware_pb2 as proto
 
-from ._generated import hardware_pb2 as proto
 from ._inventory import _optional_status
 from .errors import ProtocolError, rpc_error
 from .types import DeviceStatus
@@ -18,15 +18,72 @@ if TYPE_CHECKING:
     from .robot import Robot
 
 
+@dataclass(frozen=True, slots=True)
+class VoltageCurrent:
+    voltage_v: float
+    current_a: float
+
+
+@dataclass(frozen=True, slots=True)
+class PowerBattery:
+    voltage_v: float
+    current_a: float
+    soc_percent: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class PowerFlags:
+    bits: int
+    active_names: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PowerIwc:
+    info: PowerFlags
+    warning: PowerFlags
+    critical: PowerFlags
+
+
+@dataclass(frozen=True, slots=True)
+class PowerLegacyFault:
+    alarm: PowerFlags
+    fault: PowerFlags
+
+
+@dataclass(frozen=True, slots=True)
+class PowerGpi:
+    bits: int
+    second_bits: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class PowerEnvironment:
+    temperature_c: float
+    pressure_pa: float
+
+
+@dataclass(frozen=True, slots=True)
+class PowerLocalRails:
+    rail_20v0: VoltageCurrent
+    rail_5v0: VoltageCurrent
+    rail_3v3: VoltageCurrent
+
+
+@dataclass(frozen=True, slots=True)
+class PowerEncoder:
+    left_rpm: float
+    right_rpm: float
+
+
 PowerReading = (
-    proto.PowerBattery
-    | proto.PowerGpi
-    | proto.PowerIwc
-    | proto.PowerLegacyFault
-    | proto.PowerEnvironment
-    | proto.PowerLocalRails
-    | proto.PowerVoltageCurrent
-    | proto.PowerEncoder
+    PowerBattery
+    | PowerGpi
+    | PowerIwc
+    | PowerLegacyFault
+    | PowerEnvironment
+    | PowerLocalRails
+    | VoltageCurrent
+    | PowerEncoder
     | int
 )
 
@@ -63,53 +120,57 @@ def _finite(*values: float) -> None:
         raise ProtocolError("nonfinite power board reading")
 
 
-def _validate_rail(value: proto.PowerVoltageCurrent) -> None:
+def _rail(value: proto.PowerVoltageCurrent) -> VoltageCurrent:
     _finite(value.voltage_v, value.current_a)
+    return VoltageCurrent(value.voltage_v, value.current_a)
 
 
-def _validate_flags(*values: proto.PowerFlags) -> None:
-    if any(len(value.active_names) > 32 for value in values):
+def _flags(value: proto.PowerFlags) -> PowerFlags:
+    if len(value.active_names) > 32:
         raise ProtocolError("too many power flag names")
+    return PowerFlags(value.bits, tuple(value.active_names))
 
 
 def _decode_sample(sample: proto.PowerBoardSample) -> PowerSample:
     kind = sample.WhichOneof("reading")
     reading: PowerReading
     if kind == "battery":
-        reading = sample.battery
-        _finite(reading.voltage_v, reading.current_a)
-        if reading.HasField("soc_percent") and not 0 <= reading.soc_percent <= 100:
+        b = sample.battery
+        _finite(b.voltage_v, b.current_a)
+        soc = b.soc_percent if b.HasField("soc_percent") else None
+        if soc is not None and (not math.isfinite(soc) or not 0 <= soc <= 100):
             raise ProtocolError("invalid power board charge percentage")
+        reading = PowerBattery(b.voltage_v, b.current_a, soc)
     elif kind == "gpi":
-        reading = sample.gpi
+        g = sample.gpi
+        reading = PowerGpi(g.bits, g.second_bits if g.HasField("second_bits") else None)
     elif kind == "iwc":
-        reading = sample.iwc
-        if not all(reading.HasField(f) for f in ("info", "warning", "critical")):
+        i = sample.iwc
+        if not all(i.HasField(f) for f in ("info", "warning", "critical")):
             raise ProtocolError("incomplete IWC reading")
-        _validate_flags(reading.info, reading.warning, reading.critical)
+        reading = PowerIwc(_flags(i.info), _flags(i.warning), _flags(i.critical))
     elif kind == "legacy_fault":
-        reading = sample.legacy_fault
-        if not reading.HasField("alarm") or not reading.HasField("fault"):
+        f = sample.legacy_fault
+        if not f.HasField("alarm") or not f.HasField("fault"):
             raise ProtocolError("incomplete legacy fault reading")
-        _validate_flags(reading.alarm, reading.fault)
+        reading = PowerLegacyFault(_flags(f.alarm), _flags(f.fault))
     elif kind == "environment":
-        reading = sample.environment
-        _finite(reading.temperature_c, reading.pressure_pa)
+        e = sample.environment
+        _finite(e.temperature_c, e.pressure_pa)
+        reading = PowerEnvironment(e.temperature_c, e.pressure_pa)
     elif kind == "local_rails":
-        reading = sample.local_rails
-        if not all(reading.HasField(f) for f in ("rail_20v0", "rail_5v0", "rail_3v3")):
+        r = sample.local_rails
+        if not all(r.HasField(f) for f in ("rail_20v0", "rail_5v0", "rail_3v3")):
             raise ProtocolError("incomplete local rail reading")
-        _validate_rail(reading.rail_20v0)
-        _validate_rail(reading.rail_5v0)
-        _validate_rail(reading.rail_3v3)
+        reading = PowerLocalRails(_rail(r.rail_20v0), _rail(r.rail_5v0), _rail(r.rail_3v3))
     elif kind == "motor_rail":
-        reading = sample.motor_rail
-        _validate_rail(reading)
+        reading = _rail(sample.motor_rail)
     elif kind == "tick_count":
         reading = sample.tick_count
     elif kind == "encoder":
-        reading = sample.encoder
-        _finite(reading.left_rpm, reading.right_rpm)
+        en = sample.encoder
+        _finite(en.left_rpm, en.right_rpm)
+        reading = PowerEncoder(en.left_rpm, en.right_rpm)
     else:
         raise ProtocolError("missing power board reading")
     if not 0 <= sample.sequence <= 255:
@@ -138,15 +199,16 @@ class PowerBoardReader:
         if not self._boards:
             return ()
         started = time.monotonic()
-        stream = self._robot._stub.WatchTelemetry(
-            proto.WatchTelemetryRequest(
-                include_power_boards=True,
-                power_boards=tuple(self._boards),
-            ),
-            timeout=timeout,
-        )
+        stream = None
         results: dict[str, PowerBoardSnapshot] = {}
         try:
+            stream = self._robot._stub.WatchTelemetry(
+                proto.WatchTelemetryRequest(
+                    include_power_boards=True,
+                    power_boards=tuple(self._boards),
+                ),
+                timeout=timeout,
+            )
             for event in stream:
                 if event.WhichOneof("payload") != "power_board":
                     continue
@@ -177,5 +239,6 @@ class PowerBoardReader:
         except grpc.RpcError as error:
             raise rpc_error("power board telemetry", error) from error
         finally:
-            stream.cancel()
+            if stream is not None:
+                stream.cancel()
         raise ProtocolError("power telemetry stream ended before all boards responded")

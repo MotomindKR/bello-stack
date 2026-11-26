@@ -13,8 +13,8 @@ from itertools import count
 from typing import TYPE_CHECKING, Any, Literal
 
 import grpc  # type: ignore[import-untyped]
+from bello_hardware_api import hardware_pb2 as proto
 
-from ._generated import hardware_pb2 as proto
 from .errors import (
     AcknowledgementError,
     CleanupError,
@@ -79,7 +79,10 @@ class _CommandStream:
         self._requests: deque[proto.StreamCommandsRequest] = deque()
         self._pending: dict[int, CommandReceipt] = {}
         self._closed: BaseException | None = None
-        self._call = session.group._robot._stub.StreamCommands(self._request_iterator())
+        try:
+            self._call = session.group._robot._stub.StreamCommands(self._request_iterator())
+        except grpc.RpcError as error:
+            raise control_rpc_error("command stream", error) from error
         self._receiver = threading.Thread(target=self._receive, daemon=True)
         self._watchdog = threading.Thread(target=self._watch_deadlines, daemon=True)
         self._receiver.start()

@@ -11,12 +11,8 @@ use crate::{ConnectOptions, EnumValue, Error, GroupState, RobotStates, StateStre
 /// Connected robot with a cached hardware inventory.
 #[derive(Clone)]
 pub struct Robot {
-    pub(crate) inner: Arc<RobotInner>,
-}
-
-pub(crate) struct RobotInner {
-    hardware: HardwareServiceClient<Channel>,
-    pub(crate) inventory: Inventory,
+    pub(crate) hardware: HardwareServiceClient<Channel>,
+    pub(crate) inventory: Arc<Inventory>,
 }
 
 impl Robot {
@@ -24,24 +20,22 @@ impl Robot {
     pub async fn connect(options: impl Into<ConnectOptions>) -> Result<Self, Error> {
         let channel = options.into().into_endpoint()?.connect().await?;
         let mut hardware = HardwareServiceClient::new(channel);
-        let inventory = Inventory::from_proto(
-            hardware
-                .list_hardware(ListHardwareRequest {})
-                .await?
-                .into_inner(),
-        )?;
+        let inventory = Arc::new(load_inventory(&mut hardware).await?);
         Ok(Self {
-            inner: Arc::new(RobotInner {
-                hardware,
-                inventory,
-            }),
+            hardware,
+            inventory,
         })
+    }
+
+    /// Refreshes this handle's inventory. Earlier clones, groups, and readers retain their snapshot.
+    pub async fn refresh_inventory(&mut self) -> Result<(), Error> {
+        self.inventory = Arc::new(load_inventory(&mut self.hardware).await?);
+        Ok(())
     }
 
     pub fn group(&self, name: impl AsRef<str>) -> Result<MotorGroup, Error> {
         let name = name.as_ref();
         let definition = self
-            .inner
             .inventory
             .groups
             .get(name)
@@ -54,51 +48,56 @@ impl Robot {
     }
 
     pub fn group_names(&self) -> impl ExactSizeIterator<Item = &str> {
-        self.inner.inventory.groups.keys().map(String::as_str)
+        self.inventory.groups.keys().map(String::as_str)
     }
 
     pub fn motors(&self) -> impl ExactSizeIterator<Item = &Motor> {
-        self.inner.inventory.motors.values()
+        self.inventory.motors.values()
     }
 
     /// Returns configured CAN buses in stable name order.
-    pub fn buses(&self) -> impl ExactSizeIterator<Item = &crate::api::BusInfo> {
-        self.inner.inventory.buses.values()
+    pub fn buses(&self) -> impl ExactSizeIterator<Item = &crate::BusInfo> {
+        self.inventory.buses.values()
     }
 
     /// Returns configured serial transports in stable name order.
-    pub fn serial_devices(&self) -> impl ExactSizeIterator<Item = &crate::api::SerialDeviceInfo> {
-        self.inner.inventory.serial_devices.values()
+    pub fn serial_devices(&self) -> impl ExactSizeIterator<Item = &crate::SerialDeviceInfo> {
+        self.inventory.serial_devices.values()
     }
 
     /// Returns configured IMUs in stable name order.
-    pub fn imus(&self) -> impl ExactSizeIterator<Item = &crate::api::ImuInfo> {
-        self.inner.inventory.imus.values()
+    pub fn imus(&self) -> impl ExactSizeIterator<Item = &crate::ImuInfo> {
+        self.inventory.imus.values()
     }
 
     pub fn power_boards(&self) -> impl ExactSizeIterator<Item = &crate::PowerBoard> {
-        self.inner.inventory.power_boards.values()
+        self.inventory.power_boards.values()
     }
 
     /// Opens an aggregated stream of the latest robot state.
     pub async fn states(&self, options: StateStreamOptions) -> Result<RobotStates, Error> {
         RobotStates::open(self.clone(), options).await
     }
+}
 
-    pub fn grpc_client(&self) -> HardwareServiceClient<Channel> {
-        self.inner.hardware.clone()
-    }
+async fn load_inventory(client: &mut HardwareServiceClient<Channel>) -> Result<Inventory, Error> {
+    Inventory::from_proto(
+        client
+            .list_hardware(ListHardwareRequest {})
+            .await?
+            .into_inner(),
+    )
 }
 
 impl fmt::Debug for Robot {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("Robot")
-            .field("buses", &self.inner.inventory.buses.len())
-            .field("groups", &self.inner.inventory.groups.len())
-            .field("motors", &self.inner.inventory.motors.len())
-            .field("serial_devices", &self.inner.inventory.serial_devices.len())
-            .field("imus", &self.inner.inventory.imus.len())
+            .field("buses", &self.inventory.buses.len())
+            .field("groups", &self.inventory.groups.len())
+            .field("motors", &self.inventory.motors.len())
+            .field("serial_devices", &self.inventory.serial_devices.len())
+            .field("imus", &self.inventory.imus.len())
             .finish_non_exhaustive()
     }
 }

@@ -27,12 +27,12 @@ The API crates need `protoc` on `PATH`. The Nix shell supplies it.
 After editing a `.proto`, run Buf and rebuild its producers and clients.
 The hardware API and configuration can change incompatibly.
 
-The Python package commits private generated bindings so wheels do not require
-a protobuf compiler. Regenerate them after every contract change and review the
-result with the handwritten conversions:
+The `bello-hardware-api` Python distribution includes the generated bindings.
+Its wheel installs without a protobuf compiler. Regenerate the bindings after
+each contract change and review the SDK conversions.
 
 ```sh
-python components/bello-hardware-python/scripts/generate_proto.py
+python components/bello-hardware-api/scripts/generate_proto.py
 ```
 
 ## Normal checks
@@ -45,6 +45,7 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 buf format --diff --exit-code
 buf lint
+(cd components/bello-hardware-api && python -m hatchling build)
 cd components/bello-hardware-python
 ruff format --check .
 ruff check .

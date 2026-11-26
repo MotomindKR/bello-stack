@@ -7,23 +7,24 @@ from typing import cast
 
 import grpc  # type: ignore[import-untyped]
 import pytest
+from bello_hardware_api import hardware_pb2 as proto
 
 from bello_hardware import (
     AcknowledgementError,
     CleanupError,
     CommandQueueFullError,
     CommandRejectedError,
-    ControlRpcError,
+    ControlRequestError,
     ControlState,
     CoordinateTarget,
     InvalidSessionStateError,
     InvalidTargetError,
+    InventoryError,
     LeaseLostError,
     ProtocolError,
+    RequestError,
     Robot,
-    RpcError,
 )
-from bello_hardware._generated import hardware_pb2 as proto
 
 from .conftest import RunningServer
 
@@ -37,6 +38,37 @@ def frame(position: float = 0.0) -> dict[str, CoordinateTarget]:
 
 def assert_control_state(actual: ControlState, expected: ControlState) -> None:
     assert actual is expected
+
+
+def test_refresh_replaces_inventory_and_retains_existing_handles(
+    hardware_server: RunningServer,
+) -> None:
+    with Robot.connect(hardware_server.endpoint) as robot:
+        original = robot.inventory
+        group = robot.group("leg")
+        reader = robot.states()
+        hardware_server.service.inventory.motors[0].coordinate = "updated_hip"
+
+        updated = robot.refresh_inventory()
+
+        assert updated is robot.inventory
+        assert "hip" in group.coordinates
+        assert "updated_hip" in robot.group("leg").coordinates
+        assert "hip" in {motor.coordinate for motor in reader.read().motors}
+        assert "updated_hip" in {motor.coordinate for motor in robot.states().read().motors}
+        assert "hip" in {motor.coordinate for motor in original.motors}
+
+        hardware_server.service.inventory_failure = grpc.StatusCode.UNAVAILABLE
+        with pytest.raises(RequestError) as failed:
+            robot.refresh_inventory()
+        assert failed.value.code == "UNAVAILABLE"
+        assert robot.inventory is updated
+
+        hardware_server.service.inventory_failure = None
+        hardware_server.service.inventory.motors[0].ClearField("address")
+        with pytest.raises(InventoryError):
+            robot.refresh_inventory()
+        assert robot.inventory is updated
 
 
 def test_blocking_control_lifecycle_is_small(hardware_server: RunningServer) -> None:
@@ -390,11 +422,11 @@ def test_state_frame_transport_unavailable_is_not_retried(
     hardware_server.service.state_frame_failure = grpc.StatusCode.UNAVAILABLE
     with (
         Robot.connect(hardware_server.endpoint) as robot,
-        pytest.raises(RpcError) as failure,
+        pytest.raises(RequestError) as failure,
     ):
         robot.states(groups=("leg",), imus=("body",)).read(timeout=1.0)
 
-    assert failure.value.code is grpc.StatusCode.UNAVAILABLE
+    assert failure.value.code == "UNAVAILABLE"
     assert hardware_server.service.state_frame_calls == 1
 
 
@@ -459,10 +491,10 @@ def test_control_rpc_error_preserves_status(hardware_server: RunningServer) -> N
     with (
         Robot.connect(hardware_server.endpoint) as robot,
         robot.group("leg").control("pytest") as control,
-        pytest.raises(ControlRpcError) as raised,
+        pytest.raises(ControlRequestError) as raised,
     ):
         control.start(frame())
-    assert raised.value.code is grpc.StatusCode.FAILED_PRECONDITION
+    assert raised.value.code == "FAILED_PRECONDITION"
     assert raised.value.operation == "enable group"
 
 
@@ -486,8 +518,8 @@ def test_cleanup_preserves_structured_errors(hardware_server: RunningServer) -> 
         hardware_server.service.disable_failure = grpc.StatusCode.INTERNAL
         with pytest.raises(CleanupError) as raised:
             control.close()
-    assert isinstance(raised.value.errors[0], ControlRpcError)
-    assert raised.value.errors[0].code is grpc.StatusCode.INTERNAL
+    assert isinstance(raised.value.errors[0], ControlRequestError)
+    assert raised.value.errors[0].code == "INTERNAL"
 
 
 def test_body_error_is_not_masked_by_cleanup_failure(hardware_server: RunningServer) -> None:
@@ -524,6 +556,6 @@ def test_resume_rolls_an_ambiguous_start_back_to_damped(
         control.start(frame())
         control.stop()
         hardware_server.service.start_failure = grpc.StatusCode.UNAVAILABLE
-        with pytest.raises(ControlRpcError):
+        with pytest.raises(ControlRequestError):
             control.resume(frame(0.1))
         assert control.state is ControlState.DAMPED

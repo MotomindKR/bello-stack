@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
+use crate::error::is_unavailable;
 use bello_hardware_api::watch_telemetry_response::Payload;
 pub use bello_hardware_api::{Quaternion, Vector3};
 use bello_hardware_api::{WatchTelemetryRequest, WatchTelemetryResponse};
-use tonic::Code;
 
 use crate::inventory::DeviceStatus;
 use crate::{
@@ -132,7 +132,7 @@ impl RobotState {
 
     pub fn motor(&self, name: impl AsRef<str>) -> Result<&MotorSnapshot, Error> {
         let name = name.as_ref();
-        if !self.robot.inner.inventory.motors.contains_key(name) {
+        if !self.robot.inventory.motors.contains_key(name) {
             return Err(Error::StateUnavailable {
                 kind: "motor",
                 name: name.into(),
@@ -148,16 +148,15 @@ impl RobotState {
 
     pub fn coordinate(&self, name: impl AsRef<str>) -> Result<&MotorSnapshot, Error> {
         let name = name.as_ref();
-        let motor = self
-            .robot
-            .inner
-            .inventory
-            .coordinates
-            .get(name)
-            .ok_or_else(|| Error::StateUnavailable {
-                kind: "coordinate",
-                name: name.into(),
-            })?;
+        let motor =
+            self.robot
+                .inventory
+                .coordinates
+                .get(name)
+                .ok_or_else(|| Error::StateUnavailable {
+                    kind: "coordinate",
+                    name: name.into(),
+                })?;
         self.motors
             .get(motor)
             .ok_or_else(|| Error::StateUnavailable {
@@ -239,7 +238,6 @@ impl RobotState {
             Payload::PowerBoard(value) => {
                 let board = self
                     .robot
-                    .inner
                     .inventory
                     .power_boards
                     .get(&value.board_name)
@@ -252,7 +250,6 @@ impl RobotState {
             Payload::Motor(motor) => {
                 let configured = self
                     .robot
-                    .inner
                     .inventory
                     .motors
                     .get(&motor.motor_name)
@@ -287,7 +284,7 @@ impl RobotState {
                 self.last_change = Some(RobotStateChange::Motor(snapshot));
             }
             Payload::Imu(imu) => {
-                if !self.robot.inner.inventory.imus.contains_key(&imu.imu_name) {
+                if !self.robot.inventory.imus.contains_key(&imu.imu_name) {
                     return Err(Error::Protocol(format!(
                         "telemetry references unknown IMU {:?}",
                         imu.imu_name
@@ -315,7 +312,7 @@ impl RobotState {
                 self.last_change = Some(RobotStateChange::Imu(snapshot));
             }
             Payload::Group(group) => {
-                if !self.robot.inner.inventory.groups.contains_key(&group.group) {
+                if !self.robot.inventory.groups.contains_key(&group.group) {
                     return Err(Error::Protocol(format!(
                         "telemetry references unknown motor group {:?}",
                         group.group
@@ -348,7 +345,6 @@ impl RobotState {
             Payload::CommandPolicy(policy) => {
                 let configured = self
                     .robot
-                    .inner
                     .inventory
                     .motors
                     .get(&policy.motor_name)
@@ -437,7 +433,8 @@ impl RobotStates {
     pub(crate) async fn open(robot: Robot, options: StateStreamOptions) -> Result<Self, Error> {
         let options = options.validate()?;
         let stream = robot
-            .grpc_client()
+            .hardware
+            .clone()
             .watch_telemetry(state_filter())
             .await?
             .into_inner();
@@ -463,10 +460,7 @@ impl RobotStates {
                     return Ok(Some(&self.state));
                 }
                 Ok(None) => return Ok(None),
-                Err(error)
-                    if self.options.reconnect_on_unavailable
-                        && is_retryable_stream_error(&error) =>
-                {
+                Err(error) if self.options.reconnect_on_unavailable && is_unavailable(&error) => {
                     self.reconnect().await?;
                 }
                 Err(error) => return Err(error.into()),
@@ -479,7 +473,8 @@ impl RobotStates {
             tokio::time::sleep(self.options.reconnect_delay).await;
             match self
                 .robot
-                .grpc_client()
+                .hardware
+                .clone()
                 .watch_telemetry(state_filter())
                 .await
             {
@@ -488,7 +483,7 @@ impl RobotStates {
                     self.state.clear_after_reconnect();
                     return Ok(());
                 }
-                Err(error) if is_retryable_stream_error(&error) => {}
+                Err(error) if is_unavailable(&error) => {}
                 Err(error) => return Err(error.into()),
             }
         }
@@ -514,11 +509,4 @@ impl std::fmt::Debug for RobotStates {
             .field("state", &self.state)
             .finish_non_exhaustive()
     }
-}
-
-fn is_retryable_stream_error(status: &tonic::Status) -> bool {
-    matches!(
-        status.code(),
-        Code::Unavailable | Code::Cancelled | Code::DeadlineExceeded | Code::Unknown
-    )
 }

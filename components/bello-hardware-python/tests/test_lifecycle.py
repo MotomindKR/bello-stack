@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import cast
 
-import grpc  # type: ignore[import-untyped]
 import pytest
 
-from bello_hardware._inventory import Inventory
-from bello_hardware.robot import Robot
+from bello_hardware import Robot
+
+from .conftest import RunningServer
 
 
 class _Child:
@@ -24,9 +23,8 @@ class _FailingChild:
         raise RuntimeError("child cleanup failed")
 
 
-def test_robot_close_waits_for_reserved_child_admission() -> None:
-    channel = grpc.insecure_channel("127.0.0.1:1")
-    robot = Robot(channel, cast(Inventory, object()), rpc_timeout=0.2)
+def test_robot_close_waits_for_reserved_child_admission(hardware_server: RunningServer) -> None:
+    robot = Robot.connect(hardware_server.endpoint)
     child = _Child()
     robot._begin_child()
 
@@ -43,9 +41,8 @@ def test_robot_close_waits_for_reserved_child_admission() -> None:
     assert child.closed.is_set()
 
 
-def test_robot_cleanup_does_not_mask_a_body_error() -> None:
-    channel = grpc.insecure_channel("127.0.0.1:1")
-    robot = Robot(channel, cast(Inventory, object()), rpc_timeout=0.2)
+def test_robot_cleanup_does_not_mask_a_body_error(hardware_server: RunningServer) -> None:
+    robot = Robot.connect(hardware_server.endpoint)
     robot._begin_child()
     robot._finish_child(_FailingChild())
 

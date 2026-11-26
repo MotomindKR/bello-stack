@@ -4,7 +4,7 @@ import math
 from dataclasses import dataclass
 from enum import Enum
 
-from ._generated.hardware_pb2 import DeviceState, GroupCause, GroupState
+from bello_hardware_api.hardware_pb2 import DeviceState, GroupCause, GroupState
 
 
 class ControlState(Enum):

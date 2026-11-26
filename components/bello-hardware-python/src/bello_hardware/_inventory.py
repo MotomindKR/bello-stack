@@ -4,7 +4,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from ._generated import hardware_pb2 as proto
+from bello_hardware_api import hardware_pb2 as proto
+
 from .errors import InvalidTargetError, InventoryError
 from .types import (
     Bus,

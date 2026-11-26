@@ -142,7 +142,7 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
         env!("CARGO_BIN_EXE_hardwared-e2e-fixture"),
         [&hardware_config],
     )?;
-    let client = support::scenario::connect(
+    let mut client = support::scenario::connect(
         &format!("http://{address}"),
         Duration::from_secs(5),
         &mut daemon,
@@ -175,7 +175,6 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
     start_control(&client, &lease, validity, commands()).await?;
     let (sender, rx) = mpsc::channel(1);
     let mut replies = client
-        .grpc_client()
         .stream_commands(ReceiverStream::new(rx))
         .await?
         .into_inner();
@@ -239,7 +238,6 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
     }
     sleep(Duration::from_millis(180)).await;
     let frame = client
-        .grpc_client()
         .get_state_frame(GetStateFrameRequest {
             groups: vec!["e2e_group".into()],
             imus: vec![],
@@ -286,7 +284,6 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
     start_control(&client, &lease, long_validity, commands()).await?;
     sleep(Duration::from_millis(20)).await;
     client
-        .grpc_client()
         .release_lease(proto::ReleaseLeaseRequest { token: lease.token })
         .await?;
     let released = std::time::Instant::now();
@@ -300,7 +297,6 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
         "periodic targets resumed after lease release"
     );
     let state = client
-        .grpc_client()
         .get_state_frame(GetStateFrameRequest {
             groups: vec!["e2e_group".into()],
             imus: vec![],
@@ -319,7 +315,6 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
     timeout(Duration::from_secs(2), async {
         loop {
             let inventory = client
-                .grpc_client()
                 .get_state_frame(GetStateFrameRequest {
                     groups: vec!["e2e_group".into()],
                     imus: vec![],
@@ -343,7 +338,6 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
     println!("Stop, lease release, expiry, and injected 25 ms TX stall applied safety responses");
     recover(&client, &lease).await?;
     client
-        .grpc_client()
         .release_lease(proto::ReleaseLeaseRequest { token: lease.token })
         .await?;
     daemon.stop();
@@ -388,7 +382,7 @@ async fn grpc_can_latency_distribution() -> Result<()> {
         [&hardwared_config],
     )?;
     let endpoint = format!("http://{listen}");
-    let hardware = support::scenario::connect(
+    let mut client = support::scenario::connect(
         &endpoint,
         Duration::from_secs(3),
         &mut hardwared,
@@ -396,14 +390,12 @@ async fn grpc_can_latency_distribution() -> Result<()> {
     )
     .await?;
     support::scenario::wait_for_motors_online(
-        &hardware,
+        &client,
         Duration::from_secs(3),
         &mut hardwared,
         &mut emulator,
     )
     .await?;
-    let mut client = hardware.grpc_client();
-
     let lease = client
         .acquire_lease(AcquireLeaseRequest {
             group: GROUP.into(),

@@ -141,7 +141,8 @@ for motor in robot.motors() {
 ```
 
 Inventory reports the status captured by `ListHardware` at connection time.
-Telemetry carries subsequent status changes.
+Call `robot.refresh_inventory().await?` on a mutable robot to fetch a new snapshot.
+Earlier clones of the robot, group handles, and state readers keep their original snapshot.
 
 ## Robot state
 
@@ -220,21 +221,6 @@ in `Damped`. Lease loss and ambiguous outcomes leave it in `Uncertain`.
 Dropping `ControlSession` aborts its local renewal task but cannot perform async
 network cleanup; call and await `shutdown` during normal operation. The daemon's
 command-timeout and lease-loss damping remain the final safety backstop.
-
-## Direct gRPC calls
-
-Use request types from `bello_hardware_client::api` with `Robot::grpc_client()`.
-
-```rust,no_run
-use bello_hardware_client::{Robot, api};
-
-# async fn example() -> Result<(), bello_hardware_client::Error> {
-let robot = Robot::connect("http://127.0.0.1:50051").await?;
-let frame = robot.grpc_client().get_state_frame(api::GetStateFrameRequest::default()).await?.into_inner();
-# let _ = frame;
-# Ok(())
-# }
-```
 
 See the repository [API guide](../../docs/api.md) and
 [control and safety](../../docs/control-and-safety.md) for server behavior.

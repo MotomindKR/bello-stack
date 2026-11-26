@@ -1,9 +1,10 @@
-use std::{env, path::PathBuf, process::Command, time::Duration};
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use bello_hardware_api::{
     self as proto, AcquireLeaseResponse, DeviceState, GetStateFrameRequest, GroupCause, GroupState,
-    MotorCommand, WatchTelemetryRequest, watch_telemetry_response::Payload,
+    MotorCommand, WatchTelemetryRequest, hardware_service_client::HardwareServiceClient,
+    watch_telemetry_response::Payload,
 };
 use bello_hardware_client::{CommandFrame, ControlOptions, CoordinateTarget, Robot};
 use robstride_protocol::{Feedback, Frame, MotorParams, feedback_frame};
@@ -11,24 +12,34 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, sleep, timeout};
 use tokio_stream::wrappers::ReceiverStream;
+use tonic::transport::{Channel, Endpoint};
 
-use super::process::ManagedProcess;
+use super::{process::ManagedProcess, python};
 
 const GROUP: &str = "e2e_group";
 const MOTORS: [&str; 2] = ["e2e_motor_1", "e2e_motor_2"];
 const PROCESS_POLL: Duration = Duration::from_millis(50);
+
+pub type HardwareClient = HardwareServiceClient<Channel>;
 
 pub async fn connect(
     endpoint: &str,
     deadline: Duration,
     hardwared: &mut ManagedProcess,
     emulator: &mut ManagedProcess,
-) -> Result<Robot> {
+) -> Result<HardwareClient> {
+    let endpoint =
+        Endpoint::from_shared(endpoint.to_owned())?.connect_timeout(Duration::from_secs(5));
     let deadline = Instant::now() + deadline;
     loop {
         hardwared.ensure_running()?;
         emulator.ensure_running()?;
-        match Robot::connect(endpoint.to_owned()).await {
+        let ready = async {
+            let client = HardwareServiceClient::new(endpoint.connect().await?);
+            inventory(&client).await?;
+            anyhow::Ok(client)
+        };
+        match ready.await {
             Ok(client) => return Ok(client),
             Err(error) if Instant::now() < deadline => {
                 let _ = error;
@@ -46,14 +57,13 @@ pub async fn queued_feedback_keeps_its_age(
     send_feedback: impl FnOnce([Frame; 2]) -> Result<()>,
 ) -> Result<()> {
     let deadline = Duration::from_secs(5);
-    let client = connect(endpoint, deadline, daemon, emulator).await?;
+    let mut client = connect(endpoint, deadline, daemon, emulator).await?;
     wait_for_motors_online(&client, deadline, daemon, emulator).await?;
     let lease = acquire(&client, GROUP, "queued-feedback", 10_000).await?;
     require_state(enable(&client, &lease).await?, GroupState::Damped)?;
 
     let before_pause = Instant::now();
     let captured_before_pause = client
-        .grpc_client()
         .get_state_frame(GetStateFrameRequest::default())
         .await?
         .into_inner()
@@ -83,7 +93,6 @@ pub async fn queued_feedback_keeps_its_age(
     timeout(deadline, async {
         loop {
             let frame = client
-                .grpc_client()
                 .get_state_frame(GetStateFrameRequest::default())
                 .await?
                 .into_inner();
@@ -119,14 +128,13 @@ pub async fn queued_feedback_keeps_its_age(
 }
 
 pub async fn run(
-    client: Robot,
+    mut client: HardwareClient,
     endpoint: &str,
     timeout_duration: Duration,
     hardwared: &mut ManagedProcess,
     emulator: &mut ManagedProcess,
 ) -> Result<()> {
     let mut telemetry = client
-        .grpc_client()
         .watch_telemetry(WatchTelemetryRequest {
             groups: vec![GROUP.into()],
             include_motors: true,
@@ -138,7 +146,7 @@ pub async fn run(
         .into_inner();
 
     wait_for_motors_online(&client, timeout_duration, hardwared, emulator).await?;
-    run_ergonomic_smoke(&client).await?;
+    run_ergonomic_smoke(endpoint).await?;
     run_python_smoke(endpoint).await?;
 
     let lease = acquire(&client, GROUP, "bello-hardware-e2e", 10000).await?;
@@ -171,7 +179,6 @@ pub async fn run(
     require_group_state(&client, GroupState::Fault).await?;
 
     client
-        .grpc_client()
         .renew_lease(proto::RenewLeaseRequest {
             token: lease.token.clone(),
             requested_duration_ms: 10_000,
@@ -206,7 +213,6 @@ pub async fn run(
     require_state(disable(&client, &lease).await?, GroupState::Idle)?;
     require_state(
         client
-            .grpc_client()
             .release_lease(proto::ReleaseLeaseRequest {
                 token: lease.token.clone(),
             })
@@ -246,15 +252,9 @@ pub async fn run(
 async fn run_python_smoke(endpoint: &str) -> Result<()> {
     let endpoint = endpoint.to_owned();
     tokio::task::spawn_blocking(move || {
-        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let package = manifest
-            .parent()
-            .expect("E2E component must have a components parent")
-            .join("bello-hardware-python");
-        let output = Command::new("python3")
-            .arg(package.join("tests/control_smoke.py"))
+        let output = python::command()?
+            .arg(python::sdk_package().join("tests/control_smoke.py"))
             .arg(endpoint)
-            .env("PYTHONPATH", package.join("src"))
             .output()
             .context("running the Python gRPC smoke client")?;
         if !output.status.success() {
@@ -270,8 +270,9 @@ async fn run_python_smoke(endpoint: &str) -> Result<()> {
     .context("joining the Python gRPC smoke client")?
 }
 
-pub(crate) async fn run_ergonomic_smoke(client: &Robot) -> Result<()> {
-    let group = client.group(GROUP)?;
+async fn run_ergonomic_smoke(endpoint: &str) -> Result<()> {
+    let robot = Robot::connect(endpoint).await?;
+    let group = robot.group(GROUP)?;
     let mut control = group
         .control(
             ControlOptions::new("bello-hardware-e2e-ergonomic")
@@ -306,10 +307,10 @@ fn ergonomic_frame(
 struct CommandStream(JoinHandle<()>);
 
 impl CommandStream {
-    async fn start(robot: &Robot, lease: &AcquireLeaseResponse) -> Result<Self> {
+    async fn start(client: &HardwareClient, lease: &AcquireLeaseResponse) -> Result<Self> {
         let (tx, rx) = mpsc::channel(1);
-        let mut replies = robot
-            .grpc_client()
+        let mut replies = client
+            .clone()
             .stream_commands(ReceiverStream::new(rx))
             .await?
             .into_inner();
@@ -346,13 +347,13 @@ impl Drop for CommandStream {
 }
 
 pub async fn acquire(
-    robot: &Robot,
+    client: &HardwareClient,
     group: &str,
     owner: &str,
     duration_ms: u64,
 ) -> Result<AcquireLeaseResponse> {
-    Ok(robot
-        .grpc_client()
+    Ok(client
+        .clone()
         .acquire_lease(proto::AcquireLeaseRequest {
             group: group.into(),
             client_name: owner.into(),
@@ -362,17 +363,17 @@ pub async fn acquire(
         .into_inner())
 }
 
-pub async fn inventory(robot: &Robot) -> Result<proto::ListHardwareResponse> {
-    Ok(robot
-        .grpc_client()
+pub async fn inventory(client: &HardwareClient) -> Result<proto::ListHardwareResponse> {
+    Ok(client
+        .clone()
         .list_hardware(bello_hardware_api::ListHardwareRequest {})
         .await?
         .into_inner())
 }
 
-pub async fn enable(robot: &Robot, lease: &AcquireLeaseResponse) -> Result<GroupState> {
-    Ok(robot
-        .grpc_client()
+pub async fn enable(client: &HardwareClient, lease: &AcquireLeaseResponse) -> Result<GroupState> {
+    Ok(client
+        .clone()
         .enable_group(proto::EnableGroupRequest {
             group: lease.group.clone(),
             lease_token: lease.token.clone(),
@@ -382,9 +383,9 @@ pub async fn enable(robot: &Robot, lease: &AcquireLeaseResponse) -> Result<Group
         .state())
 }
 
-pub async fn recover(robot: &Robot, lease: &AcquireLeaseResponse) -> Result<GroupState> {
-    Ok(robot
-        .grpc_client()
+pub async fn recover(client: &HardwareClient, lease: &AcquireLeaseResponse) -> Result<GroupState> {
+    Ok(client
+        .clone()
         .recover_group(proto::RecoverGroupRequest {
             group: lease.group.clone(),
             lease_token: lease.token.clone(),
@@ -394,9 +395,9 @@ pub async fn recover(robot: &Robot, lease: &AcquireLeaseResponse) -> Result<Grou
         .state())
 }
 
-pub async fn disable(robot: &Robot, lease: &AcquireLeaseResponse) -> Result<GroupState> {
-    Ok(robot
-        .grpc_client()
+pub async fn disable(client: &HardwareClient, lease: &AcquireLeaseResponse) -> Result<GroupState> {
+    Ok(client
+        .clone()
         .disable_group(proto::DisableGroupRequest {
             group: lease.group.clone(),
             lease_token: lease.token.clone(),
@@ -406,9 +407,9 @@ pub async fn disable(robot: &Robot, lease: &AcquireLeaseResponse) -> Result<Grou
         .state())
 }
 
-pub async fn stop(robot: &Robot, lease: &AcquireLeaseResponse) -> Result<GroupState> {
-    Ok(robot
-        .grpc_client()
+pub async fn stop(client: &HardwareClient, lease: &AcquireLeaseResponse) -> Result<GroupState> {
+    Ok(client
+        .clone()
         .stop_control(proto::StopControlRequest {
             group: lease.group.clone(),
             lease_token: lease.token.clone(),
@@ -419,13 +420,13 @@ pub async fn stop(robot: &Robot, lease: &AcquireLeaseResponse) -> Result<GroupSt
 }
 
 pub async fn start_control(
-    robot: &Robot,
+    client: &HardwareClient,
     lease: &AcquireLeaseResponse,
     valid_for_ms: u64,
     commands: Vec<MotorCommand>,
 ) -> Result<GroupState> {
-    Ok(robot
-        .grpc_client()
+    Ok(client
+        .clone()
         .start_control(proto::StartControlRequest {
             group: lease.group.clone(),
             lease_token: lease.token.clone(),
@@ -531,7 +532,7 @@ async fn wait_for_graceful_shutdown(
 }
 
 pub async fn wait_for_motors_online(
-    client: &Robot,
+    client: &HardwareClient,
     duration: Duration,
     hardwared: &mut ManagedProcess,
     emulator: &mut ManagedProcess,
@@ -550,7 +551,7 @@ pub async fn wait_for_motors_online(
     }
 }
 
-async fn motors_online(client: &Robot) -> Result<bool> {
+async fn motors_online(client: &HardwareClient) -> Result<bool> {
     let inventory = inventory(client).await?;
     Ok(MOTORS.iter().all(|expected| {
         inventory.motors.iter().any(|motor| {
@@ -563,7 +564,7 @@ async fn motors_online(client: &Robot) -> Result<bool> {
     }))
 }
 
-async fn require_group_state(client: &Robot, expected: GroupState) -> Result<()> {
+async fn require_group_state(client: &HardwareClient, expected: GroupState) -> Result<()> {
     let inventory = inventory(client).await?;
     let group = inventory
         .groups

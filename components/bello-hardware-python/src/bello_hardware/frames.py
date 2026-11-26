@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Set
 from typing import TYPE_CHECKING
 
 import grpc  # type: ignore[import-untyped]
+from bello_hardware_api import hardware_pb2 as proto
 
-from ._generated import hardware_pb2 as proto
 from .errors import ProtocolError, rpc_error
 from .types import (
     HardwareStateFrame,
@@ -32,12 +33,12 @@ class RobotStateReader:
         groups: tuple[str, ...],
         imus: tuple[str, ...],
     ) -> None:
-        selected_groups = set(groups or robot.inventory.group_names)
-        self._expected_motors = {
-            motor.name for motor in robot.inventory.motors if motor.group in selected_groups
+        inventory = robot.inventory
+        self._expected_groups = set(groups or inventory.group_names)
+        self._expected_imus = set(imus) if imus else {imu.name for imu in inventory.imus}
+        self._motors = {
+            motor.name: motor for motor in inventory.motors if motor.group in self._expected_groups
         }
-        self._expected_groups = selected_groups
-        self._expected_imus = set(imus) if imus else {imu.name for imu in robot.inventory.imus}
         self._robot = robot
         self._request = proto.GetStateFrameRequest(groups=groups, imus=imus)
 
@@ -85,7 +86,7 @@ class RobotStateReader:
         motor_names = [motor.motor_name for motor in response.motors]
         group_names = [group.group for group in response.groups]
         imu_names = [imu.imu_name for imu in response.imus]
-        self._require_complete("motor", motor_names, self._expected_motors)
+        self._require_complete("motor", motor_names, self._motors.keys())
         self._require_complete("group", group_names, self._expected_groups)
         self._require_complete("IMU", imu_names, self._expected_imus)
 
@@ -101,7 +102,7 @@ class RobotStateReader:
         )
 
     def _decode_motor(self, motor: proto.StateMotor) -> StateFrameMotor:
-        configured = self._robot.inventory._motors.get(motor.motor_name)
+        configured = self._motors.get(motor.motor_name)
         if configured is None or configured.group != motor.group:
             raise ProtocolError(f"state frame references invalid motor {motor.motor_name!r}")
         return StateFrameMotor(
@@ -164,7 +165,7 @@ class RobotStateReader:
         )
 
     @staticmethod
-    def _require_complete(kind: str, received: list[str], expected: set[str]) -> None:
+    def _require_complete(kind: str, received: list[str], expected: Set[str]) -> None:
         actual = set(received)
         if len(received) != len(actual):
             raise ProtocolError(f"state frame contains duplicate {kind} entries")

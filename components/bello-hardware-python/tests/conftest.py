@@ -10,9 +10,8 @@ from typing import Any
 
 import grpc  # type: ignore[import-untyped]
 import pytest
-
-from bello_hardware._generated import hardware_pb2 as proto
-from bello_hardware._generated import hardware_pb2_grpc
+from bello_hardware_api import hardware_pb2 as proto
+from bello_hardware_api import hardware_pb2_grpc
 
 
 def valid_inventory_response() -> proto.ListHardwareResponse:
@@ -98,6 +97,8 @@ def inventory_response() -> proto.ListHardwareResponse:
 class FakeHardware:
     def __init__(self) -> None:
         self.lock = threading.Lock()
+        self.inventory = valid_inventory_response()
+        self.inventory_failure: grpc.StatusCode | None = None
         self.state = proto.GROUP_STATE_IDLE
         self.token = "test-token"
         self.command_count = 0
@@ -118,8 +119,10 @@ class FakeHardware:
         self.state_frame_failure: grpc.StatusCode | None = None
 
     def ListHardware(self, request: Any, context: Any) -> proto.ListHardwareResponse:
-        del request, context
-        return valid_inventory_response()
+        del request
+        if self.inventory_failure is not None:
+            context.abort(self.inventory_failure, "test inventory failure")
+        return self.inventory
 
     def AcquireLease(self, request: Any, context: Any) -> proto.AcquireLeaseResponse:
         del context

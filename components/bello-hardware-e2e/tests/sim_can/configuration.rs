@@ -5,6 +5,7 @@ use bello_hardware_api::{
     GetMotorConfigurationResponse, MotorConfigurationKind as Kind,
     MotorConfigurationPhase as Phase, PrepareMotorConfigurationRequest,
 };
+use bello_hardware_client::Robot;
 use tonic::transport::Channel;
 
 async fn wait_phase(
@@ -34,7 +35,7 @@ async fn wait_phase(
     .await?
 }
 
-async fn wait_for_versions(client: &Robot, target: &str) -> Result<()> {
+async fn wait_for_versions(client: &HardwareClient, target: &str) -> Result<()> {
     timeout(Duration::from_secs(8), async {
         loop {
             let inventory = inventory(client).await?;
@@ -113,7 +114,9 @@ async fn re_zero_and_update_with_another_group_on_the_bus() -> Result<()> {
     };
     wait_for_frame(&client, |f| position_is(f, 0.4)).await?;
     wait_for_versions(&client, "0.3.0.1").await?;
-    let peer_lease = client.group("peer")?.control("operator").await?;
+    let robot = Robot::connect(&endpoint).await?;
+    let peer = robot.group("peer")?;
+    let peer_lease = peer.control("operator").await?;
     assert_eq!(
         api.prepare_motor_configuration(request(Kind::Zero))
             .await
@@ -142,7 +145,7 @@ async fn re_zero_and_update_with_another_group_on_the_bus() -> Result<()> {
                 .iter()
                 .all(|g| g.state == GroupState::Configuring as i32)
         );
-        assert!(client.group("peer")?.control("other").await.is_err());
+        assert!(peer.control("other").await.is_err());
         if uuid.is_empty() {
             uuid.clone_from(&reviewed.motor_uuid);
         }

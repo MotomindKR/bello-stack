@@ -4,7 +4,8 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::time::{Duration, Instant};
 
-use bello_hardware_client::{Robot, api};
+use bello_hardware_api::{GetStateFrameRequest, hardware_service_client::HardwareServiceClient};
+use tonic::transport::Endpoint;
 
 #[tokio::main(worker_threads = 2)]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -16,20 +17,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
     if !["paired", "tcp", "uds"].contains(&mode.as_str()) {
         return Err("mode must be paired, tcp, or uds".into());
     }
-    let clients = [
-        Robot::connect("http://127.0.0.1:50051").await?,
-        Robot::connect("unix:///run/user/1000/bello-hardwared.sock").await?,
+    let tcp = Endpoint::from_static("http://127.0.0.1:50051")
+        .connect_timeout(Duration::from_secs(5))
+        .connect()
+        .await?;
+    let uds = Endpoint::from_static("unix:///run/user/1000/bello-hardwared.sock")
+        .connect_timeout(Duration::from_secs(5))
+        .connect()
+        .await?;
+    let mut clients = [
+        HardwareServiceClient::new(tcp),
+        HardwareServiceClient::new(uds),
     ];
-    let request = api::GetStateFrameRequest {
+    let request = GetStateFrameRequest {
         groups: vec!["lower_body".into(), "upper_body".into()],
         imus: vec!["imu".into()],
     };
-    for client in &clients {
+    for client in &mut clients {
         for _ in 0..100 {
-            client
-                .grpc_client()
-                .get_state_frame(request.clone())
-                .await?;
+            client.get_state_frame(request.clone()).await?;
         }
     }
     let mut output = BufWriter::new(File::create(output)?);
@@ -55,7 +61,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
                 let started = Instant::now();
                 let response = clients[index]
-                    .grpc_client()
                     .get_state_frame(request.clone())
                     .await?
                     .into_inner();

@@ -5,13 +5,15 @@ mod config;
 #[path = "support/process.rs"]
 mod process;
 
+#[path = "support/python.rs"]
+mod python;
+
 #[path = "support/sim.rs"]
 mod sim;
 
 use std::fs;
 use std::net::{SocketAddr, TcpListener};
 use std::path::Path;
-use std::process::Command;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -248,11 +250,8 @@ fn available_loopback_address() -> Result<SocketAddr> {
 async fn run_python_unix(endpoint: &str) -> Result<()> {
     let endpoint = endpoint.to_owned();
     tokio::task::spawn_blocking(move || {
-        let package = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent().expect("components parent").join("bello-hardware-python");
-        let output = Command::new("python3")
+        let output = python::command()?
             .args(["-c", "import sys; from bello_hardware import Robot; robot = Robot.connect(sys.argv[1], timeout=2.0); assert 'e2e_group' in robot.inventory.group_names; robot.close()", &endpoint])
-            .env("PYTHONPATH", package.join("src"))
             .output().context("running Python Unix smoke client")?;
         if !output.status.success() {
             anyhow::bail!("Python Unix smoke client failed: {}", String::from_utf8_lossy(&output.stderr));
@@ -267,20 +266,14 @@ async fn run_python_mtls(endpoint: &str, paths: &TestPkiPaths) -> Result<()> {
     let certificate = paths.client_certificate.clone();
     let private_key = paths.client_private_key.clone();
     tokio::task::spawn_blocking(move || {
-        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let package = manifest
-            .parent()
-            .expect("E2E component must have a components parent")
-            .join("bello-hardware-python");
-        let output = Command::new("python3")
-            .arg(package.join("tests/tls_smoke.py"))
+        let output = python::command()?
+            .arg(python::sdk_package().join("tests/tls_smoke.py"))
             .args([
                 endpoint,
                 ca.display().to_string(),
                 certificate.display().to_string(),
                 private_key.display().to_string(),
             ])
-            .env("PYTHONPATH", package.join("src"))
             .output()
             .context("running the Python mTLS smoke client")?;
         if !output.status.success() {

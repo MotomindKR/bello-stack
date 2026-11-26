@@ -6,10 +6,10 @@ from contextlib import suppress
 from typing import Any, Literal, Protocol
 
 import grpc  # type: ignore[import-untyped]
+from bello_hardware_api import hardware_pb2 as proto
+from bello_hardware_api import hardware_pb2_grpc
 
 from ._channel import create_channel
-from ._generated import hardware_pb2 as proto
-from ._generated import hardware_pb2_grpc
 from ._inventory import Inventory, MotorGroup
 from .errors import BelloError, RobotCleanupError, rpc_error
 from .frames import RobotStateReader
@@ -24,24 +24,21 @@ class _Closeable(Protocol):
 class Robot:
     """Connected robot with a cached hardware inventory."""
 
-    def __init__(
-        self,
-        channel: object,
-        inventory: Inventory,
-        *,
-        rpc_timeout: float,
-    ) -> None:
+    def __init__(self) -> None:
+        raise TypeError("use Robot.connect() to connect to the hardware daemon")
+
+    def _initialize_connection(self, channel: object, *, rpc_timeout: float) -> None:
         self._channel: Any = channel
         self._stub = hardware_pb2_grpc.HardwareServiceStub(  # type: ignore[no-untyped-call]
             channel
         )
-        self.inventory = inventory
         self._rpc_timeout = rpc_timeout
         self._children: set[_Closeable] = set()
         self._lifecycle = threading.Condition()
         self._state = "open"
         self._pending_children = 0
         self._close_error: RobotCleanupError | None = None
+        self._inventory = self._fetch_inventory()
 
     @classmethod
     def connect(
@@ -52,24 +49,34 @@ class Robot:
         tls: TlsCredentials | None = None,
     ) -> Robot:
         channel = create_channel(endpoint, timeout=timeout, tls=tls)
-        stub: Any = hardware_pb2_grpc.HardwareServiceStub(  # type: ignore[no-untyped-call]
-            channel
-        )
         try:
-            response = stub.ListHardware(proto.ListHardwareRequest(), timeout=timeout)
-            inventory = Inventory(response)
-        except grpc.RpcError as error:
-            channel.close()
-            raise rpc_error("list hardware", error) from error
+            robot = cls.__new__(cls)
+            robot._initialize_connection(channel, rpc_timeout=timeout)
+            return robot
         except BaseException:
             channel.close()
             raise
-        return cls(channel, inventory, rpc_timeout=timeout)
 
-    def grpc_client(self) -> hardware_pb2_grpc.HardwareServiceStub:
-        """Return the generated hardware service client on this connection."""
-        self._ensure_open()
-        return self._stub
+    @property
+    def inventory(self) -> Inventory:
+        """Return the current cached hardware inventory."""
+        return self._inventory
+
+    def refresh_inventory(self) -> Inventory:
+        """Fetch and cache a fresh inventory on this connection."""
+        with self._lifecycle:
+            self._ensure_open()
+            self._inventory = self._fetch_inventory()
+            return self._inventory
+
+    def _fetch_inventory(self) -> Inventory:
+        try:
+            response = self._stub.ListHardware(
+                proto.ListHardwareRequest(), timeout=self._rpc_timeout
+            )
+        except grpc.RpcError as error:
+            raise rpc_error("list hardware", error) from error
+        return Inventory(response)
 
     def group(self, name: str) -> MotorGroup:
         definition = self.inventory._definitions.get(name)

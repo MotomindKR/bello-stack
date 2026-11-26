@@ -13,7 +13,7 @@ license-files = ["LICENSE"]
 classifiers = ["Private :: Do Not Upload"]
 dependencies = [
   "grpcio>=1.83,<2",
-  "protobuf>=7.35.1,<8",
+  "bello-hardware-api==0.1.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -21,11 +21,10 @@ packages = ["src/bello_hardware"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"
-pythonpath = ["src"]
+pythonpath = ["src", "../bello-hardware-api/src"]
 testpaths = ["tests"]
 
 [tool.ruff]
-extend-exclude = ["src/bello_hardware/_generated"]
 line-length = 100
 target-version = "py310"
 
@@ -33,7 +32,7 @@ target-version = "py310"
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.mypy]
-exclude = "src/bello_hardware/_generated"
+mypy_path = "$MYPY_CONFIG_FILE_DIR/../bello-hardware-api/src"
 python_version = "3.10"
 strict = true
 files = ["src/bello_hardware", "tests"]

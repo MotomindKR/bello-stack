@@ -3,10 +3,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use bello_hardware_api::hardware_service_server::{HardwareService, HardwareServiceServer};
+use bello_hardware_api::watch_telemetry_response::Payload;
+use bello_hardware_api::*;
 use bello_hardware_client::EnumValue;
-use bello_hardware_client::api::hardware_service_server::{HardwareService, HardwareServiceServer};
-use bello_hardware_client::api::watch_telemetry_response::Payload;
-use bello_hardware_client::api::*;
 use bello_hardware_client::{ControlOptions, ControlState, CoordinateTarget, Error, Robot};
 use tokio::net::TcpListener;
 use tokio::sync::{Notify, oneshot};
@@ -607,6 +607,28 @@ async fn ergonomic_robot_api_hides_lease_stream_and_acknowledgement_workflow() {
 }
 
 #[tokio::test]
+async fn refreshing_inventory_updates_new_groups_and_preserves_the_last_successful_snapshot() {
+    let server = FakeServer::start().await;
+    let mut robot = Robot::connect(&server.endpoint).await.unwrap();
+    let original = robot.group(GROUP).unwrap();
+    server.settings.faulted.store(true, Ordering::Relaxed);
+
+    robot.refresh_inventory().await.unwrap();
+    assert_eq!(original.initial_state().known(), Some(GroupState::Idle));
+    assert_eq!(
+        robot.group(GROUP).unwrap().initial_state().known(),
+        Some(GroupState::Fault)
+    );
+
+    server.stop().await;
+    assert!(robot.refresh_inventory().await.is_err());
+    assert_eq!(
+        robot.group(GROUP).unwrap().initial_state().known(),
+        Some(GroupState::Fault)
+    );
+}
+
+#[tokio::test]
 async fn ergonomic_state_stream_aggregates_events_without_protobuf_matching() {
     let server = FakeServer::start().await;
     let robot = Robot::connect(server.endpoint.clone())
@@ -1026,10 +1048,7 @@ async fn rejected_disable_leaves_running_control_uncertain() {
     server.settings.faulted.store(true, Ordering::Relaxed);
 
     let error = control.disable().await.unwrap_err();
-    assert_eq!(
-        error.rpc_status().unwrap().code(),
-        tonic::Code::FailedPrecondition
-    );
+    assert!(matches!(error, Error::PreconditionFailed(_)));
     assert_eq!(control.state(), ControlState::Uncertain);
     assert!(matches!(
         control.send(frame).await,

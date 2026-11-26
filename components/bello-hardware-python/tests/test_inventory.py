@@ -1,6 +1,6 @@
 import pytest
+from bello_hardware_api import hardware_pb2 as proto
 
-from bello_hardware._generated import hardware_pb2 as proto
 from bello_hardware._inventory import Inventory
 from bello_hardware.errors import InventoryError
 

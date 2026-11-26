@@ -1,4 +1,4 @@
-//! Use [`Robot`] for managed group control and [`Robot::grpc_client`] for direct RPCs.
+//! Managed hardware inventory, motor-group control, and telemetry.
 
 mod command;
 mod control;
@@ -13,7 +13,6 @@ mod power;
 mod robot;
 mod state;
 
-pub use bello_hardware_api as api;
 pub use bello_hardware_api::{
     CommandBehavior, CommandPolicyCheck, CommandResult, DeviceState, FaultResponse, GroupCause,
     GroupState,
@@ -24,7 +23,7 @@ pub use endpoint::{ConnectOptions, TlsOptions};
 pub use enum_value::EnumValue;
 pub use error::Error;
 pub use frame::{CommandFrame, CoordinateTarget};
-pub use inventory::{DeviceStatus, Motor, MotorLimits};
+pub use inventory::{BusInfo, DeviceStatus, ImuInfo, Motor, MotorLimits, SerialDeviceInfo};
 pub(crate) use lease::GroupLease;
 pub use lease::LeaseStatus;
 pub use power::{PowerBoard, PowerBoardSnapshot, PowerReading, PowerSample};

@@ -38,8 +38,8 @@ jobs:
           nix develop --command buf lint
       - name: Generated Python protobuf bindings
         run: |
-          nix develop --command python components/bello-hardware-python/scripts/generate_proto.py
-          git diff --exit-code -- components/bello-hardware-python/src/bello_hardware/_generated
+          nix develop --command python components/bello-hardware-api/scripts/generate_proto.py
+          git diff --exit-code -- components/bello-hardware-api/src/bello_hardware_api
       - name: Python client
         working-directory: components/bello-hardware-python
         run: |
@@ -47,33 +47,41 @@ jobs:
           nix develop --command ruff check .
           nix develop --command mypy src/bello_hardware tests
           nix develop --command pytest
-          nix develop --command python -m hatchling build
-          cmp LICENSE ../../LICENSE
-          hardware_sdist="$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)"
-          hardware_wheel="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
-          tar -xO --wildcards -f "$hardware_sdist" '*/LICENSE' | cmp - ../../LICENSE
-          unzip -p "$hardware_wheel" '*/licenses/LICENSE' | cmp - ../../LICENSE
-          for artifact in "$hardware_sdist" "$hardware_wheel"; do
-            metadata_pattern='*/PKG-INFO'
-            metadata_command=(tar -xO --wildcards -f)
-            if [[ "$artifact" == *.whl ]]; then
-              metadata_pattern='*/METADATA'
-              metadata_command=(unzip -p)
-            fi
-            "${metadata_command[@]}" "$artifact" "$metadata_pattern" |
-              grep -Fx 'License-Expression: MIT'
-            "${metadata_command[@]}" "$artifact" "$metadata_pattern" |
-              grep -Fx 'License-File: LICENSE'
-            "${metadata_command[@]}" "$artifact" "$metadata_pattern" |
-              grep -Fx 'Classifier: Private :: Do Not Upload'
+      - name: Build and check the Python distributions
+        run: |
+          for component in bello-hardware-api bello-hardware-python; do
+            (
+              cd "components/$component"
+              nix develop --command python -m hatchling build
+              cmp LICENSE ../../LICENSE
+              hardware_sdist="$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)"
+              hardware_wheel="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+              tar -xO --wildcards -f "$hardware_sdist" '*/LICENSE' | cmp - ../../LICENSE
+              unzip -p "$hardware_wheel" '*/licenses/LICENSE' | cmp - ../../LICENSE
+              for artifact in "$hardware_sdist" "$hardware_wheel"; do
+                metadata_pattern='*/PKG-INFO'
+                metadata_command=(tar -xO --wildcards -f)
+                if [[ "$artifact" == *.whl ]]; then
+                  metadata_pattern='*/METADATA'
+                  metadata_command=(unzip -p)
+                fi
+                "${metadata_command[@]}" "$artifact" "$metadata_pattern" |
+                  grep -Fx 'License-Expression: MIT'
+                "${metadata_command[@]}" "$artifact" "$metadata_pattern" |
+                  grep -Fx 'License-File: LICENSE'
+                "${metadata_command[@]}" "$artifact" "$metadata_pattern" |
+                  grep -Fx 'Classifier: Private :: Do Not Upload'
+              done
+            )
           done
-      - name: Verify the installed Python client
-        working-directory: components/bello-hardware-python
+      - name: Verify the installed Python distributions
         run: |
           python3 -m venv "$RUNNER_TEMP/client-venv"
           python="$RUNNER_TEMP/client-venv/bin/python"
-          "$python" -m pip install dist/*.whl
-          "$python" -I -c 'from bello_hardware import Robot, api; api.ListHardwareRequest()'
+          "$python" -m pip install components/bello-hardware-api/dist/*.whl
+          "$python" -I -c 'import grpc; from bello_hardware_api import hardware_pb2, hardware_pb2_grpc; hardware_pb2.ListHardwareRequest(); hardware_pb2_grpc.HardwareServiceStub(grpc.insecure_channel("localhost:50051"))'
+          "$python" -m pip install components/bello-hardware-python/dist/*.whl
+          "$python" -I -c 'from bello_hardware import Robot'
       - name: Create SocketCAN test interface
         run: |
           sudo modprobe vcan

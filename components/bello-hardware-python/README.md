@@ -4,10 +4,10 @@ Synchronous Python client for reading hardwared telemetry and controlling motor 
 
 ## Install
 
-With Python 3.10 or newer, install the package from the repository root:
+With Python 3.10 or newer, install the SDK and its API dependency from the repository root.
 
 ```sh
-python -m pip install ./components/bello-hardware-python
+python -m pip install ./components/bello-hardware-api ./components/bello-hardware-python
 ```
 
 ## Connect and inspect the robot
@@ -38,14 +38,10 @@ with Robot.connect("http://127.0.0.1:50051") as robot:
 `Robot.connect()` defaults to `http://127.0.0.1:50051` and caches the daemon’s inventory
 on connection. Check each IMU's `output_frame` before using its readings.
 
-For direct gRPC calls on the same connection, use the generated request types.
-
-```python
-from bello_hardware import Robot, api
-
-with Robot.connect() as robot:
-    inventory = robot.grpc_client().ListHardware(api.ListHardwareRequest())
-```
+Call `robot.refresh_inventory()` to query the daemon again on the same connection.
+A successful refresh returns and caches a fresh inventory. Existing group handles
+and state readers keep the metadata they were created with. Create new handles
+and readers when you need the updated metadata.
 
 ## Read state
 
@@ -75,15 +71,13 @@ RPC round-trip duration. A control loop can conservatively add that duration
 and any time since receipt to its freshness checks, covering transport and
 Python scheduling delays without synchronized clocks. Apply those checks to
 motor, IMU, and group ages, and reject a sample span wider than the control
-loop's coherence budget. Use `robot.grpc_client().WatchTelemetry(...)` for
-event history, health, or command-policy events.
+loop's coherence budget.
 
 For temporary debugging, `examples/log_hardware.py` records complete state
 frames as newline-delimited JSON at 50 Hz by default:
 
 ```sh
-PYTHONPATH=components/bello-hardware-python/src \
-  python3 components/bello-hardware-python/examples/log_hardware.py \
+python3 components/bello-hardware-python/examples/log_hardware.py \
   --endpoint http://127.0.0.1:50051
 ```
 
@@ -104,6 +98,22 @@ python3 components/bello-hardware-python/examples/view_hardware_log.py \
 The dashboard plots selectable motor and IMU channels and summarizes group and
 fault transitions. It writes `LOG.jsonl.html` and opens it in the default
 browser; pass `--no-open` when running headless.
+
+## Read power telemetry
+
+`Robot.power().read()` returns one snapshot per selected board.
+
+```python
+from bello_hardware import PowerBattery, Robot
+
+with Robot.connect() as robot:
+    for board in robot.power().read(timeout=1.0):
+        for sample in board.samples:
+            if isinstance(sample.reading, PowerBattery) and not board.is_stale(sample):
+                print(board.board_name, sample.reading.voltage_v, sample.reading.soc_percent)
+```
+
+An absent battery charge percentage or second GPIO register has the value `None`.
 
 ## Control a motor group
 
@@ -194,7 +204,7 @@ when your application can make a meaningful recovery decision:
 ```python
 from bello_hardware import (
     CommandRejectedError,
-    ControlRpcError,
+    ControlRequestError,
     CoordinateTarget,
     LeaseLostError,
 )
@@ -210,8 +220,8 @@ except CommandRejectedError as error:
     print("command rejected:", error.result, error.detail)
 except LeaseLostError:
     print("control authority was lost")
-except ControlRpcError as error:
-    print(error.operation, error.code.name, error.detail)
+except ControlRequestError as error:
+    print(error.operation, error.code, error.detail)
 ```
 
 The client deliberately does not reacquire control or replay a motion command
@@ -257,14 +267,21 @@ Use the `timeout` argument to bound the initial connection and inventory call:
 Robot.connect("http://robot.local:50051", timeout=3.0)
 ```
 
+## Call the daemon directly
+
+For raw RPCs such as `WatchTelemetry`, use the generated messages and service
+stubs from `bello_hardware_api` with your own channel. The hardware API guide
+shows how to connect. [Hardware API guide](../../docs/api.md)
+
 ## Development
 
-Application users do not need Rust, `protoc`, or `grpcio-tools`; generated
-protobuf modules are included in the package.
+The `bello-hardware-api` distribution includes the generated bindings. It
+installs without Rust, `protoc`, or `grpcio-tools`.
 
-To work on the client itself from the repository environment:
+Check the SDK and build both distributions from the repository's development environment.
 
 ```sh
+(cd components/bello-hardware-api && python -m hatchling build)
 cd components/bello-hardware-python
 ruff format --check .
 ruff check .
@@ -273,11 +290,11 @@ pytest
 python -m hatchling build
 ```
 
-After changing the canonical protobuf contract, regenerate the private Python
-modules from the repository root:
+After changing the canonical protobuf contract, regenerate the Python bindings
+from the repository root.
 
 ```sh
-python components/bello-hardware-python/scripts/generate_proto.py
+python components/bello-hardware-api/scripts/generate_proto.py
 ```
 
 For daemon configuration, safety semantics, and operations, see the main

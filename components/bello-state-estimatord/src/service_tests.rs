@@ -1,6 +1,6 @@
 use super::*;
 use api::hardware_service_server::{HardwareService, HardwareServiceServer};
-use bello_hardware_client::api;
+use bello_hardware_api as api;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio_stream::StreamExt;
 
@@ -379,11 +379,11 @@ fn permanent_errors_are_not_retried() {
         Status::data_loss("bad payload"),
     ] {
         assert!(!retryable_hardware_error(
-            &HardwareError::Rpc(status).into()
+            &HardwareError::from(status).into()
         ));
     }
     assert!(retryable_hardware_error(
-        &anyhow::Error::new(HardwareError::Rpc(Status::unavailable("offline"))).context("stream")
+        &anyhow::Error::new(HardwareError::from(Status::unavailable("offline"))).context("stream")
     ));
 }
 

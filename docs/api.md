@@ -5,6 +5,31 @@ for the wire contract. The [Rust](../components/bello-hardware-client/README.md)
 and [Python](../components/bello-hardware-python/README.md) client guides show how to open
 a control session, renew its lease, and shut it down.
 
+## Direct clients
+
+Rust callers can depend on the `bello-hardware-api` crate and open a generated
+client on their own connection:
+
+```rust
+use bello_hardware_api::{ListHardwareRequest, hardware_service_client::HardwareServiceClient};
+
+let mut client = HardwareServiceClient::connect("http://127.0.0.1:50051").await?;
+let inventory = client.list_hardware(ListHardwareRequest {}).await?.into_inner();
+```
+
+For Python, install the bindings from the repository root with
+`python -m pip install ./components/bello-hardware-api`. The generated stub
+accepts a standard gRPC channel:
+
+```python
+import grpc
+from bello_hardware_api import hardware_pb2, hardware_pb2_grpc
+
+with grpc.insecure_channel("127.0.0.1:50051") as channel:
+    client = hardware_pb2_grpc.HardwareServiceStub(channel)
+    inventory = client.ListHardware(hardware_pb2.ListHardwareRequest(), timeout=5)
+```
+
 ## Access model
 
 `ListHardware`, `WatchTelemetry`, and `GetStateFrame` are read-only and

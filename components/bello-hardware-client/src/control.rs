@@ -139,7 +139,7 @@ impl MotorGroup {
             requested_milliseconds(options.lease_duration, "lease duration")?;
         let lease = Arc::new(
             GroupLease::acquire(
-                self.robot.grpc_client(),
+                self.robot.hardware.clone(),
                 self.name(),
                 &options.owner,
                 requested_duration_ms,
@@ -395,17 +395,15 @@ impl ControlSession {
     }
 
     async fn confirm_fault(&self, error: &Error) -> bool {
-        if error
-            .rpc_status()
-            .is_none_or(|status| status.code() != tonic::Code::FailedPrecondition)
-        {
+        if !matches!(error, Error::PreconditionFailed(_)) {
             return false;
         }
         // Fault is already a latched daemon safety response. Releasing ownership
         // must preserve it; recovery is a separate, explicit operator action.
         self.group
             .robot
-            .grpc_client()
+            .hardware
+            .clone()
             .list_hardware(bello_hardware_api::ListHardwareRequest {})
             .await
             .is_ok_and(|inventory| {
