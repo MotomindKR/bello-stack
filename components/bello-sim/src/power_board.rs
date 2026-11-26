@@ -156,7 +156,6 @@ mod tests {
     use super::*;
     use cog_protocol::{Framer, Reading};
     use std::io::{Read, Write};
-    use std::os::fd::AsRawFd;
 
     fn config() -> Config {
         serde_yaml::from_str::<crate::runtime::Config>(include_str!("../config/emulator_mini.yaml"))
@@ -237,7 +236,7 @@ mod tests {
         let mut serial = Serial::open(c).unwrap();
         let mut peer = std::fs::File::from(pty.master);
         nix::fcntl::fcntl(
-            peer.as_raw_fd(),
+            &peer,
             nix::fcntl::FcntlArg::F_SETFL(nix::fcntl::OFlag::O_NONBLOCK),
         )
         .unwrap();
