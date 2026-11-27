@@ -13,9 +13,11 @@ use nix::sys::timerfd::{ClockId, Expiration, TimerFd, TimerFlags, TimerSetTimeFl
 use nix::{errno::Errno, libc};
 use socketcan::frame::can_frame_default;
 use socketcan::id::CAN_ERR_FLAG;
+use socketcan::timestamp::{
+    SOF_TIMESTAMPING_OPT_CMSG, SOF_TIMESTAMPING_RX_SOFTWARE, SOF_TIMESTAMPING_SOFTWARE,
+};
 use socketcan::{
-    CanFrame as WireFrame, CanSocket, EmbeddedFrame, ExtendedId, Frame, SOF_TIMESTAMPING_OPT_CMSG,
-    SOF_TIMESTAMPING_RX_SOFTWARE, SOF_TIMESTAMPING_SOFTWARE, Socket, SocketOptions,
+    CanFrame as WireFrame, CanSocket, EmbeddedFrame, ExtendedId, Frame, Socket, SocketOptions,
 };
 use tracing::warn;
 
