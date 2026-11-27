@@ -1,5 +1,5 @@
 use super::*;
-use bello_hardware_api::{AcquireLeaseRequest, GroupCause};
+use bello_hardware_api::{AcquireLeaseRequest, GroupCause, RenewLeaseRequest};
 use std::io::Write;
 
 #[tokio::test]
@@ -31,15 +31,13 @@ power_boards:
             Ok(())
         })?;
     let deadline = Duration::from_secs(5);
-    let client =
+    let mut client =
         support::scenario::connect(&endpoint, deadline, &mut daemon, &mut emulator).await?;
     support::scenario::wait_for_motors_online(&client, deadline, &mut daemon, &mut emulator)
         .await?;
     let group = "e2e_group";
-    let lease = client
-        .acquire_lease(group, "operator", LeaseDuration::For(deadline))
-        .await?;
-    lease.enable().await?;
+    let lease = acquire(&client, group, "operator", 5000).await?;
+    enable(&client, &lease).await?;
     let commands = ["e2e_motor_1", "e2e_motor_2"].map(|name| MotorCommand {
         motor_name: name.into(),
         position: 0.05,
@@ -48,13 +46,8 @@ power_boards:
         ..Default::default()
     });
     assert_eq!(
-        lease
-            .start(
-                CommandValidity::For(Duration::from_millis(200)),
-                commands.into()
-            )
-            .await?,
-        EnumValue::Known(GroupState::Running)
+        start_control(&client, &lease, 200, commands.into()).await?,
+        GroupState::Running
     );
 
     let iwc = |warning: u32| {
@@ -70,14 +63,14 @@ power_boards:
         })
     })
     .await?;
-    let mut api = client.grpc_client();
     let takeover = AcquireLeaseRequest {
         group: group.into(),
         client_name: "replacement".into(),
         requested_duration_ms: 5000,
     };
     assert_eq!(
-        api.acquire_lease(takeover.clone())
+        client
+            .acquire_lease(takeover.clone())
             .await
             .unwrap_err()
             .code(),
@@ -86,7 +79,7 @@ power_boards:
     board.write_all(&iwc(0)?)?;
     timeout(deadline, async {
         loop {
-            match api.acquire_lease(takeover.clone()).await {
+            match client.acquire_lease(takeover.clone()).await {
                 Ok(_) => return anyhow::Ok(()),
                 Err(e) if e.code() == tonic::Code::Unavailable => {
                     sleep(Duration::from_millis(10)).await
@@ -96,6 +89,13 @@ power_boards:
         }
     })
     .await??;
-    assert!(lease.renew(LeaseDuration::For(deadline)).await.is_err());
+    let expired = client
+        .renew_lease(RenewLeaseRequest {
+            token: lease.token,
+            requested_duration_ms: 5000,
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(expired.code(), tonic::Code::PermissionDenied);
     Ok(())
 }
