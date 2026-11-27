@@ -393,7 +393,7 @@ YAML merge keys (`<<`) are unsupported.
 
 On camera hosts, install `bello-camera-worker` next to `bello-hardwared`. The Linux and macOS desktop bundles include both. For a source build, use `cargo build --release -p bello-hardwared -p bello-camera-worker`. The worker uses the GStreamer 1.28+ unixfd plugin. Camera clients connect to the configured hardware gRPC listeners and use their TLS settings.
 
-Declare each logical stream in the robot's `hardware.yaml`. The mount is a URDF link. The per-eye calibration file resolves relative to the hardware description and supplies the image dimensions, optical transforms, intrinsics, and optional fisheye coefficients. Milly's mono `front` stream uses the left lens of the same measured calibration as its packed `stereo` stream.
+Declare each logical stream in the robot's `hardware.yaml`. The mount is a URDF link. The per-eye calibration file resolves relative to the hardware description and supplies the image dimensions, optical transforms, intrinsics, and optional fisheye coefficients.
 
 ```yaml
 cameras:

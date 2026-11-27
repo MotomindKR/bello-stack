@@ -6,7 +6,6 @@ robot_description: urdf/stereo-gimbal.urdf
 
 cameras:
   - { name: stereo, link: stereo_camera_link, layout: stereo, calibration: calibration/elp-stereo.yaml, fps: 30 }
-  - { name: front, link: stereo_camera_link, layout: mono, calibration: calibration/elp-stereo.yaml, fps: 30 }
 
 logical_buses:
   - name: can0
