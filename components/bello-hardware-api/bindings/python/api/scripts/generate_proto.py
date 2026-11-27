@@ -7,9 +7,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-COMPONENT = Path(__file__).resolve().parents[1]
-PROTO = COMPONENT / "proto" / "bello" / "hardware" / "v1" / "hardware.proto"
-OUTPUT = COMPONENT / "src" / "bello_hardware_api"
+PACKAGE = Path(__file__).resolve().parents[1]
+PROTO = PACKAGE.parents[2] / "proto" / "bello" / "hardware" / "v1" / "hardware.proto"
+OUTPUT = PACKAGE / "src" / "bello_hardware_api"
 
 
 def main() -> None:
