@@ -7,8 +7,9 @@ For COG serial telemetry, `power_boards[].emergency_stop` (`hardware` or
 `bello-hardwared` reads a deployment YAML and the hardware description it
 references, validates both without opening hardware, and resolves them into the
 topology used for the lifetime of the process. The description owns stable
-logical buses, motor identity, group membership, and a reference to the
-canonical URDF. The deployment selects groups and binds transports. Neither
+logical buses, motor identity, group membership, camera mounts and calibration,
+and a reference to the canonical URDF. The deployment selects groups and camera
+streams and binds their transports. Neither
 document nor TLS certificates are hot-reloaded.
 
 Validate a file before deployment with:
@@ -387,3 +388,36 @@ checks references, exclusive ownership and CAN capacity before startup opens har
 
 Use direct aliases to share a complete object, as in [Bello’s hardware description](../descriptions/bello/hardware.yaml).
 YAML merge keys (`<<`) are unsupported.
+
+## Cameras
+
+On camera hosts, install `bello-camera-worker` next to `bello-hardwared`. The Linux and macOS desktop bundles include both. For a source build, use `cargo build --release -p bello-hardwared -p bello-camera-worker`. The worker uses the GStreamer 1.28+ unixfd plugin. Camera clients connect to the configured hardware gRPC listeners and use their TLS settings.
+
+Declare each logical stream in the robot's `hardware.yaml`. The mount is a URDF link. The per-eye calibration file resolves relative to the hardware description and supplies the image dimensions, optical transforms, intrinsics, and optional fisheye coefficients.
+
+```yaml
+cameras:
+  - name: stereo
+    link: stereo_camera_link
+    layout: stereo
+    calibration: ../stereo-gimbal/calibration/elp-stereo.yaml
+    fps: 30
+```
+
+In the deployment, map streams by name. For simulation, choose a socket path here. The paired simulator reads the same deployment and opens the socket for the named cameras.
+
+```yaml
+cameras:
+  stereo: { type: mujoco, socket: /tmp/bello-milly-stereo.sock }
+```
+
+For a physical deployment, replace the socket mapping with a stable Linux video device path:
+
+```yaml
+cameras:
+  stereo: { type: v4l2, device: /dev/v4l/by-id/REPLACE-WITH-CAMERA-video-index0 }
+```
+
+A deployment may enable a subset of the declared streams. Each physical device must support the declared MJPEG dimensions and FPS. Stereo capture uses twice the calibrated per-eye width. The camera worker checks the simulator’s stream catalog against the description before hardwared publishes frames.
+
+Grant the daemon user access to each configured video device. One worker owns the configured set. If a source stops, hardwared restarts that worker and its camera streams together.

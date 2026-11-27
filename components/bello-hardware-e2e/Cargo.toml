@@ -8,6 +8,14 @@ publish.workspace = true
 description = "Process-level CAN and gRPC integration scenarios for Bello hardware"
 autobins = false
 
+[features]
+camera-tests = ["dep:bello-camera-worker", "dep:gst", "dep:gst-app"]
+
+[target.'cfg(unix)'.dependencies]
+bello-camera-worker = { path = "../bello-camera-worker", default-features = false, optional = true }
+gst = { package = "gstreamer", version = "0.25", optional = true }
+gst-app = { package = "gstreamer-app", version = "0.25", optional = true }
+
 [dependencies]
 anyhow.workspace = true
 bello-hardwared.workspace = true

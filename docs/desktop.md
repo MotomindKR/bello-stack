@@ -21,7 +21,7 @@ and Windows x86-64. [Linux workflow](../.github/workflows/ci.yml) · [Desktop wo
 | [bello-state-estimatord](../components/bello-state-estimatord) | CI | Tested | Unverified | Estimates pose from encoder and IMU readings served by hardwared. |
 | [bello-hardware-api](../components/bello-hardware-api) | CI | CI | CI | Hardware gRPC contract. Rust bindings run in desktop CI. The standalone Python bindings are tested on Linux and macOS. |
 | [bello-pose-api](../components/bello-pose-api) | CI | CI | CI | Pose gRPC service definitions and Rust bindings. |
-| [bello-camera-api](../components/bello-camera-api) | CI | Tested | Unsupported | Camera gRPC bindings and frame streams. The Rust crate requires Unix sockets. |
+| [bello-camera-worker](../components/bello-camera-worker) | CI | Simulation | Unsupported | Optional capture executable for hardwared. Physical capture uses Linux V4L2. |
 | [bello-robot-description](../components/bello-robot-description) | CI | CI | CI | Loads robot models from URDF. |
 | [bello-sim-can](../components/bello-sim-can) | CI | CI | CI | Loopback UDP transport for simulated CAN frames. |
 | [cog-protocol](../components/cog-protocol) | CI | CI | CI | Power-board serial protocol. |
@@ -34,6 +34,7 @@ The Desktop GitHub Actions workflow builds and tests the portable components on
 Linux x86-64, macOS Apple Silicon, and Windows x86-64. Each successful job uploads
 a `bello-desktop-<platform>` artifact containing the release daemon, robot
 descriptions and meshes, deployment examples, and the license.
+The Linux and macOS bundles include the camera worker. Camera deployments need GStreamer 1.28 or newer with the unixfd plugin on the host. The daemon starts without GStreamer on motor-only deployments.
 Extract the entire archive and keep its directory layout. Rust and `protoc` are
 needed only to build from source.
 

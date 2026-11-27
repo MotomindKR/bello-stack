@@ -19,7 +19,7 @@ impl Drop for Socket {
         }
     }
 }
-pub async fn bind(path: &Path) -> io::Result<(tokio::net::UnixListener, Socket)> {
+pub async fn prepare(path: &Path) -> io::Result<()> {
     match std::fs::symlink_metadata(path) {
         Ok(old) => {
             if !old.file_type().is_socket() || old.uid() != unsafe { libc::geteuid() } {
@@ -56,6 +56,11 @@ pub async fn bind(path: &Path) -> io::Result<(tokio::net::UnixListener, Socket)>
         Err(e) if e.kind() == io::ErrorKind::NotFound => {}
         Err(e) => return Err(e),
     }
+    Ok(())
+}
+
+pub async fn bind(path: &Path) -> io::Result<(tokio::net::UnixListener, Socket)> {
+    prepare(path).await?;
     let listener = tokio::net::UnixListener::bind(path)?;
     let metadata = std::fs::symlink_metadata(path)?;
     let owner = Socket {

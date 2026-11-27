@@ -1,11 +1,13 @@
 mod config;
-pub use config::{Camera, Config};
+pub use bello_camera_worker::proto::config::Camera;
+pub use config::Config;
+pub(crate) use config::default_samples;
 mod context;
 mod jpeg;
 mod projection;
 use crate::{Simulation, model};
 use anyhow::{Context, Result, ensure};
-use bello_camera_api::{FPS, media::Publisher, monotonic_ns, proto};
+use bello_camera_worker::{monotonic_ns, proto, sim_pipe};
 use mujoco_rs::prelude::*;
 use nalgebra::{Isometry3, Quaternion, Translation3, UnitQuaternion, Vector3};
 use std::{
@@ -31,6 +33,7 @@ pub struct Capture {
     _files: tempfile::TempDir,
     packet: Vec<u8>,
     next: Instant,
+    period: Duration,
     sequence: u64,
     dropped: u64,
 }
@@ -43,7 +46,6 @@ impl Capture {
         model: &model::ModelConfig,
         source: &MjData<Box<MjModel>>,
     ) -> Result<Self> {
-        config.validate()?;
         let visual = model::build_visual(model)?.simulation;
         ensure!(
             source.model().nq() == visual.model().nq
@@ -55,12 +57,8 @@ impl Capture {
                         == visual.data.model().id_to_name(MjtObj::mjOBJ_JOINT, i)),
             "camera visual model state layout differs from physics"
         );
-        for lens in config
-            .cameras
-            .iter()
-            .flat_map(|camera| camera.views.lenses())
-        {
-            visual.id(MjtObj::mjOBJ_BODY, &lens.link)?;
+        for camera in &config.cameras {
+            visual.id(MjtObj::mjOBJ_BODY, &camera.link)?;
         }
         let files = tempfile::tempdir()?;
         let model_path = files.path().join("model.mjb");
@@ -103,6 +101,7 @@ impl Capture {
                 });
             }
         }
+        let capture_fps = config.capture_fps()?;
         let child = command.spawn()?;
         let mut packet = vec![0; HEADER + count * 8];
         packet[..8].copy_from_slice(MAGIC);
@@ -114,6 +113,7 @@ impl Capture {
             _files: files,
             packet,
             next: Instant::now(),
+            period: Duration::from_secs_f64(1. / f64::from(capture_fps)),
             sequence: 0,
             dropped: 0,
         })
@@ -155,7 +155,7 @@ impl Capture {
         if now < self.next {
             return;
         }
-        let period = Duration::from_secs_f64(1. / f64::from(FPS));
+        let period = self.period;
         self.next += period;
         if self.next < now {
             self.next = now + period;
@@ -222,9 +222,15 @@ struct Eye {
     projection: projection::Projection,
 }
 impl Eye {
-    fn new(model: &MjModel, lens: &config::Lens, width: u32, height: u32) -> Result<Self> {
+    fn new(
+        model: &MjModel,
+        link: &str,
+        lens: &proto::config::Lens,
+        width: u32,
+        height: u32,
+    ) -> Result<Self> {
         let id = model
-            .name_to_id(MjtObj::mjOBJ_BODY, &lens.link)
+            .name_to_id(MjtObj::mjOBJ_BODY, link)
             .context("camera mount missing")?;
         let projection = match lens.fisheye {
             Some(d) => projection::Projection::for_fisheye(width, height, lens.intrinsics, d),
@@ -283,7 +289,8 @@ impl Eye {
 
 pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
     let config: Config = serde_json::from_slice(&std::fs::read(config_path)?)?;
-    config.validate()?;
+
+    let capture_fps = u128::from(config.capture_fps()?);
     Simulation::check_version()?;
     let mut model = MjModel::from_buffer(&std::fs::read(model_path)?)?;
     model.vis_mut().quality.offsamples = config.offscreen_samples;
@@ -305,9 +312,16 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
         .iter()
         .map(|camera| {
             camera
-                .views
                 .lenses()
-                .map(|lens| Eye::new(&model, lens, config.width, config.height))
+                .map(|lens| {
+                    Eye::new(
+                        &model,
+                        &camera.link,
+                        lens,
+                        camera.calibration.width,
+                        camera.calibration.height,
+                    )
+                })
                 .collect::<Result<Vec<_>>>()
         })
         .collect::<Result<Vec<_>>>()?;
@@ -337,46 +351,17 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
     let cameras = config
         .cameras
         .iter()
-        .map(|c| {
-            (
-                proto::Camera {
-                    name: c.name.clone(),
-                    width: config.width * c.views.lenses().count() as u32,
-                    height: config.height,
-                    fps: FPS,
-                    source: "mujoco".into(),
-                    metadata_json: c.metadata().to_string(),
-                },
-                c.views.layout(),
-            )
+        .map(|c| sim_pipe::Stream {
+            camera: c.info("mujoco"),
+            layout: c.layout() as i32,
         })
         .collect();
-    let publisher = Publisher::new(cameras)?;
-    let frames = publisher.frames();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
         .build()?;
     let _entered = runtime.enter();
-    let (listener, _socket) = runtime.block_on(bello_camera_api::socket::bind(&config.socket))?;
-    let server = runtime.spawn(
-        tonic::transport::Server::builder()
-            .add_service(
-                proto::camera_source_service_server::CameraSourceServiceServer::new(frames.clone()),
-            )
-            .serve_with_incoming(tokio_stream::wrappers::UnixListenerStream::new(listener)),
-    );
-    let tcp_server = config.listen.map(|address| {
-        runtime.spawn(
-            tonic::transport::Server::builder()
-                .add_service(
-                    proto::camera_source_service_server::CameraSourceServiceServer::new(
-                        frames.clone(),
-                    ),
-                )
-                .serve(address),
-        )
-    });
+    let publisher = runtime.block_on(sim_pipe::Output::open(&config.socket, cameras))?;
     let stop = Arc::new(AtomicBool::new(false));
     let stopping = stop.clone();
     runtime.spawn(async move {
@@ -402,12 +387,9 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
             .unwrap(),
     );
     let encoder = jpeg::Encoder::new()?;
+    let mut last_slots = vec![None; views.len()];
     let mut last = Instant::now();
     while !stop.load(Ordering::Acquire) {
-        ensure!(
-            !server.is_finished() && tcp_server.as_ref().is_none_or(|s| !s.is_finished()),
-            "camera frame service stopped"
-        );
         let size = match input.recv(&mut latest) {
             Ok(size) => size,
             Err(e)
@@ -478,7 +460,11 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
         unsafe { data.ffi_mut() }.time = simtime;
         data.forward();
         scene.update(&mut data, &options, &perturb, &mut camera);
-        for (c, eyes) in config.cameras.iter().zip(&views) {
+        for ((c, eyes), last_slot) in config.cameras.iter().zip(&views).zip(&mut last_slots) {
+            let slot = u128::from(sequence - 1) * u128::from(c.fps) / capture_fps;
+            if last_slot.replace(slot) == Some(slot) {
+                continue;
+            }
             let mut rendered = eyes
                 .iter()
                 .map(|eye| eye.render(&data, &mut scene, &context, &mut pixels));
@@ -487,8 +473,8 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
                 Some(right) => side_by_side(first, right),
                 None => first,
             };
-            let jpeg = encoder.encode(image)?;
-            let result = publisher.publish(proto::Frame {
+            let jpeg = encoder.encode(image, c.fps)?;
+            publisher.publish(proto::Frame {
                 name: c.name.clone(),
                 sequence,
                 capture_ns,
@@ -496,22 +482,8 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
                 jpeg,
                 flags: 0,
                 simulation_time_ns: Some((simtime * 1e9).round() as u64),
-            });
-            if let Err(error) = result {
-                if error
-                    .downcast_ref::<tonic::Status>()
-                    .is_some_and(|s| s.code() == tonic::Code::OutOfRange)
-                {
-                    eprintln!("Skipping {} frame {sequence}: {error}", c.name);
-                } else {
-                    return Err(error);
-                }
-            }
+            })?;
         }
-    }
-    server.abort();
-    if let Some(server) = tcp_server {
-        server.abort();
     }
     Ok(())
 }

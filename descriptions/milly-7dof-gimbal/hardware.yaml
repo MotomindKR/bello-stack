@@ -4,6 +4,9 @@
 
 robot_description: urdf/milly-7dof-gimbal.urdf
 
+cameras:
+  - { name: stereo, link: stereo_camera_link, layout: stereo, calibration: ../stereo-gimbal/calibration/elp-stereo.yaml, fps: 30 }
+
 logical_buses:
   - name: can0
     host_id: 0

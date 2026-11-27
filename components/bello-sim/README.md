@@ -16,8 +16,9 @@ On Linux and macOS, start MuJoCo first. It creates the PTYs and publishes the
 slave paths at `/tmp/bello-sim/imu` and `/tmp/bello-sim/power`. Start hardwared
 under the same user. For concurrent simulations, choose distinct `pty_link`
 paths in MuJoCo and matching `serial_ports` in hardwared. Use `device` in
-MuJoCo to open an externally provisioned port. To use Linux SocketCAN instead, set each logical bus
-in a local runtime profile to its vCAN interface (for example, `bus_interfaces: {can0: vcan0}`). Use `check --export-physics PATH`
+MuJoCo to open an externally provisioned port.
+
+Each shipped model profile names its hardwared `deployment`. Both processes read the robot description path, CAN transports and simulated camera sockets from that file. The paired simulator needs a mapping for each logical CAN bus in the model. To switch to a local deployment, pass its path to `bello-sim run --deployment PATH` and `bello-hardwared --config PATH`. For Linux vCAN, set the deployment bus transport to `{type: socketcan, interface: vcan0}`. Use `check --export-physics PATH`
 to inspect the compiled MJCF. Loading a URDF directly with `Simulation::load`
 skips actuator transmissions. For the fixed-base Mini Torso, pair the [emulator](config/emulator_mini_torso.yaml)
 with the [hardwared simulation profile](../bello-hardwared/config/bello-mini-torso-sim.yaml).
@@ -55,18 +56,20 @@ cargo run -p bello-sim -- run --config components/bello-sim/config/emulator_mill
 
 ## Live camera streams
 
-Set `cameras` in the emulator profile to the path to a [camera configuration](config/cameras_mini_torso.yaml).
+Bind a camera to a `mujoco` socket in the hardwared deployment to start rendering it. Cameras bound to the same socket share one renderer. Set `offscreen_samples` in the emulator profile to adjust antialiasing.
+
+To render an extra view on a shared socket, use the name of a deployed camera as the key. For example, with `left_gripper` bound in the deployment, `additional_camera_streams: {left_gripper: [birds_eye]}` adds the bird’s-eye view to that renderer. Hardwared publishes only the names in its own deployment.
 Measure the mounting transforms and intrinsics before using the images for calibrated work.
-Each named stream has either a `mono` lens or a `stereo` pair with `left` and `right` lenses.
+The robot’s `hardware.yaml` supplies the mount, layout, FPS, and calibration file for each stream.
 The configured width and height apply to each eye. The simulator applies each lens’s optional
 fisheye calibration, packs stereo left-to-right, then uses GStreamer to encode one JPEG.
 `GetCameras` reports the encoded dimensions, layout and host-local GStreamer socket.
 `WatchFrames` delivers the same JPEG with its capture timestamp and sequence number.
-The dashboard handles WebRTC signaling. Physical Milly telepresence reads the USB camera directly.
+Hardwared serves both RPCs. For a physical Milly, bind the same camera name to its Linux video device in the deployment. [Camera configuration](../../docs/configuration.md#cameras)
 
 A camera failure interrupts the stream while physics continues.
 
-Preview the cameras without CAN devices from the Nix shell. Native installations need GStreamer 1.28 or later with the base, good, and bad plugins.
+Preview Milly’s deployment-selected streams with `camera_preview preview --config components/bello-sim/config/emulator_milly_7dof_gimbal.yaml`. For a standalone preview, select a model and an independent camera profile as shown below. Both modes run without CAN devices. Native installations need GStreamer 1.28 or later with the base, good, and bad plugins.
 
 ```sh
 cargo run -p bello-sim --example camera_preview -- preview \
@@ -118,26 +121,26 @@ cargo test --locked -p bello-sim \
 
 ## Dual Milly stereo
 
-Start the dual 7-DOF fixture and its two calibrated views with the following commands in separate terminals. The simulator holds the initial pose until the motors receive commands.
+Build the supervised worker with `cargo build -p bello-camera-worker` in the development shell. Start the dual 7-DOF fixture and its stereo camera with the following commands in separate terminals. The simulator holds the initial pose until the motors receive commands.
 
 ```sh
 cargo run -p bello-sim -- run --config components/bello-sim/config/emulator_milly_7dof_gimbal.yaml
 cargo run -p bello-hardwared -- --config components/bello-hardwared/config/milly-7dof-gimbal-sim.yaml
 ```
 
-The service at `/tmp/bello-milly-stereo.sock` publishes one `stereo` stream. Each 3200 × 1200 JPEG contains the left and right 1600 × 1200 exposures from one simulation snapshot. Use the [mono profile](config/cameras_milly_mono.yaml) for a single 1600 × 1200 stream from the left lens.
+The hardware daemon at `127.0.0.1:50051` publishes one `stereo` stream. Each 3200 × 1200 JPEG contains the left and right 1600 × 1200 exposures from one simulation snapshot.
 
 For high-resolution streams, allow 32 MiB per gRPC response (`MAX_FRAME_MESSAGE_BYTES` in Rust or `grpc.max_receive_message_length` in Python). Detailed scenes can exceed the common 4 MiB client default. GStreamer and gRPC carry the original encoded JPEG at the same quality.
 
 To discover the local socket, run the following command from the repository root. Pass the returned `localSources.stereo.unixfdSocket` to `unixfdsrc` on the same host. Discover it again when the publisher restarts.
 
 ```sh
-grpcurl -plaintext -unix -import-path components/bello-camera-api/proto \
-  -proto bello/camera/v1/camera.proto /tmp/bello-milly-stereo.sock \
+grpcurl -plaintext -import-path components/bello-hardware-api/proto \
+  -proto bello/camera/v1/camera.proto 127.0.0.1:50051 \
   bello.camera.v1.CameraSourceService/GetCameras
 gst-launch-1.0 unixfdsrc socket-path="$CAMERA_SOCKET" ! jpegdec ! videoconvert ! autovideosink
 ```
 
-The camera profile uses measured per-eye intrinsics, OpenCV fisheye coefficients and the inverse stereo extrinsics to place the right sensor relative to the left. The left optical centre is anchored half the measured baseline from the CAD midpoint. The ELP calibration comes from `bello-vr-telepresence/config/stereo.json` at revision `bded0439` (SHA-256 `f86832f946c464d0300e0463b04a67cd0b0d6687cde2fc89569c94b585059ab3`). [Stereo camera profile](config/cameras_milly_stereo.yaml)
+The camera profile uses measured per-eye intrinsics, OpenCV fisheye coefficients and the inverse stereo extrinsics to place the right sensor relative to the left. The left optical centre is anchored half the measured baseline from the CAD midpoint. The ELP calibration comes from `bello-vr-telepresence/config/stereo.json` at revision `bded0439` (SHA-256 `f86832f946c464d0300e0463b04a67cd0b0d6687cde2fc89569c94b585059ab3`). [ELP calibration](../../descriptions/stereo-gimbal/calibration/elp-stereo.yaml)
 
-To configure another camera, set the dimensions and specify each optical pose as XYZ in metres followed by a WXYZ quaternion. Supply fx, fy, cx and cy in sensor pixels. Omit the four fisheye coefficients for pinhole projection. The model profile holds provisional auxiliary inertias for the gimbal and gripper linkages. [Simulation model](config/milly_7dof_gimbal.yaml)
+To configure another camera, declare its mount and layout in the hardware inventory. In its calibration file, set the per-eye dimensions and specify each optical pose as XYZ in metres followed by a WXYZ quaternion. Supply fx, fy, cx and cy in sensor pixels. Omit the four fisheye coefficients for pinhole projection. The model profile holds provisional auxiliary inertias for the gimbal and gripper linkages. [Simulation model](config/milly_7dof_gimbal.yaml)

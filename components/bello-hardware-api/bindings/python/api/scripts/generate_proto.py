@@ -8,44 +8,46 @@ import sys
 from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parents[1]
-PROTO = PACKAGE.parents[2] / "proto" / "bello" / "hardware" / "v1" / "hardware.proto"
+SCHEMAS = PACKAGE.parents[2] / "proto" / "bello"
 OUTPUT = PACKAGE / "src" / "bello_hardware_api"
 
 
-def main() -> None:
+def generate(name: str) -> None:
+    proto = SCHEMAS / name / "v1" / f"{name}.proto"
     OUTPUT.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         [
             sys.executable,
             "-m",
             "grpc_tools.protoc",
-            f"--proto_path={PROTO.parent}",
+            f"--proto_path={proto.parent}",
             f"--python_out={OUTPUT}",
             f"--pyi_out={OUTPUT}",
             f"--grpc_python_out={OUTPUT}",
-            PROTO.name,
+            proto.name,
         ],
-        cwd=PROTO.parent,
+        cwd=proto.parent,
         check=True,
     )
 
-    protobuf_module = OUTPUT / "hardware_pb2.py"
+    protobuf_module = OUTPUT / f"{name}_pb2.py"
     generated = protobuf_module.read_text()
     protobuf_module.write_text(
-        generated.replace("'hardware_pb2', _globals", "__name__, _globals")
+        generated.replace(f"'{name}_pb2', _globals", "__name__, _globals")
     )
 
-    grpc_module = OUTPUT / "hardware_pb2_grpc.py"
+    grpc_module = OUTPUT / f"{name}_pb2_grpc.py"
     generated = grpc_module.read_text()
     generated = generated.replace(
-        "import hardware_pb2 as hardware__pb2",
-        "from . import hardware_pb2 as hardware__pb2",
+        f"import {name}_pb2 as {name}__pb2",
+        f"from . import {name}_pb2 as {name}__pb2",
     )
     grpc_module.write_text("# mypy: ignore-errors\n" + generated)
 
-    protobuf_stubs = OUTPUT / "hardware_pb2.pyi"
+    protobuf_stubs = OUTPUT / f"{name}_pb2.pyi"
     protobuf_stubs.write_text("# mypy: ignore-errors\n" + protobuf_stubs.read_text())
 
 
 if __name__ == "__main__":
-    main()
+    for service in ("hardware", "camera"):
+        generate(service)

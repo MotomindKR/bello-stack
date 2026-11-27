@@ -1,5 +1,5 @@
 //! Single-threaded physics with bounded transport queues; async work owns no model.
-use crate::finite;
+use crate::{cameras, finite};
 use crate::{ebimu, guide, model, pose, robstride::RobstrideSimulation, transport::CanEndpoint};
 use anyhow::{Context, Result, ensure};
 use garde::Validate;
@@ -27,7 +27,6 @@ const MAX_QUEUE: usize = 8192;
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub model: PathBuf,
-    pub bus_interfaces: BTreeMap<String, CanInterface>,
     pub feedback_rate_hz: f64,
     pub temperature_c: f64,
     #[garde(custom(finite), range(min = 0.0, max = 1.0))]
@@ -47,7 +46,11 @@ pub struct Config {
     pub torso_guide: Option<guide::Config>,
     pub fault_events: BTreeMap<String, Vec<ScheduledEvent>>,
     pub video: Option<crate::video::Config>,
-    pub cameras: Option<PathBuf>,
+    #[serde(default = "cameras::default_samples")]
+    pub offscreen_samples: i32,
+    /// Extra simulator-only streams, grouped by a camera bound to their output socket.
+    #[serde(default)]
+    pub additional_camera_streams: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Validate)]
@@ -77,21 +80,21 @@ pub struct PoseConfig {
     pub rate_hz: f64,
 }
 
-impl Config {
-    pub fn load(path: &Path) -> Result<Self> {
-        let mut config: Self = serde_yaml::from_str(&std::fs::read_to_string(path)?)?;
+pub struct RunConfig {
+    pub settings: Config,
+    pub model: model::ModelConfig,
+    pub bus_interfaces: BTreeMap<String, CanInterface>,
+    pub camera_outputs: Vec<cameras::Config>,
+}
+
+impl RunConfig {
+    pub fn load(path: &Path, deployment: Option<&Path>) -> Result<Self> {
+        let mut config: Config = serde_yaml::from_str(&std::fs::read_to_string(path)?)?;
         config.model = path
             .parent()
             .context("config has no parent")?
             .join(&config.model)
             .canonicalize()?;
-        if let Some(cameras) = &mut config.cameras {
-            *cameras = path
-                .parent()
-                .context("config has no parent")?
-                .join(&*cameras)
-                .canonicalize()?;
-        }
         if let Some(power) = &config.power_board {
             power.validate()?;
             if let Some(imu) = &config.imu {
@@ -102,9 +105,15 @@ impl Config {
             }
         }
         config.validate()?;
+        let (model, deployment) =
+            model::ModelConfig::load_with_deployment(&config.model, deployment)?;
+        let deployment = deployment.context("paired simulator requires a hardwared deployment")?;
+        let bus_interfaces = deployment.interfaces()?;
+        let camera_outputs = deployment
+            .camera_outputs(&config.additional_camera_streams, config.offscreen_samples)?;
         let mut devices = BTreeSet::new();
         let mut ports = BTreeSet::new();
-        for interface in config.bus_interfaces.values() {
+        for interface in bus_interfaces.values() {
             interface.validate()?;
             match interface {
                 CanInterface::Socketcan(name) => {
@@ -124,10 +133,15 @@ impl Config {
             config
                 .fault_events
                 .keys()
-                .all(|name| config.bus_interfaces.contains_key(name)),
+                .all(|name| bus_interfaces.contains_key(name)),
             "unknown fault event bus"
         );
-        Ok(config)
+        Ok(Self {
+            settings: config,
+            model,
+            bus_interfaces,
+            camera_outputs,
+        })
     }
 }
 
@@ -195,31 +209,29 @@ impl Queues {
     }
 }
 
-pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
-    let mut model_config = model::ModelConfig::load(&config.model)?;
+pub fn run(run: RunConfig, duration: Option<Duration>) -> Result<()> {
+    let RunConfig {
+        settings: config,
+        model: mut model_config,
+        bus_interfaces,
+        camera_outputs,
+    } = run;
     ensure!(
         model_config.torso_guide.is_none(),
         "configure the runtime torso guide in only the emulator profile"
     );
     model_config.torso_guide = config.torso_guide;
     let robot = model::build(&model_config, None)?;
-    let mut cameras = config
-        .cameras
-        .map(|path| {
-            crate::cameras::Capture::start(
-                crate::cameras::Config::load(&path)?,
-                &model_config,
-                &robot.simulation,
-            )
-        })
-        .transpose()?;
+    let mut cameras = camera_outputs
+        .into_iter()
+        .map(|output| cameras::Capture::start(output, &model_config, &robot.simulation))
+        .collect::<Result<Vec<_>>>()?;
     let mut video = config
         .video
         .map(|config| crate::video::Capture::new(config, &robot.simulation))
         .transpose()?;
     ensure!(
-        config
-            .bus_interfaces
+        bus_interfaces
             .keys()
             .map(String::as_str)
             .collect::<BTreeSet<_>>()
@@ -258,7 +270,7 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
     let mut buses = Vec::new();
     let mut endpoints = BTreeMap::new();
     for bus in &robot.hardware.logical_buses {
-        let interface = &config.bus_interfaces[&bus.name];
+        let interface = &bus_interfaces[&bus.name];
         let mut coordinates = BTreeMap::new();
         let mut actuators = Vec::new();
         for motor in robot.hardware.motors.iter().filter(|m| m.bus == bus.name) {
@@ -440,7 +452,7 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
                     guide.as_ref().is_none_or(|g| !g.active),
                 )?;
             }
-            if let Some(cameras) = &mut cameras {
+            for cameras in &mut cameras {
                 cameras.sample(&physics.simulation);
             }
             if now >= next_pose {

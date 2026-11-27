@@ -8,12 +8,24 @@ publish.workspace = true
 description = "Shared gRPC and protobuf API for Bello hardware components"
 
 [dependencies]
+anyhow.workspace = true
+bello-sim-can.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
 prost.workspace = true
 tonic.workspace = true
 tonic-prost.workspace = true
+serde = { workspace = true, features = ["derive"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+tokio = { workspace = true, features = ["net", "time"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+tower = { version = "0.5", features = ["util"] }
 
 [build-dependencies]
 tonic-prost-build.workspace = true
 
 [dev-dependencies]
+tempfile.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

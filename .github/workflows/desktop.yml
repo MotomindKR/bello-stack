@@ -51,13 +51,19 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes pkg-config libudev-dev
+          sudo apt-get install --yes pkg-config libudev-dev libclang-dev libgstreamer-plugins-base1.0-dev
+      - name: macOS camera build dependencies
+        if: runner.os == 'macOS'
+        run: brew install gstreamer
       - name: Clippy
         run: cargo clippy --locked $PORTABLE_PACKAGES --all-targets -- -D warnings
       - name: Test portable components
         run: cargo test --locked $PORTABLE_PACKAGES --all-targets
       - name: Build release daemon
         run: cargo build --locked --release
+      - name: Build camera worker
+        if: runner.os != 'Windows'
+        run: cargo build --locked --release -p bello-camera-worker
       - name: Package daemon and robot assets
         run: python scripts/package-desktop.py --platform '${{ matrix.platform }}'
       - uses: actions/upload-artifact@v7

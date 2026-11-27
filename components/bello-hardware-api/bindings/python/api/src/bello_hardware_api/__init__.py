@@ -1,1 +1,1 @@
-"""Generated Python bindings for the Bello hardware service."""
+"""Generated Python bindings for Bello hardware and camera services."""

@@ -1,3 +1,4 @@
+mod cameras;
 mod daemon;
 mod listener;
 mod run;

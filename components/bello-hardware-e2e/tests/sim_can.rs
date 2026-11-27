@@ -9,6 +9,10 @@ mod sim;
 #[path = "sim_can/lower_body.rs"]
 mod lower_body;
 
+#[cfg(feature = "camera-tests")]
+#[path = "sim_can/cameras.rs"]
+mod cameras;
+
 #[path = "sim_can/power_warning.rs"]
 mod power_warning;
 

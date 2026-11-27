@@ -1,4 +1,4 @@
-hardware: ../../../descriptions/milly-7dof-gimbal/hardware.yaml
+deployment: ../../bello-hardwared/config/milly-7dof-gimbal-sim.yaml
 root: fixed
 floor: false
 timestep_seconds: 0.001

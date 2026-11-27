@@ -111,8 +111,7 @@ cargo run -p bello-hardwared -- --config components/bello-hardwared/config/milly
 ```
 
 Each simulated bus uses two IPv4 loopback UDP ports, one for hardwared and one for
-the simulator. Configure the same pair on both sides and give each bus its own
-ports. Either process can start first. Motor feedback tells you the peer is alive;
+the simulator. Assign each bus a distinct pair in the hardwared deployment. The MuJoCo model references that deployment. To use another, pass the same file to `bello-sim run --deployment PATH` and `bello-hardwared --config PATH`. Either process can start first. Motor feedback tells you the peer is alive;
 an online CAN transport only means the daemon has bound its local socket.
 Use vCAN for tests that need SocketCAN tools such as `candump`. Use physical CAN
 for bus arbitration, electrical faults, or wire timing measurements.

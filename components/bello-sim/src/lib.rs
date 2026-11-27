@@ -8,6 +8,7 @@ use mujoco_rs::prelude::{MjData, MjModel, MjtObj};
 use robstride_protocol::ControlCommand;
 
 pub mod cameras;
+mod deployment;
 pub mod ebimu;
 pub mod guide;
 pub mod model;

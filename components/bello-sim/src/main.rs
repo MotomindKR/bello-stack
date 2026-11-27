@@ -34,6 +34,9 @@ enum Command {
         config: PathBuf,
         #[arg(long)]
         duration_seconds: Option<f64>,
+        /// Use this hardwared deployment in place of the model profile default.
+        #[arg(long)]
+        deployment: Option<PathBuf>,
     },
 }
 
@@ -58,6 +61,7 @@ fn main() -> Result<()> {
         Command::Run {
             config,
             duration_seconds,
+            deployment,
         } => {
             let duration = duration_seconds
                 .map(|seconds| {
@@ -68,7 +72,10 @@ fn main() -> Result<()> {
                     Ok(std::time::Duration::try_from_secs_f64(seconds)?)
                 })
                 .transpose()?;
-            return bello_sim::runtime::run(bello_sim::runtime::Config::load(&config)?, duration);
+            return bello_sim::runtime::run(
+                bello_sim::runtime::RunConfig::load(&config, deployment.as_deref())?,
+                duration,
+            );
         }
     };
     let robot = build(&ModelConfig::load(&config)?, export_physics.as_deref())?;

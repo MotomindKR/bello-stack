@@ -1,6 +1,11 @@
 # Verify both hip encoder zeros and load sharing on the installed torso.
 robot_description: urdf/bello_mini_torso.urdf
 
+cameras:
+  - { name: birds_eye, link: base_link, layout: mono, calibration: calibration/birds-eye.yaml, fps: 30 }
+  - { name: right_gripper, link: right_camera_optical_frame, layout: mono, calibration: calibration/gripper.yaml, fps: 30 }
+  - { name: left_gripper, link: left_camera_optical_frame, layout: mono, calibration: calibration/gripper.yaml, fps: 30 }
+
 logical_buses:
   - name: can0
     host_id: 0

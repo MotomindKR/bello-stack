@@ -1,5 +1,5 @@
 use anyhow::{Result, ensure};
-use bello_sim::runtime::{Config, run};
+use bello_sim::runtime::{RunConfig, run};
 mod support;
 use robstride_emulator::config::CanInterface;
 use robstride_protocol::{
@@ -13,13 +13,13 @@ use std::time::Duration;
 #[test]
 fn motor_follows_position_commands_over_sim_can() -> Result<()> {
     let profile = Path::new(env!("CARGO_MANIFEST_DIR")).join("config/emulator_milly.yaml");
-    let mut config = Config::load(&profile)?;
+    let mut config = RunConfig::load(&profile, None)?;
     let (bus, client, simulator_port) = support::reserve_bus()?;
     client.set_read_timeout(Some(Duration::from_millis(10)))?;
     config
         .bus_interfaces
         .insert("can0".into(), CanInterface::Sim(bus));
-    config.pose.listen.set_port(0);
+    config.settings.pose.listen.set_port(0);
     drop(simulator_port);
 
     let params = MotorParams::for_model("RS_06", 1).unwrap();

@@ -26,6 +26,12 @@ with grpc.insecure_channel("127.0.0.1:50051") as channel:
     inventory = client.ListHardware(hardware_pb2.ListHardwareRequest(), timeout=5)
 ```
 
+## Cameras
+
+Call `bello.camera.v1.CameraSourceService` on the hardware gRPC endpoint. `GetCameras` lists configured streams and their encoded dimensions. With no cameras configured it returns an empty list. `WatchFrames` returns JPEGs with source sequence numbers and monotonic capture and receive timestamps. Simulated frames also include simulation time. Set `latest_only` for a preview. Ordered subscriptions end with `RESOURCE_EXHAUSTED` when the reader falls behind.
+
+On the camera host, GStreamer can read the same JPEGs with `unixfdsrc` using the socket in `GetCameras.local_sources`. After capture restarts, call `GetCameras` again and open a new subscription or socket. A configured worker that is starting or offline returns `UNAVAILABLE` for camera RPCs. Motor leases and control continue independently.
+
 ## Read hardware
 
 These calls require no lease.

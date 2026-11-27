@@ -1,5 +1,5 @@
 use super::*;
-use bello_camera_api::{HEIGHT, WIDTH};
+use bello_camera_worker::{HEIGHT, WIDTH};
 #[cfg(target_os = "linux")]
 #[test]
 #[ignore = "requires offscreen software Mesa; no GPU or CAN devices"]

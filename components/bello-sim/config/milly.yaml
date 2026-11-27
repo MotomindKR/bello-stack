@@ -1,4 +1,4 @@
-hardware: ../../../descriptions/milly/hardware.yaml
+deployment: ../../bello-hardwared/config/milly-sim.yaml
 root: fixed
 floor: true
 timestep_seconds: 0.001

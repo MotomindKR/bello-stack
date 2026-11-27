@@ -25,6 +25,7 @@ pub(crate) struct ResolvedMotor {
 
 #[derive(Clone)]
 pub(crate) struct ResolvedTopology {
+    pub(crate) cameras: Option<bello_hardware_api::camera::config::Source>,
     telemetry_capacity: usize,
     motor_velocity_filter: MotorVelocityFilterConfig,
     imu_filter: ImuFilterConfig,
@@ -67,6 +68,18 @@ impl ResolvedTopology {
                     config.robot_description.display()
                 )
             })?;
+        for camera in config.camera_inventory.values() {
+            anyhow::ensure!(
+                robot_description.link(&camera.link).is_some(),
+                "camera {} refers to unknown URDF link {}",
+                camera.name,
+                camera.link
+            );
+        }
+        let cameras = bello_hardware_api::camera::config::Source::bind(
+            config.camera_inventory,
+            config.cameras,
+        )?;
         let grpc = GrpcSpec::try_from(&config.grpc)?;
 
         let mut serial_devices = HashMap::new();
@@ -257,6 +270,7 @@ impl ResolvedTopology {
 
         validate_bus_utilization(&buses, &motors, &groups)?;
         Ok(Self {
+            cameras,
             telemetry_capacity: config.runtime.telemetry_capacity,
             motor_velocity_filter: config.runtime.motor_velocity_filter,
             imu_filter: config.runtime.imu_filter,
@@ -373,6 +387,68 @@ mod tests {
     use crate::control::GroupSpec;
     use crate::domain::{ImpedanceCommand, SafetyViolation};
     use crate::hardware::robstride::Feedback;
+
+    #[test]
+    fn camera_transport_preserves_the_robot_calibration() {
+        use bello_hardware_api::camera::{CameraLayout, config::Transport};
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/config/milly-7dof-gimbal-sim.yaml"
+        );
+        let mut profile = Config::load_raw(path).unwrap();
+        let socket = std::env::temp_dir().join("camera.sock");
+        profile.cameras.insert(
+            "stereo".into(),
+            Transport::Mujoco {
+                socket: socket.clone(),
+            },
+        );
+        let sim = ResolvedTopology::resolve(profile.clone())
+            .unwrap()
+            .cameras
+            .unwrap();
+        profile.cameras.insert(
+            "stereo".into(),
+            Transport::V4l2 {
+                device: std::env::temp_dir().join("video0"),
+            },
+        );
+        let usb = ResolvedTopology::resolve(profile.clone())
+            .unwrap()
+            .cameras
+            .unwrap();
+        let (mut sim, layout) = sim.0[0].stream_info();
+        let (usb, usb_layout) = usb.0[0].stream_info();
+        assert_eq!(
+            (sim.width, sim.height, sim.fps, layout),
+            (3200, 1200, 30, CameraLayout::StereoSideBySide)
+        );
+        assert_eq!(layout, usb_layout);
+        assert_eq!(sim.source, "mujoco");
+        assert_eq!(usb.source, "v4l2");
+        sim.source.clone_from(&usb.source);
+        assert_eq!(sim, usb);
+
+        profile
+            .cameras
+            .insert("typo".into(), Transport::Mujoco { socket });
+        assert!(
+            ResolvedTopology::resolve(profile.clone())
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("unknown camera typo")
+        );
+        profile.cameras.clear();
+        profile.camera_inventory.get_mut("stereo").unwrap().link = "missing_mount".into();
+        assert!(
+            ResolvedTopology::resolve(profile)
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("unknown URDF link missing_mount")
+        );
+    }
 
     fn transmission_config() -> Config {
         let mut config: Config = serde_yaml::from_str(

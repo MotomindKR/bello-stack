@@ -15,7 +15,9 @@ use crate::model_physics::{add_slider_cranks, apply_physics};
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelConfig {
+    #[serde(default)]
     pub hardware: PathBuf,
+    deployment: Option<PathBuf>,
     #[serde(default)]
     pub root: RootMode,
     #[serde(default = "default_floor")]
@@ -98,13 +100,28 @@ fn add_payloads(spec: &mut MjSpec, payloads: &[Payload]) -> Result<f64> {
 
 impl ModelConfig {
     pub fn load(path: &Path) -> Result<Self> {
-        let mut config: Self = serde_yaml::from_str(&std::fs::read_to_string(path)?)?;
-        config.hardware = path
-            .parent()
-            .context("config needs a parent directory")?
-            .join(&config.hardware)
-            .canonicalize()?;
-        Ok(config)
+        Ok(Self::load_with_deployment(path, None)?.0)
+    }
+
+    pub(crate) fn load_with_deployment(
+        path: &Path,
+        override_path: Option<&Path>,
+    ) -> Result<(Self, Option<crate::deployment::Deployment>)> {
+        let mut config: Self = serde_yaml::from_reader(std::fs::File::open(path)?)?;
+        ensure!(
+            config.deployment.is_some() == config.hardware.as_os_str().is_empty(),
+            "model must specify exactly one of deployment or hardware"
+        );
+        let declared = config.deployment.as_ref().map(|p| path.with_file_name(p));
+        let deployment = override_path
+            .or(declared.as_deref())
+            .map(crate::deployment::Deployment::load)
+            .transpose()?;
+        config.hardware = match &deployment {
+            Some(binding) => binding.description.clone(),
+            None => path.with_file_name(&config.hardware).canonicalize()?,
+        };
+        Ok((config, deployment))
     }
 }
 
@@ -706,6 +723,7 @@ imus: [{name: imu, source_frame: imu, output_frame: base}]
             dir,
             ModelConfig {
                 hardware,
+                deployment: None,
                 root: RootMode::Free,
                 floor: true,
                 timestep_seconds: 0.001,
