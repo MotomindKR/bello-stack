@@ -308,10 +308,10 @@ fn ergonomic_frame(
     ])?)
 }
 
-struct CommandStream(JoinHandle<()>);
+pub struct CommandStream(JoinHandle<()>);
 
 impl CommandStream {
-    async fn start(client: &HardwareClient, lease: &AcquireLeaseResponse) -> Result<Self> {
+    pub async fn start(client: &HardwareClient, lease: &AcquireLeaseResponse) -> Result<Self> {
         let (tx, rx) = mpsc::channel(1);
         let mut replies = client
             .clone()

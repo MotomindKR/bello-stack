@@ -1,6 +1,6 @@
 use super::projection;
 use anyhow::{Result, ensure};
-use bello_camera_api::{HEIGHT, WIDTH, proto};
+use bello_camera_worker::{HEIGHT, WIDTH, proto};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -8,8 +8,6 @@ use std::path::{Path, PathBuf};
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub socket: PathBuf,
-    #[serde(default)]
-    pub listen: Option<std::net::SocketAddr>,
     pub cameras: Vec<Camera>,
     #[serde(default = "default_samples")]
     pub offscreen_samples: i32,

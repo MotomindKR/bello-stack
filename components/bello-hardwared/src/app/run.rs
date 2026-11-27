@@ -55,6 +55,8 @@ pub async fn run(config_path: impl AsRef<Path>) -> Result<()> {
     let telemetry = Telemetry::new(topology.telemetry_capacity());
     let (server_shutdown_tx, server_shutdown_rx) = watch::channel(false);
     let (watchdog_shutdown_tx, watchdog_shutdown_rx) = watch::channel(false);
+    let cameras =
+        super::cameras::Cameras::start(topology.cameras.clone(), server_shutdown_rx.clone());
     let daemon = HardwareDaemon::start(topology, telemetry, directory)?;
     let watchdog = tokio::spawn(HardwareDaemon::lease_watchdog(
         Arc::downgrade(&daemon),
@@ -69,11 +71,13 @@ pub async fn run(config_path: impl AsRef<Path>) -> Result<()> {
         let shutdown = server_shutdown_rx.clone();
         let grpc = HardwareGrpc::new(daemon.clone(), shutdown.clone());
         let maintenance = maintenance.then(|| MotorConfigurationServiceServer::new(grpc.clone()));
+        let cameras = bello_hardware_api::camera::camera_source_service_server::CameraSourceServiceServer::new(cameras.clone());
         let service = HardwareServiceServer::new(grpc);
         let future: ServerFuture = match incoming {
             GrpcIncoming::Tcp(incoming) => Box::pin(
                 server
                     .add_service(service)
+                    .add_service(cameras)
                     .add_optional_service(maintenance)
                     .serve_with_incoming_shutdown(incoming, wait_for_shutdown(shutdown)),
             ),
@@ -82,6 +86,7 @@ pub async fn run(config_path: impl AsRef<Path>) -> Result<()> {
                 let _socket = socket;
                 server
                     .add_service(service)
+                    .add_service(cameras)
                     .add_optional_service(maintenance)
                     .serve_with_incoming_shutdown(incoming, wait_for_shutdown(shutdown))
                     .await

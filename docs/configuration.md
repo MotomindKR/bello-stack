@@ -387,3 +387,28 @@ checks references, exclusive ownership and CAN capacity before startup opens har
 
 Use direct aliases to share a complete object, as in [Bello’s hardware description](../descriptions/bello/hardware.yaml).
 YAML merge keys (`<<`) are unsupported.
+
+## Cameras
+
+On camera hosts, install `bello-camera-worker` next to `bello-hardwared`. The Linux and macOS desktop bundles include both. For a source build, use `cargo build --release -p bello-hardwared -p bello-camera-worker`. The worker uses the GStreamer 1.28+ unixfd plugin. Camera clients connect to the configured hardware gRPC listeners and use their TLS settings.
+
+For simulation, match the private socket in the simulator camera profile:
+
+```yaml
+cameras: { type: mujoco, socket: /tmp/bello-milly-stereo.sock }
+```
+
+For Linux USB cameras, specify each device by a stable path such as the entry under `/dev/v4l/by-id/`. Set the native MJPEG size and frame rate supported by that device. For side-by-side stereo, set `stereo: true` and specify the packed width.
+
+```yaml
+cameras:
+  type: v4l2
+  devices:
+    - name: birds_eye
+      device: /dev/v4l/by-id/REPLACE-WITH-CAMERA-video-index0
+      width: 640
+      height: 360
+      fps: 30
+```
+
+Grant the daemon user access to each configured video device. One worker owns the configured set. If a source stops, hardwared restarts that worker and its camera streams together.

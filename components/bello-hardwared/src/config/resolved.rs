@@ -25,6 +25,7 @@ pub(crate) struct ResolvedMotor {
 
 #[derive(Clone)]
 pub(crate) struct ResolvedTopology {
+    pub(crate) cameras: Option<bello_hardware_api::camera::config::Source>,
     telemetry_capacity: usize,
     motor_velocity_filter: MotorVelocityFilterConfig,
     imu_filter: ImuFilterConfig,
@@ -57,6 +58,9 @@ impl ResolvedTopology {
 
     pub(crate) fn resolve(config: Config) -> Result<Self> {
         config.validate()?;
+        if let Some(source) = &config.cameras {
+            source.validate().map_err(anyhow::Error::msg)?;
+        }
         if config.robot_description.as_os_str().is_empty() {
             bail!("hardware configuration has no canonical robot description");
         }
@@ -257,6 +261,7 @@ impl ResolvedTopology {
 
         validate_bus_utilization(&buses, &motors, &groups)?;
         Ok(Self {
+            cameras: config.cameras,
             telemetry_capacity: config.runtime.telemetry_capacity,
             motor_velocity_filter: config.runtime.motor_velocity_filter,
             imu_filter: config.runtime.imu_filter,

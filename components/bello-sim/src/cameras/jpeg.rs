@@ -34,7 +34,7 @@ impl Encoder {
             .field("height", height as i32)
             .field(
                 "framerate",
-                gst::Fraction::new(bello_camera_api::FPS as i32, 1),
+                gst::Fraction::new(bello_camera_worker::FPS as i32, 1),
             )
             .build();
         self.input.set_caps(Some(&caps));

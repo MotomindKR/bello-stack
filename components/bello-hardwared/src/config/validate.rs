@@ -191,6 +191,7 @@ impl Config {
             simulation: deployment.simulation,
             runtime: deployment.runtime,
             grpc: deployment.grpc,
+            cameras: deployment.cameras,
             serial_devices,
             imus: description.imus,
             power_boards: description.power_boards,

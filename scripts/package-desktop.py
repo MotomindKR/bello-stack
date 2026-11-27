@@ -29,6 +29,8 @@ def main() -> None:
     bundle = root / "dist" / f"bello-desktop-{args.platform}"
     bundle.mkdir(parents=True, exist_ok=False)
     shutil.copy2(binary_dir / f"bello-hardwared{suffix}", bundle)
+    if os.name != "nt":
+        shutil.copy2(binary_dir / "bello-camera-worker", bundle)
     tracked = subprocess.check_output(
         [
             "git",

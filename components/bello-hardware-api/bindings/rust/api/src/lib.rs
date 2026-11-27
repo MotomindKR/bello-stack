@@ -2,3 +2,5 @@
 #![allow(clippy::double_must_use)]
 
 tonic::include_proto!("bello.hardware.v1");
+
+pub mod camera;

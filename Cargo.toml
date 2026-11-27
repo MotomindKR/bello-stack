@@ -2,7 +2,7 @@
 resolver = "3"
 default-members = ["components/bello-hardwared"]
 members = [
-  "components/bello-camera-api",
+  "components/bello-camera-worker",
   "components/cog-protocol",
   "components/bello-hardware-api/bindings/rust/api",
   "components/bello-hardware-api/bindings/rust/client",

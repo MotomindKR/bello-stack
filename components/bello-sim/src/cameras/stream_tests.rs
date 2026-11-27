@@ -1,4 +1,5 @@
 use super::*;
+use bello_camera_worker::media::Publisher;
 use gst::prelude::*;
 use image::{Rgb, RgbImage};
 use proto::camera_source_service_client::CameraSourceServiceClient;
@@ -40,15 +41,15 @@ async fn check_stereo_stream(eye_width: u32, height: u32, minimum_bytes: usize) 
     let publisher = Publisher::new(vec![(camera, proto::CameraLayout::StereoSideBySide)])?;
     let temp = tempfile::tempdir()?;
     let path = temp.path().join("frames.sock");
-    let (listener, _socket) = bello_camera_api::socket::bind(&path).await?;
+    let (listener, _socket) = proto::socket::bind(&path).await?;
     let server = tokio::spawn(
         tonic::transport::Server::builder()
             .add_service(CameraSourceServiceServer::new(publisher.frames().clone()))
             .serve_with_incoming(UnixListenerStream::new(listener)),
     );
-    let mut client = CameraSourceServiceClient::new(bello_camera_api::connect(&path).await?);
+    let mut client = CameraSourceServiceClient::new(proto::connect(&path).await?);
     if jpeg.len() > 4 * 1024 * 1024 {
-        client = client.max_decoding_message_size(bello_camera_api::MAX_FRAME_MESSAGE_BYTES);
+        client = client.max_decoding_message_size(proto::MAX_FRAME_MESSAGE_BYTES);
     }
     let catalog = client
         .get_cameras(Request::new(proto::GetCamerasRequest {}))

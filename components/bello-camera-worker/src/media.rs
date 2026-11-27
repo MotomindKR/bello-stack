@@ -31,11 +31,18 @@ impl AsRef<[u8]> for Jpeg {
 
 impl Publisher {
     pub fn new(cameras: Vec<(proto::Camera, proto::CameraLayout)>) -> Result<Self> {
+        Self::new_in(cameras, std::path::Path::new("/tmp"))
+    }
+
+    pub fn new_in(
+        cameras: Vec<(proto::Camera, proto::CameraLayout)>,
+        directory: &std::path::Path,
+    ) -> Result<Self> {
         gst::init()?;
-        let mut frames = Frames::configured(cameras.iter().map(|(c, _)| c.clone()).collect())?;
+        let mut frames = Frames::new(cameras.iter().map(|(c, _)| c.clone()).collect())?;
         let sockets = tempfile::Builder::new()
             .permissions(std::fs::Permissions::from_mode(0o700))
-            .tempdir_in("/tmp")?;
+            .tempdir_in(directory)?;
         let mut streams = HashMap::new();
         for (i, (camera, layout)) in cameras.into_iter().enumerate() {
             ensure!(

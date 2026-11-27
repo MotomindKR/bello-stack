@@ -60,6 +60,8 @@ pub(crate) struct Config {
     #[serde(default)]
     pub grpc: GrpcConfig,
     #[serde(default)]
+    pub cameras: Option<bello_hardware_api::camera::config::Source>,
+    #[serde(default)]
     pub serial_devices: Vec<SerialDeviceConfig>,
     #[serde(default)]
     pub imus: Vec<ImuConfig>,
@@ -83,6 +85,8 @@ pub(crate) struct DeploymentConfig {
     pub runtime: RuntimeConfig,
     #[serde(default)]
     pub grpc: GrpcConfig,
+    #[serde(default)]
+    pub cameras: Option<bello_hardware_api::camera::config::Source>,
     #[serde(default)]
     pub bus_transports: HashMap<String, BusTransportConfig>,
     #[serde(default)]

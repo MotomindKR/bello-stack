@@ -57,6 +57,8 @@
               export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibraries}:''${LD_LIBRARY_PATH:-}"
             '';
           } // pkgs.lib.optionalAttrs isLinux {
+            LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+            BINDGEN_EXTRA_CLANG_ARGS = "-isystem ${pkgs.linuxHeaders}/include -isystem ${pkgs.glibc.dev}/include";
             MUJOCO_DYNAMIC_LINK_DIR = assert mujoco.version == "3.12.0";
               "${pkgs.lib.getLib mujoco}/lib";
           });

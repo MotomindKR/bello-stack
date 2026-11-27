@@ -118,22 +118,22 @@ cargo test --locked -p bello-sim \
 
 ## Dual Milly stereo
 
-Start the dual 7-DOF fixture and its two calibrated views with the following commands in separate terminals. The simulator holds the initial pose until the motors receive commands.
+Build the supervised worker with `cargo build -p bello-camera-worker` in the development shell. Start the dual 7-DOF fixture and its two calibrated views with the following commands in separate terminals. The simulator holds the initial pose until the motors receive commands.
 
 ```sh
 cargo run -p bello-sim -- run --config components/bello-sim/config/emulator_milly_7dof_gimbal.yaml
 cargo run -p bello-hardwared -- --config components/bello-hardwared/config/milly-7dof-gimbal-sim.yaml
 ```
 
-The service at `/tmp/bello-milly-stereo.sock` publishes one `stereo` stream. Each 3200 × 1200 JPEG contains the left and right 1600 × 1200 exposures from one simulation snapshot. Use the [mono profile](config/cameras_milly_mono.yaml) for a single 1600 × 1200 stream from the left lens.
+The hardware daemon at `127.0.0.1:50051` publishes one `stereo` stream. Each 3200 × 1200 JPEG contains the left and right 1600 × 1200 exposures from one simulation snapshot. Use the [mono profile](config/cameras_milly_mono.yaml) for a single 1600 × 1200 stream from the left lens.
 
 For high-resolution streams, allow 32 MiB per gRPC response (`MAX_FRAME_MESSAGE_BYTES` in Rust or `grpc.max_receive_message_length` in Python). Detailed scenes can exceed the common 4 MiB client default. GStreamer and gRPC carry the original encoded JPEG at the same quality.
 
 To discover the local socket, run the following command from the repository root. Pass the returned `localSources.stereo.unixfdSocket` to `unixfdsrc` on the same host. Discover it again when the publisher restarts.
 
 ```sh
-grpcurl -plaintext -unix -import-path components/bello-camera-api/proto \
-  -proto bello/camera/v1/camera.proto /tmp/bello-milly-stereo.sock \
+grpcurl -plaintext -import-path components/bello-hardware-api/proto \
+  -proto bello/camera/v1/camera.proto 127.0.0.1:50051 \
   bello.camera.v1.CameraSourceService/GetCameras
 gst-launch-1.0 unixfdsrc socket-path="$CAMERA_SOCKET" ! jpegdec ! videoconvert ! autovideosink
 ```

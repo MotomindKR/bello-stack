@@ -38,6 +38,11 @@ uuid = { workspace = true, features = ["v4"] }
 nix = { workspace = true, features = ["time"] }
 socketcan.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+tempfile.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["io-util", "process"] }
+
 [dev-dependencies]
 tempfile.workspace = true
 

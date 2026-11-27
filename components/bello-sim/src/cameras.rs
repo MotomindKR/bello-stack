@@ -5,7 +5,7 @@ mod jpeg;
 mod projection;
 use crate::{Simulation, model};
 use anyhow::{Context, Result, ensure};
-use bello_camera_api::{FPS, media::Publisher, monotonic_ns, proto};
+use bello_camera_worker::{FPS, monotonic_ns, proto, sim_pipe};
 use mujoco_rs::prelude::*;
 use nalgebra::{Isometry3, Quaternion, Translation3, UnitQuaternion, Vector3};
 use std::{
@@ -337,46 +337,24 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
     let cameras = config
         .cameras
         .iter()
-        .map(|c| {
-            (
-                proto::Camera {
-                    name: c.name.clone(),
-                    width: config.width * c.views.lenses().count() as u32,
-                    height: config.height,
-                    fps: FPS,
-                    source: "mujoco".into(),
-                    metadata_json: c.metadata().to_string(),
-                },
-                c.views.layout(),
-            )
+        .map(|c| sim_pipe::Stream {
+            camera: proto::Camera {
+                name: c.name.clone(),
+                width: config.width * c.views.lenses().count() as u32,
+                height: config.height,
+                fps: FPS,
+                source: "mujoco".into(),
+                metadata_json: c.metadata().to_string(),
+            },
+            layout: c.views.layout() as i32,
         })
         .collect();
-    let publisher = Publisher::new(cameras)?;
-    let frames = publisher.frames();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
         .build()?;
     let _entered = runtime.enter();
-    let (listener, _socket) = runtime.block_on(bello_camera_api::socket::bind(&config.socket))?;
-    let server = runtime.spawn(
-        tonic::transport::Server::builder()
-            .add_service(
-                proto::camera_source_service_server::CameraSourceServiceServer::new(frames.clone()),
-            )
-            .serve_with_incoming(tokio_stream::wrappers::UnixListenerStream::new(listener)),
-    );
-    let tcp_server = config.listen.map(|address| {
-        runtime.spawn(
-            tonic::transport::Server::builder()
-                .add_service(
-                    proto::camera_source_service_server::CameraSourceServiceServer::new(
-                        frames.clone(),
-                    ),
-                )
-                .serve(address),
-        )
-    });
+    let publisher = runtime.block_on(sim_pipe::Output::open(&config.socket, cameras))?;
     let stop = Arc::new(AtomicBool::new(false));
     let stopping = stop.clone();
     runtime.spawn(async move {
@@ -404,10 +382,6 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
     let encoder = jpeg::Encoder::new()?;
     let mut last = Instant::now();
     while !stop.load(Ordering::Acquire) {
-        ensure!(
-            !server.is_finished() && tcp_server.as_ref().is_none_or(|s| !s.is_finished()),
-            "camera frame service stopped"
-        );
         let size = match input.recv(&mut latest) {
             Ok(size) => size,
             Err(e)
@@ -488,7 +462,7 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
                 None => first,
             };
             let jpeg = encoder.encode(image)?;
-            let result = publisher.publish(proto::Frame {
+            publisher.publish(proto::Frame {
                 name: c.name.clone(),
                 sequence,
                 capture_ns,
@@ -496,22 +470,8 @@ pub fn render(model_path: &Path, config_path: &Path) -> Result<()> {
                 jpeg,
                 flags: 0,
                 simulation_time_ns: Some((simtime * 1e9).round() as u64),
-            });
-            if let Err(error) = result {
-                if error
-                    .downcast_ref::<tonic::Status>()
-                    .is_some_and(|s| s.code() == tonic::Code::OutOfRange)
-                {
-                    eprintln!("Skipping {} frame {sequence}: {error}", c.name);
-                } else {
-                    return Err(error);
-                }
-            }
+            })?;
         }
-    }
-    server.abort();
-    if let Some(server) = tcp_server {
-        server.abort();
     }
     Ok(())
 }

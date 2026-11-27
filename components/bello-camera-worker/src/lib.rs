@@ -1,22 +1,15 @@
+pub use bello_hardware_api::camera as proto;
 use std::{pin::Pin, sync::Arc};
 use tokio::sync::{broadcast, watch};
 use tonic::{Request, Response, Status};
-pub mod proto {
-    #![allow(clippy::double_must_use)]
-    tonic::include_proto!("bello.camera.v1");
-}
-#[cfg(feature = "gstreamer")]
 pub mod media;
-pub mod socket;
-pub const FILE_DESCRIPTOR_SET: &[u8] =
-    tonic::include_file_descriptor_set!("bello_camera_v1_descriptor");
-pub const NAMES: [&str; 3] = ["birds_eye", "right_gripper", "left_gripper"];
+pub mod sim_pipe;
+#[cfg(test)]
+const NAMES: [&str; 3] = ["birds_eye", "right_gripper", "left_gripper"];
 pub const WIDTH: u32 = 640;
 pub const HEIGHT: u32 = 360;
 pub const FPS: u32 = 30;
-/// Recommended WatchFrames client receive limit for the largest supported camera.
-pub const MAX_FRAME_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
-
+#[cfg(unix)]
 pub fn monotonic_ns() -> u64 {
     let mut time = libc::timespec {
         tv_sec: 0,
@@ -41,26 +34,8 @@ pub struct Frames {
     slots: Arc<Vec<Slot>>,
 }
 impl Frames {
-    pub fn new(cameras: Vec<proto::Camera>) -> Result<Self, Status> {
-        if cameras.len() != 3
-            || NAMES
-                .iter()
-                .any(|n| cameras.iter().filter(|c| c.name == *n).count() != 1)
-            || cameras.iter().any(|c| {
-                c.width != WIDTH
-                    || c.height != HEIGHT
-                    || c.fps != FPS
-                    || !matches!(c.source.as_str(), "v4l2" | "mujoco")
-            })
-        {
-            return Err(Status::invalid_argument(
-                "requires three named 640x360, 30 Hz cameras",
-            ));
-        }
-        Self::configured(cameras)
-    }
     /// Accepts independently named logical streams with their encoded dimensions.
-    pub fn configured(cameras: Vec<proto::Camera>) -> Result<Self, Status> {
+    pub fn new(cameras: Vec<proto::Camera>) -> Result<Self, Status> {
         let names: std::collections::BTreeSet<_> = cameras.iter().map(|c| &c.name).collect();
         if cameras.is_empty()
             || cameras.len() > 16
@@ -176,22 +151,6 @@ impl proto::camera_source_service_server::CameraSourceService for Frames {
     }
 }
 
-pub async fn connect(
-    path: &std::path::Path,
-) -> Result<tonic::transport::Channel, tonic::transport::Error> {
-    let path = path.to_owned();
-    tonic::transport::Endpoint::from_static("http://[::]:50000")
-        .connect_with_connector(tower::service_fn(move |_| {
-            let path = path.clone();
-            async move {
-                tokio::net::UnixStream::connect(path)
-                    .await
-                    .map(hyper_util::rt::TokioIo::new)
-            }
-        }))
-        .await
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -274,12 +233,12 @@ mod tests {
                 metadata_json: "{}".into(),
             })
             .to_vec();
-        assert!(Frames::new(cameras.clone()).is_err());
-        let stereo = Frames::configured(cameras.clone()).unwrap();
+
+        let stereo = Frames::new(cameras.clone()).unwrap();
         assert_eq!(stereo.cameras().len(), 2);
         let mut duplicate = cameras;
         duplicate[1].name = "left".into();
-        assert!(Frames::configured(duplicate).is_err());
+        assert!(Frames::new(duplicate).is_err());
         let mut value = frame(1);
         value.name = "left".into();
         stereo.publish(value).unwrap();
