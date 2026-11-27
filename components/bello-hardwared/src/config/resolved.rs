@@ -396,6 +396,13 @@ mod tests {
             "/config/milly-7dof-gimbal-sim.yaml"
         );
         let mut profile = Config::load_raw(path).unwrap();
+        let socket = std::env::temp_dir().join("camera.sock");
+        profile.cameras.insert(
+            "stereo".into(),
+            Transport::Mujoco {
+                socket: socket.clone(),
+            },
+        );
         let sim = ResolvedTopology::resolve(profile.clone())
             .unwrap()
             .cameras
@@ -403,7 +410,7 @@ mod tests {
         profile.cameras.insert(
             "stereo".into(),
             Transport::V4l2 {
-                device: "/dev/video0".into(),
+                device: std::env::temp_dir().join("video0"),
             },
         );
         let usb = ResolvedTopology::resolve(profile.clone())
@@ -422,12 +429,9 @@ mod tests {
         sim.source.clone_from(&usb.source);
         assert_eq!(sim, usb);
 
-        profile.cameras.insert(
-            "typo".into(),
-            Transport::Mujoco {
-                socket: "/tmp/camera.sock".into(),
-            },
-        );
+        profile
+            .cameras
+            .insert("typo".into(), Transport::Mujoco { socket });
         assert!(
             ResolvedTopology::resolve(profile.clone())
                 .err()
