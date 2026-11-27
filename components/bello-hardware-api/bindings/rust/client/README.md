@@ -22,7 +22,7 @@ async fn main() -> Result<(), bello_hardware_client::Error> {
 
 - Connection loads inventory. Use `robot.refresh_inventory().await?` on a mutable handle to pick up changes. Existing group handles and readers keep their snapshot.
 - Each `changed()` applies one telemetry event. `generation()` changes when a reconnect clears cached state.
-- Endpoints accept `http://`, `https://`, or `unix:///absolute/path`. For mTLS, pass `ConnectOptions::tls` a `TlsOptions` with a CA and client identity. [Transport configuration](../../docs/configuration.md#grpc)
+- Endpoints accept `http://`, `https://`, or `unix:///absolute/path`. For mTLS, pass `ConnectOptions::tls` a `TlsOptions` with a CA and client identity. [Transport configuration](../../../../../docs/configuration.md#grpc)
 
 ## Control a motor group
 
@@ -54,4 +54,4 @@ async fn main() -> Result<(), bello_hardware_client::Error> {
 | `disable().await?` | Disable the motors directly and keep the lease. |
 | `shutdown().await?` / `release().await?` | Shut down to disable and release. Use release alone to leave a running group damped. |
 
-A rejection closes the command stream. Resume after confirmed damping. Check group state before recovery after an ambiguous result. [Control and safety](../../docs/control-and-safety.md) · [Direct RPCs](../../docs/api.md#direct-clients)
+A rejection closes the command stream. Resume after confirmed damping. Check group state before recovery after an ambiguous result. [Control and safety](../../../../../docs/control-and-safety.md) · [Direct RPCs](../../../../../docs/api.md#direct-clients)

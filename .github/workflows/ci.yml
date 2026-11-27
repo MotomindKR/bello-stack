@@ -38,10 +38,10 @@ jobs:
           nix develop --command buf lint
       - name: Generated Python protobuf bindings
         run: |
-          nix develop --command python components/bello-hardware-api/scripts/generate_proto.py
-          git diff --exit-code -- components/bello-hardware-api/src/bello_hardware_api
+          nix develop --command python components/bello-hardware-api/bindings/python/api/scripts/generate_proto.py
+          git diff --exit-code -- components/bello-hardware-api/bindings/python/api/src/bello_hardware_api
       - name: Python client
-        working-directory: components/bello-hardware-python
+        working-directory: components/bello-hardware-api/bindings/python/client
         run: |
           nix develop --command ruff format --check .
           nix develop --command ruff check .
@@ -49,15 +49,15 @@ jobs:
           nix develop --command pytest
       - name: Build and check the Python distributions
         run: |
-          for component in bello-hardware-api bello-hardware-python; do
+          for package in api client; do
             (
-              cd "components/$component"
+              cd "components/bello-hardware-api/bindings/python/$package"
               nix develop --command python -m hatchling build
-              cmp LICENSE ../../LICENSE
+              cmp LICENSE "$GITHUB_WORKSPACE/LICENSE"
               hardware_sdist="$(find dist -maxdepth 1 -name '*.tar.gz' -print -quit)"
               hardware_wheel="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
-              tar -xO --wildcards -f "$hardware_sdist" '*/LICENSE' | cmp - ../../LICENSE
-              unzip -p "$hardware_wheel" '*/licenses/LICENSE' | cmp - ../../LICENSE
+              tar -xO --wildcards -f "$hardware_sdist" '*/LICENSE' | cmp - "$GITHUB_WORKSPACE/LICENSE"
+              unzip -p "$hardware_wheel" '*/licenses/LICENSE' | cmp - "$GITHUB_WORKSPACE/LICENSE"
               for artifact in "$hardware_sdist" "$hardware_wheel"; do
                 metadata_pattern='*/PKG-INFO'
                 metadata_command=(tar -xO --wildcards -f)
@@ -78,9 +78,9 @@ jobs:
         run: |
           python3 -m venv "$RUNNER_TEMP/client-venv"
           python="$RUNNER_TEMP/client-venv/bin/python"
-          "$python" -m pip install components/bello-hardware-api/dist/*.whl
+          "$python" -m pip install components/bello-hardware-api/bindings/python/api/dist/*.whl
           "$python" -I -c 'import grpc; from bello_hardware_api import hardware_pb2, hardware_pb2_grpc; hardware_pb2.ListHardwareRequest(); hardware_pb2_grpc.HardwareServiceStub(grpc.insecure_channel("localhost:50051"))'
-          "$python" -m pip install components/bello-hardware-python/dist/*.whl
+          "$python" -m pip install components/bello-hardware-api/bindings/python/client/dist/*.whl
           "$python" -I -c 'from bello_hardware import Robot'
       - name: Create SocketCAN test interface
         run: |
