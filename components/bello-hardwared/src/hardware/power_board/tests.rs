@@ -75,8 +75,8 @@ fn read_until(master: &mut serialport::TTYPort, needle: &[u8]) -> Vec<u8> {
     received
 }
 
-fn send_iwc(master: &mut serialport::TTYPort, info: u32) {
-    let data = [info, 0, 0]
+fn send_iwc(master: &mut serialport::TTYPort, info: u32, warning: u32) {
+    let data = [info, warning, 0]
         .into_iter()
         .flat_map(u32::to_le_bytes)
         .collect::<Vec<_>>();
@@ -94,24 +94,25 @@ fn emergency_handoff_waits_for_release_preserves_edges_and_restores_on_shutdown(
         spec,
         handle,
         telemetry,
-        Some(Arc::new(move |blocked| {
+        Arc::new(move |blocked| {
             let _ = tx.send(blocked);
-        })),
+        }),
     )
     .unwrap();
     assert!(rx.recv_timeout(Duration::from_secs(1)).unwrap());
     let setup = read_until(&mut master, b"sync\r\n");
     assert!(setup.starts_with(b"iwc emergency stop_category 0\r\niwc emergency latch 0\r\n"));
-    send_iwc(&mut master, 3);
+    send_iwc(&mut master, 0, 1 << 4);
     let pressed = read_until(&mut master, b"sync\r\n");
     let host_mode = b"iwc emergency stop_category 1\r\n";
     assert!(!pressed.windows(host_mode.len()).any(|w| w == host_mode));
     assert!(rx.try_recv().is_err());
-    send_iwc(&mut master, 0);
+    send_iwc(&mut master, 0, 0);
     read_until(&mut master, b"iwc emergency stop_category 1\r\n");
     assert!(!rx.recv_timeout(Duration::from_secs(1)).unwrap());
-    send_iwc(&mut master, 3);
-    send_iwc(&mut master, 0);
+    send_iwc(&mut master, 3, 0);
+    send_iwc(&mut master, 0, 1);
+    send_iwc(&mut master, 0, 0);
     assert!(rx.recv_timeout(Duration::from_secs(1)).unwrap());
     assert!(!rx.recv_timeout(Duration::from_secs(1)).unwrap());
     drop(worker);
@@ -126,6 +127,59 @@ fn emergency_handoff_waits_for_release_preserves_edges_and_restores_on_shutdown(
 }
 
 #[test]
+fn hardware_button_mode_damps_on_either_current_warning_until_both_clear() {
+    let (mut master, _manager, handle, spec, telemetry) = fixture();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut snapshots = telemetry.subscribe();
+    let worker = PowerBoardWorker::start(
+        spec,
+        handle.clone(),
+        telemetry,
+        Arc::new(move |blocked| {
+            tx.send(blocked).unwrap();
+        }),
+    )
+    .unwrap();
+    assert!(read_until(&mut master, b"sync\r\n").starts_with(b"sync\r\n"));
+    send_iwc(&mut master, 3, 1 << 1);
+    send_iwc(&mut master, 0, 1);
+    send_iwc(&mut master, 0, 1);
+    send_iwc(&mut master, 0, 1 | (1 << 4));
+    send_iwc(&mut master, 0, 1 << 4);
+    assert!(rx.recv_timeout(Duration::from_secs(1)).unwrap());
+    let first = await_snapshot(&mut snapshots, |board| {
+        board
+            .samples
+            .iter()
+            .any(|s| matches!(s.reading, Reading::Iwc { warning: 16, .. }))
+    });
+    handle.request_reconnect("test warning across reconnect");
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        let transport = handle.status();
+        if transport.state.is_online() && transport.transition_count > first.generation {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "serial transport did not reconnect"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+    read_until(&mut master, b"sync\r\n");
+    assert!(rx.try_recv().is_err());
+    send_iwc(&mut master, 0, 1 << 4);
+    send_iwc(&mut master, 0, 0);
+    assert!(!rx.recv_timeout(Duration::from_secs(1)).unwrap());
+    send_iwc(&mut master, 0, 1 << 4);
+    assert!(rx.recv_timeout(Duration::from_secs(1)).unwrap());
+    send_iwc(&mut master, 0, 1 << 1);
+    assert!(!rx.recv_timeout(Duration::from_secs(1)).unwrap());
+    drop(worker);
+    assert!(rx.try_recv().is_err());
+}
+
+#[test]
 fn fresh_other_packets_cannot_hide_stale_emergency_status() {
     let (mut master, _manager, handle, mut spec, telemetry) = fixture();
     spec.emergency_stop = EmergencyStopMode::Damping;
@@ -134,14 +188,14 @@ fn fresh_other_packets_cannot_hide_stale_emergency_status() {
         spec,
         handle,
         telemetry,
-        Some(Arc::new(move |blocked| {
+        Arc::new(move |blocked| {
             let _ = tx.send(blocked);
-        })),
+        }),
     )
     .unwrap();
     assert!(rx.recv_timeout(Duration::from_secs(1)).unwrap());
     read_until(&mut master, b"sync\r\n");
-    send_iwc(&mut master, 0);
+    send_iwc(&mut master, 0, 0);
     read_until(&mut master, b"iwc emergency stop_category 1\r\n");
     assert!(!rx.recv_timeout(Duration::from_secs(1)).unwrap());
     for _ in 0..8 {
@@ -161,7 +215,7 @@ fn fresh_other_packets_cannot_hide_stale_emergency_status() {
 fn burst_publishes_every_sample_and_intermediate_status_transition() {
     let (mut master, _manager, handle, spec, telemetry) = fixture();
     let mut rx = telemetry.subscribe();
-    let _worker = PowerBoardWorker::start(spec, handle, telemetry, None).unwrap();
+    let _worker = PowerBoardWorker::start(spec, handle, telemetry, Arc::new(|_| {})).unwrap();
     await_snapshot(&mut rx, |b| b.generation > 0);
 
     let battery: Vec<u8> = [48.5f32, -1.25, 73.0]
@@ -214,7 +268,8 @@ fn burst_publishes_every_sample_and_intermediate_status_transition() {
 fn serial_transport_delivers_heartbeat_samples_corruption_and_reconnect() {
     let (mut master, _manager, handle, spec, telemetry) = fixture();
     let mut rx = telemetry.subscribe();
-    let worker = PowerBoardWorker::start(spec, handle.clone(), telemetry, None).unwrap();
+    let worker =
+        PowerBoardWorker::start(spec, handle.clone(), telemetry, Arc::new(|_| {})).unwrap();
     let deadline = Instant::now() + Duration::from_secs(3);
     let mut received = Vec::new();
     while !received.windows(6).any(|w| w == b"sync\r\n") {

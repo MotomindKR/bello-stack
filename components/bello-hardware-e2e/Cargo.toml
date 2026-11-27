@@ -18,7 +18,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "sy
 bello-hardware-api.workspace = true
 bello-hardware-client.workspace = true
 bello-sim-can.workspace = true
-nix = { workspace = true, features = ["feature", "signal"] }
+nix = { workspace = true, features = ["feature", "signal", "term"] }
 rcgen.workspace = true
 robstride-protocol.workspace = true
 serde = { workspace = true, features = ["derive"] }
@@ -26,6 +26,9 @@ serde_yaml.workspace = true
 tokio-stream.workspace = true
 tonic = { workspace = true, features = ["transport"] }
 tempfile.workspace = true
+
+[target.'cfg(unix)'.dev-dependencies]
+cog-protocol.workspace = true
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 socketcan.workspace = true

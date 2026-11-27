@@ -1,6 +1,8 @@
 # Hardware gRPC API
 
-Managed SDKs · [Rust](../components/bello-hardware-client/README.md) · [Python](../components/bello-hardware-python/README.md) · [Wire contract](../components/bello-hardware-api/proto/bello/hardware/v1/hardware.proto).
+Managed SDKs · [Rust](../components/bello-hardware-api/bindings/rust/client/README.md) · [Python](../components/bello-hardware-api/bindings/python/client/README.md) · [Wire contract](../components/bello-hardware-api/proto/bello/hardware/v1/hardware.proto).
+
+The [hardware bindings](../components/bello-hardware-api/bindings) are grouped by language. Each language has an `api/` package for generated gRPC types and a `client/` package for the managed SDK. Both use the same wire contract.
 
 ## Direct clients
 
@@ -13,7 +15,7 @@ let mut client = HardwareServiceClient::connect("http://127.0.0.1:50051").await?
 let inventory = client.list_hardware(ListHardwareRequest {}).await?.into_inner();
 ```
 
-**Python** · Install from the repository root with `python -m pip install ./components/bello-hardware-api`.
+**Python** · Install from the repository root with `python -m pip install ./components/bello-hardware-api/bindings/python/api`.
 
 ```python
 import grpc

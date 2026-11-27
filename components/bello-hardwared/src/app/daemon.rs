@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
@@ -33,9 +33,8 @@ pub struct HardwareDaemon {
     pub topology: ResolvedTopology,
     pub(crate) groups: HashMap<GroupName, GroupHandle>,
     leases: Arc<LeaseManager>,
-    lease_gate: Arc<Mutex<()>>,
+    lease_gate: Arc<Mutex<HashSet<PowerBoardName>>>,
     shutting_down: AtomicBool,
-    emergency_blocked: Arc<AtomicBool>,
     pub telemetry: Telemetry,
     pub(crate) imus: HashMap<ImuName, ImuHandle>,
     group_workers: Mutex<Vec<GroupWorker>>,
@@ -81,17 +80,18 @@ impl HardwareDaemon {
             topology.grpc().default_lease_ms,
             topology.grpc().maximum_lease_ms,
         );
-        let emergency_blocked = topology
+        let blocked_boards = topology
             .power_boards()
-            .any(|(_, board)| board.emergency_stop == EmergencyStopMode::Damping);
+            .filter(|(_, board)| board.emergency_stop == EmergencyStopMode::Damping)
+            .map(|(name, _)| name.clone())
+            .collect();
         let daemon = Arc::new(Self {
             configuration: Arc::new(ConfigurationJobs::default()),
             topology,
             groups,
             leases: Arc::new(leases),
-            lease_gate: Arc::new(Mutex::new(())),
+            lease_gate: Arc::new(Mutex::new(blocked_boards)),
             shutting_down: AtomicBool::new(false),
-            emergency_blocked: Arc::new(AtomicBool::new(emergency_blocked)),
             telemetry,
             imus,
             group_workers: Mutex::new(group_workers),
@@ -104,8 +104,7 @@ impl HardwareDaemon {
         });
         for (name, board) in daemon.topology.power_boards() {
             let serial = daemon.serial_workers.handle(&board.serial_device)?;
-            let emergency = (board.emergency_stop == EmergencyStopMode::Damping)
-                .then(|| daemon.emergency_handler());
+            let emergency = daemon.emergency_handler(name.clone());
             let worker = PowerBoardWorker::start(
                 board.clone(),
                 serial,
@@ -117,16 +116,21 @@ impl HardwareDaemon {
         Ok(daemon)
     }
 
-    fn emergency_handler(&self) -> crate::hardware::power_board::EmergencyHandler {
+    fn emergency_handler(
+        &self,
+        board: PowerBoardName,
+    ) -> crate::hardware::power_board::EmergencyHandler {
         let gate = self.lease_gate.clone();
-        let inhibited = self.emergency_blocked.clone();
         let leases = self.leases.clone();
         let groups = self.groups.clone();
         let configuration = self.configuration.clone();
         Arc::new(move |blocked| {
-            let _gate = gate.lock();
-            inhibited.store(blocked, Ordering::Release);
-            if blocked {
+            let mut boards = gate.lock();
+            if !blocked {
+                boards.remove(&board);
+                return;
+            }
+            if boards.insert(board.clone()) && boards.len() == 1 {
                 configuration.cancel_pending();
                 leases.revoke_all();
                 for group in groups.values() {
@@ -175,9 +179,9 @@ impl HardwareDaemon {
         if self.shutting_down.load(Ordering::Acquire) {
             return Err(LeaseError::Unavailable);
         }
-        let _gate = self.lease_gate.lock();
+        let blocked_boards = self.lease_gate.lock();
         if self.configuration.blocks(group)
-            || self.emergency_blocked.load(Ordering::Acquire)
+            || !blocked_boards.is_empty()
             || self
                 .groups
                 .get(group)
@@ -398,7 +402,8 @@ mod tests {
             .keys()
             .map(|group| daemon.acquire_lease(group, "test", 5000).unwrap())
             .collect::<Vec<_>>();
-        let emergency = daemon.emergency_handler();
+        let emergency = daemon.emergency_handler("agx_a".into());
+        let second_board = daemon.emergency_handler("agx_b".into());
         emergency(true);
         for lease in &leases {
             assert!(daemon.leases.verify(&lease.group, lease.token).is_err());
@@ -408,7 +413,15 @@ mod tests {
                 Err(LeaseError::Unavailable)
             ));
         }
+        second_board(true);
         emergency(false);
+        for lease in &leases {
+            assert!(matches!(
+                daemon.acquire_lease(&lease.group, "replacement", 5000),
+                Err(LeaseError::Unavailable)
+            ));
+        }
+        second_board(false);
         let deadline = Instant::now() + Duration::from_secs(2);
         while daemon.groups.values().any(GroupHandle::emergency_pending) {
             assert!(Instant::now() < deadline);

@@ -21,7 +21,7 @@ packages = ["src/bello_hardware"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"
-pythonpath = ["src", "../bello-hardware-api/src"]
+pythonpath = ["src", "../api/src"]
 testpaths = ["tests"]
 
 [tool.ruff]
@@ -32,7 +32,7 @@ target-version = "py310"
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.mypy]
-mypy_path = "$MYPY_CONFIG_FILE_DIR/../bello-hardware-api/src"
+mypy_path = "$MYPY_CONFIG_FILE_DIR/../api/src"
 python_version = "3.10"
 strict = true
 files = ["src/bello_hardware", "tests"]
