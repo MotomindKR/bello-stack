@@ -32,7 +32,7 @@ Its wheel installs without a protobuf compiler. Regenerate the bindings after
 each contract change and review the SDK conversions.
 
 ```sh
-python components/bello-hardware-api/scripts/generate_proto.py
+python components/bello-hardware-api/bindings/python/api/scripts/generate_proto.py
 ```
 
 ## Normal checks
@@ -45,8 +45,8 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 buf format --diff --exit-code
 buf lint
-(cd components/bello-hardware-api && python -m hatchling build)
-cd components/bello-hardware-python
+(cd components/bello-hardware-api/bindings/python/api && python -m hatchling build)
+cd components/bello-hardware-api/bindings/python/client
 ruff format --check .
 ruff check .
 mypy src/bello_hardware tests

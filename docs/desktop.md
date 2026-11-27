@@ -14,8 +14,8 @@ and Windows x86-64. [Linux workflow](../.github/workflows/ci.yml) · [Desktop wo
 | Component | Linux | macOS | Windows | Scope |
 | --- | --- | --- | --- | --- |
 | [bello-hardwared](../components/bello-hardwared) | CI | CI | CI | Device daemon. GS-USB, serial and UDP on all three. SocketCAN requires Linux. |
-| [bello-hardware-client](../components/bello-hardware-client) | CI | CI | CI | Managed Rust SDK for hardware control and telemetry. Use TCP or TLS on Windows. |
-| [bello-hardware-python](../components/bello-hardware-python) | CI | Tested | Unverified | Managed Python 3.10+ SDK. The installable package is `bello-hardware`. |
+| [bello-hardware-client](../components/bello-hardware-api/bindings/rust/client) | CI | CI | CI | Managed Rust SDK for hardware control and telemetry. Use TCP or TLS on Windows. |
+| [bello-hardware](../components/bello-hardware-api/bindings/python/client) | CI | Tested | Unverified | Managed Python 3.10+ SDK. The installable package is `bello-hardware`. |
 | [bello-sim](../components/bello-sim) | CI | Tested | Unsupported | MuJoCo physics and simulated devices. Offline video recording requires Linux. |
 | [Motor emulator](../components/motor-emulator) | CI | CI | CI | Standalone motor emulator over UDP. The vCAN backend requires Linux. |
 | [bello-state-estimatord](../components/bello-state-estimatord) | CI | Tested | Unverified | Estimates pose from encoder and IMU readings served by hardwared. |
