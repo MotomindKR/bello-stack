@@ -273,6 +273,7 @@ dependencies = [
  "bello-hardware-client",
  "bello-hardwared",
  "bello-sim-can",
+ "cog-protocol",
  "nix 0.32.0",
  "rcgen",
  "robstride-emulator",

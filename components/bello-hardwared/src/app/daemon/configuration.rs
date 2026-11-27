@@ -84,10 +84,8 @@ impl HardwareDaemon {
         groups.sort();
         groups.dedup();
 
-        let _gate = self.lease_gate.lock();
-        if self.shutting_down.load(Ordering::Acquire)
-            || self.emergency_blocked.load(Ordering::Acquire)
-        {
+        let blocked_boards = self.lease_gate.lock();
+        if self.shutting_down.load(Ordering::Acquire) || !blocked_boards.is_empty() {
             return Err(Status::failed_precondition("control is inhibited"));
         }
         let mut jobs = self.configuration.jobs.lock();
@@ -144,7 +142,7 @@ impl HardwareDaemon {
     }
 
     pub(crate) fn configuration_decision(&self, id: &str, commit: bool) -> Result<(), Status> {
-        let _gate = self.lease_gate.lock();
+        let blocked_boards = self.lease_gate.lock();
         let mut jobs = self.configuration.jobs.lock();
         let job = jobs
             .get_mut(id)
@@ -152,7 +150,7 @@ impl HardwareDaemon {
         match (commit, job.status.phase()) {
             (true, Phase::Ready) if !job.cancel => {
                 if self.shutting_down.load(Ordering::Acquire)
-                    || self.emergency_blocked.load(Ordering::Acquire)
+                    || !blocked_boards.is_empty()
                     || job
                         .groups
                         .iter()
@@ -217,7 +215,6 @@ impl HardwareDaemon {
                 loop {
                     if jobs[id].cancel
                         || self.shutting_down.load(Ordering::Acquire)
-                        || self.emergency_blocked.load(Ordering::Acquire)
                         || groups
                             .iter()
                             .any(|group| self.groups[group].emergency_pending())
@@ -243,10 +240,10 @@ impl HardwareDaemon {
                 host,
                 &prepared,
                 || {
-                    let _gate = self.lease_gate.lock();
+                    let blocked_boards = self.lease_gate.lock();
                     ensure!(
                         !self.shutting_down.load(Ordering::Acquire)
-                            && !self.emergency_blocked.load(Ordering::Acquire)
+                            && blocked_boards.is_empty()
                             && !self.configuration.jobs.lock()[id].cancel,
                         "configuration interrupted before write"
                     );

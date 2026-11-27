@@ -72,6 +72,27 @@ snapshots without acquiring control. Rust sample readings use the generated
 integer tick count. `PowerBattery.soc_percent` and `PowerGpi.second_bits`
 are `None` when the board omits them.
 
+## Overcurrent damping
+
+Every enabled AGX board can request damping for all hardwared motor groups.
+The STM32 reports these two flags in the IWC warning word:
+
+| Warning | Bit | Firmware threshold |
+| --- | ---: | --- |
+| `WARNING_OVER_CURRENT_DISCHARGE_VBAT` | 0 | Battery discharge current ≥ 60 A |
+| `WARNING_OVER_CURRENT_VMOT` | 4 | Total motor-rail current ≥ 50 A |
+
+Hardwared acts on the first received IWC frame with either bit set. It revokes
+all leases, clears queued motion targets, and requests damping on every enabled
+group. Idle motors stay disabled. Both emergency-button modes apply this rule.
+The firmware update uses a 10 ms update period. Host response also depends on
+UART delivery, scheduling, and CAN transmission.
+
+A fresh IWC frame from the reporting board must clear both warnings before it
+can release its inhibit. A disconnect or an unrelated telemetry packet cannot
+clear the warning. Every other board and the physical-button handoff must also
+permit motion. Clients must then acquire a new lease and restart control.
+
 ## Physical emergency button and damping
 
 The Bello and Mini hardware descriptions select `emergency_stop: damping`.
@@ -83,7 +104,7 @@ On each UART connection hardwared inhibits new leases, requests
 `iwc emergency stop_category 0`, and sets `iwc emergency latch 0`. This prevents
 a physical press from also latching a firmware software-stop request. Hardwared
 does not send `iwc emergency release` or clear an existing software stop.
-Only fresh IWC with all three emergency bits clear permits the request
+Only fresh IWC with all three emergency bits and both overcurrent warnings clear permits the request
 `iwc emergency stop_category 1` and new leases. Heartbeats then keep the
 hardware cutoff path bypassed. UART write completion is not firmware
 acknowledgement: the documented protocol exposes no acknowledgement or readback
