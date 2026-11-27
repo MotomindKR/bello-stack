@@ -1,15 +1,18 @@
 use thiserror::Error;
+use tonic::Code;
 
 use crate::lease::LeaseStatus;
-use crate::{CommandResult, GroupState};
+use crate::{CommandResult, EnumValue, GroupState};
 
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("hardware transport error: {0}")]
-    Transport(#[from] tonic::transport::Error),
-    #[error("hardware gRPC request failed: {0}")]
-    Rpc(#[from] tonic::Status),
+    #[error("hardware unavailable: {0}")]
+    Unavailable(#[source] Box<dyn std::error::Error + Send + Sync>),
+    #[error("hardware precondition failed: {0}")]
+    PreconditionFailed(String),
+    #[error("hardware request failed: {0}")]
+    RequestFailed(String),
     #[error("invalid client argument: {0}")]
     InvalidArgument(String),
     #[error("hardware server violated the client protocol: {0}")]
@@ -18,8 +21,8 @@ pub enum Error {
     LeaseInactive(LeaseStatus),
     #[error("command request stream is closed")]
     CommandStreamClosed,
-    #[error("this group lease already has an open command stream")]
-    CommandStreamAlreadyOpen,
+    #[error("command queue is full")]
+    QueueFull,
     #[error("command sequence is exhausted")]
     SequenceExhausted,
     #[error("hardware inventory is inconsistent: {0}")]
@@ -47,7 +50,7 @@ pub enum Error {
         group: String,
         operation: &'static str,
         expected: GroupState,
-        actual: GroupState,
+        actual: EnumValue<GroupState>,
     },
     #[error(
         "command {sequence} for motor group {group:?} was rejected as {result:?} in {state:?}: {detail}"
@@ -55,22 +58,14 @@ pub enum Error {
     RejectedCommand {
         group: String,
         sequence: u64,
-        result: CommandResult,
+        result: EnumValue<CommandResult>,
         detail: String,
-        state: GroupState,
+        state: EnumValue<GroupState>,
     },
     #[error("command acknowledgement stream for motor group {0:?} closed")]
     AcknowledgementStreamClosed(String),
     #[error("timed out waiting for command acknowledgement from motor group {group:?}")]
     AcknowledgementTimeout { group: String },
-    #[error(
-        "motor group {group:?} acknowledged command {actual}, but command {expected} was pending"
-    )]
-    AcknowledgementMismatch {
-        group: String,
-        expected: u64,
-        actual: u64,
-    },
     #[error("automatic lease renewal for motor group {group:?} failed: {detail}")]
     RenewalFailed { group: String, detail: String },
     #[error("control cleanup encountered errors: {0:?}")]
@@ -79,12 +74,25 @@ pub enum Error {
     StateUnavailable { kind: &'static str, name: String },
 }
 
-impl Error {
-    /// Returns the original gRPC status when the failure came from an RPC.
-    pub fn rpc_status(&self) -> Option<&tonic::Status> {
-        match self {
-            Self::Rpc(status) => Some(status),
-            _ => None,
+impl From<tonic::transport::Error> for Error {
+    fn from(error: tonic::transport::Error) -> Self {
+        Self::Unavailable(Box::new(error))
+    }
+}
+
+impl From<tonic::Status> for Error {
+    fn from(status: tonic::Status) -> Self {
+        match status.code() {
+            tonic::Code::FailedPrecondition => Self::PreconditionFailed(status.message().into()),
+            _ if is_unavailable(&status) => Self::Unavailable(Box::new(status)),
+            _ => Self::RequestFailed(status.to_string()),
         }
     }
+}
+
+pub(crate) fn is_unavailable(status: &tonic::Status) -> bool {
+    matches!(
+        status.code(),
+        Code::Unavailable | Code::Cancelled | Code::DeadlineExceeded | Code::Unknown
+    )
 }

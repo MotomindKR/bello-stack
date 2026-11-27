@@ -5,20 +5,24 @@ from typing import Any
 
 import grpc  # type: ignore[import-untyped]
 import pytest
+from bello_hardware_api import hardware_pb2 as proto
+from bello_hardware_api import hardware_pb2_grpc
 
-from bello_hardware import PowerBattery, Robot
-from bello_hardware._generated import hardware_pb2 as proto
-from bello_hardware._generated import hardware_pb2_grpc
+from bello_hardware import PowerBattery, PowerGpi, Robot
 from bello_hardware.errors import ProtocolError
 from bello_hardware.power import _decode_sample
 
 from .conftest import FakeHardware
 
 
-def test_power_reader_uses_telemetry_without_control_or_state_frame() -> None:
+@pytest.mark.parametrize("boards", [(), ("power", "power")])
+def test_power_reader_uses_telemetry_without_control_or_state_frame(
+    boards: tuple[str, ...],
+) -> None:
     class BoardHardware(FakeHardware):
         def ListHardware(self, request: Any, context: Any) -> proto.ListHardwareResponse:
-            response = super().ListHardware(request, context)
+            response = proto.ListHardwareResponse()
+            response.CopyFrom(super().ListHardware(request, context))
             response.serial_devices.add(name="power_serial", port="/dev/ttyPOWER", baud_rate=921600)
             response.power_boards.add(
                 name="power",
@@ -54,9 +58,11 @@ def test_power_reader_uses_telemetry_without_control_or_state_frame() -> None:
     server.start()
     try:
         with Robot.connect(f"http://127.0.0.1:{port}") as robot:
-            (snapshot,) = robot.power().read(timeout=1)
+            (snapshot,) = robot.power(boards=boards).read(timeout=1)
             assert snapshot.connection_generation == 2
-            assert snapshot.samples[0].reading == PowerBattery(48.5, -1.25, 73)
+            assert snapshot.samples[0].reading == PowerBattery(
+                voltage_v=48.5, current_a=-1.25, soc_percent=73
+            )
             assert snapshot.is_stale(snapshot.samples[0])
             assert service.command_count == 0 and service.state_frame_calls == 0
             with pytest.raises(ValueError, match="unknown"):
@@ -81,8 +87,17 @@ def test_invalid_power_samples_are_rejected(sample: proto.PowerBoardSample) -> N
         _decode_sample(sample)
 
 
-def test_legacy_soc_is_absent_not_zero() -> None:
+@pytest.mark.parametrize("soc_percent", [None, 0])
+def test_battery_charge_presence(soc_percent: int | None) -> None:
     sample = _decode_sample(
-        proto.PowerBoardSample(battery=proto.PowerBattery(voltage_v=24, current_a=1))
+        proto.PowerBoardSample(
+            battery=proto.PowerBattery(voltage_v=24, current_a=1, soc_percent=soc_percent),
+        )
     )
-    assert sample.reading == PowerBattery(24, 1, None)
+    assert sample.reading == PowerBattery(voltage_v=24, current_a=1, soc_percent=soc_percent)
+
+
+@pytest.mark.parametrize("second_bits", [None, 0])
+def test_gpi_second_register_presence(second_bits: int | None) -> None:
+    sample = _decode_sample(proto.PowerBoardSample(gpi=proto.PowerGpi(second_bits=second_bits)))
+    assert sample.reading == PowerGpi(bits=0, second_bits=second_bits)

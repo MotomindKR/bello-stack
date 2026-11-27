@@ -10,9 +10,8 @@ from typing import Any
 
 import grpc  # type: ignore[import-untyped]
 import pytest
-
-from bello_hardware._generated import hardware_pb2 as proto
-from bello_hardware._generated import hardware_pb2_grpc
+from bello_hardware_api import hardware_pb2 as proto
+from bello_hardware_api import hardware_pb2_grpc
 
 
 def valid_inventory_response() -> proto.ListHardwareResponse:
@@ -98,17 +97,23 @@ def inventory_response() -> proto.ListHardwareResponse:
 class FakeHardware:
     def __init__(self) -> None:
         self.lock = threading.Lock()
+        self.inventory = valid_inventory_response()
+        self.inventory_failure: grpc.StatusCode | None = None
         self.state = proto.GROUP_STATE_IDLE
         self.token = "test-token"
+        self.start_valid_for_ms = 0
         self.command_count = 0
         self.renew_count = 0
+        self.release_failure: grpc.StatusCode | None = None
         self.release_count = 0
         self.disable_count = 0
-        self.reject_next = False
+        self.next_command_result: proto.CommandResult | None = None
         self.command_delay = 0.0
+        self.close_stream_gate: threading.Event | None = None
         self.command_ack_gate: threading.Event | None = None
-        self.before_start_control: Callable[[], None] | None = None
+        self.before_start_reply: Callable[[], None] | None = None
         self.renew_failure: grpc.StatusCode | None = None
+        self.lose_enable_reply = False
         self.enable_failure: grpc.StatusCode | None = None
         self.start_failure: grpc.StatusCode | None = None
         self.disable_failure: grpc.StatusCode | None = None
@@ -117,8 +122,15 @@ class FakeHardware:
         self.state_frame_failure: grpc.StatusCode | None = None
 
     def ListHardware(self, request: Any, context: Any) -> proto.ListHardwareResponse:
-        del request, context
-        return valid_inventory_response()
+        del request
+        if self.inventory_failure is not None:
+            context.abort(self.inventory_failure, "test inventory failure")
+        snapshot = proto.ListHardwareResponse()
+        snapshot.CopyFrom(self.inventory)
+        for group in snapshot.groups:
+            if group.name == "leg":
+                group.state = self.state
+        return snapshot
 
     def AcquireLease(self, request: Any, context: Any) -> proto.AcquireLeaseResponse:
         del context
@@ -142,9 +154,11 @@ class FakeHardware:
         )
 
     def ReleaseLease(self, request: Any, context: Any) -> proto.ReleaseLeaseResponse:
-        del request, context
+        del request
         with self.lock:
             self.release_count += 1
+            if self.release_failure is not None:
+                context.abort(self.release_failure, "release failed")
             state = self.state
         return proto.ReleaseLeaseResponse(state=state)
 
@@ -154,22 +168,26 @@ class FakeHardware:
             context.abort(self.enable_failure, "test enable failure")
         with self.lock:
             self.state = proto.GROUP_STATE_DAMPED
+        if self.lose_enable_reply:
+            context.abort(grpc.StatusCode.UNAVAILABLE, "enable reply unavailable")
         return proto.EnableGroupResponse(state=proto.GROUP_STATE_DAMPED)
 
     def StartControl(self, request: Any, context: Any) -> proto.StartControlResponse:
-        del request
-        if self.before_start_control is not None:
-            self.before_start_control()
+        self.start_valid_for_ms = request.valid_for_ms
         with self.lock:
             self.command_count += 1
             self.state = proto.GROUP_STATE_RUNNING
+        if self.before_start_reply is not None:
+            self.before_start_reply()
         if self.start_failure is not None:
             context.abort(self.start_failure, "test start response failure")
         return proto.StartControlResponse(state=proto.GROUP_STATE_RUNNING)
 
     def StopControl(self, request: Any, context: Any) -> proto.StopControlResponse:
-        del request, context
+        del request
         with self.lock:
+            if self.state == proto.GROUP_STATE_FAULT:
+                context.abort(grpc.StatusCode.FAILED_PRECONDITION, "fault latched")
             self.state = proto.GROUP_STATE_DAMPED
         return proto.StopControlResponse(state=proto.GROUP_STATE_DAMPED)
 
@@ -179,6 +197,8 @@ class FakeHardware:
             context.abort(self.disable_failure, "test disable failure")
         with self.lock:
             self.disable_count += 1
+            if self.state == proto.GROUP_STATE_FAULT:
+                context.abort(grpc.StatusCode.FAILED_PRECONDITION, "fault latched")
             self.state = proto.GROUP_STATE_IDLE
         return proto.DisableGroupResponse(state=proto.GROUP_STATE_IDLE)
 
@@ -191,7 +211,9 @@ class FakeHardware:
     def StreamCommands(
         self, requests: Iterator[proto.StreamCommandsRequest], context: Any
     ) -> Iterator[proto.StreamCommandsResponse]:
-        del context
+        if self.close_stream_gate is not None:
+            assert self.close_stream_gate.wait(5)
+            return
         for request in requests:
             if self.command_ack_gate is not None:
                 self.command_ack_gate.wait(2.0)
@@ -199,15 +221,15 @@ class FakeHardware:
                 time.sleep(self.command_delay)
             with self.lock:
                 self.command_count += 1
-                reject = self.reject_next
-                self.reject_next = False
+                override = self.next_command_result
+                self.next_command_result = None
                 state = self.state
             names = {command.motor_name for command in request.commands}
             complete = names == {"hip_motor", "knee_motor"}
             result = proto.COMMAND_RESULT_ACCEPTED
             detail = ""
-            if reject:
-                result = proto.COMMAND_RESULT_UNSAFE
+            if override is not None:
+                result = override
                 detail = "test rejection"
             elif not complete:
                 result = proto.COMMAND_RESULT_INCOMPLETE_GROUP

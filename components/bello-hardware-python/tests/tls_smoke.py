@@ -17,7 +17,7 @@ def main() -> None:
         client_private_key=client_private_key,
     )
     with Robot.connect(endpoint, timeout=2.0, tls=tls) as robot:
-        if "e2e_group" not in robot.group_names:
+        if "e2e_group" not in robot.inventory.group_names:
             raise RuntimeError("Python mTLS inventory omitted e2e_group")
 
 

@@ -211,8 +211,8 @@ fn validate_inventory(
     }
     let imu_output_frame = robot
         .imus()
-        .find(|imu| imu.name() == config.imu)
-        .map(|imu| imu.output_frame());
+        .find(|imu| imu.name.as_str() == config.imu)
+        .map(|imu| imu.output_frame.as_str());
     validate_imu_output_frame(&config.imu, &config.imu_frame, imu_output_frame)?;
     Ok(())
 }
@@ -254,9 +254,7 @@ async fn monitor_hardware(
                 Robot::connect(config.hardware_endpoint.clone()),
             )
             .await
-            .map_err(|_| {
-                HardwareError::Rpc(Status::deadline_exceeded("hardware connection timed out"))
-            })??;
+            .map_err(|_| HardwareError::Unavailable("hardware connection timed out".into()))??;
             validate_inventory(&robot, &config, &model)?;
             consume_hardware(
                 robot,
@@ -292,17 +290,10 @@ async fn monitor_hardware(
 }
 
 fn retryable_hardware_error(error: &anyhow::Error) -> bool {
-    match error.downcast_ref::<HardwareError>() {
-        Some(HardwareError::Transport(_)) => true,
-        Some(HardwareError::Rpc(status)) => matches!(
-            status.code(),
-            tonic::Code::Unavailable
-                | tonic::Code::Cancelled
-                | tonic::Code::DeadlineExceeded
-                | tonic::Code::Unknown
-        ),
-        _ => false,
-    }
+    matches!(
+        error.downcast_ref::<HardwareError>(),
+        Some(HardwareError::Unavailable(_))
+    )
 }
 
 async fn consume_hardware(
@@ -316,10 +307,10 @@ async fn consume_hardware(
 ) -> anyhow::Result<()> {
     let mut states = tokio::time::timeout(
         Duration::from_secs(3),
-        robot.states_with(StateStreamOptions::default().reconnect_on_unavailable(false)),
+        robot.states(StateStreamOptions::default().reconnect_on_unavailable(false)),
     )
     .await
-    .map_err(|_| HardwareError::Rpc(Status::deadline_exceeded("open hardware stream timed out")))?
+    .map_err(|_| HardwareError::Unavailable("open hardware stream timed out".into()))?
     .context("open hardware state stream")?;
     info!("hardware telemetry connected; preserving pose and discarding outage time");
     let mut imu_low_pass = ImuLowPass::new(
@@ -341,7 +332,7 @@ async fn consume_hardware(
             states.changed(),
         )
         .await
-        .map_err(|_| HardwareError::Rpc(Status::deadline_exceeded("hardware telemetry stalled")))?
+        .map_err(|_| HardwareError::Unavailable("hardware telemetry stalled".into()))?
         .context("read hardware state stream")?
         {
             Some(state) => state,

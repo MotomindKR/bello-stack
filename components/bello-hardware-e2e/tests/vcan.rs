@@ -72,8 +72,9 @@ async fn queued_socketcan_feedback_keeps_its_age() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires an isolated host vcan interface"]
 async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<()> {
+    use bello_hardware_api as proto;
     use bello_hardware_api::{DeviceState, GetStateFrameRequest, GroupCause, GroupState};
-    use bello_hardware_client::raw::{CommandStreamOptions, CommandValidity, LeaseDuration};
+    use support::scenario::{acquire, enable, inventory, recover, start_control, stop};
 
     let interface = selected_interface()?;
     require_vcan(&interface)?;
@@ -103,8 +104,8 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
     socket.set_read_timeout(Duration::from_millis(10))?;
     let recorded = Arc::new(std::sync::Mutex::new(Vec::new()));
     let recording = recorded.clone();
-    let stop = Arc::new(AtomicBool::new(false));
-    let stopping = stop.clone();
+    let stop_capture = Arc::new(AtomicBool::new(false));
+    let stopping = stop_capture.clone();
     let worker = thread::spawn(move || {
         while !stopping.load(Ordering::Acquire) {
             if let Ok(frame) = socket.read_frame() {
@@ -130,7 +131,7 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
             }
         }
     }
-    let _capture = CaptureGuard(stop, Some(worker));
+    let _capture = CaptureGuard(stop_capture, Some(worker));
     let mut emulator = ManagedProcess::spawn(
         "emulator",
         env!("CARGO_BIN_EXE_robstride-emulator-e2e-fixture"),
@@ -141,7 +142,7 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
         env!("CARGO_BIN_EXE_hardwared-e2e-fixture"),
         [&hardware_config],
     )?;
-    let client = support::scenario::connect(
+    let mut client = support::scenario::connect(
         &format!("http://{address}"),
         Duration::from_secs(5),
         &mut daemon,
@@ -168,34 +169,34 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
             })
             .collect::<Vec<_>>()
     };
-    let validity = CommandValidity::For(Duration::from_millis(80));
-    let mut lease = client
-        .acquire_lease(
-            "e2e_group",
-            "300hz-test",
-            LeaseDuration::For(Duration::from_secs(10)),
-        )
-        .await?;
-    lease.enable().await?;
-    lease.start(validity, commands()).await?;
-    let (mut sender, mut replies) = lease
-        .open_command_stream(CommandStreamOptions::default())
+    let validity = 80;
+    let lease = acquire(&client, "e2e_group", "300hz-test", 10000).await?;
+    enable(&client, &lease).await?;
+    start_control(&client, &lease, validity, commands()).await?;
+    let (sender, rx) = mpsc::channel(1);
+    let mut replies = client
+        .stream_commands(ReceiverStream::new(rx))
         .await?
-        .split();
+        .into_inner();
     let mut timer = tokio::time::interval(Duration::from_millis(20));
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let started = std::time::Instant::now();
-    for _ in 0..50 {
+    for sequence in 1..=50 {
         timer.tick().await;
-        sender.send(validity, commands()).await?;
-        timeout(Duration::from_secs(1), replies.message())
-            .await??
-            .context("missing command acknowledgement")?
-            .require_accepted()?;
+        sender
+            .send(StreamCommandsRequest {
+                group: lease.group.clone(),
+                lease_token: lease.token.clone(),
+                sequence,
+                valid_for_ms: validity,
+                commands: commands(),
+            })
+            .await?;
+        support::scenario::require_accepted(&mut replies, sequence).await?;
     }
     let ended = std::time::Instant::now();
     let elapsed = ended.duration_since(started).as_secs_f64();
-    let inventory = client.inventory().await?;
+    let inventory = inventory(&client).await?;
     assert_eq!(inventory.groups[0].state, GroupState::Running as i32);
     assert!(
         inventory
@@ -237,7 +238,6 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
     }
     sleep(Duration::from_millis(180)).await;
     let frame = client
-        .grpc_client()
         .get_state_frame(GetStateFrameRequest {
             groups: vec!["e2e_group".into()],
             imus: vec![],
@@ -267,10 +267,10 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
     );
     drop(sender);
     drop(replies);
-    let long_validity = CommandValidity::For(Duration::from_millis(400));
-    lease.start(long_validity, commands()).await?;
+    let long_validity = 400;
+    start_control(&client, &lease, long_validity, commands()).await?;
     sleep(Duration::from_millis(20)).await;
-    lease.stop().await?;
+    stop(&client, &lease).await?;
     let stopped = std::time::Instant::now();
     sleep(Duration::from_millis(30)).await;
     assert!(
@@ -281,9 +281,11 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
             .any(|(at, f)| *at >= stopped && (f.id >> 24) & 31 == 1),
         "periodic targets resumed after StopControl"
     );
-    lease.start(long_validity, commands()).await?;
+    start_control(&client, &lease, long_validity, commands()).await?;
     sleep(Duration::from_millis(20)).await;
-    lease.release().await?;
+    client
+        .release_lease(proto::ReleaseLeaseRequest { token: lease.token })
+        .await?;
     let released = std::time::Instant::now();
     sleep(Duration::from_millis(30)).await;
     assert!(
@@ -295,7 +297,6 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
         "periodic targets resumed after lease release"
     );
     let state = client
-        .grpc_client()
         .get_state_frame(GetStateFrameRequest {
             groups: vec!["e2e_group".into()],
             imus: vec![],
@@ -305,14 +306,8 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
     assert_eq!(state.groups[0].state, GroupState::Damped as i32);
     assert_eq!(state.groups[0].cause, GroupCause::LeaseLoss as i32);
 
-    let mut lease = client
-        .acquire_lease(
-            "e2e_group",
-            "stall-test",
-            LeaseDuration::For(Duration::from_secs(10)),
-        )
-        .await?;
-    lease.start(long_validity, commands()).await?;
+    let lease = acquire(&client, "e2e_group", "stall-test", 10000).await?;
+    start_control(&client, &lease, long_validity, commands()).await?;
     sleep(Duration::from_millis(20)).await;
     daemon.suspend()?;
     sleep(Duration::from_millis(25)).await;
@@ -320,7 +315,6 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
     timeout(Duration::from_secs(2), async {
         loop {
             let inventory = client
-                .grpc_client()
                 .get_state_frame(GetStateFrameRequest {
                     groups: vec!["e2e_group".into()],
                     imus: vec![],
@@ -342,8 +336,10 @@ async fn periodic_300hz_transmission_preserves_expiry_and_reporting() -> Result<
     })
     .await??;
     println!("Stop, lease release, expiry, and injected 25 ms TX stall applied safety responses");
-    lease.recover().await?;
-    lease.release().await?;
+    recover(&client, &lease).await?;
+    client
+        .release_lease(proto::ReleaseLeaseRequest { token: lease.token })
+        .await?;
     daemon.stop();
     emulator.stop();
     Ok(())
@@ -386,7 +382,7 @@ async fn grpc_can_latency_distribution() -> Result<()> {
         [&hardwared_config],
     )?;
     let endpoint = format!("http://{listen}");
-    let hardware = support::scenario::connect(
+    let mut client = support::scenario::connect(
         &endpoint,
         Duration::from_secs(3),
         &mut hardwared,
@@ -394,14 +390,12 @@ async fn grpc_can_latency_distribution() -> Result<()> {
     )
     .await?;
     support::scenario::wait_for_motors_online(
-        &hardware,
+        &client,
         Duration::from_secs(3),
         &mut hardwared,
         &mut emulator,
     )
     .await?;
-    let mut client = hardware.grpc_client();
-
     let lease = client
         .acquire_lease(AcquireLeaseRequest {
             group: GROUP.into(),

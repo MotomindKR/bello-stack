@@ -14,6 +14,7 @@ updates:
       - dependency-name: mujoco-rs
   - package-ecosystem: pip
     directories:
+      - /components/bello-hardware-api
       - /components/bello-hardware-python
       - /components/bello-hand
     schedule:
