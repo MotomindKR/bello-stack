@@ -33,6 +33,7 @@ struct FakeSettings {
     renew_in_flight: AtomicBool,
     fail_renew: AtomicBool,
     fail_start: AtomicBool,
+    close_stream_during_start: AtomicBool,
     reject_commands: AtomicBool,
     wrong_sequence: AtomicBool,
     revoke_commands: AtomicBool,
@@ -53,6 +54,7 @@ impl Default for FakeHardware {
                 renew_in_flight: AtomicBool::new(false),
                 fail_renew: AtomicBool::new(false),
                 fail_start: AtomicBool::new(false),
+                close_stream_during_start: AtomicBool::new(false),
                 reject_commands: AtomicBool::new(false),
                 wrong_sequence: AtomicBool::new(false),
                 revoke_commands: AtomicBool::new(false),
@@ -381,6 +383,13 @@ impl HardwareService for FakeHardware {
             .expect("fake state mutex poisoned")
             .starts
             .push(request);
+        if self
+            .settings
+            .close_stream_during_start
+            .load(Ordering::Relaxed)
+        {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
         if self.settings.fail_start.load(Ordering::Relaxed) {
             return Err(Status::unavailable("start response unavailable"));
         }
@@ -434,6 +443,13 @@ impl HardwareService for FakeHardware {
         &self,
         request: Request<Streaming<StreamCommandsRequest>>,
     ) -> Result<Response<Self::StreamCommandsStream>, Status> {
+        if self
+            .settings
+            .close_stream_during_start
+            .load(Ordering::Relaxed)
+        {
+            return Ok(Response::new(Box::pin(tokio_stream::empty())));
+        }
         let mut requests = request.into_inner();
         let state = Arc::clone(&self.state);
         let settings = Arc::clone(&self.settings);
@@ -561,23 +577,17 @@ async fn ergonomic_robot_api_hides_lease_stream_and_acknowledgement_workflow() {
     assert_eq!(imu.output_frame, "imu_link");
 
     let initial = group
-        .frame([(
-            "coordinate_a",
-            CoordinateTarget::position(0.0).gains(20.0, 1.0),
-        )])
+        .frame([("coordinate_a", CoordinateTarget::position(0.0, 20.0, 1.0))])
         .expect("build initial frame");
     let next = group
-        .frame([(
-            "coordinate_a",
-            CoordinateTarget::position(0.1).gains(20.0, 1.0),
-        )])
+        .frame([("coordinate_a", CoordinateTarget::position(0.1, 20.0, 1.0))])
         .expect("build next frame");
 
     let mut control = group
         .control(
             ControlOptions::new("ergonomic-test")
                 .lease_duration(Duration::from_secs(1))
-                .command_validity(Duration::from_millis(100)),
+                .command_validity(Duration::from_micros(1_500)),
         )
         .await
         .expect("acquire control");
@@ -589,7 +599,7 @@ async fn ergonomic_robot_api_hides_lease_stream_and_acknowledgement_workflow() {
         let recorded = server.state.lock().expect("fake state mutex poisoned");
         assert_eq!(recorded.starts.len(), 1);
         assert_eq!(recorded.starts[0].commands[0].motor_name, "motor_a");
-        assert_eq!(recorded.starts[0].valid_for_ms, 100);
+        assert_eq!(recorded.starts[0].valid_for_ms, 2);
         assert_eq!(recorded.commands.len(), 1);
         assert_eq!(recorded.commands[0].commands[0].motor_name, "motor_a");
         assert_eq!(
@@ -734,10 +744,7 @@ async fn shutdown_releases_faulted_group_without_recovering_or_disabling_it() {
     let group = robot.group(GROUP).unwrap();
     let mut control = group.control("fault-cleanup").await.unwrap();
     let frame = group
-        .frame([(
-            "coordinate_a",
-            CoordinateTarget::position(0.0).gains(20.0, 1.0),
-        )])
+        .frame([("coordinate_a", CoordinateTarget::position(0.0, 20.0, 1.0))])
         .unwrap();
     control.start(frame).await.unwrap();
     server.settings.faulted.store(true, Ordering::Relaxed);
@@ -1120,6 +1127,40 @@ async fn release_preserves_damping_and_fault_without_disable() {
         }
         server.stop().await;
     }
+}
+
+#[tokio::test]
+async fn closed_command_stream_prevents_start_and_resume() {
+    let server = FakeServer::start().await;
+    let robot = Robot::connect(&server.endpoint).await.unwrap();
+    let group = robot.group(GROUP).unwrap();
+    let frame = group
+        .frame([("coordinate_a", CoordinateTarget::damping(1.0))])
+        .unwrap();
+    let mut control = group.control("closed-stream").await.unwrap();
+    server
+        .settings
+        .close_stream_during_start
+        .store(true, Ordering::Relaxed);
+    for resuming in [false, true] {
+        let result = if resuming {
+            control.resume(frame.clone()).await
+        } else {
+            control.start(frame.clone()).await
+        };
+        assert!(
+            matches!(result, Err(Error::CommandStreamClosed)),
+            "{result:?}"
+        );
+        assert_eq!(control.state(), ControlState::Damped);
+    }
+    server
+        .settings
+        .close_stream_during_start
+        .store(false, Ordering::Relaxed);
+    control.resume(frame).await.unwrap();
+    control.shutdown().await.unwrap();
+    server.stop().await;
 }
 
 #[tokio::test]

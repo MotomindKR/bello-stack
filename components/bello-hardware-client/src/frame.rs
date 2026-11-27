@@ -9,38 +9,23 @@ pub struct CoordinateTarget {
     position: f64,
     velocity: f64,
     torque_feedforward: f64,
-    gains: Option<(f64, f64)>,
+    kp: f64,
+    kd: f64,
 }
 
 impl CoordinateTarget {
-    /// Creates a position target. Call [`Self::gains`] before adding it to a frame.
-    pub fn position(position_radians: f64) -> Self {
-        Self {
-            position: position_radians,
-            velocity: 0.0,
-            torque_feedforward: 0.0,
-            gains: None,
-        }
+    pub fn position(position_radians: f64, kp: f64, kd: f64) -> Self {
+        Self::hybrid(position_radians, 0.0, 0.0, kp, kd)
     }
 
     /// Creates a pure feed-forward torque target with zero feedback gains.
     pub fn torque(torque_newton_metres: f64) -> Self {
-        Self {
-            position: 0.0,
-            velocity: 0.0,
-            torque_feedforward: torque_newton_metres,
-            gains: Some((0.0, 0.0)),
-        }
+        Self::hybrid(0.0, 0.0, torque_newton_metres, 0.0, 0.0)
     }
 
     /// Creates zero-velocity damping with no position stiffness.
     pub fn damping(kd: f64) -> Self {
-        Self {
-            position: 0.0,
-            velocity: 0.0,
-            torque_feedforward: 0.0,
-            gains: Some((0.0, kd)),
-        }
+        Self::hybrid(0.0, 0.0, 0.0, 0.0, kd)
     }
 
     pub fn hybrid(
@@ -54,7 +39,8 @@ impl CoordinateTarget {
             position: position_radians,
             velocity: velocity_radians_per_second,
             torque_feedforward: torque_feedforward_newton_metres,
-            gains: Some((kp, kd)),
+            kp,
+            kd,
         }
     }
 
@@ -68,23 +54,14 @@ impl CoordinateTarget {
         self
     }
 
-    pub fn gains(mut self, kp: f64, kd: f64) -> Self {
-        self.gains = Some((kp, kd));
-        self
-    }
-
     fn into_command(self, motor: &Motor) -> Result<MotorCommand, Error> {
         let coordinate = motor.coordinate();
-        let (kp, kd) = self.gains.ok_or_else(|| Error::InvalidTarget {
-            coordinate: coordinate.into(),
-            detail: "position targets require explicit kp and kd gains".into(),
-        })?;
         for (field, value) in [
             ("position", self.position),
             ("velocity", self.velocity),
             ("torque feed-forward", self.torque_feedforward),
-            ("kp", kp),
-            ("kd", kd),
+            ("kp", self.kp),
+            ("kd", self.kd),
         ] {
             if !value.is_finite() {
                 return Err(Error::InvalidTarget {
@@ -93,7 +70,7 @@ impl CoordinateTarget {
                 });
             }
         }
-        if kp < 0.0 || kd < 0.0 {
+        if self.kp < 0.0 || self.kd < 0.0 {
             return Err(Error::InvalidTarget {
                 coordinate: coordinate.into(),
                 detail: "kp and kd must be non-negative".into(),
@@ -104,8 +81,8 @@ impl CoordinateTarget {
             position: self.position,
             velocity: self.velocity,
             torque_feedforward: self.torque_feedforward,
-            kp,
-            kd,
+            kp: self.kp,
+            kd: self.kd,
         })
     }
 }
@@ -263,10 +240,7 @@ mod tests {
             &group,
             [
                 ("coordinate_b", CoordinateTarget::torque(2.0)),
-                (
-                    "coordinate_a",
-                    CoordinateTarget::position(1.0).gains(20.0, 1.0),
-                ),
+                ("coordinate_a", CoordinateTarget::position(1.0, 20.0, 1.0)),
             ],
         )
         .unwrap();

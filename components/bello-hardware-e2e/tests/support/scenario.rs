@@ -299,11 +299,11 @@ fn ergonomic_frame(
     Ok(group.frame([
         (
             "e2e_joint_1",
-            CoordinateTarget::position(position).gains(20.0, 1.0),
+            CoordinateTarget::position(position, 20.0, 1.0),
         ),
         (
             "e2e_joint_2",
-            CoordinateTarget::position(position).gains(20.0, 1.0),
+            CoordinateTarget::position(position, 20.0, 1.0),
         ),
     ])?)
 }

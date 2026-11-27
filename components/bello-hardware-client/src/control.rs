@@ -190,11 +190,7 @@ impl ControlSession {
         self.check_renewal()?;
         self.state = ControlState::Uncertain;
         self.lease.enable().await?;
-        self.state = ControlState::Damped;
 
-        if let Err(error) = self.open_stream().await {
-            return Err(self.rollback("start", error).await);
-        }
         self.start_control("start", initial).await
     }
 
@@ -203,20 +199,7 @@ impl ControlSession {
         self.require_state(ControlState::Damped, "resume")?;
         let initial = initial.into_commands(self.group.name())?;
         self.check_renewal()?;
-        self.open_stream().await?;
         self.start_control("resume", initial).await
-    }
-
-    async fn open_stream(&mut self) -> Result<(), Error> {
-        self.command_stream = Some(
-            CommandStream::open(
-                &self.lease,
-                self.options.max_pending,
-                self.renewal_status.clone(),
-            )
-            .await?,
-        );
-        Ok(())
     }
 
     async fn start_control(
@@ -225,15 +208,42 @@ impl ControlSession {
         initial: Vec<MotorCommand>,
     ) -> Result<(), Error> {
         self.state = ControlState::Uncertain;
-        if let Err(error) = self
-            .lease
-            .start(operation, self.valid_for_ms, initial)
-            .await
-        {
-            return Err(self.rollback(operation, error).await);
+        self.command_stream.take();
+        match self.open_running_stream(operation, initial).await {
+            Ok(stream) => {
+                self.command_stream = Some(stream);
+                self.state = ControlState::Running;
+                Ok(())
+            }
+            Err(primary) => match self.stop().await {
+                Ok(()) => Err(primary),
+                Err(cleanup) => Err(Error::CleanupFailed(vec![
+                    primary.to_string(),
+                    format!("{operation} rollback: {cleanup}"),
+                ])),
+            },
         }
-        self.state = ControlState::Running;
-        Ok(())
+    }
+
+    async fn open_running_stream(
+        &self,
+        operation: &'static str,
+        initial: Vec<MotorCommand>,
+    ) -> Result<CommandStream, Error> {
+        let stream = CommandStream::open(
+            &self.lease,
+            self.options.max_pending,
+            self.renewal_status.clone(),
+        )
+        .await?;
+        self.lease
+            .start(operation, self.valid_for_ms, initial)
+            .await?;
+        self.check_renewal()?;
+        if stream.state() != ControlState::Running {
+            return Err(Error::CommandStreamClosed);
+        }
+        Ok(stream)
     }
 
     /// Waits for queue capacity, submits the frame, and waits for acknowledgement.
@@ -398,21 +408,6 @@ impl ControlSession {
                         && group.state == bello_hardware_api::GroupState::Fault as i32
                 })
             })
-    }
-
-    async fn rollback(&mut self, operation: &str, primary: Error) -> Error {
-        self.command_stream.take();
-        self.state = ControlState::Uncertain;
-        match self.lease.stop().await {
-            Ok(()) => {
-                self.state = ControlState::Damped;
-                primary
-            }
-            Err(cleanup) => Error::CleanupFailed(vec![
-                primary.to_string(),
-                format!("{operation} rollback: {cleanup}"),
-            ]),
-        }
     }
 
     async fn stop_renewal(&mut self) {

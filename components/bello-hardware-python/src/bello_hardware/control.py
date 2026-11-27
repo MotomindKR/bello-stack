@@ -37,10 +37,11 @@ def _milliseconds(seconds: float | None, field: str) -> int:
         return 0
     if not math.isfinite(seconds) or seconds <= 0.0:
         raise ValueError(f"{field} must be positive and finite")
-    milliseconds = int(seconds * 1_000.0)
-    if milliseconds == 0:
-        raise ValueError(f"{field} must be at least one millisecond")
-    return milliseconds
+    milliseconds = seconds * 1_000.0
+    if milliseconds >= 2**64:
+        raise ValueError(f"{field} is too large")
+    whole_ms = int(milliseconds)
+    return whole_ms + 1 if whole_ms / 1_000 < seconds else whole_ms
 
 
 class CommandReceipt:
@@ -326,6 +327,7 @@ class ControlSession:
         with self._operation_lock:
             self._require(ControlState.READY, "start")
             self._check_renewal()
+            self._set_state(ControlState.UNCERTAIN)
             response = self._unary(
                 "enable group",
                 self._group._robot._stub.EnableGroup,
@@ -333,68 +335,36 @@ class ControlSession:
             )
             self._expect("enable", proto.GROUP_STATE_DAMPED, response.state)
             self._set_state(ControlState.DAMPED)
-            try:
-                self._stream = _CommandStream(self)
-                response = self._unary(
-                    "start control",
-                    self._group._robot._stub.StartControl,
-                    proto.StartControlRequest(
-                        group=self._group.name,
-                        lease_token=self._token,
-                        valid_for_ms=self._command_validity_ms,
-                        commands=commands,
-                    ),
-                )
-                self._expect("start", proto.GROUP_STATE_RUNNING, response.state)
-                self._stream.mark_running()
-            except BaseException as primary:
-                self._close_stream()
-                try:
-                    response = self._unary(
-                        "rollback start",
-                        self._group._robot._stub.DisableGroup,
-                        proto.DisableGroupRequest(group=self._group.name, lease_token=self._token),
-                    )
-                    self._expect("rollback start", proto.GROUP_STATE_IDLE, response.state)
-                    self._set_state(ControlState.READY)
-                except BaseException as cleanup:
-                    self._set_state(ControlState.UNCERTAIN)
-                    raise CleanupError((primary, cleanup)) from primary
-                raise
+            self._start_control("start", commands)
 
     def resume(self, targets: Mapping[str, CoordinateTarget]) -> None:
         commands = self._group._commands(targets)
         with self._operation_lock:
             self._require(ControlState.DAMPED, "resume")
             self._check_renewal()
+            self._start_control("resume", commands)
+
+    def _start_control(self, operation: str, commands: list[proto.MotorCommand]) -> None:
+        try:
             self._stream = _CommandStream(self)
+            response = self._unary(
+                f"{operation} control",
+                self._group._robot._stub.StartControl,
+                proto.StartControlRequest(
+                    group=self._group.name,
+                    lease_token=self._token,
+                    valid_for_ms=self._command_validity_ms,
+                    commands=commands,
+                ),
+            )
+            self._expect(operation, proto.GROUP_STATE_RUNNING, response.state)
+            self._stream.mark_running()
+        except BaseException as primary:
             try:
-                response = self._unary(
-                    "resume control",
-                    self._group._robot._stub.StartControl,
-                    proto.StartControlRequest(
-                        group=self._group.name,
-                        lease_token=self._token,
-                        valid_for_ms=self._command_validity_ms,
-                        commands=commands,
-                    ),
-                )
-                self._expect("resume", proto.GROUP_STATE_RUNNING, response.state)
-                self._stream.mark_running()
-            except BaseException as primary:
-                self._close_stream()
-                try:
-                    response = self._unary(
-                        "rollback resume",
-                        self._group._robot._stub.StopControl,
-                        proto.StopControlRequest(group=self._group.name, lease_token=self._token),
-                    )
-                    self._expect("rollback resume", proto.GROUP_STATE_DAMPED, response.state)
-                    self._set_state(ControlState.DAMPED)
-                except BaseException as cleanup:
-                    self._set_state(ControlState.UNCERTAIN)
-                    raise CleanupError((primary, cleanup)) from primary
-                raise
+                self.stop()
+            except BaseException as cleanup:
+                raise CleanupError((primary, cleanup)) from primary
+            raise
 
     def send(self, targets: Mapping[str, CoordinateTarget]) -> None:
         """Wait for queue space and the daemon's acknowledgement."""

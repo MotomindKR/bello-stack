@@ -89,6 +89,20 @@ def test_blocking_control_lifecycle_is_small(hardware_server: RunningServer) -> 
     assert hardware_server.service.release_count == 1
 
 
+@pytest.mark.parametrize(("seconds", "milliseconds"), [(0.0005, 1), (0.0015, 2), (2.007, 2007)])
+def test_command_validity_rounds_up_on_the_wire(
+    hardware_server: RunningServer,
+    seconds: float,
+    milliseconds: int,
+) -> None:
+    with (
+        Robot.connect(hardware_server.endpoint) as robot,
+        robot.group("leg").control("pytest", command_validity=seconds) as control,
+    ):
+        control.start(frame())
+        assert hardware_server.service.start_valid_for_ms == milliseconds
+
+
 def test_close_can_preserve_damping(hardware_server: RunningServer) -> None:
     with Robot.connect(hardware_server.endpoint) as robot:
         control = robot.group("leg").control("pytest")
@@ -469,7 +483,7 @@ def test_start_cannot_mark_a_closed_stream_running(
                 allow_start_reply.set()
             with pytest.raises(AcknowledgementError):
                 attempt.result(timeout=3)
-        assert_control_state(control.state, ControlState.DAMPED if resuming else ControlState.READY)
+        assert_control_state(control.state, ControlState.DAMPED)
 
 
 def test_acknowledgement_timeout_makes_session_uncertain(
@@ -484,6 +498,20 @@ def test_acknowledgement_timeout_makes_session_uncertain(
         with pytest.raises(AcknowledgementError):
             control.send(frame(0.1))
         assert control.state is ControlState.UNCERTAIN
+
+
+def test_unconfirmed_enable_leaves_state_uncertain(hardware_server: RunningServer) -> None:
+    hardware_server.service.lose_enable_reply = True
+    with (
+        Robot.connect(hardware_server.endpoint) as robot,
+        robot.group("leg").control("pytest") as control,
+    ):
+        with pytest.raises(ControlRequestError):
+            control.start(frame())
+        assert hardware_server.service.state == proto.GROUP_STATE_DAMPED
+        assert control.state is ControlState.UNCERTAIN
+        control.stop()
+        control.resume(frame())
 
 
 def test_control_rpc_error_preserves_status(hardware_server: RunningServer) -> None:
@@ -562,16 +590,23 @@ def test_session_can_resume_after_stop(hardware_server: RunningServer) -> None:
         assert_control_state(control.state, ControlState.RUNNING)
 
 
-def test_resume_rolls_an_ambiguous_start_back_to_damped(
+@pytest.mark.parametrize("resuming", [False, True])
+def test_lost_start_reply_rolls_back_to_damped(
     hardware_server: RunningServer,
+    resuming: bool,
 ) -> None:
     with (
         Robot.connect(hardware_server.endpoint) as robot,
         robot.group("leg").control("pytest") as control,
     ):
-        control.start(frame())
-        control.stop()
+        if resuming:
+            control.start(frame())
+            control.stop()
         hardware_server.service.start_failure = grpc.StatusCode.UNAVAILABLE
         with pytest.raises(ControlRequestError):
-            control.resume(frame(0.1))
+            (control.resume if resuming else control.start)(frame(0.1))
         assert control.state is ControlState.DAMPED
+        assert hardware_server.service.state == proto.GROUP_STATE_DAMPED
+        hardware_server.service.start_failure = None
+        control.resume(frame(0.1))
+        control.send(frame())

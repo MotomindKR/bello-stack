@@ -101,6 +101,7 @@ class FakeHardware:
         self.inventory_failure: grpc.StatusCode | None = None
         self.state = proto.GROUP_STATE_IDLE
         self.token = "test-token"
+        self.start_valid_for_ms = 0
         self.command_count = 0
         self.renew_count = 0
         self.release_count = 0
@@ -111,6 +112,7 @@ class FakeHardware:
         self.command_ack_gate: threading.Event | None = None
         self.before_start_control: Callable[[], None] | None = None
         self.renew_failure: grpc.StatusCode | None = None
+        self.lose_enable_reply = False
         self.enable_failure: grpc.StatusCode | None = None
         self.start_failure: grpc.StatusCode | None = None
         self.disable_failure: grpc.StatusCode | None = None
@@ -158,10 +160,12 @@ class FakeHardware:
             context.abort(self.enable_failure, "test enable failure")
         with self.lock:
             self.state = proto.GROUP_STATE_DAMPED
+        if self.lose_enable_reply:
+            context.abort(grpc.StatusCode.UNAVAILABLE, "enable reply unavailable")
         return proto.EnableGroupResponse(state=proto.GROUP_STATE_DAMPED)
 
     def StartControl(self, request: Any, context: Any) -> proto.StartControlResponse:
-        del request
+        self.start_valid_for_ms = request.valid_for_ms
         if self.before_start_control is not None:
             self.before_start_control()
         with self.lock:
