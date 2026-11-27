@@ -212,7 +212,7 @@ def test_closed_stream_receipt_preserves_resumed_control(
                 read_started.set()
                 receipt.result()
 
-            hardware_server.service.before_start_control = pause_resume
+            hardware_server.service.before_start_reply = pause_resume
             with ThreadPoolExecutor(max_workers=2) as executor:
                 resume = executor.submit(control.resume, frame())
                 try:
@@ -452,9 +452,11 @@ def test_target_validation() -> None:
 
 
 @pytest.mark.parametrize("resuming", [False, True])
-def test_start_cannot_mark_a_closed_stream_running(
-    hardware_server: RunningServer, resuming: bool
+@pytest.mark.parametrize("stream_closes", [False, True])
+def test_start_waits_for_reply_and_healthy_stream(
+    hardware_server: RunningServer, resuming: bool, stream_closes: bool
 ) -> None:
+    service = hardware_server.service
     with (
         Robot.connect(hardware_server.endpoint) as robot,
         robot.group("leg").control("pytest") as control,
@@ -462,28 +464,40 @@ def test_start_cannot_mark_a_closed_stream_running(
         if resuming:
             control.start(frame())
             control.stop()
+        admitted = threading.Event()
+        reply = threading.Event()
         close_stream = threading.Event()
-        allow_start_reply = threading.Event()
-        hardware_server.service.close_stream_gate = close_stream
+        if stream_closes:
+            service.close_stream_gate = close_stream
 
-        def delay_start_reply() -> None:
-            close_stream.set()
-            assert allow_start_reply.wait(5)
+        def delay_reply() -> None:
+            admitted.set()
+            assert reply.wait(5)
 
-        hardware_server.service.before_start_control = delay_start_reply
+        service.before_start_reply = delay_reply
         with ThreadPoolExecutor(max_workers=1) as executor:
             attempt = executor.submit(control.resume if resuming else control.start, frame())
             try:
-                assert close_stream.wait(5)
-                until = time.monotonic() + 3
-                while control.state is ControlState.DAMPED and time.monotonic() < until:
-                    time.sleep(0.005)
-                assert control.state is ControlState.UNCERTAIN
+                assert admitted.wait(5)
+                assert service.state == proto.GROUP_STATE_RUNNING
+                assert_control_state(control.state, ControlState.UNCERTAIN)
+                with pytest.raises(InvalidSessionStateError):
+                    control.try_submit(frame())
+                if stream_closes:
+                    close_stream.set()
+                    assert control._stream is not None
+                    control._stream._receiver.join(timeout=2)
+                    assert not control._stream._receiver.is_alive()
             finally:
-                allow_start_reply.set()
-            with pytest.raises(AcknowledgementError):
+                close_stream.set()
+                reply.set()
+            if stream_closes:
+                with pytest.raises(AcknowledgementError):
+                    attempt.result(timeout=3)
+                assert control.state is ControlState.DAMPED
+            else:
                 attempt.result(timeout=3)
-        assert_control_state(control.state, ControlState.DAMPED)
+                control.send(frame())
 
 
 def test_acknowledgement_timeout_makes_session_uncertain(
@@ -556,14 +570,43 @@ def test_disable_can_retry_after_an_unconfirmed_reply(hardware_server: RunningSe
         assert_control_state(control.state, ControlState.READY)
 
 
-def test_cleanup_preserves_structured_errors(hardware_server: RunningServer) -> None:
+@pytest.mark.parametrize("running", [False, True])
+@pytest.mark.parametrize("release_fails", [False, True])
+def test_close_releases_a_faulted_group(
+    hardware_server: RunningServer, running: bool, release_fails: bool
+) -> None:
+    service = hardware_server.service
     with Robot.connect(hardware_server.endpoint) as robot:
         control = robot.group("leg").control("pytest")
-        hardware_server.service.disable_failure = grpc.StatusCode.INTERNAL
+        if running:
+            control.start(frame())
+        service.state = proto.GROUP_STATE_FAULT
+        if release_fails:
+            service.release_failure = grpc.StatusCode.UNAVAILABLE
+            with pytest.raises(CleanupError) as raised:
+                control.close()
+            (failure,) = raised.value.errors
+            assert isinstance(failure, ControlRequestError)
+            assert (failure.operation, failure.code) == ("release lease", "UNAVAILABLE")
+        else:
+            control.close()
+        assert control.state is ControlState.CLOSED
+        assert service.state == proto.GROUP_STATE_FAULT
+        assert service.release_count == 1
+        assert service.disable_count == (0 if running else 1)
+
+
+@pytest.mark.parametrize("code", [grpc.StatusCode.INTERNAL, grpc.StatusCode.FAILED_PRECONDITION])
+def test_cleanup_preserves_structured_errors(
+    hardware_server: RunningServer, code: grpc.StatusCode
+) -> None:
+    with Robot.connect(hardware_server.endpoint) as robot:
+        control = robot.group("leg").control("pytest")
+        hardware_server.service.disable_failure = code
         with pytest.raises(CleanupError) as raised:
             control.close()
     assert isinstance(raised.value.errors[0], ControlRequestError)
-    assert raised.value.errors[0].code == "INTERNAL"
+    assert raised.value.errors[0].code == code.name
 
 
 def test_body_error_is_not_masked_by_cleanup_failure(hardware_server: RunningServer) -> None:

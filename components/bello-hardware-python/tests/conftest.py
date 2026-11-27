@@ -104,13 +104,14 @@ class FakeHardware:
         self.start_valid_for_ms = 0
         self.command_count = 0
         self.renew_count = 0
+        self.release_failure: grpc.StatusCode | None = None
         self.release_count = 0
         self.disable_count = 0
         self.next_command_result: proto.CommandResult | None = None
         self.command_delay = 0.0
         self.close_stream_gate: threading.Event | None = None
         self.command_ack_gate: threading.Event | None = None
-        self.before_start_control: Callable[[], None] | None = None
+        self.before_start_reply: Callable[[], None] | None = None
         self.renew_failure: grpc.StatusCode | None = None
         self.lose_enable_reply = False
         self.enable_failure: grpc.StatusCode | None = None
@@ -124,7 +125,12 @@ class FakeHardware:
         del request
         if self.inventory_failure is not None:
             context.abort(self.inventory_failure, "test inventory failure")
-        return self.inventory
+        snapshot = proto.ListHardwareResponse()
+        snapshot.CopyFrom(self.inventory)
+        for group in snapshot.groups:
+            if group.name == "leg":
+                group.state = self.state
+        return snapshot
 
     def AcquireLease(self, request: Any, context: Any) -> proto.AcquireLeaseResponse:
         del context
@@ -148,9 +154,11 @@ class FakeHardware:
         )
 
     def ReleaseLease(self, request: Any, context: Any) -> proto.ReleaseLeaseResponse:
-        del request, context
+        del request
         with self.lock:
             self.release_count += 1
+            if self.release_failure is not None:
+                context.abort(self.release_failure, "release failed")
             state = self.state
         return proto.ReleaseLeaseResponse(state=state)
 
@@ -166,18 +174,20 @@ class FakeHardware:
 
     def StartControl(self, request: Any, context: Any) -> proto.StartControlResponse:
         self.start_valid_for_ms = request.valid_for_ms
-        if self.before_start_control is not None:
-            self.before_start_control()
         with self.lock:
             self.command_count += 1
             self.state = proto.GROUP_STATE_RUNNING
+        if self.before_start_reply is not None:
+            self.before_start_reply()
         if self.start_failure is not None:
             context.abort(self.start_failure, "test start response failure")
         return proto.StartControlResponse(state=proto.GROUP_STATE_RUNNING)
 
     def StopControl(self, request: Any, context: Any) -> proto.StopControlResponse:
-        del request, context
+        del request
         with self.lock:
+            if self.state == proto.GROUP_STATE_FAULT:
+                context.abort(grpc.StatusCode.FAILED_PRECONDITION, "fault latched")
             self.state = proto.GROUP_STATE_DAMPED
         return proto.StopControlResponse(state=proto.GROUP_STATE_DAMPED)
 
@@ -187,6 +197,8 @@ class FakeHardware:
             context.abort(self.disable_failure, "test disable failure")
         with self.lock:
             self.disable_count += 1
+            if self.state == proto.GROUP_STATE_FAULT:
+                context.abort(grpc.StatusCode.FAILED_PRECONDITION, "fault latched")
             self.state = proto.GROUP_STATE_IDLE
         return proto.DisableGroupResponse(state=proto.GROUP_STATE_IDLE)
 

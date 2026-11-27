@@ -21,6 +21,7 @@ from .errors import (
     CommandQueueFullError,
     CommandRejectedError,
     ControlError,
+    ControlRequestError,
     InvalidSessionStateError,
     LeaseLostError,
     ProtocolError,
@@ -347,6 +348,7 @@ class ControlSession:
     def _start_control(self, operation: str, commands: list[proto.MotorCommand]) -> None:
         try:
             self._stream = _CommandStream(self)
+            self._set_state(ControlState.UNCERTAIN)
             response = self._unary(
                 f"{operation} control",
                 self._group._robot._stub.StartControl,
@@ -412,30 +414,24 @@ class ControlSession:
         with self._operation_lock:
             if self.state == ControlState.CLOSED:
                 return
-            prior_state = self.state
-            self._close_stream()
             errors: list[BaseException] = []
-            if prior_state == ControlState.RUNNING:
+            faulted = False
+            if self.state == ControlState.RUNNING:
                 try:
-                    response = self._unary(
-                        "stop control",
-                        self._group._robot._stub.StopControl,
-                        proto.StopControlRequest(group=self._group.name, lease_token=self._token),
-                    )
-                    self._expect("stop", proto.GROUP_STATE_DAMPED, response.state)
+                    self.stop()
                 except BaseException as error:
-                    errors.append(error)
-            if not preserve_damping:
+                    faulted = self._confirm_fault(error)
+                    if not faulted:
+                        errors.append(error)
+            if not (preserve_damping or faulted):
                 try:
-                    response = self._unary(
-                        "disable group",
-                        self._group._robot._stub.DisableGroup,
-                        proto.DisableGroupRequest(group=self._group.name, lease_token=self._token),
-                    )
-                    self._expect("disable", proto.GROUP_STATE_IDLE, response.state)
+                    self.disable()
                 except BaseException as error:
-                    errors.append(error)
+                    faulted = self._confirm_fault(error)
+                    if not faulted:
+                        errors.append(error)
 
+            self._close_stream()
             self._renewal_stop.set()
             if self._renewal is not threading.current_thread():
                 self._renewal.join(timeout=self._rpc_timeout + 0.1)
@@ -446,11 +442,11 @@ class ControlSession:
                         self._group._robot._stub.ReleaseLease,
                         proto.ReleaseLeaseRequest(token=self._token),
                     )
-                expected = (
-                    (proto.GROUP_STATE_IDLE, proto.GROUP_STATE_DAMPED, proto.GROUP_STATE_FAULT)
-                    if preserve_damping
-                    else (proto.GROUP_STATE_IDLE,)
-                )
+                expected: tuple[proto.GroupState, ...] = (proto.GROUP_STATE_IDLE,)
+                if faulted or preserve_damping:
+                    expected += (proto.GROUP_STATE_FAULT,)
+                if preserve_damping:
+                    expected += (proto.GROUP_STATE_DAMPED,)
                 self._expect_any("release", expected, response.state)
             except BaseException as error:
                 errors.append(error)
@@ -458,6 +454,20 @@ class ControlSession:
             self._group._robot._unregister(self)
             if errors:
                 raise CleanupError(errors)
+
+    def _confirm_fault(self, error: BaseException) -> bool:
+        if not isinstance(error, ControlRequestError) or error.code != "FAILED_PRECONDITION":
+            return False
+        try:
+            inventory = self._group._robot._stub.ListHardware(
+                proto.ListHardwareRequest(), timeout=self._rpc_timeout
+            )
+        except grpc.RpcError:
+            return False
+        return any(
+            group.name == self._group.name and group.state == proto.GROUP_STATE_FAULT
+            for group in inventory.groups
+        )
 
     def __enter__(self) -> ControlSession:
         return self
