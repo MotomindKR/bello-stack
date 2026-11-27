@@ -1,0 +1,6 @@
+# Commissioning defaults; not a measured calibration.
+width: 640
+height: 360
+left:
+  camera_to_link: [0.0, 0.0, 0.035, 1.0, 0.0, 0.0, 0.0]
+  intrinsics: [320.0, 320.0, 320.0, 180.0]

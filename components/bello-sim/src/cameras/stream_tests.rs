@@ -1,4 +1,5 @@
 use super::*;
+use bello_camera_worker::FPS;
 use bello_camera_worker::media::Publisher;
 use gst::prelude::*;
 use image::{Rgb, RgbImage};
@@ -25,7 +26,8 @@ async fn check_stereo_stream(eye_width: u32, height: u32, minimum_bytes: usize) 
             }
         })
     };
-    let jpeg = jpeg::Encoder::new()?.encode(side_by_side(eye([250, 0, 0]), eye([0, 0, 250])))?;
+    let jpeg =
+        jpeg::Encoder::new()?.encode(side_by_side(eye([250, 0, 0]), eye([0, 0, 250])), FPS)?;
     assert!(jpeg.len() > minimum_bytes);
     let image = image::load_from_memory(&jpeg)?.to_rgb8();
     assert!(image.get_pixel(16, 16)[0] > 240);

@@ -41,11 +41,13 @@ power_boards:
                 port.display()
             )?;
             if let Some(socket) = camera_socket {
+                #[cfg(feature = "camera-tests")]
+                super::cameras::configure(dir)?;
                 writeln!(
                     fs::OpenOptions::new()
                         .append(true)
                         .open(dir.join("hardwared.yaml"))?,
-                    "cameras: {{ type: mujoco, socket: {} }}",
+                    "cameras:\n  stereo: {{ type: mujoco, socket: {} }}",
                     socket.display()
                 )?;
             }
@@ -87,8 +89,13 @@ power_boards:
         let commands = support::scenario::CommandStream::start(&client, &lease).await?;
         {
             let healthy = iwc(0)?;
-            let camera_restart =
-                super::cameras::restart_and_check(&endpoint, socket, &mut client, &lease);
+            let camera_restart = super::cameras::restart_and_check(
+                &endpoint,
+                socket,
+                _directory.path(),
+                &mut client,
+                &lease,
+            );
             tokio::pin!(camera_restart);
             let mut heartbeat = tokio::time::interval(Duration::from_millis(10));
             loop {
@@ -98,10 +105,8 @@ power_boards:
                 }
             }
         }
-        assert_eq!(
-            inventory(&client).await?.groups[0].state(),
-            GroupState::Running
-        );
+        let group = inventory(&client).await?.groups.remove(0);
+        assert_eq!(group.state(), GroupState::Running, "{group:?}");
         Some(commands)
     } else {
         None

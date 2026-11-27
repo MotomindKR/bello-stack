@@ -57,12 +57,12 @@ cargo run -p bello-sim -- run --config components/bello-sim/config/emulator_mill
 
 Set `cameras` in the emulator profile to the path to a [camera configuration](config/cameras_mini_torso.yaml).
 Measure the mounting transforms and intrinsics before using the images for calibrated work.
-Each named stream has either a `mono` lens or a `stereo` pair with `left` and `right` lenses.
+The renderer profile selects stream names declared in the model’s `hardware.yaml`. The hardware inventory supplies the mount, mono or stereo layout, FPS, and calibration file for each name.
 The configured width and height apply to each eye. The simulator applies each lens’s optional
 fisheye calibration, packs stereo left-to-right, then uses GStreamer to encode one JPEG.
 `GetCameras` reports the encoded dimensions, layout and host-local GStreamer socket.
 `WatchFrames` delivers the same JPEG with its capture timestamp and sequence number.
-The dashboard handles WebRTC signaling. Physical Milly telepresence reads the USB camera directly.
+Hardwared serves both RPCs. For a physical Milly, bind the same camera name to its Linux video device in the deployment. [Camera configuration](../../docs/configuration.md#cameras)
 
 A camera failure interrupts the stream while physics continues.
 
@@ -125,7 +125,7 @@ cargo run -p bello-sim -- run --config components/bello-sim/config/emulator_mill
 cargo run -p bello-hardwared -- --config components/bello-hardwared/config/milly-7dof-gimbal-sim.yaml
 ```
 
-The hardware daemon at `127.0.0.1:50051` publishes one `stereo` stream. Each 3200 × 1200 JPEG contains the left and right 1600 × 1200 exposures from one simulation snapshot. Use the [mono profile](config/cameras_milly_mono.yaml) for a single 1600 × 1200 stream from the left lens.
+The hardware daemon at `127.0.0.1:50051` publishes one `stereo` stream. Each 3200 × 1200 JPEG contains the left and right 1600 × 1200 exposures from one simulation snapshot. Use the [mono profile](config/cameras_milly_mono.yaml) for a single 1600 × 1200 stream from the left lens, and map `front` to that profile’s socket in the hardwared deployment.
 
 For high-resolution streams, allow 32 MiB per gRPC response (`MAX_FRAME_MESSAGE_BYTES` in Rust or `grpc.max_receive_message_length` in Python). Detailed scenes can exceed the common 4 MiB client default. GStreamer and gRPC carry the original encoded JPEG at the same quality.
 
@@ -138,6 +138,6 @@ grpcurl -plaintext -import-path components/bello-hardware-api/proto \
 gst-launch-1.0 unixfdsrc socket-path="$CAMERA_SOCKET" ! jpegdec ! videoconvert ! autovideosink
 ```
 
-The camera profile uses measured per-eye intrinsics, OpenCV fisheye coefficients and the inverse stereo extrinsics to place the right sensor relative to the left. The left optical centre is anchored half the measured baseline from the CAD midpoint. The ELP calibration comes from `bello-vr-telepresence/config/stereo.json` at revision `bded0439` (SHA-256 `f86832f946c464d0300e0463b04a67cd0b0d6687cde2fc89569c94b585059ab3`). [Stereo camera profile](config/cameras_milly_stereo.yaml)
+The camera profile uses measured per-eye intrinsics, OpenCV fisheye coefficients and the inverse stereo extrinsics to place the right sensor relative to the left. The left optical centre is anchored half the measured baseline from the CAD midpoint. The ELP calibration comes from `bello-vr-telepresence/config/stereo.json` at revision `bded0439` (SHA-256 `f86832f946c464d0300e0463b04a67cd0b0d6687cde2fc89569c94b585059ab3`). [ELP calibration](../../descriptions/stereo-gimbal/calibration/elp-stereo.yaml)
 
-To configure another camera, set the dimensions and specify each optical pose as XYZ in metres followed by a WXYZ quaternion. Supply fx, fy, cx and cy in sensor pixels. Omit the four fisheye coefficients for pinhole projection. The model profile holds provisional auxiliary inertias for the gimbal and gripper linkages. [Simulation model](config/milly_7dof_gimbal.yaml)
+To configure another camera, declare its mount and layout in the hardware inventory. In its calibration file, set the per-eye dimensions and specify each optical pose as XYZ in metres followed by a WXYZ quaternion. Supply fx, fy, cx and cy in sensor pixels. Omit the four fisheye coefficients for pinhole projection. The model profile holds provisional auxiliary inertias for the gimbal and gripper linkages. [Simulation model](config/milly_7dof_gimbal.yaml)

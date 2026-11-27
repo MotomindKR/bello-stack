@@ -1,7 +1,8 @@
 use anyhow::{Context, Result, ensure};
 use bello_camera_worker::{media::Publisher, proto, sim_pipe::Input};
 use proto::camera_source_service_server::CameraSourceServiceServer;
-use proto::config::{Device, Source};
+use proto::config::{Binding, Camera, Source, Transport};
+use std::collections::{BTreeMap, BTreeSet};
 use std::{io::Read, path::PathBuf, sync::Arc};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnixListenerStream;
@@ -20,7 +21,7 @@ fn main() -> Result<()> {
     input.read_exact(&mut bytes)?;
     drop(input);
     let source: Source = serde_json::from_slice(&bytes)?;
-    source.validate().map_err(anyhow::Error::msg)?;
+
     std::thread::spawn(|| {
         let _ = std::io::stdin().read(&mut [0]);
         std::process::exit(0);
@@ -37,70 +38,75 @@ fn main() -> Result<()> {
     runtime.block_on(serve(source, directory))
 }
 
-fn device_info(d: &Device) -> (proto::Camera, proto::CameraLayout) {
-    (
-        proto::Camera {
-            name: d.name.clone(),
-            width: d.width,
-            height: d.height,
-            fps: d.fps,
-            source: "v4l2".into(),
-            metadata_json: String::new(),
-        },
-        if d.stereo {
-            proto::CameraLayout::StereoSideBySide
-        } else {
-            proto::CameraLayout::Mono
-        },
-    )
+fn sim_streams(
+    input: Input,
+    expected: Vec<Camera>,
+    output: Arc<Publisher>,
+    failed: mpsc::UnboundedSender<Result<()>>,
+) -> Result<()> {
+    let first = input.sample()?;
+    let catalog = Input::catalog(&first)?;
+    let mut names = BTreeSet::new();
+    for camera in expected {
+        let stream = catalog
+            .streams
+            .iter()
+            .find(|s| s.camera.name == camera.name)
+            .with_context(|| format!("simulator is missing camera {}", camera.name))?;
+        ensure!(
+            stream.layout() == camera.layout() && stream.camera == camera.info("mujoco"),
+            "simulator camera {} disagrees with the hardware description",
+            camera.name
+        );
+        names.insert(camera.name);
+    }
+    std::thread::spawn(move || {
+        let result = (|| {
+            let mut sample = first;
+            loop {
+                let frame = Input::frame(&sample)?;
+                if names.contains(&frame.name) {
+                    output.publish(frame)?;
+                }
+                sample = input.sample()?;
+            }
+        })();
+        let _ = failed.send(result);
+    });
+    Ok(())
 }
 
 async fn serve(source: Source, directory: PathBuf) -> Result<()> {
     let (failed, mut failure) = mpsc::unbounded_channel();
-    let publisher = match source {
-        Source::Mujoco { socket } => {
-            let input = Input::open(&socket)?;
-            let first = input.sample()?;
-            let catalog = Input::catalog(&first)?;
-            let cameras = catalog
-                .streams
-                .into_iter()
-                .map(|s| (s.camera.clone(), s.layout()))
-                .collect();
-            let publisher = Arc::new(Publisher::new_in(cameras, &directory)?);
-            let output = publisher.clone();
-            std::thread::spawn(move || {
-                let result: Result<()> = (|| {
-                    let mut sample = first;
-                    loop {
-                        output.publish(Input::frame(&sample)?)?;
-                        sample = input.sample()?;
-                    }
-                })();
-                let _ = failed.send(result);
-            });
-            publisher
-        }
-        Source::V4l2 { devices } => {
-            let publisher = Arc::new(Publisher::new_in(
-                devices.iter().map(device_info).collect(),
-                &directory,
-            )?);
-            #[cfg(target_os = "linux")]
-            for device in devices {
-                let output = publisher.clone();
-                let failed = failed.clone();
-                std::thread::spawn(move || {
-                    let _ = failed.send(usb::capture(device, &output));
-                });
+    let cameras = source.0.iter().map(Binding::stream_info).collect();
+    let publisher = Arc::new(Publisher::new_in(cameras, &directory)?);
+    let mut sockets = BTreeMap::<_, Vec<Camera>>::new();
+    for binding in source.0 {
+        match binding.transport {
+            Transport::Mujoco { socket } => sockets.entry(socket).or_default().push(binding.camera),
+            Transport::V4l2 { device } => {
+                #[cfg(target_os = "linux")]
+                {
+                    let output = publisher.clone();
+                    let failed = failed.clone();
+                    std::thread::spawn(move || {
+                        let _ = failed.send(usb::capture(binding.camera, &device, &output));
+                    });
+                }
+                #[cfg(not(target_os = "linux"))]
+                anyhow::bail!("USB camera {} requires Linux V4L2", device.display());
             }
-            #[cfg(not(target_os = "linux"))]
-            let _ = failed.send(Err(anyhow::anyhow!(
-                "USB camera capture requires Linux V4L2"
-            )));
-            publisher
         }
-    };
+    }
+    for (path, cameras) in sockets {
+        sim_streams(
+            Input::open(&path)?,
+            cameras,
+            publisher.clone(),
+            failed.clone(),
+        )?;
+    }
+    drop(failed);
     let (listener, _owner) = proto::socket::bind(&directory.join("rpc")).await?;
     let server = tonic::transport::Server::builder()
         .add_service(CameraSourceServiceServer::new(publisher.frames().clone()))

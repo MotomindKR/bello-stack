@@ -1,5 +1,7 @@
 use anyhow::{Context, Result, ensure};
-use bello_camera_worker::{media::Publisher, monotonic_ns, proto, proto::config::Device};
+use bello_camera_worker::{
+    media::Publisher, monotonic_ns, proto, proto::config::Camera as LogicalCamera,
+};
 use std::time::Duration;
 use v4l::{
     Device as Camera, Format, FourCC,
@@ -9,13 +11,18 @@ use v4l::{
     video::{Capture, capture::Parameters},
 };
 
-fn configure(source: &Device) -> Result<Camera> {
-    let camera = Camera::with_path(&source.device)
-        .with_context(|| format!("open camera {}", source.device.display()))?;
+fn configure(source: &LogicalCamera, device: &std::path::Path) -> Result<Camera> {
+    let camera =
+        Camera::with_path(device).with_context(|| format!("open camera {}", device.display()))?;
     let mjpeg = FourCC::new(b"MJPG");
-    let format = camera.set_format(&Format::new(source.width, source.height, mjpeg))?;
+    let format = camera.set_format(&Format::new(
+        source.packed_width(),
+        source.calibration.height,
+        mjpeg,
+    ))?;
     ensure!(
-        (format.width, format.height, format.fourcc) == (source.width, source.height, mjpeg),
+        (format.width, format.height, format.fourcc)
+            == (source.packed_width(), source.calibration.height, mjpeg),
         "{} negotiated unsupported format {format}",
         source.name
     );
@@ -44,8 +51,8 @@ fn capture_time(meta: &Metadata) -> Result<u64> {
     Ok(Duration::from(ts).as_nanos().try_into()?)
 }
 
-pub fn capture(source: Device, output: &Publisher) -> Result<()> {
-    let camera = configure(&source)?;
+pub fn capture(source: LogicalCamera, device: &std::path::Path, output: &Publisher) -> Result<()> {
+    let camera = configure(&source, device)?;
     let mut buffers = MmapStream::with_buffers(&camera, Type::VideoCapture, 4)?;
     buffers.set_timeout(Duration::from_secs(2));
     loop {

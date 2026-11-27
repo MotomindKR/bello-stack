@@ -8,6 +8,9 @@ publish.workspace = true
 description = "Shared gRPC and protobuf API for Bello hardware components"
 
 [dependencies]
+anyhow.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
 prost.workspace = true
 tonic.workspace = true
 tonic-prost.workspace = true

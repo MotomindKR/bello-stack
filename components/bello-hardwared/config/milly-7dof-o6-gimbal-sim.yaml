@@ -1,6 +1,7 @@
 description: ../../../descriptions/milly-7dof-o6-gimbal/hardware.yaml
 simulation: true
-cameras: { type: mujoco, socket: /tmp/bello-milly-stereo.sock }
+cameras:
+  stereo: { type: mujoco, socket: /tmp/bello-milly-stereo.sock }
 
 runtime:
   motor_velocity_filter: { cutoff_hz: 15.0 }

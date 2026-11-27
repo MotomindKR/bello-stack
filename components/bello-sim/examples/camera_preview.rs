@@ -39,7 +39,7 @@ fn main() -> Result<()> {
             anyhow::ensure!(seconds.is_finite() && seconds > 0., "invalid duration");
             let config = model::ModelConfig::load(&model_config)?;
             let robot = model::build(&config, None)?;
-            let settings = serde_yaml::from_str(&std::fs::read_to_string(camera_config)?)?;
+            let settings = cameras::Config::load(&camera_config, &config.hardware)?;
             let mut cameras = cameras::Capture::start(settings, &config, &robot.simulation)?;
             let start = Instant::now();
             while start.elapsed().as_secs_f64() < seconds {

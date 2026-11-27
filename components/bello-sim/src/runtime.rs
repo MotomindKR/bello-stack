@@ -207,7 +207,7 @@ pub fn run(config: Config, duration: Option<Duration>) -> Result<()> {
         .cameras
         .map(|path| {
             crate::cameras::Capture::start(
-                crate::cameras::Config::load(&path)?,
+                crate::cameras::Config::load(&path, &model_config.hardware)?,
                 &model_config,
                 &robot.simulation,
             )

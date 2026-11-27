@@ -7,23 +7,46 @@ use bello_hardware_api::{
 use gst::prelude::*;
 use std::path::{Path, PathBuf};
 
+const DECLARATION: &str =
+    "- {name: stereo, link: base, layout: stereo, calibration: stereo.yaml, fps: 30}";
+const CALIBRATION: &str = "width: 16
+height: 16
+left: &eye {camera_to_link: [0,0,0,1,0,0,0], intrinsics: [8,8,8,8]}
+right: *eye
+";
+
+pub fn configure(directory: &Path) -> Result<()> {
+    use std::io::Write;
+    fs::write(directory.join("stereo.yaml"), CALIBRATION)?;
+    writeln!(
+        fs::OpenOptions::new()
+            .append(true)
+            .open(directory.join("e2e-hardware.yaml"))?,
+        "\ncameras:\n{DECLARATION}"
+    )?;
+    Ok(())
+}
+fn fixture_camera(directory: &Path) -> Result<camera::config::Camera> {
+    let mut cameras = camera::config::inventory(
+        serde_yaml::from_str(DECLARATION)?,
+        &directory.join("e2e-hardware.yaml"),
+    )?;
+    Ok(cameras.remove("stereo").unwrap())
+}
 struct Source(tokio::task::JoinHandle<()>);
 impl Drop for Source {
     fn drop(&mut self) {
         self.0.abort();
     }
 }
-async fn source(socket: &Path, frame: camera::Frame) -> Result<Source> {
+async fn source(
+    socket: &Path,
+    calibration: &camera::config::Camera,
+    frame: camera::Frame,
+) -> Result<Source> {
     let stream = sim_pipe::Stream {
-        camera: camera::Camera {
-            name: frame.name.clone(),
-            source: "mujoco".into(),
-            width: 32,
-            height: 16,
-            fps: 30,
-            metadata_json: "calibration".into(),
-        },
-        layout: camera::CameraLayout::StereoSideBySide.into(),
+        camera: calibration.info("mujoco"),
+        layout: calibration.layout().into(),
     };
     let output = sim_pipe::Output::open(socket, vec![stream]).await?;
     Ok(Source(tokio::spawn(async move {
@@ -47,7 +70,8 @@ async fn read_both(endpoint: &str, expected: &camera::Frame) -> Result<PathBuf> 
         }
     })
     .await??;
-    assert_eq!(catalog.cameras[0].metadata_json, "calibration");
+    let metadata: serde_yaml::Value = serde_yaml::from_str(&catalog.cameras[0].metadata_json)?;
+    assert_eq!(metadata["stereo"]["left"]["link"].as_str(), Some("base"));
     let local = &catalog.local_sources[&expected.name];
     assert_eq!(local.layout(), camera::CameraLayout::StereoSideBySide);
     let mut frames = camera
@@ -83,9 +107,11 @@ async fn read_both(endpoint: &str, expected: &camera::Frame) -> Result<PathBuf> 
 pub async fn restart_and_check(
     endpoint: &str,
     socket: &Path,
+    directory: &Path,
     hardware: &mut HardwareClient,
     lease: &AcquireLeaseResponse,
 ) -> Result<()> {
+    let calibration = fixture_camera(directory)?;
     let now = monotonic_ns();
     let mut frame = camera::Frame {
         name: "stereo".into(),
@@ -96,7 +122,7 @@ pub async fn restart_and_check(
         jpeg: vec![0xff, 0xd8, 1, 2, 3, 0xff, 0xd9],
         flags: 0,
     };
-    let first = source(socket, frame.clone()).await?;
+    let first = source(socket, &calibration, frame.clone()).await?;
     let old = read_both(endpoint, &frame).await?;
     drop(first);
     timeout(Duration::from_secs(12), async {
@@ -114,7 +140,7 @@ pub async fn restart_and_check(
         .await?;
     frame.sequence = 1;
     frame.simulation_time_ns = Some(42);
-    let _second = source(socket, frame.clone()).await?;
+    let _second = source(socket, &calibration, frame.clone()).await?;
     let new = read_both(endpoint, &frame).await?;
     assert_ne!(old, new);
     Ok(())

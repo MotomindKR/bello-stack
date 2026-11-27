@@ -26,16 +26,13 @@ impl Encoder {
         Ok(encoder)
     }
 
-    pub fn encode(&self, image: RgbImage) -> Result<Vec<u8>> {
+    pub fn encode(&self, image: RgbImage, fps: u32) -> Result<Vec<u8>> {
         let (width, height) = image.dimensions();
         let caps = gst::Caps::builder("video/x-raw")
             .field("format", "RGB")
             .field("width", width as i32)
             .field("height", height as i32)
-            .field(
-                "framerate",
-                gst::Fraction::new(bello_camera_worker::FPS as i32, 1),
-            )
+            .field("framerate", gst::Fraction::new(fps as i32, 1))
             .build();
         self.input.set_caps(Some(&caps));
         let row = width as usize * 3;
@@ -75,7 +72,7 @@ mod tests {
     #[test]
     fn jpeg_preserves_dimensions_and_rgb_order_with_unaligned_rows() {
         let image = RgbImage::from_pixel(1601, 1200, image::Rgb([180, 60, 25]));
-        let bytes = Encoder::new().unwrap().encode(image).unwrap();
+        let bytes = Encoder::new().unwrap().encode(image, 30).unwrap();
         let decoded = image::load_from_memory(&bytes).unwrap().to_rgb8();
         assert_eq!(decoded.dimensions(), (1601, 1200));
         for (actual, expected) in decoded

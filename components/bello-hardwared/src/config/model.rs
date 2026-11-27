@@ -1,4 +1,5 @@
-use std::collections::{HashMap, HashSet};
+use bello_hardware_api::camera::config::{Camera, Declaration, Transport};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
@@ -60,7 +61,9 @@ pub(crate) struct Config {
     #[serde(default)]
     pub grpc: GrpcConfig,
     #[serde(default)]
-    pub cameras: Option<bello_hardware_api::camera::config::Source>,
+    pub cameras: BTreeMap<String, Transport>,
+    #[serde(skip)]
+    pub camera_inventory: BTreeMap<String, Camera>,
     #[serde(default)]
     pub serial_devices: Vec<SerialDeviceConfig>,
     #[serde(default)]
@@ -86,7 +89,7 @@ pub(crate) struct DeploymentConfig {
     #[serde(default)]
     pub grpc: GrpcConfig,
     #[serde(default)]
-    pub cameras: Option<bello_hardware_api::camera::config::Source>,
+    pub cameras: BTreeMap<String, Transport>,
     #[serde(default)]
     pub bus_transports: HashMap<String, BusTransportConfig>,
     #[serde(default)]
@@ -99,6 +102,8 @@ pub(crate) struct DeploymentConfig {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct HardwareDescription {
+    #[serde(default)]
+    pub cameras: Vec<Declaration>,
     pub robot_description: PathBuf,
     pub logical_buses: Vec<LogicalBusConfig>,
     #[serde(default)]

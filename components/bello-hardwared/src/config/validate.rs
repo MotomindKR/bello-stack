@@ -191,6 +191,10 @@ impl Config {
             simulation: deployment.simulation,
             runtime: deployment.runtime,
             grpc: deployment.grpc,
+            camera_inventory: bello_hardware_api::camera::config::inventory(
+                description.cameras,
+                description_path,
+            )?,
             cameras: deployment.cameras,
             serial_devices,
             imus: description.imus,
