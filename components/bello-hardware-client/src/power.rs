@@ -1,6 +1,7 @@
 use crate::{DeviceStatus, Error};
 use bello_hardware_api as proto;
-use std::collections::BTreeSet;
+pub use proto::power_board_sample::Reading as PowerReading;
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 #[cfg(test)]
@@ -37,10 +38,10 @@ mod tests {
         assert!(snapshot.is_stale(&snapshot.samples[0]));
         assert!(matches!(
             snapshot.samples[0].reading,
-            PowerReading::Battery {
+            PowerReading::Battery(proto::PowerBattery {
                 soc_percent: None,
                 ..
-            }
+            })
         ));
         value.samples.push(sample);
         assert!(PowerBoardSnapshot::decode(value.clone(), &board, 1).is_err());
@@ -58,71 +59,6 @@ pub struct PowerBoard {
     pub stale_timeout: Duration,
     pub sync_period: Duration,
     pub initial_status: Option<DeviceStatus>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct PowerFlags {
-    pub bits: u32,
-    pub active_names: Vec<String>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct VoltageCurrent {
-    pub voltage_v: f64,
-    pub current_a: f64,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum PowerReading {
-    Battery {
-        voltage_v: f64,
-        current_a: f64,
-        soc_percent: Option<f64>,
-    },
-    Gpi {
-        bits: u32,
-        second_bits: Option<u32>,
-    },
-    Iwc {
-        info: PowerFlags,
-        warning: PowerFlags,
-        critical: PowerFlags,
-    },
-    LegacyFault {
-        alarm: PowerFlags,
-        fault: PowerFlags,
-    },
-    Environment {
-        temperature_c: f64,
-        pressure_pa: f64,
-    },
-    LocalRails {
-        rail_20v0: VoltageCurrent,
-        rail_5v0: VoltageCurrent,
-        rail_3v3: VoltageCurrent,
-    },
-    MotorRail(VoltageCurrent),
-    TickCount(u32),
-    Encoder {
-        left_rpm: f64,
-        right_rpm: f64,
-    },
-}
-
-impl PowerReading {
-    pub fn name(&self) -> &'static str {
-        match self {
-            Self::Battery { .. } => "battery",
-            Self::Gpi { .. } => "gpi",
-            Self::Iwc { .. } => "iwc",
-            Self::LegacyFault { .. } => "legacy_fault",
-            Self::Environment { .. } => "environment",
-            Self::LocalRails { .. } => "local_rails",
-            Self::MotorRail(_) => "motor_rail",
-            Self::TickCount(_) => "tick_count",
-            Self::Encoder { .. } => "encoder",
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -162,85 +98,40 @@ impl PowerBoardSnapshot {
         monotonic_ns: u64,
     ) -> Result<Self, Error> {
         let invalid = || Error::Protocol("invalid power board telemetry".into());
-        let rail = |v: Option<proto::PowerVoltageCurrent>| -> Result<VoltageCurrent, Error> {
-            let v = v.ok_or_else(invalid)?;
-            if !v.voltage_v.is_finite() || !v.current_a.is_finite() {
-                return Err(invalid());
-            }
-            Ok(VoltageCurrent {
-                voltage_v: v.voltage_v,
-                current_a: v.current_a,
-            })
-        };
-        let flags = |v: Option<proto::PowerFlags>| -> Result<PowerFlags, Error> {
-            let v = v.ok_or_else(invalid)?;
-            if v.active_names.len() > 32 {
-                return Err(invalid());
-            }
-            Ok(PowerFlags {
-                bits: v.bits,
-                active_names: v.active_names,
-            })
-        };
-        let mut seen = BTreeSet::new();
+        let rail =
+            |v: &proto::PowerVoltageCurrent| v.voltage_v.is_finite() && v.current_a.is_finite();
+        let flags = |v: &proto::PowerFlags| v.active_names.len() <= 32;
+        let mut seen = HashSet::new();
         let mut samples = Vec::new();
         for sample in value.samples {
-            use proto::power_board_sample::Reading as R;
-            let reading = match sample.reading.ok_or_else(invalid)? {
-                R::Battery(v) => {
-                    if !v.voltage_v.is_finite()
-                        || !v.current_a.is_finite()
-                        || v.soc_percent
-                            .is_some_and(|x| !x.is_finite() || !(0.0..=100.0).contains(&x))
-                    {
-                        return Err(invalid());
-                    }
-                    PowerReading::Battery {
-                        voltage_v: v.voltage_v,
-                        current_a: v.current_a,
-                        soc_percent: v.soc_percent,
-                    }
+            let reading = sample.reading.ok_or_else(invalid)?;
+            let valid = match &reading {
+                PowerReading::Battery(v) => {
+                    v.voltage_v.is_finite()
+                        && v.current_a.is_finite()
+                        && v.soc_percent.is_none_or(|x| (0.0..=100.0).contains(&x))
                 }
-                R::Gpi(v) => PowerReading::Gpi {
-                    bits: v.bits,
-                    second_bits: v.second_bits,
-                },
-                R::Iwc(v) => PowerReading::Iwc {
-                    info: flags(v.info)?,
-                    warning: flags(v.warning)?,
-                    critical: flags(v.critical)?,
-                },
-                R::LegacyFault(v) => PowerReading::LegacyFault {
-                    alarm: flags(v.alarm)?,
-                    fault: flags(v.fault)?,
-                },
-                R::Environment(v) => {
-                    if !v.temperature_c.is_finite() || !v.pressure_pa.is_finite() {
-                        return Err(invalid());
-                    }
-                    PowerReading::Environment {
-                        temperature_c: v.temperature_c,
-                        pressure_pa: v.pressure_pa,
-                    }
+                PowerReading::Gpi(_) | PowerReading::TickCount(_) => true,
+                PowerReading::Iwc(v) => {
+                    v.info.as_ref().is_some_and(flags)
+                        && v.warning.as_ref().is_some_and(flags)
+                        && v.critical.as_ref().is_some_and(flags)
                 }
-                R::LocalRails(v) => PowerReading::LocalRails {
-                    rail_20v0: rail(v.rail_20v0)?,
-                    rail_5v0: rail(v.rail_5v0)?,
-                    rail_3v3: rail(v.rail_3v3)?,
-                },
-                R::MotorRail(v) => PowerReading::MotorRail(rail(Some(v))?),
-                R::TickCount(v) => PowerReading::TickCount(v),
-                R::Encoder(v) => {
-                    if !v.left_rpm.is_finite() || !v.right_rpm.is_finite() {
-                        return Err(invalid());
-                    }
-                    PowerReading::Encoder {
-                        left_rpm: v.left_rpm,
-                        right_rpm: v.right_rpm,
-                    }
+                PowerReading::LegacyFault(v) => {
+                    v.alarm.as_ref().is_some_and(flags) && v.fault.as_ref().is_some_and(flags)
                 }
+                PowerReading::Environment(v) => {
+                    v.temperature_c.is_finite() && v.pressure_pa.is_finite()
+                }
+                PowerReading::LocalRails(v) => {
+                    v.rail_20v0.as_ref().is_some_and(rail)
+                        && v.rail_5v0.as_ref().is_some_and(rail)
+                        && v.rail_3v3.as_ref().is_some_and(rail)
+                }
+                PowerReading::MotorRail(v) => rail(v),
+                PowerReading::Encoder(v) => v.left_rpm.is_finite() && v.right_rpm.is_finite(),
             };
-            if !seen.insert(reading.name()) {
+            if !valid || !seen.insert(std::mem::discriminant(&reading)) {
                 return Err(invalid());
             }
             samples.push(PowerSample {

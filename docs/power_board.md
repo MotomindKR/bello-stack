@@ -66,7 +66,11 @@ hardware before relying on a particular update frequency.
 
 Rust `Robot::power_boards()` returns metadata; `Robot::states()` includes latest
 board snapshots. Python `robot.power().read(timeout=1)` returns bounded
-snapshots without acquiring control.
+snapshots without acquiring control. Rust sample readings use the generated
+`PowerReading` variants, such as `PowerReading::Battery(battery)`. Python
+`sample.reading` holds a Python reading object, such as `PowerBattery`, or an
+integer tick count. `PowerBattery.soc_percent` and `PowerGpi.second_bits`
+are `None` when the board omits them.
 
 ## Physical emergency button and damping
 

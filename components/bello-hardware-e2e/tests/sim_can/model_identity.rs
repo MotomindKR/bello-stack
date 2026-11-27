@@ -54,18 +54,12 @@ async fn whole_group_waits_for_matching_motor_models_after_an_unplug() -> Result
         &mut emulator,
     )
     .await?;
-    let lease = client
-        .acquire_lease(
-            "e2e_group",
-            "model-check",
-            LeaseDuration::For(Duration::from_secs(30)),
-        )
-        .await?;
+    let lease = acquire(&client, "e2e_group", "model-check", 30000).await?;
     let wait_inventory =
         async |expected: Option<&str>, detail: &str| -> Result<ListHardwareResponse> {
             timeout(Duration::from_secs(8), async {
                 loop {
-                    let inventory = client.inventory().await?;
+                    let inventory = inventory(&client).await?;
                     if inventory.motors.iter().any(|m| {
                         m.address.as_ref().unwrap().id == 1
                             && m.firmware_version.as_deref() == Some("0.3.0.1")
@@ -90,18 +84,18 @@ async fn whole_group_waits_for_matching_motor_models_after_an_unplug() -> Result
         ),
     ] {
         family.store(response, Ordering::Relaxed);
-        let inventory = wait_inventory(expected, detail).await?;
+        let current = wait_inventory(expected, detail).await?;
         assert_ne!(
-            inventory.motors[1].status.as_ref().unwrap().state,
+            current.motors[1].status.as_ref().unwrap().state,
             DeviceState::Online as i32
         );
-        let error = lease.enable().await.unwrap_err().to_string();
+        let error = enable(&client, &lease).await.unwrap_err().to_string();
         assert!(
             error.contains("e2e_motor_2") && error.contains("RS_03"),
             "{error}"
         );
         assert_eq!(
-            client.inventory().await?.groups[0].state,
+            inventory(&client).await?.groups[0].state,
             GroupState::Idle as i32
         );
         assert_eq!(enables.load(Ordering::Relaxed), 0);
@@ -110,8 +104,8 @@ async fn whole_group_waits_for_matching_motor_models_after_an_unplug() -> Result
     wait_inventory(None, "").await?;
     family.store(3, Ordering::Relaxed);
     wait_inventory(Some("0.3.0.1"), "healthy motor feedback").await?;
-    assert_eq!(lease.enable().await?, EnumValue::Known(GroupState::Damped));
-    lease.disable().await?;
+    assert_eq!(enable(&client, &lease).await?, GroupState::Damped);
+    disable(&client, &lease).await?;
     let before_unplug = enables.load(Ordering::Relaxed);
     assert!(before_unplug >= 2);
 
@@ -119,7 +113,7 @@ async fn whole_group_waits_for_matching_motor_models_after_an_unplug() -> Result
     wait_inventory(None, "").await?;
     family.store(no_reply, Ordering::Relaxed);
     wait_inventory(None, "waiting for firmware identification").await?;
-    assert!(lease.enable().await.is_err());
+    assert!(enable(&client, &lease).await.is_err());
     assert_eq!(enables.load(Ordering::Relaxed), before_unplug);
     bridge.abort();
     Ok(())

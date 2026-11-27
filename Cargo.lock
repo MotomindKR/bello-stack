@@ -246,6 +246,7 @@ name = "bello-hardware-api"
 version = "0.1.0"
 dependencies = [
  "prost",
+ "tokio",
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
@@ -395,6 +396,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-stream",
+ "bello-hardware-api",
  "bello-hardware-client",
  "bello-pose-api",
  "bello-robot-description",

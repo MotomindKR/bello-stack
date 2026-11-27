@@ -1,22 +1,25 @@
 """Blocking Python interface to the Bello hardware daemon."""
 
+from bello_hardware_api.hardware_pb2 import CommandResult, DeviceState, GroupCause, GroupState
+
 from ._inventory import Inventory, MotorGroup
-from .control import CommandPipeline, CommandReceipt, ControlSession
+from .control import CommandReceipt, ControlSession
 from .errors import (
     AcknowledgementError,
     BelloError,
     CleanupError,
+    CommandQueueFullError,
     CommandRejectedError,
     ConnectionError,
     ControlError,
-    ControlRpcError,
+    ControlRequestError,
     InvalidSessionStateError,
     InvalidTargetError,
     InventoryError,
     LeaseLostError,
     ProtocolError,
+    RequestError,
     RobotCleanupError,
-    RpcError,
 )
 from .frames import RobotStateReader
 from .power import (
@@ -30,6 +33,7 @@ from .power import (
     PowerIwc,
     PowerLegacyFault,
     PowerLocalRails,
+    PowerReading,
     PowerSample,
     VoltageCurrent,
 )
@@ -37,13 +41,9 @@ from .robot import Robot
 from .tls import TlsCredentials
 from .types import (
     Bus,
-    CommandResult,
     ControlState,
     CoordinateTarget,
-    DeviceState,
     DeviceStatus,
-    GroupCause,
-    GroupState,
     HardwareStateFrame,
     Imu,
     Motor,
@@ -62,13 +62,13 @@ __all__ = [
     "BelloError",
     "Bus",
     "CleanupError",
-    "CommandPipeline",
+    "CommandQueueFullError",
     "CommandReceipt",
     "CommandRejectedError",
     "CommandResult",
     "ConnectionError",
     "ControlError",
-    "ControlRpcError",
+    "ControlRequestError",
     "ControlSession",
     "ControlState",
     "CoordinateTarget",
@@ -97,13 +97,14 @@ __all__ = [
     "PowerIwc",
     "PowerLegacyFault",
     "PowerLocalRails",
+    "PowerReading",
     "PowerSample",
     "ProtocolError",
     "Quaternion",
+    "RequestError",
     "Robot",
     "RobotCleanupError",
     "RobotStateReader",
-    "RpcError",
     "SerialDevice",
     "StateFrameGroup",
     "StateFrameImu",

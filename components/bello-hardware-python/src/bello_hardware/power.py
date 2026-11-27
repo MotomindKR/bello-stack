@@ -8,8 +8,8 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 import grpc  # type: ignore[import-untyped]
+from bello_hardware_api import hardware_pb2 as proto
 
-from ._generated import hardware_pb2 as proto
 from ._inventory import _optional_status
 from .errors import ProtocolError, rpc_error
 from .types import DeviceStatus
@@ -187,9 +187,10 @@ class PowerBoardReader:
     def __init__(self, robot: Robot, boards: tuple[str, ...]) -> None:
         self._robot = robot
         known = {b.name: b for b in robot.inventory.power_boards}
-        if len(set(boards)) != len(boards) or set(boards) - known.keys():
-            raise ValueError("unknown or duplicate power board selector")
-        self._boards = {n: known[n] for n in boards} if boards else known
+        try:
+            self._boards = {name: known[name] for name in boards} if boards else known
+        except KeyError as error:
+            raise ValueError(f"unknown power board {error}") from error
 
     def read(self, timeout: float | None = None) -> tuple[PowerBoardSnapshot, ...]:
         self._robot._ensure_open()
@@ -199,15 +200,16 @@ class PowerBoardReader:
         if not self._boards:
             return ()
         started = time.monotonic()
-        stream = self._robot._stub.WatchTelemetry(
-            proto.WatchTelemetryRequest(
-                include_power_boards=True,
-                power_boards=tuple(self._boards),
-            ),
-            timeout=timeout,
-        )
+        stream = None
         results: dict[str, PowerBoardSnapshot] = {}
         try:
+            stream = self._robot._stub.WatchTelemetry(
+                proto.WatchTelemetryRequest(
+                    include_power_boards=True,
+                    power_boards=tuple(self._boards),
+                ),
+                timeout=timeout,
+            )
             for event in stream:
                 if event.WhichOneof("payload") != "power_board":
                     continue
@@ -238,5 +240,6 @@ class PowerBoardReader:
         except grpc.RpcError as error:
             raise rpc_error("power board telemetry", error) from error
         finally:
-            stream.cancel()
+            if stream is not None:
+                stream.cancel()
         raise ProtocolError("power telemetry stream ended before all boards responded")

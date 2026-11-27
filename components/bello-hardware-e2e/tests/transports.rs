@@ -5,17 +5,19 @@ mod config;
 #[path = "support/process.rs"]
 mod process;
 
+#[path = "support/python.rs"]
+mod python;
+
 #[path = "support/sim.rs"]
 mod sim;
 
 use std::fs;
 use std::net::{SocketAddr, TcpListener};
 use std::path::Path;
-use std::process::Command;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use bello_hardware_client::raw::HardwareClient;
+use bello_hardware_client::Robot;
 use bello_hardware_client::{ConnectOptions, TlsOptions};
 use process::ManagedProcess;
 use rcgen::{
@@ -49,24 +51,18 @@ async fn daemon_accepts_server_authenticated_tls() -> Result<()> {
 
     let options = ConnectOptions::new(format!("https://localhost:{}", address.port()))
         .tls(TlsOptions::new().ca_certificate(pki.ca_certificate.clone()));
-    let client = connect(options, &mut daemon).await?;
-    client
-        .inventory()
+    connect(options, &mut daemon)
         .await
         .context("reading inventory over TLS")?;
     #[cfg(unix)]
     {
-        let local = connect(
+        connect(
             ConnectOptions::new(format!("unix://{}", socket.display())),
             &mut daemon,
         )
-        .await?;
-        local
-            .inventory()
-            .await
-            .context("Unix listener must not require TCP TLS")?;
+        .await
+        .context("Unix listener must not require TCP TLS")?;
     }
-    drop(client);
     daemon.stop();
     Ok(())
 }
@@ -88,15 +84,7 @@ async fn daemon_requires_a_trusted_client_certificate_for_mtls() -> Result<()> {
     let mut daemon = start_daemon(&config)?;
     let endpoint = format!("https://localhost:{}", address.port());
 
-    let unauthenticated = ConnectOptions::new(endpoint.clone())
-        .connect_timeout(Duration::from_millis(300))
-        .tls(TlsOptions::new().ca_certificate(pki.ca_certificate.clone()));
-    let unauthenticated = HardwareClient::connect_with(unauthenticated).await?;
-    let rejected = timeout(Duration::from_secs(1), unauthenticated.inventory()).await;
-    assert!(!matches!(rejected, Ok(Ok(_))));
-    drop(unauthenticated);
-
-    let authenticated = ConnectOptions::new(endpoint).tls(
+    let authenticated = ConnectOptions::new(&endpoint).tls(
         TlsOptions::new()
             .ca_certificate(pki.ca_certificate.clone())
             .identity(
@@ -104,13 +92,16 @@ async fn daemon_requires_a_trusted_client_certificate_for_mtls() -> Result<()> {
                 pki.client_private_key.clone(),
             ),
     );
-    let client = connect(authenticated, &mut daemon).await?;
-    client
-        .inventory()
+    connect(authenticated, &mut daemon)
         .await
         .context("reading inventory over mTLS")?;
-    run_python_mtls(&format!("https://localhost:{}", address.port()), &paths).await?;
-    drop(client);
+    let unauthenticated = ConnectOptions::new(&endpoint)
+        .connect_timeout(Duration::from_millis(300))
+        .tls(TlsOptions::new().ca_certificate(pki.ca_certificate.clone()));
+    let rejected = timeout(Duration::from_secs(1), Robot::connect(unauthenticated)).await;
+    assert!(matches!(rejected, Ok(Err(_))));
+
+    run_python_mtls(&endpoint, &paths).await?;
     daemon.stop();
     Ok(())
 }
@@ -134,16 +125,13 @@ async fn daemon_accepts_unix_connections_and_owns_socket_lifecycle() -> Result<(
     let mut daemon = start_daemon(&config)?;
     let endpoint = format!("unix://{}", socket.display());
 
-    let client = connect(ConnectOptions::new(endpoint), &mut daemon).await?;
-    client
-        .inventory()
+    connect(ConnectOptions::new(&endpoint), &mut daemon)
         .await
         .context("reading inventory over a Unix socket")?;
-    run_python_unix(&format!("unix://{}", socket.display())).await?;
+    run_python_unix(&endpoint).await?;
     let mode = fs::metadata(&socket)?.permissions().mode() & 0o777;
     assert_eq!(mode, 0o600);
 
-    drop(client);
     daemon.stop();
     assert!(!socket.exists(), "daemon left its Unix socket behind");
     Ok(())
@@ -152,8 +140,6 @@ async fn daemon_accepts_unix_connections_and_owns_socket_lifecycle() -> Result<(
 #[cfg(unix)]
 #[tokio::test]
 async fn tcp_and_unix_share_inventory_and_control_leases() -> Result<()> {
-    use bello_hardware_client::raw::LeaseDuration;
-
     let directory = tempfile::tempdir()?;
     let socket = directory.path().join("hardwared.sock");
     let address = available_loopback_address()?;
@@ -174,30 +160,17 @@ async fn tcp_and_unix_share_inventory_and_control_leases() -> Result<()> {
         &mut daemon,
     )
     .await?;
-    let tcp_inventory = tcp.inventory().await?;
-    let unix_inventory = unix.inventory().await?;
-    let addresses = |motors: Vec<bello_hardware_api::MotorInfo>| {
-        motors
-            .into_iter()
-            .map(|motor| (motor.name, motor.address, motor.group))
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(
-        addresses(tcp_inventory.motors),
-        addresses(unix_inventory.motors)
-    );
-    let mut lease = tcp
-        .acquire_lease("e2e_group", "tcp", LeaseDuration::ServerDefault)
-        .await?;
-    assert!(
-        unix.acquire_lease("e2e_group", "unix", LeaseDuration::ServerDefault)
-            .await
-            .is_err()
-    );
+    fn addresses(robot: &Robot) -> Vec<(&str, &str, u32, &str)> {
+        robot
+            .motors()
+            .map(|motor| (motor.name(), motor.bus(), motor.id(), motor.group()))
+            .collect()
+    }
+    assert_eq!(addresses(&tcp), addresses(&unix));
+    let lease = tcp.group("e2e_group")?.control("tcp").await?;
+    assert!(unix.group("e2e_group")?.control("unix").await.is_err());
     lease.release().await?;
-    let mut lease = unix
-        .acquire_lease("e2e_group", "unix", LeaseDuration::ServerDefault)
-        .await?;
+    let lease = unix.group("e2e_group")?.control("unix").await?;
     lease.release().await?;
     drop(tcp);
     drop(unix);
@@ -251,11 +224,11 @@ fn start_daemon(config: &Path) -> Result<ManagedProcess> {
     )
 }
 
-async fn connect(options: ConnectOptions, daemon: &mut ManagedProcess) -> Result<HardwareClient> {
+async fn connect(options: ConnectOptions, daemon: &mut ManagedProcess) -> Result<Robot> {
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {
         daemon.ensure_running()?;
-        match HardwareClient::connect_with(options.clone()).await {
+        match Robot::connect(options.clone()).await {
             Ok(client) => return Ok(client),
             Err(error) if Instant::now() < deadline => {
                 let _ = error;
@@ -277,11 +250,8 @@ fn available_loopback_address() -> Result<SocketAddr> {
 async fn run_python_unix(endpoint: &str) -> Result<()> {
     let endpoint = endpoint.to_owned();
     tokio::task::spawn_blocking(move || {
-        let package = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent().expect("components parent").join("bello-hardware-python");
-        let output = Command::new("python3")
-            .args(["-c", "import sys; from bello_hardware import Robot; robot = Robot.connect(sys.argv[1], timeout=2.0); assert 'e2e_group' in robot.group_names; robot.close()", &endpoint])
-            .env("PYTHONPATH", package.join("src"))
+        let output = python::command()?
+            .args(["-c", "import sys; from bello_hardware import Robot; robot = Robot.connect(sys.argv[1], timeout=2.0); assert 'e2e_group' in robot.inventory.group_names; robot.close()", &endpoint])
             .output().context("running Python Unix smoke client")?;
         if !output.status.success() {
             anyhow::bail!("Python Unix smoke client failed: {}", String::from_utf8_lossy(&output.stderr));
@@ -296,20 +266,14 @@ async fn run_python_mtls(endpoint: &str, paths: &TestPkiPaths) -> Result<()> {
     let certificate = paths.client_certificate.clone();
     let private_key = paths.client_private_key.clone();
     tokio::task::spawn_blocking(move || {
-        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let package = manifest
-            .parent()
-            .expect("E2E component must have a components parent")
-            .join("bello-hardware-python");
-        let output = Command::new("python3")
-            .arg(package.join("tests/tls_smoke.py"))
+        let output = python::command()?
+            .arg(python::sdk_package().join("tests/tls_smoke.py"))
             .args([
                 endpoint,
                 ca.display().to_string(),
                 certificate.display().to_string(),
                 private_key.display().to_string(),
             ])
-            .env("PYTHONPATH", package.join("src"))
             .output()
             .context("running the Python mTLS smoke client")?;
         if !output.status.success() {

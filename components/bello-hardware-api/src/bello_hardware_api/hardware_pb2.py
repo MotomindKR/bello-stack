@@ -28,7 +28,7 @@ DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0ehardware.proto
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'hardware_pb2', _globals)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, __name__, _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_MOTORCONFIGURATIONKIND']._serialized_start=8530

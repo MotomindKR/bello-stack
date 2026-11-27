@@ -3,15 +3,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use bello_hardware_client::raw::proto::hardware_service_server::{
-    HardwareService, HardwareServiceServer,
-};
-use bello_hardware_client::raw::proto::watch_telemetry_response::Payload;
-use bello_hardware_client::raw::proto::*;
-use bello_hardware_client::raw::{
-    CommandStreamOptions, CommandValidity, EnumValue, HardwareClient, LeaseDuration, LeaseStatus,
-    TelemetryFilter,
-};
+use bello_hardware_api::hardware_service_server::{HardwareService, HardwareServiceServer};
+use bello_hardware_api::watch_telemetry_response::Payload;
+use bello_hardware_api::*;
+use bello_hardware_client::EnumValue;
 use bello_hardware_client::{ControlOptions, ControlState, CoordinateTarget, Error, Robot};
 use tokio::net::TcpListener;
 use tokio::sync::{Notify, oneshot};
@@ -38,7 +33,10 @@ struct FakeSettings {
     renew_in_flight: AtomicBool,
     fail_renew: AtomicBool,
     fail_start: AtomicBool,
+    close_stream_during_start: AtomicBool,
     reject_commands: AtomicBool,
+    wrong_sequence: AtomicBool,
+    revoke_commands: AtomicBool,
     next_acknowledgement_pause: Mutex<Option<AcknowledgementPause>>,
     fail_release: AtomicBool,
     faulted: AtomicBool,
@@ -56,7 +54,10 @@ impl Default for FakeHardware {
                 renew_in_flight: AtomicBool::new(false),
                 fail_renew: AtomicBool::new(false),
                 fail_start: AtomicBool::new(false),
+                close_stream_during_start: AtomicBool::new(false),
                 reject_commands: AtomicBool::new(false),
+                wrong_sequence: AtomicBool::new(false),
+                revoke_commands: AtomicBool::new(false),
                 next_acknowledgement_pause: Mutex::new(None),
                 fail_release: AtomicBool::new(false),
                 faulted: AtomicBool::new(false),
@@ -382,6 +383,13 @@ impl HardwareService for FakeHardware {
             .expect("fake state mutex poisoned")
             .starts
             .push(request);
+        if self
+            .settings
+            .close_stream_during_start
+            .load(Ordering::Relaxed)
+        {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
         if self.settings.fail_start.load(Ordering::Relaxed) {
             return Err(Status::unavailable("start response unavailable"));
         }
@@ -435,6 +443,13 @@ impl HardwareService for FakeHardware {
         &self,
         request: Request<Streaming<StreamCommandsRequest>>,
     ) -> Result<Response<Self::StreamCommandsStream>, Status> {
+        if self
+            .settings
+            .close_stream_during_start
+            .load(Ordering::Relaxed)
+        {
+            return Ok(Response::new(Box::pin(tokio_stream::empty())));
+        }
         let mut requests = request.into_inner();
         let state = Arc::clone(&self.state);
         let settings = Arc::clone(&self.settings);
@@ -450,14 +465,11 @@ impl HardwareService for FakeHardware {
                     let _ = pause.received.send(());
                     let _ = pause.resume.await;
                 }
-                let lease_lost = command
-                    .commands
-                    .iter()
-                    .any(|motor| motor.motor_name == "lease_lost");
+                let lease_lost = settings.revoke_commands.load(Ordering::Relaxed);
                 let rejected = settings.reject_commands.load(Ordering::Relaxed);
                 yield StreamCommandsResponse {
                     group: command.group,
-                    sequence: command.sequence,
+                    sequence: command.sequence + u64::from(settings.wrong_sequence.load(Ordering::Relaxed)),
                     result: if lease_lost {
                         CommandResult::LeaseLost as i32
                     } else if rejected {
@@ -533,509 +545,9 @@ impl FakeServer {
 }
 
 #[tokio::test]
-async fn canonical_workflow_binds_group_token_sequences_and_filters() {
-    let server = FakeServer::start().await;
-    let client = HardwareClient::connect(server.endpoint.clone())
-        .await
-        .expect("connect client");
-
-    let inventory = client.inventory().await.expect("read inventory");
-    assert_eq!(inventory.groups[0].name, GROUP);
-
-    let filter = TelemetryFilter::default()
-        .selected_groups([GROUP])
-        .include_motors(true)
-        .include_health(true)
-        .include_command_policy_events(true);
-    let mut telemetry = client.watch(filter).await.expect("watch telemetry");
-    let event = telemetry
-        .message()
-        .await
-        .expect("receive telemetry")
-        .expect("telemetry event");
-    assert_eq!(event.monotonic_ns, 42);
-    assert!(matches!(event.payload, Payload::Group(group) if group.group == GROUP));
-    let event = telemetry
-        .message()
-        .await
-        .expect("receive motor telemetry")
-        .expect("motor telemetry event");
-    assert_eq!(event.monotonic_ns, 43);
-    assert!(matches!(event.payload, Payload::Motor(motor) if motor.motor_name == "motor_a"));
-    let event = telemetry
-        .message()
-        .await
-        .expect("receive health telemetry")
-        .expect("health telemetry event");
-    assert!(matches!(event.payload, Payload::Health(health) if health.component == "can/test_bus"));
-    let event = telemetry
-        .message()
-        .await
-        .expect("receive command-policy telemetry")
-        .expect("command-policy telemetry event");
-    assert!(
-        matches!(event.payload, Payload::CommandPolicy(policy) if policy.motor_name == "motor_a")
-    );
-    assert!(telemetry.message().await.expect("telemetry EOF").is_none());
-
-    let mut lease = client
-        .acquire_lease(
-            GROUP,
-            "integration-test",
-            LeaseDuration::For(Duration::from_millis(1500)),
-        )
-        .await
-        .expect("acquire lease");
-    assert_eq!(lease.status(), LeaseStatus::Active);
-    assert!(!format!("{lease:?}").contains(TOKEN));
-    assert_eq!(
-        lease.enable().await.expect("enable group"),
-        EnumValue::Known(GroupState::Damped)
-    );
-    assert_eq!(
-        lease
-            .start(
-                CommandValidity::For(Duration::from_millis(100)),
-                vec![MotorCommand {
-                    motor_name: "motor_a".into(),
-                    kp: 10.0,
-                    kd: 1.0,
-                    ..Default::default()
-                }],
-            )
-            .await
-            .expect("start control"),
-        EnumValue::Known(GroupState::Running)
-    );
-
-    let stream = lease
-        .open_command_stream(CommandStreamOptions::default().queue_capacity(2))
-        .await
-        .expect("open command stream");
-    assert!(matches!(
-        lease
-            .open_command_stream(CommandStreamOptions::default())
-            .await,
-        Err(Error::CommandStreamAlreadyOpen)
-    ));
-    let (mut commands, mut acknowledgements) = stream.split();
-    let sequence = commands
-        .send(
-            CommandValidity::For(Duration::from_millis(100)),
-            vec![MotorCommand {
-                motor_name: "motor_a".into(),
-                kp: 10.0,
-                kd: 1.0,
-                ..Default::default()
-            }],
-        )
-        .await
-        .expect("send command");
-    assert_eq!(sequence, 1);
-    let acknowledgement = acknowledgements
-        .message()
-        .await
-        .expect("receive acknowledgement")
-        .expect("command acknowledgement")
-        .require_accepted()
-        .expect("accepted command");
-    assert_eq!(acknowledgement.sequence, 1);
-    let second_sequence = commands
-        .send(
-            CommandValidity::For(Duration::from_millis(100)),
-            vec![MotorCommand {
-                motor_name: "motor_a".into(),
-                ..Default::default()
-            }],
-        )
-        .await
-        .expect("send second command");
-    assert_eq!(second_sequence, 2);
-    assert_eq!(
-        acknowledgements
-            .message()
-            .await
-            .expect("receive second acknowledgement")
-            .expect("second command acknowledgement")
-            .require_accepted()
-            .expect("accepted second command")
-            .sequence,
-        2
-    );
-
-    let original_deadline = lease.deadline();
-    let shortened_deadline = lease
-        .renew(LeaseDuration::For(Duration::from_millis(500)))
-        .await
-        .expect("renew lease");
-    assert!(shortened_deadline.expires_at() < original_deadline.expires_at());
-    assert_eq!(
-        lease.stop().await.expect("stop control"),
-        EnumValue::Known(GroupState::Damped)
-    );
-    assert_eq!(
-        lease.disable().await.expect("disable group"),
-        EnumValue::Known(GroupState::Idle)
-    );
-    assert_eq!(
-        lease.release().await.expect("release lease"),
-        EnumValue::Known(GroupState::Idle)
-    );
-    assert!(matches!(
-        commands
-            .send(CommandValidity::GroupDefault, Vec::new())
-            .await,
-        Err(Error::LeaseInactive(LeaseStatus::Released))
-    ));
-
-    drop(commands);
-    drop(acknowledgements);
-    drop(telemetry);
-    drop(client);
-    {
-        let recorded = server.state.lock().expect("fake state mutex poisoned");
-        assert_eq!(recorded.acquired.len(), 1);
-        assert_eq!(recorded.acquired[0].group, GROUP);
-        assert_eq!(recorded.acquired[0].requested_duration_ms, 1500);
-        assert_eq!(recorded.renewed[0].token, TOKEN);
-        assert_eq!(recorded.commands.len(), 2);
-        assert_eq!(recorded.commands[0].group, GROUP);
-        assert_eq!(recorded.commands[0].lease_token, TOKEN);
-        assert_eq!(recorded.commands[0].sequence, 1);
-        assert_eq!(recorded.commands[0].valid_for_ms, 100);
-        assert_eq!(recorded.commands[0].commands[0].motor_name, "motor_a");
-        assert_eq!(recorded.commands[1].sequence, 2);
-        assert_eq!(recorded.released[0].token, TOKEN);
-        assert_eq!(
-            recorded
-                .lifecycle
-                .iter()
-                .map(|call| call.action)
-                .collect::<Vec<_>>(),
-            ["enable", "start", "stop", "disable"]
-        );
-        assert_eq!(recorded.telemetry[0].groups, [GROUP]);
-        assert!(recorded.telemetry[0].include_motors);
-        assert!(recorded.telemetry[0].include_health);
-    }
-    server.stop().await;
-}
-
-#[tokio::test]
-async fn dropping_a_lease_stops_bound_senders_without_hidden_release() {
-    let server = FakeServer::start().await;
-    let client = HardwareClient::connect(server.endpoint.clone())
-        .await
-        .expect("connect client");
-    let lease = client
-        .acquire_lease(GROUP, "drop-test", LeaseDuration::ServerDefault)
-        .await
-        .expect("acquire lease");
-    let (mut commands, responses) = lease
-        .open_command_stream(CommandStreamOptions::default())
-        .await
-        .expect("open command stream")
-        .split();
-
-    drop(lease);
-    assert!(matches!(
-        commands
-            .send(CommandValidity::GroupDefault, Vec::new())
-            .await,
-        Err(Error::LeaseInactive(LeaseStatus::Dropped))
-    ));
-    drop(commands);
-    drop(responses);
-    drop(client);
-    assert!(
-        server
-            .state
-            .lock()
-            .expect("fake state mutex poisoned")
-            .released
-            .is_empty()
-    );
-    server.stop().await;
-}
-
-#[tokio::test]
-async fn successful_in_flight_renewal_can_restore_a_locally_expired_deadline() {
-    let server = FakeServer::start().await;
-    server
-        .settings
-        .acquire_expires_ms
-        .store(20, Ordering::Relaxed);
-    server.settings.renew_delay_ms.store(60, Ordering::Relaxed);
-    let client = HardwareClient::connect(server.endpoint.clone())
-        .await
-        .expect("connect client");
-    let mut lease = client
-        .acquire_lease(GROUP, "renew-race", LeaseDuration::ServerDefault)
-        .await
-        .expect("acquire lease");
-
-    let renewal = lease.renew(LeaseDuration::For(Duration::from_secs(1)));
-    let observe_expiry = async {
-        tokio::time::sleep(Duration::from_millis(35)).await;
-        assert_eq!(lease.status(), LeaseStatus::Expired);
-    };
-    let (renewed, ()) = tokio::join!(renewal, observe_expiry);
-    assert!(renewed.expect("complete renewal").remaining() > Duration::from_millis(800));
-    assert_eq!(lease.status(), LeaseStatus::Active);
-    lease.release().await.expect("release renewed lease");
-
-    drop(lease);
-    drop(client);
-    server.stop().await;
-}
-
-#[tokio::test]
-async fn locally_expired_lease_still_allows_best_effort_cleanup() {
-    let server = FakeServer::start().await;
-    server
-        .settings
-        .acquire_expires_ms
-        .store(10, Ordering::Relaxed);
-    let client = HardwareClient::connect(server.endpoint.clone())
-        .await
-        .expect("connect client");
-    let mut lease = client
-        .acquire_lease(GROUP, "cleanup", LeaseDuration::ServerDefault)
-        .await
-        .expect("acquire lease");
-    tokio::time::sleep(Duration::from_millis(15)).await;
-    assert_eq!(lease.status(), LeaseStatus::Expired);
-
-    assert_eq!(
-        lease.stop().await.expect("best-effort stop"),
-        EnumValue::Known(GroupState::Damped)
-    );
-    assert_eq!(
-        lease.disable().await.expect("best-effort disable"),
-        EnumValue::Known(GroupState::Idle)
-    );
-    assert_eq!(
-        lease.release().await.expect("best-effort release"),
-        EnumValue::Known(GroupState::Idle)
-    );
-
-    drop(lease);
-    drop(client);
-    server.stop().await;
-}
-
-#[tokio::test]
-async fn lease_lost_acknowledgement_invalidates_the_lease_and_sender() {
-    let server = FakeServer::start().await;
-    let client = HardwareClient::connect(server.endpoint.clone())
-        .await
-        .expect("connect client");
-    let lease = client
-        .acquire_lease(GROUP, "lease-lost", LeaseDuration::ServerDefault)
-        .await
-        .expect("acquire lease");
-    let (mut commands, mut responses) = lease
-        .open_command_stream(CommandStreamOptions::default())
-        .await
-        .expect("open command stream")
-        .split();
-    commands
-        .send(
-            CommandValidity::GroupDefault,
-            vec![MotorCommand {
-                motor_name: "lease_lost".into(),
-                ..Default::default()
-            }],
-        )
-        .await
-        .expect("send command");
-    let acknowledgement = responses
-        .message()
-        .await
-        .expect("receive acknowledgement")
-        .expect("lease-lost acknowledgement");
-    assert_eq!(
-        acknowledgement.result,
-        EnumValue::Known(CommandResult::LeaseLost)
-    );
-    assert_eq!(lease.status(), LeaseStatus::Lost);
-    assert!(matches!(
-        commands
-            .send(CommandValidity::GroupDefault, Vec::new())
-            .await,
-        Err(Error::LeaseInactive(LeaseStatus::Lost))
-    ));
-
-    drop(commands);
-    drop(responses);
-    drop(lease);
-    drop(client);
-    server.stop().await;
-}
-
-#[tokio::test]
-async fn successful_release_is_authoritative_over_a_lease_lost_acknowledgement() {
-    let server = FakeServer::start().await;
-    let client = HardwareClient::connect(server.endpoint.clone())
-        .await
-        .expect("connect client");
-    let mut lease = client
-        .acquire_lease(GROUP, "release-ack-race", LeaseDuration::ServerDefault)
-        .await
-        .expect("acquire lease");
-    let (mut commands, mut responses) = lease
-        .open_command_stream(CommandStreamOptions::default())
-        .await
-        .expect("open command stream")
-        .split();
-    commands
-        .send(
-            CommandValidity::GroupDefault,
-            vec![MotorCommand {
-                motor_name: "lease_lost".into(),
-                ..Default::default()
-            }],
-        )
-        .await
-        .expect("send command");
-
-    let (release, acknowledgement) = tokio::join!(lease.release(), responses.message());
-    assert_eq!(
-        release.expect("release lease"),
-        EnumValue::Known(GroupState::Idle)
-    );
-    assert_eq!(
-        acknowledgement
-            .expect("receive acknowledgement")
-            .expect("lease-lost acknowledgement")
-            .result,
-        EnumValue::Known(CommandResult::LeaseLost)
-    );
-    assert_eq!(lease.status(), LeaseStatus::Released);
-
-    drop(commands);
-    drop(responses);
-    drop(lease);
-    drop(client);
-    server.stop().await;
-}
-
-#[tokio::test]
-async fn failed_release_is_terminal_locally() {
-    let server = FakeServer::start().await;
-    server.settings.fail_release.store(true, Ordering::Relaxed);
-    let client = HardwareClient::connect(server.endpoint.clone())
-        .await
-        .expect("connect client");
-    let mut lease = client
-        .acquire_lease(GROUP, "release-failure", LeaseDuration::ServerDefault)
-        .await
-        .expect("acquire lease");
-
-    let error = lease.release().await.expect_err("release should fail");
-    assert_eq!(
-        error.rpc_status().map(Status::code),
-        Some(tonic::Code::FailedPrecondition)
-    );
-    assert_eq!(lease.status(), LeaseStatus::Lost);
-    assert!(matches!(
-        lease.enable().await,
-        Err(Error::LeaseInactive(LeaseStatus::Lost))
-    ));
-
-    drop(lease);
-    drop(client);
-    server.stop().await;
-}
-
-#[tokio::test]
-async fn release_waits_for_an_in_flight_renewal() {
-    let server = FakeServer::start().await;
-    server.settings.renew_delay_ms.store(60, Ordering::Relaxed);
-    let client = HardwareClient::connect(server.endpoint.clone())
-        .await
-        .expect("connect client");
-    let mut lease = client
-        .acquire_lease(GROUP, "renew-release", LeaseDuration::ServerDefault)
-        .await
-        .expect("acquire lease");
-    let renewer = lease.renewer();
-    let renewal = tokio::spawn(async move {
-        renewer
-            .renew(LeaseDuration::For(Duration::from_secs(1)))
-            .await
-    });
-    server.settings.renew_started.notified().await;
-
-    assert_eq!(
-        lease.release().await.expect("release after renewal"),
-        EnumValue::Known(GroupState::Idle)
-    );
-    renewal
-        .await
-        .expect("join renewal")
-        .expect("complete renewal");
-    assert_eq!(lease.status(), LeaseStatus::Released);
-
-    drop(lease);
-    drop(client);
-    server.stop().await;
-}
-
-#[tokio::test]
-async fn reopening_a_command_stream_keeps_the_lease_sequence() {
-    let server = FakeServer::start().await;
-    let client = HardwareClient::connect(server.endpoint.clone())
-        .await
-        .expect("connect client");
-    let lease = client
-        .acquire_lease(GROUP, "reopen", LeaseDuration::ServerDefault)
-        .await
-        .expect("acquire lease");
-
-    let mut first = lease
-        .open_command_stream(CommandStreamOptions::default())
-        .await
-        .expect("open first stream");
-    assert_eq!(
-        first
-            .send(CommandValidity::GroupDefault, Vec::new())
-            .await
-            .expect("send first command"),
-        1
-    );
-    first
-        .message()
-        .await
-        .expect("first acknowledgement")
-        .expect("first acknowledgement value");
-    drop(first);
-
-    let mut second = lease
-        .open_command_stream(CommandStreamOptions::default())
-        .await
-        .expect("open replacement stream");
-    assert_eq!(
-        second
-            .send(CommandValidity::GroupDefault, Vec::new())
-            .await
-            .expect("send second command"),
-        2
-    );
-
-    drop(second);
-    drop(lease);
-    drop(client);
-    server.stop().await;
-}
-
-#[tokio::test]
 async fn ergonomic_robot_api_hides_lease_stream_and_acknowledgement_workflow() {
     let server = FakeServer::start().await;
-    let raw = HardwareClient::connect(server.endpoint.clone())
-        .await
-        .expect("connect client");
-    let robot = Robot::from_hardware_client(raw)
+    let robot = Robot::connect(server.endpoint.clone())
         .await
         .expect("load robot inventory");
     let group = robot.group(GROUP).expect("resolve group");
@@ -1044,50 +556,38 @@ async fn ergonomic_robot_api_hides_lease_stream_and_acknowledgement_workflow() {
         ["coordinate_a"]
     );
     let bus = robot.buses().next().expect("configured bus");
-    assert_eq!(bus.name(), "test_bus");
-    assert_eq!(bus.transport(), "socketcan:vcan-test");
-    assert_eq!(bus.host_id(), 127);
+    assert_eq!(bus.name, "test_bus");
+    assert_eq!(bus.transport, "socketcan:vcan-test");
+    assert_eq!(bus.host_id, 127);
     assert_eq!(
-        bus.initial_status().map(|status| status.state()),
+        bus.status.as_ref().map(|status| status.state()),
         Some(bello_hardware_client::DeviceState::Online)
     );
     let serial = robot
         .serial_devices()
         .next()
         .expect("configured serial device");
-    assert_eq!(serial.name(), "test_serial");
-    assert_eq!(serial.port(), "/dev/ttyTEST0");
-    assert_eq!(serial.baud_rate(), 921_600);
+    assert_eq!(serial.name, "test_serial");
+    assert_eq!(serial.port, "/dev/ttyTEST0");
+    assert_eq!(serial.baud_rate, 921_600);
     let imu = robot.imus().next().expect("configured IMU");
-    assert_eq!(imu.name(), "test_imu");
-    assert_eq!(imu.serial_device(), "test_serial");
-    assert_eq!(imu.source_frame(), "imu_sensor_link");
-    assert_eq!(imu.output_frame(), "imu_link");
+    assert_eq!(imu.name, "test_imu");
+    assert_eq!(imu.serial_device, "test_serial");
+    assert_eq!(imu.source_frame, "imu_sensor_link");
+    assert_eq!(imu.output_frame, "imu_link");
 
     let initial = group
-        .frame()
-        .coordinate(
-            "coordinate_a",
-            CoordinateTarget::position(0.0).gains(20.0, 1.0),
-        )
-        .expect("assign initial target")
-        .build()
+        .frame([("coordinate_a", CoordinateTarget::position(0.0, 20.0, 1.0))])
         .expect("build initial frame");
     let next = group
-        .frame()
-        .coordinate(
-            "coordinate_a",
-            CoordinateTarget::position(0.1).gains(20.0, 1.0),
-        )
-        .expect("assign next target")
-        .build()
+        .frame([("coordinate_a", CoordinateTarget::position(0.1, 20.0, 1.0))])
         .expect("build next frame");
 
     let mut control = group
-        .control_with(
+        .control(
             ControlOptions::new("ergonomic-test")
                 .lease_duration(Duration::from_secs(1))
-                .command_validity(Duration::from_millis(100)),
+                .command_validity(Duration::from_micros(1_500)),
         )
         .await
         .expect("acquire control");
@@ -1099,7 +599,7 @@ async fn ergonomic_robot_api_hides_lease_stream_and_acknowledgement_workflow() {
         let recorded = server.state.lock().expect("fake state mutex poisoned");
         assert_eq!(recorded.starts.len(), 1);
         assert_eq!(recorded.starts[0].commands[0].motor_name, "motor_a");
-        assert_eq!(recorded.starts[0].valid_for_ms, 100);
+        assert_eq!(recorded.starts[0].valid_for_ms, 2);
         assert_eq!(recorded.commands.len(), 1);
         assert_eq!(recorded.commands[0].commands[0].motor_name, "motor_a");
         assert_eq!(
@@ -1117,12 +617,37 @@ async fn ergonomic_robot_api_hides_lease_stream_and_acknowledgement_workflow() {
 }
 
 #[tokio::test]
+async fn refreshing_inventory_updates_new_groups_and_preserves_the_last_successful_snapshot() {
+    let server = FakeServer::start().await;
+    let mut robot = Robot::connect(&server.endpoint).await.unwrap();
+    let original = robot.group(GROUP).unwrap();
+    server.settings.faulted.store(true, Ordering::Relaxed);
+
+    robot.refresh_inventory().await.unwrap();
+    assert_eq!(original.initial_state().known(), Some(GroupState::Idle));
+    assert_eq!(
+        robot.group(GROUP).unwrap().initial_state().known(),
+        Some(GroupState::Fault)
+    );
+
+    server.stop().await;
+    assert!(robot.refresh_inventory().await.is_err());
+    assert_eq!(
+        robot.group(GROUP).unwrap().initial_state().known(),
+        Some(GroupState::Fault)
+    );
+}
+
+#[tokio::test]
 async fn ergonomic_state_stream_aggregates_events_without_protobuf_matching() {
     let server = FakeServer::start().await;
     let robot = Robot::connect(server.endpoint.clone())
         .await
         .expect("connect robot");
-    let mut states = robot.states().await.expect("open robot state stream");
+    let mut states = robot
+        .states(Default::default())
+        .await
+        .expect("open robot state stream");
     let state = states
         .changed()
         .await
@@ -1130,7 +655,10 @@ async fn ergonomic_state_stream_aggregates_events_without_protobuf_matching() {
         .expect("state event");
     let group = state.group(GROUP).expect("aggregated group state");
     assert_eq!(group.monotonic_ns, 42);
-    assert_eq!(group.state, bello_hardware_client::GroupState::Idle);
+    assert_eq!(
+        group.state,
+        EnumValue::Known(bello_hardware_client::GroupState::Idle)
+    );
     assert!(matches!(
         state.last_change(),
         Some(bello_hardware_client::RobotStateChange::Group(changed))
@@ -1173,7 +701,9 @@ async fn ergonomic_state_stream_aggregates_events_without_protobuf_matching() {
     assert_eq!(health.dropped_events, 7);
     assert_eq!(
         health.status.as_ref().map(|status| status.state()),
-        Some(bello_hardware_client::DeviceState::Degraded)
+        Some(EnumValue::Known(
+            bello_hardware_client::DeviceState::Degraded
+        ))
     );
     assert_eq!(state.health_snapshots().count(), 1);
     assert!(matches!(
@@ -1190,11 +720,11 @@ async fn ergonomic_state_stream_aggregates_events_without_protobuf_matching() {
     assert_eq!(policies.len(), 1);
     assert_eq!(
         policies[0].check,
-        bello_hardware_client::CommandPolicyCheck::Limit
+        EnumValue::Known(bello_hardware_client::CommandPolicyCheck::Limit)
     );
     assert_eq!(
         policies[0].behavior,
-        bello_hardware_client::CommandBehavior::Clamp
+        EnumValue::Known(bello_hardware_client::CommandBehavior::Clamp)
     );
     assert!(policies[0].command_modified);
     assert!(!policies[0].command_rejected);
@@ -1214,13 +744,7 @@ async fn shutdown_releases_faulted_group_without_recovering_or_disabling_it() {
     let group = robot.group(GROUP).unwrap();
     let mut control = group.control("fault-cleanup").await.unwrap();
     let frame = group
-        .frame()
-        .coordinate(
-            "coordinate_a",
-            CoordinateTarget::position(0.0).gains(20.0, 1.0),
-        )
-        .unwrap()
-        .build()
+        .frame([("coordinate_a", CoordinateTarget::position(0.0, 20.0, 1.0))])
         .unwrap();
     control.start(frame).await.unwrap();
     server.settings.faulted.store(true, Ordering::Relaxed);
@@ -1240,41 +764,29 @@ async fn shutdown_releases_faulted_group_without_recovering_or_disabling_it() {
 }
 
 #[tokio::test]
-async fn ergonomic_control_renews_short_leases_automatically() {
+async fn release_waits_for_automatic_renewal_in_flight() {
     let server = FakeServer::start().await;
     server
         .settings
         .acquire_expires_ms
         .store(40, Ordering::Relaxed);
+    server.settings.renew_delay_ms.store(60, Ordering::Relaxed);
     let robot = Robot::connect(server.endpoint.clone())
         .await
         .expect("connect robot");
     let group = robot.group(GROUP).expect("resolve group");
     let control = group
-        .control_with(
-            ControlOptions::new("automatic-renewal").lease_duration(Duration::from_millis(40)),
-        )
+        .control(ControlOptions::new("automatic-renewal").lease_duration(Duration::from_millis(40)))
         .await
         .expect("acquire control");
 
-    tokio::time::timeout(Duration::from_secs(1), async {
-        loop {
-            if !server
-                .state
-                .lock()
-                .expect("fake state mutex poisoned")
-                .renewed
-                .is_empty()
-            {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(2)).await;
-        }
-    })
+    tokio::time::timeout(
+        Duration::from_secs(1),
+        server.settings.renew_started.notified(),
+    )
     .await
     .expect("automatic renewal");
-
-    control.shutdown().await.expect("release control");
+    control.release().await.expect("release after renewal");
     server.stop().await;
 }
 
@@ -1291,16 +803,11 @@ async fn ergonomic_control_surfaces_automatic_renewal_failure() {
         .expect("connect robot");
     let group = robot.group(GROUP).expect("resolve group");
     let mut control = group
-        .control_with(
-            ControlOptions::new("failed-renewal").lease_duration(Duration::from_millis(40)),
-        )
+        .control(ControlOptions::new("failed-renewal").lease_duration(Duration::from_millis(40)))
         .await
         .expect("acquire control");
     let frame = group
-        .frame()
-        .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
-        .expect("assign target")
-        .build()
+        .frame([("coordinate_a", CoordinateTarget::damping(1.0))])
         .expect("build frame");
 
     tokio::time::timeout(Duration::from_secs(1), async {
@@ -1338,10 +845,7 @@ async fn ergonomic_control_never_retries_after_a_rejected_running_command() {
     let group = robot.group(GROUP).expect("resolve group");
     let frame = || {
         group
-            .frame()
-            .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
-            .expect("assign target")
-            .build()
+            .frame([("coordinate_a", CoordinateTarget::damping(1.0))])
             .expect("build frame")
     };
     let mut control = group
@@ -1376,63 +880,138 @@ async fn ergonomic_control_never_retries_after_a_rejected_running_command() {
     server.stop().await;
 }
 
-#[tokio::test]
-async fn cancelled_send_blocks_commands_until_control_is_restarted() {
-    let server = FakeServer::start().await;
-    let robot = Robot::connect(&server.endpoint).await.unwrap();
-    let group = robot.group(GROUP).unwrap();
-    let mut control = group
-        .control_with(
-            ControlOptions::new("cancelled-send").acknowledgement_timeout(Duration::from_secs(10)),
-        )
-        .await
-        .unwrap();
-    let frame = group
-        .frame()
-        .coordinate("coordinate_a", CoordinateTarget::damping(0.0))
-        .unwrap()
-        .build()
-        .unwrap();
-    control.start(frame.clone()).await.unwrap();
-
-    let (received, command_received) = oneshot::channel();
-    let (resume_acknowledgement, resume) = oneshot::channel();
+fn pause_next_ack(server: &FakeServer) -> (oneshot::Receiver<()>, oneshot::Sender<()>) {
+    let (received, observed) = oneshot::channel();
+    let (unpause, resume) = oneshot::channel();
     *server.settings.next_acknowledgement_pause.lock().unwrap() =
         Some(AcknowledgementPause { received, resume });
-    {
-        let send = control.send(frame.clone());
-        tokio::pin!(send);
-        tokio::select! {
-            result = &mut send => panic!("send finished before cancellation: {result:?}"),
-            received = tokio::time::timeout(Duration::from_secs(5), command_received) => {
-                received.expect("server received command before timeout").unwrap();
-            }
-        }
-    }
-    let state_after_cancel = control.state();
-    let _ = resume_acknowledgement.send(());
+    (observed, unpause)
+}
 
-    let result = control.send(frame.clone()).await;
-    assert!(
-        matches!(result, Err(Error::InvalidSessionState { .. })),
-        "{result:?}"
-    );
-    assert_eq!(state_after_cancel, ControlState::Uncertain);
+async fn running_control(
+    server: &FakeServer,
+    options: ControlOptions,
+) -> (
+    bello_hardware_client::ControlSession,
+    bello_hardware_client::CommandFrame,
+) {
+    let robot = Robot::connect(&server.endpoint).await.unwrap();
+    let group = robot.group(GROUP).unwrap();
+    let mut control = group.control(options).await.unwrap();
+    let frame = group
+        .frame([("coordinate_a", CoordinateTarget::damping(0.0))])
+        .unwrap();
+    control.start(frame.clone()).await.unwrap();
+    (control, frame)
+}
 
-    control.stop().await.unwrap();
-    control.resume(frame.clone()).await.unwrap();
+#[tokio::test]
+async fn receipts_bound_inflight_commands_until_ack_even_if_dropped() {
+    let server = FakeServer::start().await;
+    let (mut control, frame) =
+        running_control(&server, ControlOptions::new("receipts").max_pending(2)).await;
+    let (received, unpause) = pause_next_ack(&server);
+    drop(control.try_submit(frame.clone()).unwrap());
+    received.await.unwrap();
+    let second = control.try_submit(frame.clone()).unwrap();
+    assert!(matches!(
+        control.try_submit(frame.clone()),
+        Err(Error::QueueFull)
+    ));
+    unpause.send(()).unwrap();
+    second.await.unwrap();
     control.send(frame).await.unwrap();
     assert_eq!(control.state(), ControlState::Running);
-    control.shutdown().await.unwrap();
     let sequences: Vec<_> = server
         .state
         .lock()
         .unwrap()
         .commands
         .iter()
-        .map(|command| command.sequence)
+        .map(|c| c.sequence)
         .collect();
-    assert_eq!(sequences, [1, 2]);
+    assert_eq!(sequences, [1, 2, 3]);
+    control.shutdown().await.unwrap();
+    server.stop().await;
+}
+
+#[tokio::test]
+async fn wrong_acknowledgements_and_revocation_invalidate_managed_control() {
+    for revoked in [false, true] {
+        let server = FakeServer::start().await;
+        let (mut control, frame) = running_control(&server, ControlOptions::new("bad-ack")).await;
+        server
+            .settings
+            .revoke_commands
+            .store(revoked, Ordering::Relaxed);
+        server
+            .settings
+            .wrong_sequence
+            .store(!revoked, Ordering::Relaxed);
+        let error = control
+            .try_submit(frame.clone())
+            .unwrap()
+            .await
+            .unwrap_err();
+        if revoked {
+            assert!(matches!(
+                error,
+                Error::RejectedCommand {
+                    result: EnumValue::Known(CommandResult::LeaseLost),
+                    ..
+                }
+            ));
+        } else {
+            assert!(matches!(error, Error::Protocol(_)));
+        }
+        assert_eq!(control.state(), ControlState::Uncertain);
+        assert!(matches!(
+            control.try_submit(frame),
+            Err(Error::InvalidSessionState { .. })
+        ));
+        drop(control);
+        server.stop().await;
+    }
+}
+
+#[tokio::test]
+async fn dropped_receipt_timeout_invalidates_only_its_stream() {
+    let server = FakeServer::start().await;
+    let (mut control, frame) = running_control(
+        &server,
+        ControlOptions::new("deadline").acknowledgement_timeout(Duration::from_millis(100)),
+    )
+    .await;
+    let (received, unpause) = pause_next_ack(&server);
+    drop(control.try_submit(frame.clone()).unwrap());
+    received.await.unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while control.state() == ControlState::Running {
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(control.state(), ControlState::Uncertain);
+    assert!(matches!(
+        control.try_submit(frame.clone()),
+        Err(Error::InvalidSessionState { .. })
+    ));
+    control.stop().await.unwrap();
+    control.resume(frame.clone()).await.unwrap();
+    let _ = unpause.send(());
+    control.send(frame).await.unwrap();
+    assert_eq!(control.state(), ControlState::Running);
+    let commands = &server
+        .state
+        .lock()
+        .unwrap()
+        .commands
+        .iter()
+        .map(|command| command.sequence)
+        .collect::<Vec<_>>();
+    assert_eq!(commands, &[1, 2]);
+    control.shutdown().await.unwrap();
     server.stop().await;
 }
 
@@ -1445,10 +1024,7 @@ async fn ergonomic_resume_rolls_an_ambiguous_start_back_to_damped() {
     let group = robot.group(GROUP).expect("resolve group");
     let frame = || {
         group
-            .frame()
-            .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
-            .expect("assign target")
-            .build()
+            .frame([("coordinate_a", CoordinateTarget::damping(1.0))])
             .expect("build frame")
     };
     let mut control = group
@@ -1473,24 +1049,21 @@ async fn rejected_disable_leaves_running_control_uncertain() {
     let group = robot.group(GROUP).unwrap();
     let mut control = group.control("rejected-disable").await.unwrap();
     let frame = group
-        .frame()
-        .coordinate("coordinate_a", CoordinateTarget::damping(0.0))
-        .unwrap()
-        .build()
+        .frame([("coordinate_a", CoordinateTarget::damping(0.0))])
         .unwrap();
     control.start(frame.clone()).await.unwrap();
     server.settings.faulted.store(true, Ordering::Relaxed);
 
     let error = control.disable().await.unwrap_err();
-    assert_eq!(
-        error.rpc_status().unwrap().code(),
-        tonic::Code::FailedPrecondition
-    );
+    assert!(matches!(error, Error::PreconditionFailed(_)));
     assert_eq!(control.state(), ControlState::Uncertain);
     assert!(matches!(
         control.send(frame).await,
         Err(Error::InvalidSessionState { .. })
     ));
+    server.settings.faulted.store(false, Ordering::Relaxed);
+    control.disable().await.unwrap();
+    assert_eq!(control.state(), ControlState::Ready);
     control.release().await.unwrap();
     server.stop().await;
 }
@@ -1502,10 +1075,7 @@ async fn running_control_disables_directly_without_a_damping_stop() {
     let group = robot.group(GROUP).unwrap();
     let mut control = group.control("torque-release").await.unwrap();
     let frame = group
-        .frame()
-        .coordinate("coordinate_a", CoordinateTarget::damping(0.0))
-        .unwrap()
-        .build()
+        .frame([("coordinate_a", CoordinateTarget::damping(0.0))])
         .unwrap();
     control.start(frame.clone()).await.unwrap();
     control.send(frame).await.unwrap();
@@ -1536,10 +1106,7 @@ async fn release_preserves_damping_and_fault_without_disable() {
         let group = robot.group(GROUP).unwrap();
         let mut control = group.control("damping-release").await.unwrap();
         let frame = group
-            .frame()
-            .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
-            .unwrap()
-            .build()
+            .frame([("coordinate_a", CoordinateTarget::damping(1.0))])
             .unwrap();
         control.start(frame).await.unwrap();
         server.settings.faulted.store(faulted, Ordering::Relaxed);
@@ -1563,16 +1130,47 @@ async fn release_preserves_damping_and_fault_without_disable() {
 }
 
 #[tokio::test]
+async fn closed_command_stream_prevents_start_and_resume() {
+    let server = FakeServer::start().await;
+    let robot = Robot::connect(&server.endpoint).await.unwrap();
+    let group = robot.group(GROUP).unwrap();
+    let frame = group
+        .frame([("coordinate_a", CoordinateTarget::damping(1.0))])
+        .unwrap();
+    let mut control = group.control("closed-stream").await.unwrap();
+    server
+        .settings
+        .close_stream_during_start
+        .store(true, Ordering::Relaxed);
+    for resuming in [false, true] {
+        let result = if resuming {
+            control.resume(frame.clone()).await
+        } else {
+            control.start(frame.clone()).await
+        };
+        assert!(
+            matches!(result, Err(Error::CommandStreamClosed)),
+            "{result:?}"
+        );
+        assert_eq!(control.state(), ControlState::Damped);
+    }
+    server
+        .settings
+        .close_stream_during_start
+        .store(false, Ordering::Relaxed);
+    control.resume(frame).await.unwrap();
+    control.shutdown().await.unwrap();
+    server.stop().await;
+}
+
+#[tokio::test]
 async fn failed_start_rolls_back_to_damping() {
     let server = FakeServer::start().await;
     let robot = Robot::connect(&server.endpoint).await.unwrap();
     let group = robot.group(GROUP).unwrap();
     let mut control = group.control("failed-start-damping").await.unwrap();
     let frame = group
-        .frame()
-        .coordinate("coordinate_a", CoordinateTarget::damping(1.0))
-        .unwrap()
-        .build()
+        .frame([("coordinate_a", CoordinateTarget::damping(1.0))])
         .unwrap();
     server.settings.fail_start.store(true, Ordering::Relaxed);
     assert!(control.start(frame).await.is_err());

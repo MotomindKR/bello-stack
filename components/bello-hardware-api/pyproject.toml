@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling>=1.30,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bello-hardware-api"
+version = "0.1.0"
+description = "Generated Python gRPC and protobuf bindings for Bello hardware"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+classifiers = ["Private :: Do Not Upload"]
+dependencies = [
+  "grpcio>=1.84.1,<2",
+  "protobuf>=7.35.1,<8",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bello_hardware_api"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src/bello_hardware_api", "/LICENSE"]

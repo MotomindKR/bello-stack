@@ -2,7 +2,8 @@ use std::time::Duration;
 
 use crate::Error;
 
-pub(crate) fn positive_milliseconds(value: Duration, field: &str) -> Result<u64, Error> {
+pub(crate) fn requested_milliseconds(value: Option<Duration>, field: &str) -> Result<u64, Error> {
+    let Some(value) = value else { return Ok(0) };
     if value.is_zero() {
         return Err(Error::InvalidArgument(format!("{field} must be positive")));
     }
@@ -17,17 +18,18 @@ mod tests {
     #[test]
     fn positive_sub_millisecond_values_round_up() {
         assert_eq!(
-            positive_milliseconds(Duration::from_nanos(1), "duration").unwrap(),
+            requested_milliseconds(Some(Duration::from_nanos(1)), "duration").unwrap(),
             1
         );
         assert_eq!(
-            positive_milliseconds(Duration::from_millis(2), "duration").unwrap(),
+            requested_milliseconds(Some(Duration::from_millis(2)), "duration").unwrap(),
             2
         );
     }
 
     #[test]
     fn zero_is_not_confused_with_the_wire_default_sentinel() {
-        assert!(positive_milliseconds(Duration::ZERO, "duration").is_err());
+        assert_eq!(requested_milliseconds(None, "duration").unwrap(), 0);
+        assert!(requested_milliseconds(Some(Duration::ZERO), "duration").is_err());
     }
 }

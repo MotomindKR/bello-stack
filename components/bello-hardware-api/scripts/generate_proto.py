@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate the package-private Python bindings from the canonical proto."""
+"""Regenerate the Python hardware API from the canonical proto."""
 
 from __future__ import annotations
 
@@ -8,18 +8,8 @@ import sys
 from pathlib import Path
 
 COMPONENT = Path(__file__).resolve().parents[1]
-REPOSITORY = COMPONENT.parents[1]
-PROTO = (
-    REPOSITORY
-    / "components"
-    / "bello-hardware-api"
-    / "proto"
-    / "bello"
-    / "hardware"
-    / "v1"
-    / "hardware.proto"
-)
-OUTPUT = COMPONENT / "src" / "bello_hardware" / "_generated"
+PROTO = COMPONENT / "proto" / "bello" / "hardware" / "v1" / "hardware.proto"
+OUTPUT = COMPONENT / "src" / "bello_hardware_api"
 
 
 def main() -> None:
@@ -37,6 +27,12 @@ def main() -> None:
         ],
         cwd=PROTO.parent,
         check=True,
+    )
+
+    protobuf_module = OUTPUT / "hardware_pb2.py"
+    generated = protobuf_module.read_text()
+    protobuf_module.write_text(
+        generated.replace("'hardware_pb2', _globals", "__name__, _globals")
     )
 
     grpc_module = OUTPUT / "hardware_pb2_grpc.py"
