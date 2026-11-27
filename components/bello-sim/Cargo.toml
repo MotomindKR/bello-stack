@@ -25,8 +25,8 @@ gltf = { version = "1.4.1", default-features = false, features = ["utils"] }
 roxmltree.workspace = true
 xmltree = "0.12"
 nalgebra.workspace = true
-rand = "0.9"
-rand_distr = "0.5"
+rand = "0.10"
+rand_distr = "0.6"
 nix = { workspace = true, features = ["term", "poll", "fs", "signal", "sched", "user"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "signal", "sync", "net", "time"] }
 tokio-stream = { workspace = true, features = ["net", "sync"] }
