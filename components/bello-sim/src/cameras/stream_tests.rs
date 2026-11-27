@@ -3,7 +3,7 @@ use gst::prelude::*;
 use image::{Rgb, RgbImage};
 use proto::camera_source_service_client::CameraSourceServiceClient;
 use proto::camera_source_service_server::CameraSourceServiceServer;
-use rand::{Rng, SeedableRng, rngs::SmallRng};
+use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use tokio_stream::wrappers::UnixListenerStream;
 use tonic::Request;
 
