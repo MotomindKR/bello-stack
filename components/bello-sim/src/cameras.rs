@@ -1,6 +1,7 @@
 mod config;
 pub use bello_camera_worker::proto::config::Camera;
 pub use config::Config;
+pub(crate) use config::default_samples;
 mod context;
 mod jpeg;
 mod projection;

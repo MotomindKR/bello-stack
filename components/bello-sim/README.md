@@ -16,8 +16,9 @@ On Linux and macOS, start MuJoCo first. It creates the PTYs and publishes the
 slave paths at `/tmp/bello-sim/imu` and `/tmp/bello-sim/power`. Start hardwared
 under the same user. For concurrent simulations, choose distinct `pty_link`
 paths in MuJoCo and matching `serial_ports` in hardwared. Use `device` in
-MuJoCo to open an externally provisioned port. To use Linux SocketCAN instead, set each logical bus
-in a local runtime profile to its vCAN interface (for example, `bus_interfaces: {can0: vcan0}`). Use `check --export-physics PATH`
+MuJoCo to open an externally provisioned port.
+
+Each shipped model profile names its hardwared `deployment`. Both processes read the robot description path, CAN transports and simulated camera sockets from that file. The paired simulator needs a mapping for each logical CAN bus in the model. To switch to a local deployment, pass its path to `bello-sim run --deployment PATH` and `bello-hardwared --config PATH`. For Linux vCAN, set the deployment bus transport to `{type: socketcan, interface: vcan0}`. Use `check --export-physics PATH`
 to inspect the compiled MJCF. Loading a URDF directly with `Simulation::load`
 skips actuator transmissions. For the fixed-base Mini Torso, pair the [emulator](config/emulator_mini_torso.yaml)
 with the [hardwared simulation profile](../bello-hardwared/config/bello-mini-torso-sim.yaml).
@@ -55,9 +56,11 @@ cargo run -p bello-sim -- run --config components/bello-sim/config/emulator_mill
 
 ## Live camera streams
 
-Set `cameras` in the emulator profile to the path to a [camera configuration](config/cameras_mini_torso.yaml).
+Bind a camera to a `mujoco` socket in the hardwared deployment to start rendering it. Cameras bound to the same socket share one renderer. Set `offscreen_samples` in the emulator profile to adjust antialiasing.
+
+To render an extra view on a shared socket, use the name of a deployed camera as the key. For example, with `left_gripper` bound in the deployment, `additional_camera_streams: {left_gripper: [birds_eye]}` adds the bird’s-eye view to that renderer. Hardwared publishes only the names in its own deployment.
 Measure the mounting transforms and intrinsics before using the images for calibrated work.
-The renderer profile selects stream names declared in the model’s `hardware.yaml`. The hardware inventory supplies the mount, mono or stereo layout, FPS, and calibration file for each name.
+The robot’s `hardware.yaml` supplies the mount, layout, FPS, and calibration file for each stream.
 The configured width and height apply to each eye. The simulator applies each lens’s optional
 fisheye calibration, packs stereo left-to-right, then uses GStreamer to encode one JPEG.
 `GetCameras` reports the encoded dimensions, layout and host-local GStreamer socket.
@@ -66,7 +69,7 @@ Hardwared serves both RPCs. For a physical Milly, bind the same camera name to i
 
 A camera failure interrupts the stream while physics continues.
 
-Preview the cameras without CAN devices from the Nix shell. Native installations need GStreamer 1.28 or later with the base, good, and bad plugins.
+Preview Milly’s deployment-selected streams with `camera_preview preview --config components/bello-sim/config/emulator_milly_7dof_gimbal.yaml`. For a standalone preview, select a model and an independent camera profile as shown below. Both modes run without CAN devices. Native installations need GStreamer 1.28 or later with the base, good, and bad plugins.
 
 ```sh
 cargo run -p bello-sim --example camera_preview -- preview \

@@ -1,6 +1,4 @@
 model: milly.yaml
-bus_interfaces:
-  can0: { daemon_port: 19100, simulator_port: 19101 }
 feedback_rate_hz: 100
 temperature_c: 25
 command_latency_seconds: 0.0

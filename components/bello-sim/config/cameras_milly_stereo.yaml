@@ -1,3 +1,0 @@
-socket: /tmp/bello-milly-stereo.sock
-offscreen_samples: 0
-cameras: [stereo]

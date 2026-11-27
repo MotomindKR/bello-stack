@@ -245,6 +245,7 @@ name = "bello-hardware-api"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bello-sim-can",
  "hyper-util",
  "libc",
  "prost",
@@ -359,6 +360,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "bello-camera-worker",
+ "bello-hardware-api",
  "bello-pose-api",
  "bello-robot-description",
  "bello-sim-can",

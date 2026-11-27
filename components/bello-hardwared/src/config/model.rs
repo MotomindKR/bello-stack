@@ -1,4 +1,5 @@
 use bello_hardware_api::camera::config::{Camera, Declaration, Transport};
+pub use bello_hardware_api::deployment::BusTransportConfig;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -270,23 +271,6 @@ pub struct BusConfig {
     pub reconnect: ReconnectConfig,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Hash)]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-pub enum BusTransportConfig {
-    Socketcan { interface: String },
-    Gsusb { serial: String, channel: u8 },
-    Sim(bello_sim_can::SimBus),
-}
-
-impl BusTransportConfig {
-    pub fn label(&self) -> String {
-        match self {
-            Self::Socketcan { interface } => format!("socketcan:{interface}"),
-            Self::Sim(bus) => format!("sim:{}:{}", bus.daemon_port, bus.simulator_port),
-            Self::Gsusb { serial, channel } => format!("gsusb:{serial}:{channel}"),
-        }
-    }
-}
 fn default_host_id() -> u8 {
     0xFD
 }

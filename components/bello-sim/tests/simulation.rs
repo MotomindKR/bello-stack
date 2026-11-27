@@ -3,10 +3,7 @@
 mod support;
 
 use bello_pose_api::{WatchPoseRequest, pose_service_client::PoseServiceClient};
-use bello_sim::{
-    model::{Hardware, ModelConfig},
-    runtime::Config,
-};
+use bello_sim::{model::Hardware, runtime::RunConfig};
 use robstride_protocol::{MotorParams, active_report_frame, parse_feedback};
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -27,8 +24,8 @@ impl Drop for Process {
 #[tokio::test]
 async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
     let profile = Path::new(env!("CARGO_MANIFEST_DIR")).join("config/emulator_mini.yaml");
-    let config = Config::load(&profile).unwrap();
-    let model = ModelConfig::load(&config.model).unwrap();
+    let config = RunConfig::load(&profile, None).unwrap();
+    let model = &config.model;
     let hardware: Hardware = serde_yaml::from_reader(File::open(&model.hardware).unwrap()).unwrap();
     let first_bus = config.bus_interfaces.keys().next().unwrap();
     let bus = hardware
@@ -50,19 +47,30 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
     drop(listener);
     let mut yaml: serde_yaml::Value =
         serde_yaml::from_reader(File::open(&profile).unwrap()).unwrap();
-    yaml["model"] = config.model.to_string_lossy().into_owned().into();
+    yaml["model"] = config.settings.model.to_string_lossy().into_owned().into();
+    let mut deployment: serde_yaml::Value = serde_yaml::from_reader(
+        File::open(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../bello-hardwared/config/bello-mini-sim.yaml"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    deployment["description"] = model.hardware.to_string_lossy().into_owned().into();
     let mut clients = BTreeMap::new();
     let mut simulator_ports = Vec::new();
     for name in config.bus_interfaces.keys() {
         let (bus, client, simulator_port) = support::reserve_bus().unwrap();
-        yaml["bus_interfaces"][name.as_str()] = serde_yaml::to_value(serde_json::json!({
-            "daemon_port": bus.daemon_port,
+        deployment["bus_transports"][name.as_str()] = serde_yaml::to_value(serde_json::json!({
+            "type": "sim", "daemon_port": bus.daemon_port,
             "simulator_port": bus.simulator_port
         }))
         .unwrap();
         clients.insert(name, client);
         simulator_ports.push(simulator_port);
     }
+    let mut deployment_file = tempfile::NamedTempFile::new().unwrap();
+    serde_yaml::to_writer(&mut deployment_file, &deployment).unwrap();
     let socket = &clients[first_bus];
     socket.set_nonblocking(true).unwrap();
     yaml["imu"]["pty_link"] = serde_yaml::to_value(&imu_link).unwrap();
@@ -76,7 +84,7 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
         yaml["video"] = serde_yaml::to_value(serde_json::json!({
             "output": video_path, "width": 320, "height": 240, "fps": 20,
             "max_seconds": 10., "render_timeout_seconds": 15.,
-            "camera": {"body": config.pose.tracked_frame, "distance_m": 3.,
+            "camera": {"body": config.settings.pose.tracked_frame, "distance_m": 3.,
                 "azimuth_degrees": 135., "elevation_degrees": -14.,
                 "lookat_offset_m": [0., 0., 0.]}
         }))
@@ -93,6 +101,8 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
         Command::new(env!("CARGO_BIN_EXE_bello-sim"))
             .args(["run", "--config"])
             .arg(file.path())
+            .arg("--deployment")
+            .arg(deployment_file.path())
             .stdin(File::from(operator.slave))
             .stderr(process_log.try_clone().unwrap())
             .spawn()
@@ -116,8 +126,8 @@ async fn native_process_serves_can_serial_pose_and_exits_on_sigterm() {
     };
     let mut poses = client
         .watch_pose(WatchPoseRequest {
-            reference_frame: config.pose.reference_frame,
-            tracked_frame: config.pose.tracked_frame,
+            reference_frame: config.settings.pose.reference_frame,
+            tracked_frame: config.settings.pose.tracked_frame,
         })
         .await
         .unwrap()

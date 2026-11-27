@@ -404,7 +404,7 @@ cameras:
     fps: 30
 ```
 
-In the deployment, map the streams to enable by name. For simulation, use the socket that the renderer opens:
+In the deployment, map streams by name. For simulation, choose a socket path here. The paired simulator reads the same deployment and opens the socket for the named cameras.
 
 ```yaml
 cameras:

@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 garde.workspace = true
 bello-sim-can.workspace = true
+bello-hardware-api.workspace = true
 cog-protocol.workspace = true
 anyhow.workspace = true
 bello-camera-worker = { path = "../bello-camera-worker", default-features = false }

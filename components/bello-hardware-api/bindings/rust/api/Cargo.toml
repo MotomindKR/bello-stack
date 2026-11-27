@@ -9,6 +9,7 @@ description = "Shared gRPC and protobuf API for Bello hardware components"
 
 [dependencies]
 anyhow.workspace = true
+bello-sim-can.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
 prost.workspace = true
