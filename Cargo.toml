@@ -52,7 +52,7 @@ serde_json = "1"
 serde_yaml = { package = "serde_yaml_ng", version = "0.10" }
 roxmltree = "0.21"
 serialport = { version = "4", default-features = false }
-socketcan = { version = "3.6", default-features = false }
+socketcan = { version = "4.0", default-features = false }
 thiserror = "2"
 tempfile = "3"
 tokio = "1"

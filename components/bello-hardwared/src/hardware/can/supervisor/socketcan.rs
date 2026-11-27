@@ -13,9 +13,11 @@ use nix::sys::timerfd::{ClockId, Expiration, TimerFd, TimerFlags, TimerSetTimeFl
 use nix::{errno::Errno, libc};
 use socketcan::frame::can_frame_default;
 use socketcan::id::CAN_ERR_FLAG;
+use socketcan::timestamp::{
+    SOF_TIMESTAMPING_OPT_CMSG, SOF_TIMESTAMPING_RX_SOFTWARE, SOF_TIMESTAMPING_SOFTWARE,
+};
 use socketcan::{
-    CanFrame as WireFrame, CanSocket, EmbeddedFrame, ExtendedId, Frame, SOF_TIMESTAMPING_OPT_CMSG,
-    SOF_TIMESTAMPING_RX_SOFTWARE, SOF_TIMESTAMPING_SOFTWARE, Socket, SocketOptions,
+    CanFrame as WireFrame, CanSocket, EmbeddedFrame, ExtendedId, Frame, Socket, SocketOptions,
 };
 use tracing::warn;
 
@@ -95,7 +97,7 @@ impl BlockingSocket for SocketCanReader {
         socket.set_read_timeout(Duration::from_millis(100))?;
         socket.set_recv_own_msgs(true)?;
         socket.set_error_filter(CAN_ERR_CRTL | CAN_ERR_BUSOFF)?;
-        socket.set_socket_option(libc::SOL_SOCKET, libc::SO_RXQ_OVFL, &1_i32)?;
+        socket.set_socket_option_int(libc::SOL_SOCKET, libc::SO_RXQ_OVFL, 1)?;
         // SO_TIMESTAMPNS can generate a dequeue timestamp if the skb has no timestamp.
         socket.set_timestamping(
             SOF_TIMESTAMPING_RX_SOFTWARE | SOF_TIMESTAMPING_SOFTWARE | SOF_TIMESTAMPING_OPT_CMSG,
